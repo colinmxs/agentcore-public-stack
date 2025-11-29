@@ -1,4 +1,4 @@
-# Strands Agent Chatbot with AgentCore
+# AgentCore Public Stack
 
 Production-ready multi-agent conversational AI system built with Bedrock AgentCore and Strands Agents.
 Supports RAG workflows, MCP-based tool integration, multimodal input/output, financial analysis tools,
@@ -25,7 +25,7 @@ Combines Strands Agent orchestration with AWS Bedrock AgentCore services:
 
 ### Core Components
 
-1. **Frontend + BFF** (Angular v21+)
+1. **Frontend** (Angular v21+)
    - Server-side API routes as Backend-for-Frontend
    - Cognito authentication with JWT validation
    - SSE streaming from AgentCore Runtime
