@@ -13,13 +13,12 @@ import logging
 import asyncio
 import json
 
-from models.schemas import ChatRequest, ChatEvent
-from .models import InvocationRequest
+from .models import InvocationRequest, ChatRequest, ChatEvent
 from .service import get_agent
 
 logger = logging.getLogger(__name__)
 
-router = APIRouter(tags=["chat"])
+router = APIRouter(prefix="/chat", tags=["chat"])
 
 
 # ============================================================
@@ -40,7 +39,7 @@ async def invocations(request: InvocationRequest):
     Supports user-specific tool filtering and SSE streaming.
     Creates/caches agent instance per session + tool configuration.
     """
-    input_data = request.input
+    input_data = request
     logger.info(f"Invocation request - Session: {input_data.session_id}, User: {input_data.user_id}")
     logger.info(f"Message: {input_data.message[:50]}...")
 
@@ -92,7 +91,7 @@ async def invocations(request: InvocationRequest):
 # Legacy Endpoints (for backward compatibility)
 # ============================================================
 
-@router.post("/chat/stream")
+@router.post("/stream")
 async def chat_stream(request: ChatRequest):
     """
     Legacy chat stream endpoint (for backward compatibility)
@@ -195,7 +194,7 @@ async def chat_stream(request: ChatRequest):
         )
 
 
-@router.post("/chat/multimodal")
+@router.post("/multimodal")
 async def chat_multimodal(request: ChatRequest):
     """
     Stream chat response with multimodal input (files)

@@ -11,8 +11,8 @@ Handles:
 import sys
 from pathlib import Path
 
-# Add src directory to Python path
-src_path = Path(__file__).parent
+# Add src directory to Python path (parent of api/)
+src_path = Path(__file__).parent.parent
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
@@ -78,9 +78,10 @@ if os.getenv('ENVIRONMENT', 'development') == 'development':
 
 # Import routers
 from health.health import router as health_router
+from chat.routes import router as chat_router
 # Include routers
 app.include_router(health_router)
-# app.include_router(chat.router)
+app.include_router(chat_router)
 # app.include_router(gateway_tools.router)
 # app.include_router(tools.router)
 # app.include_router(browser_live_view.router)

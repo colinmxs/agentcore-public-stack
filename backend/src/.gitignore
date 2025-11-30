@@ -9,6 +9,7 @@ __pycache__/
 output/
 uploads/
 generated_images/
+sessions/
 
 # Virtual environments
 venv/

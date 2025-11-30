@@ -6,8 +6,7 @@ Contains business logic for chat operations, including agent creation and manage
 import logging
 from typing import Optional, List
 
-from agent.agent import ChatbotAgent
-
+from agentcore.agent.agent import ChatbotAgent
 logger = logging.getLogger(__name__)
 
 
