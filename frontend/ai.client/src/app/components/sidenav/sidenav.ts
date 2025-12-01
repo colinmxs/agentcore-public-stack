@@ -11,7 +11,9 @@ export class Sidenav {
   router = inject(Router);
   constructor() {}
 
-
+getConversationId(conversationId: string): string {
+  return conversationId;
+}
 
   newSession() {
     this.router.navigate(['']);
