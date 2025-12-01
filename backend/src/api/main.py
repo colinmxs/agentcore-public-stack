@@ -16,12 +16,19 @@ src_path = Path(__file__).parent.parent
 if str(src_path) not in sys.path:
     sys.path.insert(0, str(src_path))
 
+# Load environment variables from .env file
+from dotenv import load_dotenv
+import os
+
+# Load .env file from backend/src directory (parent of api/)
+env_path = Path(__file__).parent.parent / '.env'
+load_dotenv(dotenv_path=env_path)
+
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 import logging
-import os
 
 # Set up logging
 logging.basicConfig(
@@ -79,9 +86,11 @@ if os.getenv('ENVIRONMENT', 'development') == 'development':
 # Import routers
 from health.health import router as health_router
 from chat.routes import router as chat_router
+from auth.routes import router as auth_router
 # Include routers
 app.include_router(health_router)
 app.include_router(chat_router)
+app.include_router(auth_router)
 # app.include_router(gateway_tools.router)
 # app.include_router(tools.router)
 # app.include_router(browser_live_view.router)

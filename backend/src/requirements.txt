@@ -21,6 +21,9 @@ boto3>=1.40.1
 httpx>=0.24.0
 anyio>=3.6.0
 
+# Environment variables
+python-dotenv>=1.0.0
+
 # Web Search
 ddgs>=9.0.0
 

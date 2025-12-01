@@ -10,4 +10,8 @@ export const routes: Routes = [
         path: 'c/:conversationId',
         loadComponent: () => import('./conversation/conversation.page').then(m => m.ConversationPage),
     },
+    {
+        path: 'auth/callback',
+        loadComponent: () => import('./auth/callback/callback.page').then(m => m.CallbackPage),
+    }
 ];
