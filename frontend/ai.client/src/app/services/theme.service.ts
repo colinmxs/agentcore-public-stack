@@ -76,8 +76,10 @@ export class ThemeService {
     const htmlElement = this.document.documentElement;
     if (theme === 'dark') {
       htmlElement.classList.add('dark');
+      htmlElement.style.colorScheme = 'dark';
     } else {
       htmlElement.classList.remove('dark');
+      htmlElement.style.colorScheme = 'light';
     }
   }
 
