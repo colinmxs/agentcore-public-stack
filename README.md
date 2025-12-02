@@ -11,8 +11,7 @@ cd agentcore-public-stack
 ./setup.sh
 
 # 3. Configure AWS credentials
-cd ../backend/src
-cp .env.example .env
+cp backend/src/.env.example backend/src/.env
 # Edit .env with your AWS credentials and region
 
 # 4. Start all services
@@ -337,8 +336,7 @@ cd agentcore-public-stack
 ./setup.sh
 
 # 3. Configure AWS credentials
-cd backend/src
-cp .env.example .env
+cp backend/src/.env.example backend/src/.env
 # Edit .env with your AWS credentials and region
 
 # 4. Start all services
