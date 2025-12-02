@@ -7,6 +7,12 @@ from pydantic import BaseModel
 from typing import Optional, List, Dict, Any
 import json
 
+class FileContent(BaseModel):
+    """File content (base64 encoded)"""
+    filename: str
+    content_type: str
+    bytes: str  # Base64 encoded
+
 
 class InvocationRequest(BaseModel):
     """Input for /invocations endpoint"""
@@ -30,21 +36,15 @@ class InvocationResponse(BaseModel):
     """AgentCore Runtime standard response format"""
     output: Dict[str, Any]
 
-class FileContent(BaseModel):
-    """File content (base64 encoded)"""
-    filename: str
-    content_type: str
-    bytes: str  # Base64 encoded
-
 class ChatRequest(BaseModel):
-    """Chat request from BFF"""
+    """Chat request from client"""
     session_id: str
     message: str
     files: Optional[List[FileContent]] = None
     enabled_tools: Optional[List[str]] = None  # User-specific tool preferences (tool IDs)
 
 class ChatEvent(BaseModel):
-    """SSE event sent to BFF"""
+    """SSE event sent to client"""
     type: str  # "text" | "tool_use" | "tool_result" | "error" | "complete"
     content: str
     metadata: Optional[Dict[str, Any]] = None
