@@ -1,3 +1,7 @@
+### Local Development
+
+Run the application locally with Docker Compose:
+
 ```bash
 # 1. Clone repository
 git clone https://github.com/Boise-State-Development/agentcore-public-stack.git
@@ -490,4 +494,4 @@ sample-strands-agent-chatbot/
 
 ## License
 
-MIT License - see LICENSE file for details. --> -->
+MIT License - see LICENSE file for details. -->
