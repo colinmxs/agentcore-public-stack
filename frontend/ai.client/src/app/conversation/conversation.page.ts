@@ -41,7 +41,7 @@ export class ConversationPage implements OnDestroy {
   }
 
   onMessageSubmitted(message: { content: string, timestamp: Date }) {
-    this.chatRequestService.submitChatRequest(message.content).catch((error) => {
+    this.chatRequestService.submitChatRequest(message.content, this.conversationId()).catch((error) => {
       console.error('Error sending chat request:', error);
     });
   }

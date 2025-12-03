@@ -25,20 +25,20 @@ export class ChatRequestService {
   private router = inject(Router);
   // TODO: Inject proper logging service
   
-  async submitChatRequest(userInput: string): Promise<void> {
+  async submitChatRequest(userInput: string, conversationId: string | null): Promise<void> {
     // Ensure conversation exists and get its ID
-    const sessionId = uuidv4();
     // Update URL to reflect current conversation
-    this.navigateToSession(sessionId);
+    conversationId = conversationId || uuidv4();
+    this.navigateToSession(conversationId);
 
     // Create and add user message
-    this.messageMapService.addUserMessage(sessionId, userInput);
+    this.messageMapService.addUserMessage(conversationId, userInput);
     
     // Start streaming for this conversation
-    this.messageMapService.startStreaming(sessionId);
+    this.messageMapService.startStreaming(conversationId);
     
     // Build and send request
-    const requestObject = this.buildChatRequestObject(userInput, sessionId);
+    const requestObject = this.buildChatRequestObject(userInput, conversationId);
 
     try {
       await this.chatHttpService.sendChatRequest(requestObject);
