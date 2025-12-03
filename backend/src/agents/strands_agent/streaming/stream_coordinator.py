@@ -6,7 +6,7 @@ import json
 import os
 from typing import AsyncGenerator, Optional, Any, Union, List, Dict
 
-from .event_processor import StreamEventProcessor
+from .stream_processor import process_agent_stream
 
 logger = logging.getLogger(__name__)
 
@@ -14,14 +14,14 @@ logger = logging.getLogger(__name__)
 class StreamCoordinator:
     """Coordinates streaming lifecycle for agent responses"""
 
-    def __init__(self, stream_processor: StreamEventProcessor):
+    def __init__(self):
         """
         Initialize stream coordinator
 
-        Args:
-            stream_processor: Event processor for handling Strands events
+        The new implementation is stateless and uses pure functions,
+        so no dependencies are needed in the constructor.
         """
-        self.stream_processor = stream_processor
+        pass
 
     async def stream_response(
         self,
@@ -52,14 +52,14 @@ class StreamCoordinator:
             # Log prompt information
             self._log_prompt_info(prompt)
 
-            # Stream events through processor
-            async for event in self.stream_processor.process_stream(
-                agent,
-                prompt,
-                file_paths=None,
-                session_id=session_id
-            ):
-                yield event
+            # Get raw agent stream
+            agent_stream = agent.stream_async(prompt)
+
+            # Process through new stream processor and format as SSE
+            async for event in process_agent_stream(agent_stream):
+                # Format as SSE event
+                sse_event = self._format_sse_event(event)
+                yield sse_event
 
             # Flush buffered messages (turn-based session manager)
             self._flush_session(session_manager)
@@ -75,6 +75,24 @@ class StreamCoordinator:
 
             # Send error event to client
             yield self._create_error_event(str(e))
+
+    def _format_sse_event(self, event: Dict[str, Any]) -> str:
+        """
+        Format processed event as SSE (Server-Sent Event)
+
+        Args:
+            event: Processed event from stream_processor {"type": str, "data": dict}
+
+        Returns:
+            str: SSE formatted event string
+        """
+        try:
+            return f"data: {json.dumps(event)}\n\n"
+        except (TypeError, ValueError) as e:
+            # Fallback for non-serializable objects (should never happen with new processor)
+            logger.error(f"Failed to serialize event: {e}")
+            error_event = {"type": "error", "data": {"error": f"Serialization error: {str(e)}"}}
+            return f"data: {json.dumps(error_event)}\n\n"
 
     def _log_prompt_info(self, prompt: Union[str, List[Dict[str, Any]]]) -> None:
         """
@@ -126,6 +144,6 @@ class StreamCoordinator:
         """
         error_event = {
             "type": "error",
-            "message": error_message
+            "data": {"error": error_message}
         }
         return f"data: {json.dumps(error_event)}\n\n"

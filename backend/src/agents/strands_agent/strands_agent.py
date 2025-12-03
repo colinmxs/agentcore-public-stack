@@ -6,7 +6,6 @@ of concerns across specialized modules.
 """
 import logging
 from typing import AsyncGenerator, List, Optional
-from agentcore.utils.event_processor import StreamEventProcessor
 
 # Core orchestration
 from agents.strands_agent.core import ModelConfig, SystemPromptBuilder, AgentFactory
@@ -27,9 +26,6 @@ from agents.strands_agent.multimodal import PromptBuilder
 
 # Streaming coordination
 from agents.strands_agent.streaming import StreamCoordinator
-
-# Global state (consider refactoring to DI in future)
-from agents.strands_agent.utils import set_global_stream_processor
 
 logger = logging.getLogger(__name__)
 
@@ -72,10 +68,6 @@ class StrandsAgent:
         self.enabled_tools = enabled_tools
         self.agent = None
 
-        # Initialize stream processor (set as global for compatibility)
-        self.stream_processor = StreamEventProcessor()
-        set_global_stream_processor(self.stream_processor)
-
         # Initialize model configuration
         self.model_config = ModelConfig.from_params(
             model_id=model_id,
@@ -110,8 +102,8 @@ class StrandsAgent:
             caching_enabled=self.model_config.caching_enabled
         )
 
-        # Initialize streaming coordinator
-        self.stream_coordinator = StreamCoordinator(self.stream_processor)
+        # Initialize streaming coordinator (now stateless)
+        self.stream_coordinator = StreamCoordinator()
 
         # Create the agent
         self._create_agent()
