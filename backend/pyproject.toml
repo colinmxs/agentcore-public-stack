@@ -10,7 +10,7 @@ description = "Multi-agent conversational AI system with AWS Bedrock AgentCore"
 readme = "README.md"
 license = {text = "MIT"}
 
-# Core dependencies shared across all APIs
+# Core dependencies shared across both APIs
 dependencies = [
     # FastAPI and web framework
     "fastapi==0.116.1",
@@ -57,7 +57,7 @@ package-dir = {"" = "src"}
 
 [tool.setuptools.packages.find]
 where = ["src"]
-include = ["agentcore*", "apis*"]
+include = ["agents*", "apis*"]
 
 [tool.black]
 line-length = 100

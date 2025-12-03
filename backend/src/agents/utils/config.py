@@ -10,9 +10,9 @@ class Config:
 
     @staticmethod
     def get_base_dir() -> Path:
-        """Get the base directory (agentcore/)"""
-        # Get path to agentcore root (parent of src/)
-        return Path(__file__).parent.parent
+        """Get the base directory (backend/src/)"""
+        # Get path to src/ directory (parent of agents/)
+        return Path(__file__).parent.parent.parent
 
     @staticmethod
     def get_output_dir() -> Path:

@@ -91,7 +91,7 @@ def create_default_registry() -> ToolRegistry:
         ToolRegistry: Registry with Strands built-in, local, and builtin tools
     """
     from strands_tools.calculator import calculator
-    from agentcore import local_tools, builtin_tools
+    from agents import local_tools, builtin_tools
 
     registry = ToolRegistry()
 

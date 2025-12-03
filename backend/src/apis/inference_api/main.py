@@ -85,7 +85,7 @@ app.include_router(chat_router)
 
 # Mount static file directories for serving generated content
 # These are created by tools (visualization, code interpreter, etc.)
-# Use parent directory (agentcore/) as base, not src/
+# Use parent directory (src/) as base
 base_dir = Path(__file__).parent.parent
 output_dir = os.path.join(base_dir, "output")
 uploads_dir = os.path.join(base_dir, "uploads")

@@ -3,7 +3,7 @@ Gateway MCP client integration for managed tool execution
 """
 import logging
 from typing import List, Optional, Any
-from agentcore.agent.gateway_mcp_client import get_gateway_client_if_enabled
+from agents.strands_agent.integrations.gateway_mcp_client import get_gateway_client_if_enabled
 
 logger = logging.getLogger(__name__)
 

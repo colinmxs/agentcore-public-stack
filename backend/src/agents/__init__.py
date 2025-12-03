@@ -1,11 +1,6 @@
-"""
-Agents package - Multi-agent orchestration system
+"""Agents module for agent execution and tool orchestration"""
 
-This package contains different agent implementations:
-- strands_agent: Main Strands-based conversational agent
-"""
-from .strands_agent import StrandsAgent
+# Export local_tools and builtin_tools for backward compatibility
+from . import local_tools, builtin_tools
 
-__all__ = [
-    "StrandsAgent",
-]
+__all__ = ['local_tools', 'builtin_tools']

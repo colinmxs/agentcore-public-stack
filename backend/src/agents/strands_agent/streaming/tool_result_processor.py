@@ -283,7 +283,7 @@ class ToolResultProcessor:
         Returns:
             Tuple of (processed_text_without_base64, file_info_list)
         """
-        from agentcore.config import Config
+        from agents.utils.config import Config
 
         file_info = []
         processed_text = result_text

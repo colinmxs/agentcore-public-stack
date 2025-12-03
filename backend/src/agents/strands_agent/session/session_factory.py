@@ -74,7 +74,7 @@ class SessionFactory:
         Returns:
             TurnBasedSessionManager: Session manager with AgentCore Memory
         """
-        from agentcore.agent.turn_based_session_manager import TurnBasedSessionManager
+        from agents.strands_agent.session.turn_based_session_manager import TurnBasedSessionManager
 
         logger.info(f"🚀 Cloud mode: Using AgentCore Memory (memory_id={memory_id})")
 
@@ -117,7 +117,7 @@ class SessionFactory:
             LocalSessionBuffer: File-based session manager with buffering wrapper
         """
         from strands.session.file_session_manager import FileSessionManager
-        from agentcore.agent.local_session_buffer import LocalSessionBuffer
+        from agents.strands_agent.session.local_session_buffer import LocalSessionBuffer
 
         logger.info(f"💻 Local mode: Using FileSessionManager with buffering")
 

@@ -1,12 +1,11 @@
-"""
-Session hooks for agent lifecycle events
+"""Hooks for Agent Core chatbot agent"""
 
-Note: These hooks are imported from the existing agentcore.agent.hooks module
-to maintain compatibility and avoid code duplication.
-"""
-from agentcore.agent.hooks import StopHook, ConversationCachingHook
+from agents.strands_agent.session.hooks.stop import StopHook
+from agents.strands_agent.session.hooks.conversation_caching import ConversationCachingHook
 
-__all__ = [
-    "StopHook",
-    "ConversationCachingHook",
-]
+__all__ = ["StopHook", "ConversationCachingHook"]
+
+
+
+
+
