@@ -48,12 +48,12 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 ## Implementation Checklist
 
 ### Phase 0: Initialization & Configuration
-- [ ] **Create CDK Project Structure**: Initialize CDK application root directory (`infrastructure/` or `cdk/`) with `cdk init app --language=typescript`.
-- [ ] **Create cdk.context.json Template**: Define configurable context structure (projectPrefix, awsRegion, awsAccount, vpcCidr, domainName, etc.).
-- [ ] **Create Config Loader Module**: Implement `infrastructure/lib/config.ts` to read from `cdk.context.json` and validate required values.
-- [ ] **Create Common Scripts Directory**: Set up `scripts/common/` with `.gitkeep`.
-- [ ] **Script: Environment Loader**: Create `scripts/common/load-env.sh` to export configuration as environment variables.
-- [ ] **Script: Dependency Installer**: Create `scripts/common/install-deps.sh` to install Node.js, AWS CDK CLI, Python, pip, Docker.
+- [x] **Create CDK Project Structure**: Initialize CDK application root directory (`infrastructure/` or `cdk/`) with `cdk init app --language=typescript`.
+- [x] **Create cdk.context.json Template**: Define configurable context structure (projectPrefix, awsRegion, awsAccount, vpcCidr, domainName, etc.).
+- [x] **Create Config Loader Module**: Implement `infrastructure/lib/config.ts` to read from `cdk.context.json` and validate required values.
+- [x] **Create Common Scripts Directory**: Set up `scripts/common/` with `.gitkeep`.
+- [x] **Script: Environment Loader**: Create `scripts/common/load-env.sh` to export configuration as environment variables.
+- [x] **Script: Dependency Installer**: Create `scripts/common/install-deps.sh` to install Node.js, AWS CDK CLI, Python, pip, Docker.
 
 **🔒 HUMAN APPROVAL REQUIRED**
 - [ ] [HUMAN] Phase 0 verified and approved to proceed to Phase 1
