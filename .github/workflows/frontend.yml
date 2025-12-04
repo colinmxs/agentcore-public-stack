@@ -49,6 +49,7 @@ env:
   # CDK Secrets - from GitHub Secrets
   CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
   CDK_CERTIFICATE_ARN: ${{ secrets.CDK_CERTIFICATE_ARN }}
+  CDK_FRONTEND_BUCKET_NAME: ${{ secrets.CDK_FRONTEND_BUCKET_NAME }}
 
 # Ensure only one deployment runs at a time
 concurrency:

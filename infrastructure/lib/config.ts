@@ -88,9 +88,10 @@ export function loadConfig(scope: cdk.App): AppConfig {
     domainName: scope.node.tryGetContext('domainName'),
     enableRoute53: scope.node.tryGetContext('enableRoute53') || false,
     certificateArn: scope.node.tryGetContext('certificateArn'),
-    frontend: scope.node.tryGetContext('frontend') || {
-      enabled: true,
-      cloudFrontPriceClass: 'PriceClass_100',
+    frontend: {
+      enabled: (scope.node.tryGetContext('frontend')?.enabled ?? true),
+      bucketName: process.env.CDK_FRONTEND_BUCKET_NAME || scope.node.tryGetContext('frontend')?.bucketName,
+      cloudFrontPriceClass: scope.node.tryGetContext('frontend')?.cloudFrontPriceClass || 'PriceClass_100',
     },
     appApi: scope.node.tryGetContext('appApi') || {
       enabled: true,
