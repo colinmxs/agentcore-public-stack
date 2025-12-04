@@ -6,16 +6,18 @@ You are implementing a 5-stack AWS CDK application with platform-agnostic CI/CD 
 ## Context Files
 1. **THE_PLAN.md**: Your implementation checklist with all tasks
 2. **CLAUDES_INSTRUCTIONS.md**: Your operational constraints and quality standards
+3. **CLAUDES_LESSONS_PHASE*.md**: Lessons learned and best practices from completed phases
 
 ## Instructions
 1. Open and read `THE_PLAN.md` to understand all pending tasks
 2. Read `CLAUDES_INSTRUCTIONS.md` to understand constraints and rules
-3. Identify the next unchecked task in `THE_PLAN.md`
-4. Complete the task fully (write code, create files, test, etc.)
-5. Verify your work meets the quality standards
-6. Update `THE_PLAN.md` to mark the task as complete (`- [x]`)
-7. Repeat steps 3-6 until you reach a `[HUMAN]` checkpoint at the end of a phase
-8. **STOP** when you reach a `[HUMAN]` checkpoint and wait for human approval before continuing
+3. Review relevant `CLAUDES_LESSONS_PHASE*.md` files to avoid repeating past mistakes
+4. Identify the next unchecked task in `THE_PLAN.md`
+5. Complete the task fully (write code, create files, test, etc.)
+6. Verify your work meets the quality standards
+7. Update `THE_PLAN.md` to mark the task as complete (`- [x]`)
+8. Repeat steps 4-7 until you reach a `[HUMAN]` checkpoint at the end of a phase
+9. **STOP** when you reach a `[HUMAN]` checkpoint and wait for human approval before continuing
 
 ## Phase Boundaries & Human Approval
 - At the end of each phase in `THE_PLAN.md`, there is a special `[HUMAN]` checkbox (e.g., `- [ ] [HUMAN] Phase 0 verified and approved to proceed to Phase 1`).
@@ -26,6 +28,7 @@ You are implementing a 5-stack AWS CDK application with platform-agnostic CI/CD 
 
 ## Critical Rules
 - Follow ALL constraints in `CLAUDES_INSTRUCTIONS.md`
+- Apply lessons learned from `CLAUDES_LESSONS_PHASE*.md` documents
 - Complete tasks sequentially - do not skip ahead
 - Do not batch task completions - mark each task complete immediately after finishing it
 - Verify your work before marking tasks complete

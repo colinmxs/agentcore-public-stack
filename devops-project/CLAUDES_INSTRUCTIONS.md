@@ -17,13 +17,14 @@ You are building a 5-stack AWS CDK architecture with a platform-agnostic CI/CD s
 
 ## Execution Model
 1.  **Read** `THE_PLAN.md` to understand the current state.
-2.  **Identify** the first unchecked task (`- [ ]`).
-3.  **Execute** the task. This may involve:
+2.  **Review** `CLAUDES_LESSONS_PHASE*.md` for lessons learned from previous phases.
+3.  **Identify** the first unchecked task (`- [ ]`).
+4.  **Execute** the task. This may involve:
     *   Writing CDK infrastructure code (TypeScript/Python).
     *   Writing Shell scripts (Bash).
     *   Writing GitHub Actions YAML.
-4.  **Verify** the file creation/content.
-5.  **Update** `THE_PLAN.md` immediately by marking the task as checked (`- [x]`).
+5.  **Verify** the file creation/content.
+6.  **Update** `THE_PLAN.md` immediately by marking the task as checked (`- [x]`).
 
 ## Constraints & Rules
 1.  **Configurability is King**: NEVER hardcode AWS Account IDs, Regions, or unique resource names. Always use configuration variables (Context, Env Vars).
