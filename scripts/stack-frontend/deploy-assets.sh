@@ -72,23 +72,31 @@ log_info "Build output: ${BUILD_OUTPUT_DIR}"
 
 # Retrieve bucket name and distribution ID from SSM Parameter Store
 log_info "Retrieving deployment targets from SSM Parameter Store..."
+log_info "Parameter: /${CDK_PROJECT_PREFIX}/frontend/bucket-name"
+log_info "Region: ${CDK_AWS_REGION}"
 
+# Temporarily disable exit on error to capture the output
+set +e
 BUCKET_NAME=$(aws ssm get-parameter \
     --name "/${CDK_PROJECT_PREFIX}/frontend/bucket-name" \
     --region ${CDK_AWS_REGION} \
     --query 'Parameter.Value' \
     --output text 2>&1)
-
 SSM_EXIT_CODE=$?
+set -e
 
 if [ ${SSM_EXIT_CODE} -ne 0 ]; then
     log_error "Failed to retrieve S3 bucket name from SSM Parameter Store"
-    log_error "SSM Error: ${BUCKET_NAME}"
+    log_error "AWS CLI Output: ${BUCKET_NAME}"
     log_error "Parameter name: /${CDK_PROJECT_PREFIX}/frontend/bucket-name"
     log_error "Region: ${CDK_AWS_REGION}"
     log_error ""
-    log_error "Make sure the FrontendStack has been deployed first"
-    log_error "Run: scripts/stack-frontend/deploy-cdk.sh"
+    log_error "Possible causes:"
+    log_error "  1. FrontendStack not deployed yet"
+    log_error "  2. Wrong AWS region (check CDK_AWS_REGION)"
+    log_error "  3. Insufficient IAM permissions for SSM"
+    log_error ""
+    log_error "To deploy the stack first, run: scripts/stack-frontend/deploy-cdk.sh"
     exit 1
 fi
 
@@ -99,11 +107,21 @@ if [ -z "${BUCKET_NAME}" ] || [ "${BUCKET_NAME}" == "None" ]; then
     exit 1
 fi
 
+set +e
 DISTRIBUTION_ID=$(aws ssm get-parameter \
     --name "/${CDK_PROJECT_PREFIX}/frontend/distribution-id" \
     --region ${CDK_AWS_REGION} \
     --query 'Parameter.Value' \
-    --output text 2>/dev/null)
+    --output text 2>&1)
+SSM_EXIT_CODE=$?
+set -e
+
+if [ ${SSM_EXIT_CODE} -ne 0 ]; then
+    log_error "Failed to retrieve CloudFront distribution ID from SSM Parameter Store"
+    log_error "AWS CLI Output: ${DISTRIBUTION_ID}"
+    log_error "Make sure the FrontendStack has been deployed first"
+    exit 1
+fi
 
 if [ -z "${DISTRIBUTION_ID}" ] || [ "${DISTRIBUTION_ID}" == "None" ]; then
     log_error "Could not retrieve CloudFront distribution ID from SSM Parameter Store"
