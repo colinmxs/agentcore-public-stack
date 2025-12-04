@@ -60,18 +60,19 @@ get_json_value() {
 }
 
 # Export core configuration
-export CDK_PROJECT_PREFIX=$(get_json_value "projectPrefix" "${CONTEXT_FILE}")
-export CDK_AWS_REGION=$(get_json_value "awsRegion" "${CONTEXT_FILE}")
-export CDK_VPC_CIDR=$(get_json_value "vpcCidr" "${CONTEXT_FILE}")
+# Priority: Environment variables > cdk.context.json
+export CDK_PROJECT_PREFIX="${CDK_PROJECT_PREFIX:-$(get_json_value "projectPrefix" "${CONTEXT_FILE}")}"
+export CDK_AWS_REGION="${CDK_AWS_REGION:-$(get_json_value "awsRegion" "${CONTEXT_FILE}")}"
+export CDK_VPC_CIDR="${CDK_VPC_CIDR:-$(get_json_value "vpcCidr" "${CONTEXT_FILE}")}"
 
-# AWS Account - try multiple sources
+# AWS Account - try multiple sources (env vars take precedence)
 CDK_CONTEXT_ACCOUNT=$(get_json_value "awsAccount" "${CONTEXT_FILE}")
-export CDK_AWS_ACCOUNT="${CDK_CONTEXT_ACCOUNT:-${CDK_DEFAULT_ACCOUNT:-${AWS_ACCOUNT_ID:-}}}"
+export CDK_AWS_ACCOUNT="${CDK_AWS_ACCOUNT:-${CDK_CONTEXT_ACCOUNT:-${CDK_DEFAULT_ACCOUNT:-${AWS_ACCOUNT_ID:-}}}}"
 
 # Optional configuration
-export CDK_DOMAIN_NAME=$(get_json_value "domainName" "${CONTEXT_FILE}")
-export CDK_ENABLE_ROUTE53=$(get_json_value "enableRoute53" "${CONTEXT_FILE}")
-export CDK_CERTIFICATE_ARN=$(get_json_value "certificateArn" "${CONTEXT_FILE}")
+export CDK_DOMAIN_NAME="${CDK_DOMAIN_NAME:-$(get_json_value "domainName" "${CONTEXT_FILE}")}"
+export CDK_ENABLE_ROUTE53="${CDK_ENABLE_ROUTE53:-$(get_json_value "enableRoute53" "${CONTEXT_FILE}")}"
+export CDK_CERTIFICATE_ARN="${CDK_CERTIFICATE_ARN:-$(get_json_value "certificateArn" "${CONTEXT_FILE}")}"
 
 # Set CDK environment variables for deployment
 export CDK_DEFAULT_ACCOUNT="${CDK_AWS_ACCOUNT}"
