@@ -72,17 +72,27 @@ if [ ! -d "dist" ]; then
     exit 1
 fi
 
-# Find the build output directory (Angular creates a subdirectory)
-BUILD_OUTPUT_DIR=$(find dist -mindepth 1 -maxdepth 1 -type d | head -1)
+# Find the build output directory
+# Angular may output to different locations depending on version:
+# - dist/ai.client/browser/ (Angular 17+)
+# - dist/ai.client/ (older versions)
+# - dist/ (direct output)
 
-if [ -z "${BUILD_OUTPUT_DIR}" ]; then
-    log_error "Build output directory not found in dist/"
-    exit 1
-fi
-
-# Check if index.html exists in build output
-if [ ! -f "${BUILD_OUTPUT_DIR}/index.html" ]; then
-    log_error "Build failed: index.html not found in ${BUILD_OUTPUT_DIR}"
+if [ -f "dist/ai.client/browser/index.html" ]; then
+    BUILD_OUTPUT_DIR="dist/ai.client/browser"
+elif [ -f "dist/ai.client/index.html" ]; then
+    BUILD_OUTPUT_DIR="dist/ai.client"
+elif [ -f "dist/index.html" ]; then
+    BUILD_OUTPUT_DIR="dist"
+else
+    log_error "Build failed: index.html not found in expected locations"
+    log_error "Checked:"
+    log_error "  - dist/ai.client/browser/index.html"
+    log_error "  - dist/ai.client/index.html"
+    log_error "  - dist/index.html"
+    log_error ""
+    log_error "Actual dist/ structure:"
+    find dist -type f -name "index.html" || ls -laR dist/
     exit 1
 fi
 
