@@ -51,11 +51,19 @@ if [ ! -d "${FRONTEND_DIR}/dist" ]; then
     exit 1
 fi
 
-# Find the build output directory
-BUILD_OUTPUT_DIR=$(find "${FRONTEND_DIR}/dist" -mindepth 1 -maxdepth 1 -type d | head -1)
-
-if [ -z "${BUILD_OUTPUT_DIR}" ]; then
-    log_error "Build output directory not found in ${FRONTEND_DIR}/dist/"
+# Find the build output directory - check multiple possible locations
+if [ -d "${FRONTEND_DIR}/dist/browser" ]; then
+    BUILD_OUTPUT_DIR="${FRONTEND_DIR}/dist/browser"
+elif [ -d "${FRONTEND_DIR}/dist/ai.client/browser" ]; then
+    BUILD_OUTPUT_DIR="${FRONTEND_DIR}/dist/ai.client/browser"
+elif [ -d "${FRONTEND_DIR}/dist/ai.client" ]; then
+    BUILD_OUTPUT_DIR="${FRONTEND_DIR}/dist/ai.client"
+elif [ -f "${FRONTEND_DIR}/dist/index.html" ]; then
+    BUILD_OUTPUT_DIR="${FRONTEND_DIR}/dist"
+else
+    log_error "Could not find build output with index.html"
+    log_error "Directory structure:"
+    find "${FRONTEND_DIR}/dist" -name "index.html"
     exit 1
 fi
 
@@ -69,7 +77,20 @@ BUCKET_NAME=$(aws ssm get-parameter \
     --name "/${CDK_PROJECT_PREFIX}/frontend/bucket-name" \
     --region ${CDK_AWS_REGION} \
     --query 'Parameter.Value' \
-    --output text 2>/dev/null)
+    --output text 2>&1)
+
+SSM_EXIT_CODE=$?
+
+if [ ${SSM_EXIT_CODE} -ne 0 ]; then
+    log_error "Failed to retrieve S3 bucket name from SSM Parameter Store"
+    log_error "SSM Error: ${BUCKET_NAME}"
+    log_error "Parameter name: /${CDK_PROJECT_PREFIX}/frontend/bucket-name"
+    log_error "Region: ${CDK_AWS_REGION}"
+    log_error ""
+    log_error "Make sure the FrontendStack has been deployed first"
+    log_error "Run: scripts/stack-frontend/deploy-cdk.sh"
+    exit 1
+fi
 
 if [ -z "${BUCKET_NAME}" ] || [ "${BUCKET_NAME}" == "None" ]; then
     log_error "Could not retrieve S3 bucket name from SSM Parameter Store"
