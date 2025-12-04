@@ -56,7 +56,7 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 - [x] **Script: Dependency Installer**: Create `scripts/common/install-deps.sh` to install Node.js, AWS CDK CLI, Python, pip, Docker.
 
 **🔒 HUMAN APPROVAL REQUIRED**
-- [ ] [HUMAN] Phase 0 verified and approved to proceed to Phase 1
+- [x] [HUMAN] Phase 0 verified and approved to proceed to Phase 1
 
 ### Phase 1: Frontend Stack (Static Site)
 **Goal**: S3 + CloudFront + Route53 (Optional)
