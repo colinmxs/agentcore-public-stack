@@ -2,7 +2,7 @@ import { inject, Injectable } from '@angular/core';
 import { EventSourceMessage, fetchEventSource } from '@microsoft/fetch-event-source';
 import { StreamParserService } from './stream-parser.service';
 import { ChatStateService } from './chat-state.service';
-import { MessageMapService } from '../conversation/message-map.service';
+import { MessageMapService } from '../session/message-map.service';
 import { AuthService } from '../../../auth/auth.service';
 import { environment } from '../../../../environments/environment';
 

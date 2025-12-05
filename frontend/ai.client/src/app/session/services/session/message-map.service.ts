@@ -3,7 +3,7 @@ import { Injectable, Signal, WritableSignal, signal, effect, inject } from '@ang
 import { Message } from '../models/message.model';
 import { StreamParserService } from '../chat/stream-parser.service';
 interface MessageMap {
-  [conversationId: string]: WritableSignal<Message[]>;
+  [sessionId: string]: WritableSignal<Message[]>;
 }
 
 @Injectable({
@@ -11,61 +11,61 @@ interface MessageMap {
 })
 export class MessageMapService {
   private messageMap = signal<MessageMap>({});
-  private activeStreamConversationId = signal<string | null>(null);
+  private activeStreamSessionId = signal<string | null>(null);
   
   private streamParser = inject(StreamParserService);
   
   constructor() {
     // Reactive effect: automatically sync streaming messages to the message map
     effect(() => {
-      const conversationId = this.activeStreamConversationId();
+      const sessionId = this.activeStreamSessionId();
       const streamMessages = this.streamParser.allMessages();
       
-      if (conversationId && streamMessages.length > 0) {
-        this.syncStreamingMessages(conversationId, streamMessages);
+      if (sessionId && streamMessages.length > 0) {
+        this.syncStreamingMessages(sessionId, streamMessages);
       }
     });
   }
   
   /**
-   * Start streaming for a conversation.
+   * Start streaming for a session.
    * Call this before beginning to parse SSE events.
    */
-  startStreaming(conversationId: string): void {
-    this.activeStreamConversationId.set(conversationId);
+  startStreaming(sessionId: string): void {
+    this.activeStreamSessionId.set(sessionId);
     this.streamParser.reset();
     
-    // Ensure the conversation exists in the map
-    if (!this.messageMap()[conversationId]) {
+    // Ensure the session exists in the map
+    if (!this.messageMap()[sessionId]) {
       this.messageMap.update(map => ({
         ...map,
-        [conversationId]: signal<Message[]>([])
+        [sessionId]: signal<Message[]>([])
       }));
     }
   }
   
   /**
-   * End streaming for the current conversation.
+   * End streaming for the current session.
    * Finalizes messages and clears streaming state.
    */
   endStreaming(): void {
-    const conversationId = this.activeStreamConversationId();
-    if (conversationId) {
+    const sessionId = this.activeStreamSessionId();
+    if (sessionId) {
       // Ensure final messages are synced
       const finalMessages = this.streamParser.allMessages();
       if (finalMessages.length > 0) {
-        this.syncStreamingMessages(conversationId, finalMessages);
+        this.syncStreamingMessages(sessionId, finalMessages);
       }
     }
     
-    this.activeStreamConversationId.set(null);
+    this.activeStreamSessionId.set(null);
   }
   
   /**
-   * Get the messages signal for a conversation.
+   * Get the messages signal for a session.
    */
-  getMessagesForConversation(conversationId: string): Signal<Message[]> {
-    const existing = this.messageMap()[conversationId];
+  getMessagesForSession(sessionId: string): Signal<Message[]> {
+    const existing = this.messageMap()[sessionId];
     if (existing) {
       return existing;
     }
@@ -73,16 +73,16 @@ export class MessageMapService {
     const newSignal = signal<Message[]>([]);
     this.messageMap.update(map => ({
       ...map,
-      [conversationId]: newSignal
+      [sessionId]: newSignal
     }));
     
     return newSignal;
   }
   
   /**
-   * Add a user message to a conversation (before streaming begins).
+   * Add a user message to a session (before streaming begins).
    */
-  addUserMessage(conversationId: string, content: string): Message {
+  addUserMessage(sessionId: string, content: string): Message {
     const message: Message = {
       id: crypto.randomUUID(),
       role: 'user',
@@ -92,10 +92,10 @@ export class MessageMapService {
     this.messageMap.update(map => {
       const updated = { ...map };
       
-      if (!updated[conversationId]) {
-        updated[conversationId] = signal([message]);
+      if (!updated[sessionId]) {
+        updated[sessionId] = signal([message]);
       } else {
-        updated[conversationId].update(msgs => [...msgs, message]);
+        updated[sessionId].update(msgs => [...msgs, message]);
       }
       
       return updated;
@@ -109,11 +109,11 @@ export class MessageMapService {
    * Handles the case where we're appending to existing messages.
    * Preserves all previous complete messages and only replaces the currently streaming assistant response.
    */
-  private syncStreamingMessages(conversationId: string, streamMessages: Message[]): void {
-    const conversationSignal = this.messageMap()[conversationId];
-    if (!conversationSignal) return;
+  private syncStreamingMessages(sessionId: string, streamMessages: Message[]): void {
+    const sessionSignal = this.messageMap()[sessionId];
+    if (!sessionSignal) return;
     
-    conversationSignal.update(existingMessages => {
+    sessionSignal.update(existingMessages => {
       // Find the index of the last user message
       let lastUserMessageIndex = -1;
       for (let i = existingMessages.length - 1; i >= 0; i--) {
@@ -136,11 +136,11 @@ export class MessageMapService {
   }
   
   /**
-   * Clear all data for a conversation.
+   * Clear all data for a session.
    */
-  clearConversation(conversationId: string): void {
+  clearSession(sessionId: string): void {
     this.messageMap.update(map => {
-      const { [conversationId]: _, ...rest } = map;
+      const { [sessionId]: _, ...rest } = map;
       return rest;
     });
   }

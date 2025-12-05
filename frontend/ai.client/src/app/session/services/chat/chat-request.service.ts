@@ -3,7 +3,7 @@ import { Router } from '@angular/router';
 import { v4 as uuidv4 } from 'uuid';
 import { ChatStateService } from './chat-state.service';
 import { ChatHttpService } from './chat-http.service';
-import { MessageMapService } from '../conversation/message-map.service';
+import { MessageMapService } from '../session/message-map.service';
 // import { ConversationService, Conversation } from '../conversation/conversation.service';
 // import { createMessage, createTextContent } from '../models';
 
@@ -25,20 +25,20 @@ export class ChatRequestService {
   private router = inject(Router);
   // TODO: Inject proper logging service
   
-  async submitChatRequest(userInput: string, conversationId: string | null): Promise<void> {
+  async submitChatRequest(userInput: string, sessionId: string | null): Promise<void> {
     // Ensure conversation exists and get its ID
     // Update URL to reflect current conversation
-    conversationId = conversationId || uuidv4();
-    this.navigateToSession(conversationId);
+    sessionId = sessionId || uuidv4();
+    this.navigateToSession(sessionId);
 
     // Create and add user message
-    this.messageMapService.addUserMessage(conversationId, userInput);
+    this.messageMapService.addUserMessage(sessionId, userInput);
     
     // Start streaming for this conversation
-    this.messageMapService.startStreaming(conversationId);
+    this.messageMapService.startStreaming(sessionId);
     
     // Build and send request
-    const requestObject = this.buildChatRequestObject(userInput, conversationId);
+    const requestObject = this.buildChatRequestObject(userInput, sessionId);
 
     try {
       await this.chatHttpService.sendChatRequest(requestObject);
@@ -52,27 +52,12 @@ export class ChatRequestService {
   }
 
   /**
-   * Ensures a conversation exists, creating one if necessary
-   * @returns The conversation ID
-   */
-  private ensureSessionExists(): string {
-    
-   
-    return '';
-  }
-
-  /**
    * Navigates to the conversation route
    * @param sessionId The conversation ID to navigate to
    */
   private navigateToSession(sessionId: string): void {
     // Using replaceUrl to avoid polluting browser history
-    this.router.navigate(['c', sessionId], { replaceUrl: true });
-  }
-
-  private createUserMessage(text: string) {
-    // const contentBlock = createTextContent(text);
-    // return createMessage('user', [contentBlock]);
+    this.router.navigate(['s', sessionId], { replaceUrl: true });
   }
 
   private buildChatRequestObject(message: string, session_id: string) {

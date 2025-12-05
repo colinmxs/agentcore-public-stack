@@ -1,48 +1,16 @@
-import { inject, Injectable, signal, WritableSignal, ResourceRef, resource } from '@angular/core';
+import { inject, Injectable, signal, WritableSignal, resource } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { AuthService } from '../../../auth/auth.service';
+import { SessionMetadata } from '../models/session-metadata.model';
 
 /**
- * Response model for a single conversation.
- * 
- * Represents a conversation stored in DynamoDB with all its metadata.
- * Matches the ConversationResponse model from the Python API.
+ * Query parameters for listing sessions.
  */
-export interface Conversation {
-  /** Unique identifier for the conversation (UUID) */
-  conversation_id: string | null;
-  /** ISO timestamp when the conversation was created */
-  created_at?: string;
-  /** ISO timestamp when the conversation was last updated */
-  updated_at?: string;
-  /** Optional title for the conversation */
-  title: string | null;
-  /** Optional metadata associated with the conversation */
-  metadata: Record<string, unknown> | null;
-}
-
-/**
- * Response model for listing conversations with pagination support.
- * 
- * Matches the ConversationsListResponse model from the Python API.
- */
-export interface ConversationsListResponse {
-  /** List of conversations for the current user */
-  conversations: Conversation[];
-  /** Pagination token for retrieving the next page of results */
-  next_token: string | null;
-}
-
-/**
- * Query parameters for listing conversations.
- */
-export interface ListConversationsParams {
-  /** Maximum number of conversations to return (default: 20, max: 100) */
+export interface ListSessionsParams {
+  /** Maximum number of sessions to return (optional, no limit if not specified) */
   limit?: number;
-  /** Pagination token for retrieving the next page of results */
-  next_token?: string | null;
 }
 
 /**
@@ -71,9 +39,9 @@ export interface ContentBlockResponse {
 export interface MessageResponse {
   /** Unique identifier for the message (UUID) */
   message_id: string;
-  /** ID of the conversation this message belongs to (UUID) */
-  conversation_id: string;
-  /** Sequence number of the message within the conversation */
+  /** ID of the session this message belongs to (UUID) */
+  session_id: string;
+  /** Sequence number of the message within the session */
   sequence_number: number;
   /** Role of the message sender */
   role: 'user' | 'assistant' | 'system';
@@ -91,14 +59,14 @@ export interface MessageResponse {
  * Matches the MessagesListResponse model from the Python API.
  */
 export interface MessagesListResponse {
-  /** List of messages in the conversation */
+  /** List of messages in the session */
   messages: MessageResponse[];
   /** Pagination token for retrieving the next page of results */
   next_token: string | null;
 }
 
 /**
- * Query parameters for getting messages for a conversation.
+ * Query parameters for getting messages for a session.
  */
 export interface GetMessagesParams {
   /** Maximum number of messages to return (optional, no limit if not specified, max: 1000) */
@@ -110,28 +78,36 @@ export interface GetMessagesParams {
 @Injectable({
   providedIn: 'root'
 })
-export class ConversationService {
+export class SessionService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
   /**
-   * Signal representing the current active conversation.
-   * Initialized as null to indicate no conversation is currently selected.
+   * Signal representing the current active session.
+   * Initialized with default values to indicate no session is currently selected.
    */
-  currentConversation: WritableSignal<Conversation> = signal<Conversation>({conversation_id: null, title: null, metadata: null} as Conversation);
+  currentSession: WritableSignal<SessionMetadata> = signal<SessionMetadata>({
+    sessionId: '',
+    userId: '',
+    title: '',
+    status: 'active',
+    createdAt: '',
+    lastMessageAt: '',
+    messageCount: 0
+  });
 
   /**
-   * Signal for pagination parameters used by the conversations resource.
+   * Signal for pagination parameters used by the sessions resource.
    * Update this signal to trigger a refetch with new parameters.
    * Angular's resource API automatically tracks signals read within the loader,
    * so reading this signal inside the loader makes it reactive.
    */
-  private conversationsParams = signal<ListConversationsParams>({ limit: 20 });
+  private sessionsParams = signal<ListSessionsParams>({});
 
   /**
-   * Reactive resource for fetching conversations.
+   * Reactive resource for fetching sessions.
    * 
-   * This resource automatically refetches when `conversationsParams` signal changes
+   * This resource automatically refetches when `sessionsParams` signal changes
    * because Angular's resource API tracks signals read within the loader function.
    * Provides reactive signals for data, loading state, and errors.
    * 
@@ -146,84 +122,77 @@ export class ConversationService {
    * @example
    * ```typescript
    * // Access data (may be undefined initially)
-   * const conversations = conversationService.conversationsResource.value();
+   * const sessions = sessionService.sessionsResource.value();
    * 
    * // Check loading state
-   * const isLoading = conversationService.conversationsResource.isPending();
+   * const isLoading = sessionService.sessionsResource.isPending();
    * 
    * // Handle errors
-   * const error = conversationService.conversationsResource.error();
+   * const error = sessionService.sessionsResource.error();
    * 
    * // Update pagination to trigger refetch
-   * conversationService.updateConversationsParams({ limit: 50 });
+   * sessionService.updateSessionsParams({ limit: 50 });
    * 
    * // Manually refetch
-   * conversationService.conversationsResource.refetch();
+   * sessionService.sessionsResource.refetch();
    * ```
    */
-  readonly conversationsResource = resource({
+  readonly sessionsResource = resource({
     loader: async () => {
       // Ensure user is authenticated before making the request
       await this.authService.ensureAuthenticated();
 
       // Reading this signal inside the loader makes the resource reactive to its changes
       // Angular's resource API automatically tracks signal dependencies
-      const params = this.conversationsParams();
-      return this.getConversations(params);
+      const params = this.sessionsParams();
+      return this.getSessions(params);
     }
   });
 
   /**
-   * Updates the pagination parameters for the conversations resource.
+   * Updates the pagination parameters for the sessions resource.
    * This will automatically trigger a refetch of the resource.
    * 
    * @param params - New pagination parameters
    */
-  updateConversationsParams(params: Partial<ListConversationsParams>): void {
-    this.conversationsParams.update(current => ({ ...current, ...params }));
+  updateSessionsParams(params: Partial<ListSessionsParams>): void {
+    this.sessionsParams.update(current => ({ ...current, ...params }));
   }
 
   /**
    * Resets pagination parameters to default values and triggers a refetch.
    */
-  resetConversationsParams(): void {
-    this.conversationsParams.set({ limit: 20 });
+  resetSessionsParams(): void {
+    this.sessionsParams.set({});
   }
 
   /**
-   * Fetches a paginated list of conversations from the Python API.
+   * Fetches a list of sessions from the Python API.
    * 
-   * @param params - Optional query parameters for pagination
-   * @returns Promise resolving to ConversationsListResponse with conversations and pagination token
+   * @param params - Optional query parameters
+   * @returns Promise resolving to an array of SessionMetadata objects
    * @throws Error if the API request fails
    * 
    * @example
    * ```typescript
-   * // Get first page of conversations
-   * const response = await conversationService.getConversations({ limit: 20 });
+   * // Get all sessions
+   * const response = await sessionService.getSessions();
    * 
-   * // Get next page
-   * const nextPage = await conversationService.getConversations({ 
-   *   limit: 20, 
-   *   next_token: response.next_token 
-   * });
+   * // Get limited number of sessions
+   * const response = await sessionService.getSessions({ limit: 20 });
    * ```
    */
-  async getConversations(params?: ListConversationsParams): Promise<ConversationsListResponse> {
+  async getSessions(params?: ListSessionsParams): Promise<SessionMetadata[]> {
     let httpParams = new HttpParams();
     
     if (params?.limit !== undefined) {
       httpParams = httpParams.set('limit', params.limit.toString());
     }
-    
-    if (params?.next_token) {
-      httpParams = httpParams.set('next_token', params.next_token);
-    }
 
     try {
       const response = await firstValueFrom(
-        this.http.get<ConversationsListResponse>(
-          `${environment.appApiUrl}/conversations`,
+        this.http.get<SessionMetadata[]>(
+          `${environment.appApiUrl}/sessions`,
           { params: httpParams }
         )
       );
@@ -235,9 +204,9 @@ export class ConversationService {
   }
 
   /**
-   * Fetches messages for a specific conversation from the Python API.
+   * Fetches messages for a specific session from the Python API.
    * 
-   * @param conversationId - UUID of the conversation
+   * @param sessionId - UUID of the session
    * @param params - Optional query parameters for pagination
    * @returns Promise resolving to MessagesListResponse with messages and pagination token
    * @throws Error if the API request fails
@@ -245,19 +214,19 @@ export class ConversationService {
    * @example
    * ```typescript
    * // Get first page of messages
-   * const response = await conversationService.getMessages(
+   * const response = await sessionService.getMessages(
    *   '8e70ae89-93af-4db7-ba60-f13ea201f4cd',
    *   { limit: 20 }
    * );
    * 
    * // Get next page
-   * const nextPage = await conversationService.getMessages(
+   * const nextPage = await sessionService.getMessages(
    *   '8e70ae89-93af-4db7-ba60-f13ea201f4cd',
    *   { limit: 20, next_token: response.next_token }
    * );
    * ```
    */
-  async getMessages(conversationId: string, params?: GetMessagesParams): Promise<MessagesListResponse> {
+  async getMessages(sessionId: string, params?: GetMessagesParams): Promise<MessagesListResponse> {
     let httpParams = new HttpParams();
     
     if (params?.limit !== undefined) {
@@ -271,7 +240,7 @@ export class ConversationService {
     try {
       const response = await firstValueFrom(
         this.http.get<MessagesListResponse>(
-          `${environment.appApiUrl}/conversations/${conversationId}/messages`,
+          `${environment.appApiUrl}/sessions/${sessionId}/messages`,
           { params: httpParams }
         )
       );
