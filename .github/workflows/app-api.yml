@@ -74,34 +74,8 @@ jobs:
       
       - name: Test Docker image
         run: |
-          IMAGE_NAME="${CDK_PROJECT_PREFIX}-app-api:latest"
-          echo "Testing Docker image: ${IMAGE_NAME}"
-          
-          # Start container in background
-          CONTAINER_ID=$(docker run -d -p 8000:8000 "${IMAGE_NAME}")
-          echo "Container ID: ${CONTAINER_ID}"
-          
-          # Wait for container to be healthy
-          echo "Waiting for container to be healthy..."
-          for i in {1..30}; do
-            if docker ps | grep -q "${CONTAINER_ID}"; then
-              sleep 2
-              if curl -f http://localhost:8000/health 2>/dev/null; then
-                echo "✓ Container is healthy"
-                docker stop "${CONTAINER_ID}"
-                exit 0
-              fi
-            else
-              echo "Container exited unexpectedly"
-              docker logs "${CONTAINER_ID}"
-              exit 1
-            fi
-          done
-          
-          echo "Container health check timed out"
-          docker logs "${CONTAINER_ID}"
-          docker stop "${CONTAINER_ID}"
-          exit 1
+          chmod +x scripts/stack-app-api/test-docker.sh
+          scripts/stack-app-api/test-docker.sh
 
   deploy:
     name: Deploy App API Stack
