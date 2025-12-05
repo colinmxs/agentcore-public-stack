@@ -155,6 +155,35 @@ license = "MIT"
 
 ---
 
+### CDK Deprecation Warnings to Address
+**Warnings Observed During Deployment**:
+
+1. **S3Origin is deprecated** (Frontend Stack)
+   - Current: `aws_cloudfront_origins.S3Origin`
+   - Replacement: Use `S3BucketOrigin` or `S3StaticWebsiteOrigin`
+   - Files: `infrastructure/lib/frontend-stack.ts`
+
+2. **pointInTimeRecovery is deprecated** (App API Stack)
+   - Current: `pointInTimeRecovery: true`
+   - Replacement: Use `pointInTimeRecoverySpecification` instead
+   - Files: `infrastructure/lib/app-api-stack.ts`
+
+3. **containerInsights is deprecated** (App API Stack)
+   - Current: `containerInsights: true`
+   - Replacement: Use `containerInsightsV2` instead
+   - Files: `infrastructure/lib/app-api-stack.ts`
+
+**Status**: Non-blocking warnings. Stack deploys successfully, but these should be addressed before the next major CDK release.
+
+**Action Items for Future**:
+- [ ] Update frontend stack to use `S3BucketOrigin` from `@aws-cdk/aws-cloudfront-origins`
+- [ ] Update DynamoDB table config to use `pointInTimeRecoverySpecification`
+- [ ] Update ECS cluster config to use `containerInsightsV2`
+
+**Lesson**: CDK deprecation warnings accumulate across phases. Document them as they appear and batch-fix them periodically to avoid technical debt buildup.
+
+---
+
 ### GitHub Actions Rule Compliance: No Inline Logic
 **Issue**: Initially implemented Docker health check testing as inline bash script in the GitHub Actions workflow YAML, violating the project's "No Inline Logic in YAML" rule.
 
