@@ -16,10 +16,8 @@ export class SessionMetadataService {
    * Get session metadata for a specific session
    */
   getSessionMetadata(sessionId: string): Observable<SessionMetadata> {
-    const headers = this.getAuthHeaders();
     return this.http.get<SessionMetadata>(
-      `${environment.apiUrl}/sessions/${sessionId}/metadata`,
-      { headers }
+      `${environment.appApiUrl}/sessions/${sessionId}/metadata`,
     );
   }
 
@@ -31,11 +29,9 @@ export class SessionMetadataService {
     sessionId: string,
     updates: UpdateSessionMetadataRequest
   ): Observable<SessionMetadata> {
-    const headers = this.getAuthHeaders();
     return this.http.put<SessionMetadata>(
-      `${environment.apiUrl}/sessions/${sessionId}/metadata`,
+      `${environment.appApiUrl}/sessions/${sessionId}/metadata`,
       updates,
-      { headers }
     );
   }
 
