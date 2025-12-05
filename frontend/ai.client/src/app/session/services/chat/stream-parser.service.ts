@@ -559,45 +559,45 @@ export class StreamParserService {
   
   private handleMessageStart(data: unknown): void {
     console.log('[StreamParser] handleMessageStart:', data);
-    
+
     // Validate event data
     if (!this.validateMessageStartEvent(data)) {
       return; // Error already set by validator
     }
-    
+
     const eventData = data as MessageStartEvent;
-    
+
     // Initialize stream ID if not set (handles case where reset() wasn't called)
     if (!this.currentStreamId) {
       this.currentStreamId = uuidv4();
     }
-    
+
     // Update stream state
     this.streamState = StreamState.Streaming;
-    
+
     // Clear any previous errors when starting a new message
     this.clearError();
-    
+
     // If there's an existing message, finalize it before starting a new one
     const currentBuilder = this.currentMessageBuilder();
     if (currentBuilder) {
       console.log('[StreamParser] Finalizing previous message before starting new one');
       this.finalizeCurrentMessage();
     }
-    
+
     // Clear stopReason in ChatStateService
     this.chatStateService.setStopReason(null);
-    
-    // Create new message builder
+
+    // Create new message builder with server-provided ID
     const builder: MessageBuilder = {
-      id: uuidv4(),
+      id: eventData.id || uuidv4(),  // Use server ID if provided, fallback to UUID
       role: eventData.role,
       contentBlocks: new Map(),
       created_at: new Date().toISOString(),
       isComplete: false
     };
-    
-    console.log('[StreamParser] Created message builder:', builder);
+
+    console.log('[StreamParser] Created message builder with server ID:', builder.id);
     this.currentMessageBuilder.set(builder);
   }
   
@@ -826,35 +826,32 @@ export class StreamParserService {
     if (!this.validateMessageStopEvent(data)) {
       return; // Error already set by validator
     }
-    
+
     const eventData = data as MessageStopEvent;
-    
+
     // Ensure we have an active message builder
     const currentBuilder = this.currentMessageBuilder();
     if (!currentBuilder) {
       this.setError('message_stop: received without active message. Ensure message_start was called first.');
       return;
     }
-    
+
     // Set stopReason in ChatStateService
     this.chatStateService.setStopReason(eventData.stopReason);
-    
-    // Use backend-provided message_id if available, otherwise keep the existing UUID
-    const messageId = eventData.message_id || currentBuilder.id;
-    
+
+    // Mark message as complete - ID was already set from message_start
     this.currentMessageBuilder.update(builder => {
       if (!builder) {
         // This shouldn't happen after the check above, but handle defensively
         return builder;
       }
-      
+
       return {
         ...builder,
-        id: messageId, // Update ID with backend-provided ID if available
         isComplete: true
       };
     });
-    
+
     // If stop reason is tool_use, keep the message active for tool result
     // Otherwise, finalize it
     if (eventData.stopReason !== 'tool_use') {

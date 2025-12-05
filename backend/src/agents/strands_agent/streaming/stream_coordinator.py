@@ -63,13 +63,21 @@ class StreamCoordinator:
             "metrics": {}
         }
 
+        # Wrap session manager to inject UUIDs
+        from agents.strands_agent.session.message_id_injector import MessageIdInjector
+        wrapped_manager = MessageIdInjector(session_manager, session_id)
+
+        # Replace agent's session manager with wrapper
+        original_manager = agent.session_manager
+        agent.session_manager = wrapped_manager
+
         try:
             # Log prompt information
             self._log_prompt_info(prompt)
 
             # Get raw agent stream
             agent_stream = agent.stream_async(prompt)
-            
+
             # Track if we've seen metadata to avoid duplicate extraction
             metadata_seen = False
 
@@ -87,15 +95,13 @@ class StreamCoordinator:
                     # Don't yield this event to the client
                     continue
 
-                # Check for message_id when message_stop event occurs
-                if event.get("type") == "message_stop":
-                    message_id = self._get_latest_message_id(session_manager)
-                    if message_id is not None:
-                        # Add message_id to the event data
-                        event_data = event.get("data", {})
-                        event_data["message_id"] = str(message_id)
-                        event["data"] = event_data
-                        logger.debug(f"📝 Added message_id {message_id} to message_stop event")
+                # Inject message_id at message_start
+                if event.get("type") == "message_start":
+                    message_id = wrapped_manager.peek_next_message_id()
+                    event_data = event.get("data", {})
+                    event_data["id"] = message_id
+                    event["data"] = event_data
+                    logger.info(f"📝 Sending message_start with ID: {message_id}")
 
                 # Format as SSE event and yield
                 sse_event = self._format_sse_event(event)
@@ -112,8 +118,8 @@ class StreamCoordinator:
 
             # Flush buffered messages (turn-based session manager)
             # This returns the message ID of the flushed message
-            message_id = self._flush_session(session_manager)
-            logger.info(f"💾 FLUSHEDMessage ID: {message_id}")
+            message_id = self._flush_session(wrapped_manager)
+            logger.info(f"💾 Flushed messages - Message ID: {message_id}")
             # Store metadata after flush completes
             if message_id and (accumulated_metadata.get("usage") or first_token_time):
                 await self._store_metadata(
@@ -134,10 +140,14 @@ class StreamCoordinator:
             logger.error(f"Traceback: {traceback.format_exc()}")
 
             # Emergency flush: save buffered messages before losing them
-            self._emergency_flush(session_manager)
+            self._emergency_flush(wrapped_manager)
 
             # Send error event to client
             yield self._create_error_event(str(e))
+
+        finally:
+            # Restore original session manager
+            agent.session_manager = original_manager
 
     def _format_sse_event(self, event: Dict[str, Any]) -> str:
         """

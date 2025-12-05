@@ -94,6 +94,7 @@ export type ContentBlockType = 'text' | 'tool_use' | 'tool_result' | 'toolUse' |
 // ============================================================================
 
 export interface MessageStartEvent {
+  id?: string;  // Server-provided message ID (UUID)
   role: 'user' | 'assistant';
 }
 
@@ -120,7 +121,6 @@ export interface ContentBlockStopEvent {
 
 export interface MessageStopEvent {
   stopReason: string;
-  message_id?: string;
 }
 
 export interface ToolUseEvent {

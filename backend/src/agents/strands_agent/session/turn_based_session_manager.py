@@ -199,12 +199,18 @@ class TurnBasedSessionManager:
         """
         return self._flush_turn()
 
-    def append_message(self, message, agent, **kwargs):
+    def append_message(self, message, agent, message_id: Optional[str] = None, **kwargs):
         """
         Override append_message to buffer messages instead of immediately persisting.
 
         This is the key method that Strands framework calls to persist messages.
         We intercept it to implement turn-based buffering.
+
+        Args:
+            message: Message from Strands framework
+            agent: Agent instance (not used in buffering)
+            message_id: Optional UUID injected by MessageIdInjector wrapper
+            **kwargs: Additional arguments
         """
         # If cancelled, don't accept new messages
         if self.cancelled:
@@ -213,8 +219,15 @@ class TurnBasedSessionManager:
 
         from strands.types.session import SessionMessage
 
+        # Use provided ID or generate new one (fallback)
+        if not message_id:
+            import uuid
+            message_id = str(uuid.uuid4())
+            logger.warning(f"⚠️ No message_id provided, generated fallback: {message_id}")
+
         # Convert Message to dict format for buffering
         message_dict = {
+            "message_id": message_id,  # Include UUID
             "role": message.get("role"),
             "content": message.get("content", [])
         }
@@ -222,7 +235,7 @@ class TurnBasedSessionManager:
         # Add to buffer and check if we should flush
         self.add_message(message_dict)
 
-        logger.debug(f"🔄 Intercepted append_message (role={message_dict['role']}, buffered={len(self.pending_messages)})")
+        logger.debug(f"🔄 Intercepted append_message {message_id} (role={message_dict['role']}, buffered={len(self.pending_messages)})")
 
     # Delegate all other methods to base manager
     def __getattr__(self, name):
