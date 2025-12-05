@@ -65,6 +65,9 @@ jobs:
         uses: docker/setup-buildx-action@v3
       
       - name: Build Docker image
+        env:
+          CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+          CDK_AWS_REGION: ${{ env.AWS_REGION }}
         run: |
           chmod +x scripts/stack-app-api/build.sh
           scripts/stack-app-api/build.sh
