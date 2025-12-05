@@ -41,11 +41,13 @@ main() {
     log_info "Waiting for container to be healthy..."
     
     # Give container a moment to start up before checking
-    sleep 3
+    sleep 5
     
     for i in {1..30}; do
-        # Check if container is still running
-        if ! docker ps | grep -q "${CONTAINER_ID}"; then
+        # Check if container is still running using docker inspect (more reliable than ps | grep)
+        CONTAINER_STATE=$(docker inspect -f '{{.State.Running}}' "${CONTAINER_ID}" 2>/dev/null || echo "false")
+        
+        if [ "${CONTAINER_STATE}" != "true" ]; then
             log_error "Container exited unexpectedly"
             docker logs "${CONTAINER_ID}"
             exit 1
@@ -59,6 +61,7 @@ main() {
             exit 0
         fi
         
+        log_info "Attempt $i/30: Container running, waiting for health check..."
         sleep 2
     done
     

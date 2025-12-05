@@ -94,6 +94,26 @@ This would fail on the first iteration because the container hadn't started yet,
 
 ---
 
+### Script Dependencies: Only Source What You Need
+**Issue**: The `test-docker.sh` script was sourcing `load-env.sh` which validates full AWS configuration including `CDK_AWS_ACCOUNT`. This caused the test to fail in CI/CD with "AWS Account ID is required" even though Docker testing doesn't need AWS credentials.
+
+**Root Cause**: Blindly sourcing shared utility scripts without considering what configuration is actually needed. The Docker test only needs `CDK_PROJECT_PREFIX` to construct the image name, not full AWS configuration.
+
+**Solution**: Removed the `source load-env.sh` line and set `CDK_PROJECT_PREFIX` directly from environment with a fallback:
+```bash
+CDK_PROJECT_PREFIX="${CDK_PROJECT_PREFIX:-agentcore}"
+```
+
+**Benefits**:
+- Script works without AWS credentials configured
+- Faster execution (no unnecessary validation)
+- Clearer dependencies (explicit about what's needed)
+- Can run locally without any setup
+
+**Lesson**: Don't automatically source shared utility scripts in every script. Consider what each script actually needs. Testing scripts should have minimal dependencies and work without full environment configuration when possible.
+
+---
+
 ## Gotchas and Workarounds
 
 ### GitHub Secrets Must Be Explicitly Passed to Workflow Steps
