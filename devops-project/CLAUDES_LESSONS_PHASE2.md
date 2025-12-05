@@ -173,6 +173,27 @@ license = "MIT"
 
 ---
 
+### OIDC Authentication Requires Explicit Permissions
+**Issue**: AWS credentials configuration was failing with "Credentials could not be loaded" even though the composite action was configured correctly. The error message hinted: "It looks like you might be trying to authenticate with OIDC. Did you mean to set the `id-token` permission?"
+
+**Root Cause**: GitHub Actions OIDC authentication requires explicit `permissions:` block in the job that uses it. Without `id-token: write` permission, the OIDC token cannot be generated and AWS authentication fails, even when falling back to access keys.
+
+**Solution**: Added permissions block to the deploy job:
+```yaml
+permissions:
+  id-token: write
+  contents: read
+```
+
+**Why This Matters**:
+- OIDC provides more secure authentication than long-lived access keys
+- Permissions must be explicitly granted at the job level (not inherited)
+- Without proper permissions, authentication silently fails with cryptic error messages
+
+**Lesson**: When copying workflow patterns across jobs/files, always include the complete configuration including permissions blocks. OIDC authentication is not just about the action configuration - it requires job-level permissions to function.
+
+---
+
 ## Process Improvements
 
 ### Consistent Secret Naming Across Stacks
