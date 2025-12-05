@@ -38,8 +38,6 @@ export interface Message {
   created_at?: string;
   /** Optional metadata associated with the message */
   metadata?: Record<string, unknown> | null;
-  /** Stop reason (for streaming messages) */
-  stopReason?: string;
 }
 
 // ============================================================================
@@ -122,6 +120,7 @@ export interface ContentBlockStopEvent {
 
 export interface MessageStopEvent {
   stopReason: string;
+  message_id?: string;
 }
 
 export interface ToolUseEvent {

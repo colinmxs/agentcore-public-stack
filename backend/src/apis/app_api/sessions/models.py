@@ -51,7 +51,6 @@ class SessionMetadataResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     session_id: str = Field(..., alias="sessionId", description="Session identifier")
-    user_id: str = Field(..., alias="userId", description="User identifier")
     title: str = Field(..., description="Session title")
     status: Literal['active', 'archived', 'deleted'] = Field(..., description="Session status")
     created_at: str = Field(..., alias="createdAt", description="ISO 8601 timestamp of creation")

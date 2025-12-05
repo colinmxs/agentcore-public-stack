@@ -1,5 +1,5 @@
 // services/stream-parser.service.ts
-import { Injectable, signal, computed } from '@angular/core';
+import { Injectable, signal, computed, inject } from '@angular/core';
 import { 
   Message, 
   ContentBlock, 
@@ -13,6 +13,7 @@ import {
   ToolUseEvent
 } from '../models/message.model';
 import { MetadataEvent } from '../models/content-types';
+import { ChatStateService } from './chat-state.service';
 import { v4 as uuidv4 } from 'uuid';
 
 /**
@@ -23,7 +24,7 @@ interface MessageBuilder {
   id: string;
   role: 'user' | 'assistant';
   contentBlocks: Map<number, ContentBlockBuilder>;
-  stopReason?: string;
+  created_at: string;
   isComplete: boolean;
 }
 
@@ -64,6 +65,7 @@ enum StreamState {
   providedIn: 'root'
 })
 export class StreamParserService {
+  private chatStateService = inject(ChatStateService);
   
   // =========================================================================
   // State Signals
@@ -583,11 +585,15 @@ export class StreamParserService {
       this.finalizeCurrentMessage();
     }
     
+    // Clear stopReason in ChatStateService
+    this.chatStateService.setStopReason(null);
+    
     // Create new message builder
     const builder: MessageBuilder = {
       id: uuidv4(),
       role: eventData.role,
       contentBlocks: new Map(),
+      created_at: new Date().toISOString(),
       isComplete: false
     };
     
@@ -830,6 +836,12 @@ export class StreamParserService {
       return;
     }
     
+    // Set stopReason in ChatStateService
+    this.chatStateService.setStopReason(eventData.stopReason);
+    
+    // Use backend-provided message_id if available, otherwise keep the existing UUID
+    const messageId = eventData.message_id || currentBuilder.id;
+    
     this.currentMessageBuilder.update(builder => {
       if (!builder) {
         // This shouldn't happen after the check above, but handle defensively
@@ -838,7 +850,7 @@ export class StreamParserService {
       
       return {
         ...builder,
-        stopReason: eventData.stopReason,
+        id: messageId, // Update ID with backend-provided ID if available
         isComplete: true
       };
     });
@@ -898,10 +910,38 @@ export class StreamParserService {
     // Update metadata signal
     this.metadataSignal.set(metadataData);
     
+    // Update the last completed message with metadata if it doesn't have it yet
+    this.updateLastCompletedMessageWithMetadata();
+    
     console.log('[StreamParser] Metadata received:', {
       usage: metadataData.usage,
       metrics: metadataData.metrics
     });
+  }
+
+  /**
+   * Update the last completed message with metadata if it doesn't have it yet.
+   * This handles the case where metadata arrives after a message is finalized.
+   */
+  private updateLastCompletedMessageWithMetadata(): void {
+    const completed = this.completedMessages();
+    if (completed.length === 0) return;
+    
+    const lastMessage = completed[completed.length - 1];
+    // Only update if the message doesn't already have metadata
+    if (!lastMessage.metadata) {
+      const metadata = this.getMetadataForMessage();
+      if (metadata) {
+        this.completedMessages.update(messages => {
+          const updated = [...messages];
+          updated[updated.length - 1] = {
+            ...updated[updated.length - 1],
+            metadata
+          };
+          return updated;
+        });
+      }
+    }
   }
   
   // =========================================================================
@@ -925,8 +965,53 @@ export class StreamParserService {
       id: builder.id,
       role: builder.role,
       content: sortedBlocks,
-      stopReason: builder.stopReason
+      created_at: builder.created_at,
+      metadata: this.getMetadataForMessage()
     };
+  }
+
+  /**
+   * Transform MetadataEvent from stream to API metadata format.
+   * Converts usage and metrics to match the backend API structure.
+   */
+  private getMetadataForMessage(): Record<string, unknown> | null {
+    const metadataEvent = this.metadataSignal();
+    if (!metadataEvent) {
+      return null;
+    }
+
+    const result: Record<string, unknown> = {};
+
+    // Transform usage to tokenUsage format
+    if (metadataEvent.usage) {
+      result['tokenUsage'] = {
+        inputTokens: metadataEvent.usage.inputTokens,
+        outputTokens: metadataEvent.usage.outputTokens,
+        totalTokens: metadataEvent.usage.totalTokens,
+        ...(metadataEvent.usage.cacheReadInputTokens !== undefined && {
+          cacheReadInputTokens: metadataEvent.usage.cacheReadInputTokens
+        }),
+        ...(metadataEvent.usage.cacheWriteInputTokens !== undefined && {
+          cacheWriteInputTokens: metadataEvent.usage.cacheWriteInputTokens
+        })
+      };
+    }
+
+    // Transform metrics to latency format
+    if (metadataEvent.metrics) {
+      result['latency'] = {
+        timeToFirstToken: metadataEvent.metrics.timeToFirstByteMs ?? 0,
+        endToEndLatency: metadataEvent.metrics.latencyMs
+      };
+    }
+
+    // Preserve any other fields (like trace)
+    if (metadataEvent.trace !== undefined) {
+      result['trace'] = metadataEvent.trace;
+    }
+
+    // Return null if no metadata was added
+    return Object.keys(result).length > 0 ? result : null;
   }
   
   /**

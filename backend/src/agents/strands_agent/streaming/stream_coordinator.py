@@ -87,6 +87,16 @@ class StreamCoordinator:
                     # Don't yield this event to the client
                     continue
 
+                # Check for message_id when message_stop event occurs
+                if event.get("type") == "message_stop":
+                    message_id = self._get_latest_message_id(session_manager)
+                    if message_id is not None:
+                        # Add message_id to the event data
+                        event_data = event.get("data", {})
+                        event_data["message_id"] = str(message_id)
+                        event["data"] = event_data
+                        logger.debug(f"📝 Added message_id {message_id} to message_stop event")
+
                 # Format as SSE event and yield
                 sse_event = self._format_sse_event(event)
                 
@@ -176,6 +186,62 @@ class StreamCoordinator:
             message_id = session_manager.flush()
             logger.debug(f"💾 Session flushed after streaming complete (message ID: {message_id})")
             return message_id
+        return None
+
+    def _get_latest_message_id(self, session_manager: Any) -> Optional[int]:
+        """
+        Get the latest message ID from session manager without flushing
+
+        This checks if messages have been flushed (e.g., during streaming when batch_size
+        is reached) and returns the latest message ID if available.
+
+        Args:
+            session_manager: Session manager instance
+
+        Returns:
+            Latest message ID if available, or None
+        """
+        # Check if session manager has a method to get latest message ID without flushing
+        if hasattr(session_manager, '_get_latest_message_id'):
+            try:
+                return session_manager._get_latest_message_id()
+            except Exception as e:
+                logger.debug(f"Failed to get latest message ID: {e}")
+        
+        # For LocalSessionBuffer, check if base_manager has the method
+        if hasattr(session_manager, 'base_manager'):
+            base_manager = session_manager.base_manager
+            if hasattr(base_manager, '_get_latest_message_id'):
+                try:
+                    return base_manager._get_latest_message_id()
+                except Exception as e:
+                    logger.debug(f"Failed to get latest message ID from base_manager: {e}")
+        
+        # Fallback: Try to get message count from session manager
+        # This works for both TurnBasedSessionManager and LocalSessionBuffer
+        if hasattr(session_manager, 'base_manager'):
+            try:
+                from apis.app_api.storage.paths import get_messages_dir
+                from pathlib import Path
+                
+                # Get session_id from config
+                if hasattr(session_manager.base_manager, 'config'):
+                    session_id = session_manager.base_manager.config.session_id
+                    messages_dir = get_messages_dir(session_id)
+                    
+                    if messages_dir.exists():
+                        # Get all message files sorted by number
+                        message_files = sorted(
+                            messages_dir.glob("message_*.json"),
+                            key=lambda p: int(p.stem.split("_")[1]) if p.stem.split("_")[1].isdigit() else 0
+                        )
+                        if message_files:
+                            latest_file = message_files[-1]
+                            message_num = int(latest_file.stem.split("_")[1])
+                            return message_num
+            except Exception as e:
+                logger.debug(f"Failed to get message ID from file system: {e}")
+        
         return None
 
     def _emergency_flush(self, session_manager: Any) -> None:

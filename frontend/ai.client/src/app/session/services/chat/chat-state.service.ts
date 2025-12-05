@@ -8,6 +8,9 @@ export class ChatStateService {
     private abortController = new AbortController();
     private readonly chatLoading = signal(false);
     readonly isChatLoading: Signal<boolean> = this.chatLoading.asReadonly();
+    
+    private readonly stopReason = signal<string | null>(null);
+    readonly currentStopReason: Signal<string | null> = this.stopReason.asReadonly();
 
 
     /**
@@ -19,10 +22,19 @@ export class ChatStateService {
     }
 
     /**
+     * Sets the stop reason for the current message
+     * @param reason - The stop reason string, or null to clear
+     */
+    setStopReason(reason: string | null): void {
+        this.stopReason.set(reason);
+    }
+
+    /**
      * Resets all state to initial values
      */
     resetState(): void {
         this.chatLoading.set(false);
+        this.stopReason.set(null);
     }
 
     // Abort controller management
