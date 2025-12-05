@@ -9,9 +9,6 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BACKEND_DIR="${PROJECT_ROOT}/backend"
 
-# Source common utilities
-source "${PROJECT_ROOT}/scripts/common/load-env.sh"
-
 # Logging functions
 log_info() {
     echo "[INFO] $1"
