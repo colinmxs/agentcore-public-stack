@@ -29,7 +29,7 @@ interface MessageBuilder {
 
 interface ContentBlockBuilder {
   index: number;
-  type: 'text' | 'tool_use';
+  type: 'text' | 'toolUse' | 'tool_use'; // Support both formats for compatibility
   // For text blocks
   textChunks: string[];
   // For tool_use blocks
@@ -123,8 +123,8 @@ export class StreamParserService {
     if (!message) return '';
     
     return message.content
-      .filter((block): block is TextContentBlock => block.type === 'text')
-      .map(block => block.text)
+      .filter(block => block.type === 'text' && block.text)
+      .map(block => block.text!)
       .join('');
   });
   
@@ -136,7 +136,7 @@ export class StreamParserService {
     if (!builder) return false;
     
     return Array.from(builder.contentBlocks.values())
-      .some(block => block.type === 'tool_use' && !block.isComplete);
+      .some(block => (block.type === 'toolUse' || block.type === 'tool_use') && !block.isComplete);
   });
   
   // =========================================================================
@@ -933,7 +933,7 @@ export class StreamParserService {
    * Convert a ContentBlockBuilder to the final ContentBlock format.
    */
   private buildContentBlock(builder: ContentBlockBuilder): ContentBlock {
-    if (builder.type === 'tool_use') {
+    if (builder.type === 'tool_use' || builder.type === 'toolUse') {
       const inputStr = builder.inputChunks.join('');
       let parsedInput: Record<string, unknown> = {};
       
@@ -963,17 +963,19 @@ export class StreamParserService {
       }
       
       return {
-        type: 'tool_use',
-        id: builder.toolUseId || uuidv4(),
-        name: builder.toolName || 'unknown',
-        input: parsedInput
-      } as ToolUseContentBlock;
+        type: 'toolUse',
+        toolUse: {
+          toolUseId: builder.toolUseId || uuidv4(),
+          name: builder.toolName || 'unknown',
+          input: parsedInput
+        }
+      } as ContentBlock;
     }
     
     return {
       type: 'text',
       text: builder.textChunks.join('')
-    } as TextContentBlock;
+    } as ContentBlock;
   }
   
   /**

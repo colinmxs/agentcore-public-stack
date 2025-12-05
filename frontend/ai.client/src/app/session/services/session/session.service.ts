@@ -4,53 +4,28 @@ import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
 import { AuthService } from '../../../auth/auth.service';
 import { SessionMetadata, UpdateSessionMetadataRequest } from '../models/session-metadata.model';
+import { Message } from '../models/message.model';
 
 /**
  * Query parameters for listing sessions.
  */
 export interface ListSessionsParams {
-  /** Maximum number of sessions to return (optional, no limit if not specified) */
+  /** Maximum number of sessions to return (optional, no limit if not specified, max: 1000) */
   limit?: number;
+  /** Pagination token for retrieving the next page of results */
+  next_token?: string | null;
 }
 
 /**
- * Response model for a content block within a message.
+ * Response model for listing sessions with pagination support.
  * 
- * Represents a single content block which can contain text, images, tool use, or tool results.
- * Matches the ContentBlockResponse model from the Python API.
+ * Matches the SessionsListResponse model from the Python API.
  */
-export interface ContentBlockResponse {
-  /** Text content of the block */
-  text?: string | null;
-  /** Image content (if applicable) */
-  image?: Record<string, unknown> | null;
-  /** Tool use information (if applicable) */
-  tool_use?: Record<string, unknown> | null;
-  /** Tool execution result (if applicable) */
-  tool_result?: Record<string, unknown> | null;
-}
-
-/**
- * Response model for a single message.
- * 
- * Represents a message stored in DynamoDB with all its content and metadata.
- * Matches the MessageResponse model from the Python API.
- */
-export interface MessageResponse {
-  /** Unique identifier for the message (UUID) */
-  message_id: string;
-  /** ID of the session this message belongs to (UUID) */
-  session_id: string;
-  /** Sequence number of the message within the session */
-  sequence_number: number;
-  /** Role of the message sender */
-  role: 'user' | 'assistant' | 'system';
-  /** List of content blocks in the message */
-  content: ContentBlockResponse[];
-  /** ISO timestamp when the message was created */
-  created_at: string;
-  /** Optional metadata associated with the message */
-  metadata: Record<string, unknown> | null;
+export interface SessionsListResponse {
+  /** List of sessions for the user */
+  sessions: SessionMetadata[];
+  /** Pagination token for retrieving the next page of results */
+  next_token: string | null;
 }
 
 /**
@@ -60,7 +35,7 @@ export interface MessageResponse {
  */
 export interface MessagesListResponse {
   /** List of messages in the session */
-  messages: MessageResponse[];
+  messages: Message[];
   /** Pagination token for retrieving the next page of results */
   next_token: string | null;
 }
@@ -121,6 +96,8 @@ export class SessionService {
    * The resource ensures the user is authenticated before making the HTTP request.
    * If the token is expired, it will attempt to refresh it automatically.
    * 
+   * Returns SessionsListResponse which includes both the sessions array and pagination token.
+   * 
    * Benefits of Angular's resource API:
    * - Automatic refetch when tracked signals change
    * - Built-in request cancellation if loader is called again before completion
@@ -129,7 +106,9 @@ export class SessionService {
    * @example
    * ```typescript
    * // Access data (may be undefined initially)
-   * const sessions = sessionService.sessionsResource.value();
+   * const response = sessionService.sessionsResource.value();
+   * const sessions = response?.sessions;
+   * const nextToken = response?.next_token;
    * 
    * // Check loading state
    * const isLoading = sessionService.sessionsResource.isPending();
@@ -139,6 +118,9 @@ export class SessionService {
    * 
    * // Update pagination to trigger refetch
    * sessionService.updateSessionsParams({ limit: 50 });
+   * 
+   * // Get next page
+   * sessionService.updateSessionsParams({ limit: 50, next_token: nextToken });
    * 
    * // Manually refetch
    * sessionService.sessionsResource.refetch();
@@ -230,31 +212,38 @@ export class SessionService {
   }
 
   /**
-   * Fetches a list of sessions from the Python API.
+   * Fetches a list of sessions from the Python API with pagination support.
    * 
-   * @param params - Optional query parameters
-   * @returns Promise resolving to an array of SessionMetadata objects
+   * @param params - Optional query parameters for pagination
+   * @returns Promise resolving to SessionsListResponse with sessions and pagination token
    * @throws Error if the API request fails
    * 
    * @example
    * ```typescript
-   * // Get all sessions
-   * const response = await sessionService.getSessions();
-   * 
-   * // Get limited number of sessions
+   * // Get first page of sessions
    * const response = await sessionService.getSessions({ limit: 20 });
+   * 
+   * // Get next page
+   * const nextPage = await sessionService.getSessions({
+   *   limit: 20,
+   *   next_token: response.next_token
+   * });
    * ```
    */
-  async getSessions(params?: ListSessionsParams): Promise<SessionMetadata[]> {
+  async getSessions(params?: ListSessionsParams): Promise<SessionsListResponse> {
     let httpParams = new HttpParams();
     
     if (params?.limit !== undefined) {
       httpParams = httpParams.set('limit', params.limit.toString());
     }
+    
+    if (params?.next_token) {
+      httpParams = httpParams.set('next_token', params.next_token);
+    }
 
     try {
       const response = await firstValueFrom(
-        this.http.get<SessionMetadata[]>(
+        this.http.get<SessionsListResponse>(
           `${environment.appApiUrl}/sessions`,
           { params: httpParams }
         )

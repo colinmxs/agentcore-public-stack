@@ -11,11 +11,13 @@ Architecture:
 import logging
 import json
 import os
-from typing import Optional
+import base64
+from typing import Optional, Tuple
 from pathlib import Path
 
-from ..messages.models import MessageMetadata, SessionMetadata
-from ..storage.paths import get_message_path, get_session_metadata_path, get_sessions_root
+from apis.app_api.messages.models import MessageMetadata
+from apis.app_api.sessions.models import SessionMetadata
+from apis.app_api.storage.paths import get_message_path, get_session_metadata_path, get_sessions_root
 
 logger = logging.getLogger(__name__)
 
@@ -447,42 +449,116 @@ async def _get_session_metadata_cloud(
         return None
 
 
-async def list_user_sessions(user_id: str) -> list[SessionMetadata]:
+def _apply_pagination(
+    sessions: list[SessionMetadata],
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> Tuple[list[SessionMetadata], Optional[str]]:
     """
-    List all sessions for a user
+    Apply pagination to a list of sessions
+    
+    Args:
+        sessions: List of sessions (should be sorted by last_message_at descending)
+        limit: Maximum number of sessions to return
+        next_token: Pagination token (base64-encoded last_message_at timestamp to start from)
+    
+    Returns:
+        Tuple of (paginated sessions, next_token if more sessions exist)
+    """
+    start_index = 0
+    
+    # Decode next_token if provided (it's a base64-encoded last_message_at timestamp)
+    if next_token:
+        try:
+            decoded = base64.b64decode(next_token).decode('utf-8')
+            # Find the index of the first session with last_message_at < decoded timestamp
+            # This skips all sessions with the same timestamp as the token (to avoid duplicates)
+            for idx, session in enumerate(sessions):
+                if session.last_message_at < decoded:
+                    start_index = idx
+                    break
+            else:
+                # If no session found with timestamp < decoded, we've reached the end
+                start_index = len(sessions)
+        except Exception as e:
+            logger.warning(f"Invalid next_token: {e}, starting from beginning")
+            start_index = 0
+    
+    # Apply start index
+    paginated_sessions = sessions[start_index:]
+    
+    # Apply limit
+    if limit and limit > 0:
+        paginated_sessions = paginated_sessions[:limit]
+        # Check if there are more sessions
+        if start_index + limit < len(sessions):
+            # Use the last_message_at of the last session in this page as the next token
+            last_session = paginated_sessions[-1]
+            next_token = base64.b64encode(last_session.last_message_at.encode('utf-8')).decode('utf-8')
+        else:
+            next_token = None
+    else:
+        next_token = None
+    
+    return paginated_sessions, next_token
+
+
+async def list_user_sessions(
+    user_id: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> Tuple[list[SessionMetadata], Optional[str]]:
+    """
+    List sessions for a user with pagination support
 
     Args:
         user_id: User identifier
+        limit: Maximum number of sessions to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        List of SessionMetadata objects for the user, sorted by last_message_at descending
+        Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
+        Sessions are sorted by last_message_at descending (most recent first)
     """
     conversations_table = os.environ.get('CONVERSATIONS_TABLE_NAME')
 
     if conversations_table:
         return await _list_user_sessions_cloud(
             user_id=user_id,
-            table_name=conversations_table
+            table_name=conversations_table,
+            limit=limit,
+            next_token=next_token
         )
     else:
-        return await _list_user_sessions_local(user_id=user_id)
+        return await _list_user_sessions_local(
+            user_id=user_id,
+            limit=limit,
+            next_token=next_token
+        )
 
 
-async def _list_user_sessions_local(user_id: str) -> list[SessionMetadata]:
+async def _list_user_sessions_local(
+    user_id: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> Tuple[list[SessionMetadata], Optional[str]]:
     """
-    List all sessions for a user from local file storage
+    List sessions for a user from local file storage with pagination
 
     Args:
         user_id: User identifier
+        limit: Maximum number of sessions to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        List of SessionMetadata objects for the user, sorted by last_message_at descending
+        Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
+        Sessions are sorted by last_message_at descending (most recent first)
     """
     sessions_root = get_sessions_root()
 
     if not sessions_root.exists():
         logger.info(f"Sessions directory does not exist: {sessions_root}")
-        return []
+        return [], None
 
     sessions = []
 
@@ -520,26 +596,35 @@ async def _list_user_sessions_local(user_id: str) -> list[SessionMetadata]:
         sessions.sort(key=lambda x: x.last_message_at, reverse=True)
 
         logger.info(f"Found {len(sessions)} sessions for user {user_id}")
-        return sessions
+
+        # Apply pagination
+        paginated_sessions, next_page_token = _apply_pagination(sessions, limit, next_token)
+
+        return paginated_sessions, next_page_token
 
     except Exception as e:
         logger.error(f"Failed to list user sessions from local storage: {e}")
-        return []
+        return [], None
 
 
 async def _list_user_sessions_cloud(
     user_id: str,
-    table_name: str
-) -> list[SessionMetadata]:
+    table_name: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> Tuple[list[SessionMetadata], Optional[str]]:
     """
-    List all sessions for a user from DynamoDB
+    List sessions for a user from DynamoDB with pagination
 
     Args:
         user_id: User identifier
         table_name: DynamoDB table name
+        limit: Maximum number of sessions to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        List of SessionMetadata objects for the user, sorted by last_message_at descending
+        Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
+        Sessions are sorted by last_message_at descending (most recent first)
 
     TODO: Implement based on your DynamoDB schema
 
@@ -547,24 +632,41 @@ async def _list_user_sessions_cloud(
         PK: USER#{user_id}
         SK: SESSION#{created_at_iso}#{session_id}
 
-    Query example:
+    Query example with pagination:
         - Query with PK = USER#{user_id}
         - FilterExpression: begins_with(SK, 'SESSION#')
         - ScanIndexForward=False for newest first
+        - Use ExclusiveStartKey for pagination (decode from next_token)
+        - Use Limit parameter for limit
     """
     try:
-        # TODO: Implement DynamoDB query
+        # TODO: Implement DynamoDB query with pagination
         # Example pseudocode:
         # import boto3
         # from boto3.dynamodb.conditions import Key
         # dynamodb = boto3.resource('dynamodb')
         # table = dynamodb.Table(table_name)
         #
-        # response = table.query(
-        #     KeyConditionExpression=Key('PK').eq(f'USER#{user_id}'),
-        #     FilterExpression=begins_with('SK', 'SESSION#'),
-        #     ScanIndexForward=False  # Newest first
-        # )
+        # # Decode next_token to get ExclusiveStartKey if provided
+        # exclusive_start_key = None
+        # if next_token:
+        #     try:
+        #         decoded = base64.b64decode(next_token).decode('utf-8')
+        #         # Parse decoded token to reconstruct DynamoDB key
+        #         exclusive_start_key = json.loads(decoded)
+        #     except Exception as e:
+        #         logger.warning(f"Invalid next_token: {e}")
+        #
+        # query_params = {
+        #     'KeyConditionExpression': Key('PK').eq(f'USER#{user_id}'),
+        #     'FilterExpression': begins_with('SK', 'SESSION#'),
+        #     'ScanIndexForward': False,  # Newest first
+        #     'Limit': limit if limit else None
+        # }
+        # if exclusive_start_key:
+        #     query_params['ExclusiveStartKey'] = exclusive_start_key
+        #
+        # response = table.query(**query_params)
         #
         # sessions = []
         # for item in response['Items']:
@@ -575,14 +677,20 @@ async def _list_user_sessions_cloud(
         #         logger.warning(f"Failed to parse session item: {e}")
         #         continue
         #
-        # return sessions
+        # # Generate next_token from LastEvaluatedKey if present
+        # next_page_token = None
+        # if 'LastEvaluatedKey' in response:
+        #     next_page_token = base64.b64encode(json.dumps(response['LastEvaluatedKey']).encode('utf-8')).decode('utf-8')
+        #
+        # return sessions, next_page_token
 
         logger.info(f"Would list user sessions from DynamoDB table {table_name}")
-        return []
+        # For now, return empty list with no next token
+        return [], None
 
     except Exception as e:
         logger.error(f"Failed to list user sessions from DynamoDB: {e}")
-        return []
+        return [], None
 
 
 def _deep_merge(base: dict, updates: dict) -> dict:
@@ -610,3 +718,4 @@ def _deep_merge(base: dict, updates: dict) -> dict:
             result[key] = value
 
     return result
+

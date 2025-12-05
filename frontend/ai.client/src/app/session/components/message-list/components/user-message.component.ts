@@ -14,7 +14,7 @@ import { Message } from '../../../services/models/message.model';
         class="max-w-[80%] rounded-2xl bg-primary-500 px-4 py-3 text-sm/6 text-white"
       >
         @for (block of message().content; track $index) {
-          @if (block.type === 'text') {
+          @if (block.type === 'text' && block.text) {
             <p class="whitespace-pre-wrap">{{ block.text }}</p>
           }
         }

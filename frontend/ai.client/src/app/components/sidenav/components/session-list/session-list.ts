@@ -20,9 +20,20 @@ export class SessionList {
   readonly sessionsResource = this.sessionService.sessionsResource;
 
   /**
-   * Computed signal for sessions value.
+   * Computed signal for sessions array extracted from the paginated response.
    */
-  readonly sessions = computed(() => this.sessionsResource.value());
+  readonly sessions = computed(() => {
+    const response = this.sessionsResource.value();
+    return response?.sessions;
+  });
+
+  /**
+   * Computed signal for pagination token.
+   */
+  readonly nextToken = computed(() => {
+    const response = this.sessionsResource.value();
+    return response?.next_token ?? null;
+  });
 
   /**
    * Computed signal for loading state.

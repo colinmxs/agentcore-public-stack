@@ -93,38 +93,20 @@ class Message(BaseModel):
     metadata: Optional[MessageMetadata] = Field(None, description="Message metadata (latency, tokens, etc.)")
 
 
-class GetMessagesResponse(BaseModel):
-    """Response for get messages endpoint"""
+class MessageResponse(BaseModel):
+    """Response model for a single message (matches frontend expectations)"""
     model_config = ConfigDict(populate_by_name=True)
 
-    session_id: str = Field(..., description="Session identifier")
-    user_id: str = Field(..., description="User identifier")
-    messages: List[Message] = Field(..., description="List of messages in the session")
-    total_count: int = Field(..., description="Total number of messages")
+    id: str = Field(..., description="Unique identifier for the message")
+    role: Literal['user', 'assistant', 'system'] = Field(..., description="Role of the message sender")
+    content: List[MessageContent] = Field(..., description="List of content blocks in the message")
+    created_at: str = Field(..., alias="createdAt", description="ISO timestamp when the message was created")
+    metadata: Optional[Dict[str, Any]] = Field(None, description="Optional metadata associated with the message")
 
 
-class SessionPreferences(BaseModel):
-    """User preferences for a session"""
-    model_config = ConfigDict(populate_by_name=True, extra='allow')
+class MessagesListResponse(BaseModel):
+    """Response for listing messages with pagination support"""
+    model_config = ConfigDict(populate_by_name=True)
 
-    last_model: Optional[str] = Field(None, alias="lastModel", description="Last model used in this session")
-    last_temperature: Optional[float] = Field(None, alias="lastTemperature", description="Last temperature setting used")
-    enabled_tools: Optional[List[str]] = Field(None, alias="enabledTools", description="List of enabled tool names")
-    selected_prompt_id: Optional[str] = Field(None, alias="selectedPromptId", description="ID of selected prompt template")
-    custom_prompt_text: Optional[str] = Field(None, alias="customPromptText", description="Custom prompt text if used")
-
-
-class SessionMetadata(BaseModel):
-    """Complete session metadata"""
-    model_config = ConfigDict(populate_by_name=True, extra='allow')
-
-    session_id: str = Field(..., alias="sessionId", description="Session identifier")
-    user_id: str = Field(..., alias="userId", description="User identifier")
-    title: str = Field(..., description="Session title (usually from first message)")
-    status: Literal['active', 'archived', 'deleted'] = Field(..., description="Session status")
-    created_at: str = Field(..., alias="createdAt", description="ISO 8601 timestamp of session creation")
-    last_message_at: str = Field(..., alias="lastMessageAt", description="ISO 8601 timestamp of last message")
-    message_count: int = Field(..., alias="messageCount", description="Total number of messages in session")
-    starred: Optional[bool] = Field(False, description="Whether session is starred/favorited")
-    tags: Optional[List[str]] = Field(default_factory=list, description="Custom tags for organization")
-    preferences: Optional[SessionPreferences] = Field(None, description="User preferences for this session")
+    messages: List[MessageResponse] = Field(..., description="List of messages in the session")
+    next_token: Optional[str] = Field(None, alias="nextToken", description="Pagination token for retrieving the next page of results")

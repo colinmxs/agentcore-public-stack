@@ -6,10 +6,11 @@ Retrieves conversation history from AgentCore Memory or local file storage.
 import logging
 import os
 import json
-from typing import List, Dict, Any
+import base64
+from typing import List, Dict, Any, Optional, Tuple
 from pathlib import Path
 
-from .models import Message, MessageContent, GetMessagesResponse
+from apis.app_api.messages.models import Message, MessageContent, MessageResponse, MessagesListResponse
 
 logger = logging.getLogger(__name__)
 
@@ -69,6 +70,42 @@ def _convert_content_block(content_item: Any) -> MessageContent:
         return MessageContent(type="text", text=str(content_item))
 
 
+def _convert_message_to_response(
+    msg: Message,
+    session_id: str,
+    sequence_number: int,
+    message_id: Optional[str] = None
+) -> MessageResponse:
+    """
+    Convert a Message model to MessageResponse model for API response
+    
+    Args:
+        msg: Message model
+        session_id: Session identifier (used for generating ID if needed)
+        sequence_number: Sequence number of the message (used for generating ID if needed)
+        message_id: Optional message ID (if not provided, generates one)
+    
+    Returns:
+        MessageResponse model
+    """
+    # Generate message_id if not provided (use sequence number as fallback)
+    if not message_id:
+        message_id = f"{session_id}-{sequence_number}"
+    
+    # Convert metadata to dict if it's a MessageMetadata object
+    metadata_dict = None
+    if msg.metadata:
+        metadata_dict = msg.metadata.model_dump(exclude_none=True, by_alias=True)
+    
+    return MessageResponse(
+        id=message_id,
+        role=msg.role,
+        content=msg.content,
+        created_at=msg.timestamp or "",
+        metadata=metadata_dict
+    )
+
+
 def _convert_message(msg: Any, metadata: Any = None) -> Message:
     """
     Convert a session message to Message model
@@ -100,7 +137,7 @@ def _convert_message(msg: Any, metadata: Any = None) -> Message:
         content_blocks = [MessageContent(type="text", text=content)]
 
     # Convert metadata if present
-    from .models import MessageMetadata
+    from apis.app_api.messages.models import MessageMetadata
     message_metadata = None
     if metadata:
         if isinstance(metadata, dict):
@@ -119,19 +156,68 @@ def _convert_message(msg: Any, metadata: Any = None) -> Message:
     )
 
 
+def _apply_pagination(
+    messages: List[Message],
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> Tuple[List[Message], Optional[str]]:
+    """
+    Apply pagination to a list of messages
+    
+    Args:
+        messages: List of messages (should be sorted by sequence)
+        limit: Maximum number of messages to return
+        next_token: Pagination token (sequence number to start from)
+    
+    Returns:
+        Tuple of (paginated messages, next_token if more messages exist)
+    """
+    start_index = 0
+    
+    # Decode next_token if provided (it's a base64-encoded sequence number)
+    if next_token:
+        try:
+            decoded = base64.b64decode(next_token).decode('utf-8')
+            start_index = int(decoded)
+        except Exception as e:
+            logger.warning(f"Invalid next_token: {e}, starting from beginning")
+            start_index = 0
+    
+    # Apply start index
+    paginated_messages = messages[start_index:]
+    
+    # Apply limit
+    if limit and limit > 0:
+        paginated_messages = paginated_messages[:limit]
+        # Check if there are more messages
+        if start_index + limit < len(messages):
+            next_seq = start_index + limit
+            next_token = base64.b64encode(str(next_seq).encode('utf-8')).decode('utf-8')
+        else:
+            next_token = None
+    else:
+        next_token = None
+    
+    return paginated_messages, next_token
+
+
 async def get_messages_from_cloud(
     session_id: str,
-    user_id: str
-) -> GetMessagesResponse:
+    user_id: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> MessagesListResponse:
     """
     Retrieve messages from AgentCore Memory
 
     Args:
         session_id: Session identifier
         user_id: User identifier
+        limit: Maximum number of messages to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        GetMessagesResponse with conversation history
+        MessagesListResponse with paginated conversation history
     """
     memory_id = os.environ.get('MEMORY_ID')
     aws_region = os.environ.get('AWS_REGION', 'us-west-2')
@@ -163,7 +249,7 @@ async def get_messages_from_cloud(
         # Convert to our Message model
         messages = []
         if messages_raw:
-            for msg in messages_raw:
+            for idx, msg in enumerate(messages_raw):
                 try:
                     messages.append(_convert_message(msg))
                 except Exception as e:
@@ -172,11 +258,26 @@ async def get_messages_from_cloud(
 
         logger.info(f"Retrieved {len(messages)} messages from AgentCore Memory")
 
-        return GetMessagesResponse(
-            session_id=session_id,
-            user_id=user_id,
-            messages=messages,
-            total_count=len(messages)
+        # Apply pagination
+        paginated_messages, next_page_token = _apply_pagination(messages, limit, next_token)
+
+        # Convert to MessageResponse format
+        start_seq = 0
+        if next_token:
+            try:
+                decoded = base64.b64decode(next_token).decode('utf-8')
+                start_seq = int(decoded)
+            except Exception:
+                start_seq = 0
+        
+        message_responses = [
+            _convert_message_to_response(msg, session_id, start_seq + idx)
+            for idx, msg in enumerate(paginated_messages)
+        ]
+
+        return MessagesListResponse(
+            messages=message_responses,
+            next_token=next_page_token
         )
 
     except Exception as e:
@@ -186,8 +287,10 @@ async def get_messages_from_cloud(
 
 async def get_messages_from_local(
     session_id: str,
-    user_id: str
-) -> GetMessagesResponse:
+    user_id: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> MessagesListResponse:
     """
     Retrieve messages from local file storage
 
@@ -197,14 +300,15 @@ async def get_messages_from_local(
     Args:
         session_id: Session identifier
         user_id: User identifier (for consistency, not used in file lookup)
+        limit: Maximum number of messages to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        GetMessagesResponse with conversation history
+        MessagesListResponse with paginated conversation history
     """
-    # Determine sessions directory (same as session_factory.py)
-    sessions_dir = Path(__file__).parent.parent.parent.parent / "sessions"
-    session_dir = sessions_dir / f"session_{session_id}"
-    messages_dir = session_dir / "agents" / "agent_default" / "messages"
+    # Use centralized path utility
+    from apis.app_api.storage.paths import get_messages_dir
+    messages_dir = get_messages_dir(session_id)
 
     logger.info(f"Retrieving messages from local file - Session: {session_id}, Dir: {messages_dir}")
 
@@ -236,8 +340,14 @@ async def get_messages_from_local(
                     # Extract metadata if available
                     metadata = data.get("metadata")
 
+                    # Extract message_id if available and convert to string
+                    message_id_raw = data.get("message_id")
+                    message_id = str(message_id_raw) if message_id_raw is not None else None
+
                     # Convert to our Message model with metadata
-                    messages.append(_convert_message(msg, metadata=metadata))
+                    message_obj = _convert_message(msg, metadata=metadata)
+                    # Store message_id with the message for later use
+                    messages.append((message_obj, message_id))
 
                 except Exception as e:
                     logger.error(f"Error reading message file {message_file}: {e}")
@@ -252,36 +362,64 @@ async def get_messages_from_local(
     else:
         logger.info(f"Session messages directory does not exist yet: {messages_dir}")
 
-    return GetMessagesResponse(
-        session_id=session_id,
-        user_id=user_id,
-        messages=messages,
-        total_count=len(messages)
+    # Extract Message objects and message_ids separately, keeping index for mapping
+    message_objects = [msg for msg, _ in messages]
+    message_ids = [msg_id for _, msg_id in messages]
+    
+    # Apply pagination
+    paginated_messages, next_page_token = _apply_pagination(message_objects, limit, next_token)
+    
+    # Convert to MessageResponse format
+    # Calculate starting index/sequence from next_token
+    start_index = 0
+    if next_token:
+        try:
+            decoded = base64.b64decode(next_token).decode('utf-8')
+            start_index = int(decoded)
+        except Exception:
+            start_index = 0
+    
+    message_responses = []
+    for idx, msg_obj in enumerate(paginated_messages):
+        seq_num = start_index + idx
+        # Get message_id from the original list using the index
+        original_idx = start_index + idx
+        msg_id = message_ids[original_idx] if original_idx < len(message_ids) else None
+        message_responses.append(_convert_message_to_response(msg_obj, session_id, seq_num, msg_id))
+
+    return MessagesListResponse(
+        messages=message_responses,
+        next_token=next_page_token
     )
 
 
 async def get_messages(
     session_id: str,
-    user_id: str
-) -> GetMessagesResponse:
+    user_id: str,
+    limit: Optional[int] = None,
+    next_token: Optional[str] = None
+) -> MessagesListResponse:
     """
-    Retrieve messages for a session and user
+    Retrieve messages for a session and user with pagination support
 
     Automatically selects cloud or local storage based on environment configuration.
 
     Args:
         session_id: Session identifier
         user_id: User identifier
+        limit: Maximum number of messages to return (optional)
+        next_token: Pagination token for retrieving next page (optional)
 
     Returns:
-        GetMessagesResponse with conversation history
+        MessagesListResponse with paginated conversation history
     """
     memory_id = os.environ.get('MEMORY_ID')
 
     # Use cloud if MEMORY_ID is set and library is available
     if memory_id and AGENTCORE_MEMORY_AVAILABLE:
         logger.info(f"Using AgentCore Memory for session {session_id}")
-        return await get_messages_from_cloud(session_id, user_id)
+        return await get_messages_from_cloud(session_id, user_id, limit, next_token)
     else:
         logger.info(f"Using local file storage for session {session_id}")
-        return await get_messages_from_local(session_id, user_id)
+        return await get_messages_from_local(session_id, user_id, limit, next_token)
+

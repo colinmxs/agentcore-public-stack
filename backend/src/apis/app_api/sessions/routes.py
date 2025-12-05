@@ -3,13 +3,14 @@
 Provides endpoints for managing session metadata.
 """
 
-from fastapi import APIRouter, HTTPException, Depends
-from typing import Optional, List
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import Optional
 import logging
 from datetime import datetime
-from .models import UpdateSessionMetadataRequest, SessionMetadataResponse
-from apis.app_api.messages.models import SessionMetadata, SessionPreferences
-from apis.app_api.metadata.service import store_session_metadata, get_session_metadata, list_user_sessions
+from .models import UpdateSessionMetadataRequest, SessionMetadataResponse, SessionMetadata, SessionPreferences, SessionsListResponse
+from apis.app_api.messages.models import MessagesListResponse
+from .services.messages import get_messages
+from .services.metadata import store_session_metadata, get_session_metadata, list_user_sessions
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 
@@ -18,21 +19,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/sessions", tags=["sessions"])
 
 
-@router.get("", response_model=List[SessionMetadataResponse], response_model_exclude_none=True)
+@router.get("", response_model=SessionsListResponse, response_model_exclude_none=True)
 async def list_user_sessions_endpoint(
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Maximum number of sessions to return"),
+    next_token: Optional[str] = Query(None, description="Pagination token for retrieving the next page of results"),
     current_user: User = Depends(get_current_user)
 ):
     """
-    List all sessions for the authenticated user.
+    List sessions for the authenticated user with pagination support.
 
     Requires JWT authentication. Returns only sessions belonging to the authenticated user,
     sorted by last_message_at descending (most recent first).
 
     Args:
+        limit: Maximum number of sessions to return (optional, 1-1000)
+        next_token: Pagination token for retrieving next page (optional)
         current_user: Authenticated user from JWT token (injected by dependency)
 
     Returns:
-        List of SessionMetadataResponse objects
+        SessionsListResponse with paginated sessions and next_token if more results exist
 
     Raises:
         HTTPException:
@@ -41,19 +46,28 @@ async def list_user_sessions_endpoint(
     """
     user_id = current_user.user_id
 
-    logger.info(f"GET /sessions - User: {user_id}")
+    logger.info(f"GET /sessions - User: {user_id}, Limit: {limit}, NextToken: {next_token}")
 
     try:
-        # Retrieve all sessions for the user
-        sessions = await list_user_sessions(user_id=user_id)
+        # Retrieve sessions for the user with pagination
+        sessions, next_page_token = await list_user_sessions(
+            user_id=user_id,
+            limit=limit,
+            next_token=next_token
+        )
 
         # Convert to response models
-        return [
+        session_responses = [
             SessionMetadataResponse.model_validate(
                 session.model_dump(by_alias=True)
             )
             for session in sessions
         ]
+
+        return SessionsListResponse(
+            sessions=session_responses,
+            next_token=next_page_token
+        )
 
     except Exception as e:
         logger.error(f"Error listing user sessions: {e}", exc_info=True)
@@ -249,4 +263,70 @@ async def update_session_metadata_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update session metadata: {str(e)}"
+        )
+
+
+@router.get("/{session_id}/messages", response_model=MessagesListResponse, response_model_exclude_none=True)
+async def get_session_messages_endpoint(
+    session_id: str,
+    limit: Optional[int] = Query(None, ge=1, le=1000, description="Maximum number of messages to return"),
+    next_token: Optional[str] = Query(None, description="Pagination token for retrieving the next page of results"),
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Retrieve messages for a specific session with pagination support.
+
+    Requires JWT authentication. The user_id is extracted from the JWT token.
+    Users can only access their own messages.
+
+    Args:
+        session_id: Session identifier from URL path
+        limit: Maximum number of messages to return (optional, max: 1000)
+        next_token: Pagination token for retrieving next page (optional)
+        current_user: Authenticated user from JWT token (injected by dependency)
+
+    Returns:
+        MessagesListResponse with paginated conversation history
+
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 403 if user doesn't have required roles
+            - 404 if session not found
+            - 500 if server error
+    """
+    user_id = current_user.user_id
+
+    logger.info(f"GET /sessions/{session_id}/messages - User: {user_id}, Limit: {limit}, NextToken: {next_token}")
+
+    try:
+        # Retrieve messages from storage (cloud or local) with pagination
+        response = await get_messages(
+            session_id=session_id,
+            user_id=user_id,
+            limit=limit,
+            next_token=next_token
+        )
+
+        logger.info(f"Successfully retrieved {len(response.messages)} messages for session {session_id}")
+
+        return response
+
+    except ValueError as e:
+        logger.error(f"Configuration error: {e}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Server configuration error: {str(e)}"
+        )
+    except FileNotFoundError as e:
+        logger.warning(f"Session not found: {session_id}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Session not found: {session_id}"
+        )
+    except Exception as e:
+        logger.error(f"Error retrieving messages: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to retrieve messages: {str(e)}"
         )

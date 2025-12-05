@@ -14,12 +14,12 @@ import { ToolUseComponent } from './tool-use';
     template: `
         <div>
             @for (block of message().content; track $index) {
-                @if (block.type === 'text') {
+                @if (block.type === 'text' && block.text) {
                     <div class="flex w-full justify-start">
                         <markdown clipboard mermaid katex [data]="block.text"></markdown>
                     </div>
                 }
-                @else if (block.type === 'tool_use') {
+                @else if ((block.type === 'toolUse' || block.type === 'tool_use') && block.toolUse) {
                     <div >
                             <app-tool-use class="flex w-full justify-start" [toolUse]="block"></app-tool-use>
                     </div>

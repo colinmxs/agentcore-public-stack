@@ -234,7 +234,7 @@ class StreamCoordinator:
                 MessageMetadata, TokenUsage, LatencyMetrics,
                 ModelInfo, Attribution
             )
-            from apis.app_api.metadata.service import store_message_metadata
+            from apis.app_api.sessions.services.metadata import store_message_metadata
 
             # Build TokenUsage if we have usage data
             token_usage = None
@@ -381,8 +381,8 @@ class StreamCoordinator:
             agent: Agent instance for extracting model preferences
         """
         try:
-            from apis.app_api.messages.models import SessionMetadata, SessionPreferences
-            from apis.app_api.metadata.service import store_session_metadata, get_session_metadata
+            from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
+            from apis.app_api.sessions.services.metadata import store_session_metadata, get_session_metadata
 
             # Get existing metadata or create new
             existing = await get_session_metadata(session_id, user_id)
