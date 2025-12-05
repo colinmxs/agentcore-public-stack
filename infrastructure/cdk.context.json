@@ -18,7 +18,7 @@
     "enabled": true,
     "cpu": 512,
     "memory": 1024,
-    "desiredCount": 2,
+    "desiredCount": 0,
     "maxCapacity": 10,
     "databaseType": "dynamodb",
     "enableRds": false,
