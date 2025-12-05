@@ -83,6 +83,11 @@ jobs:
     needs: build-and-test
     # if: github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     
+    # Use OIDC for secure AWS authentication
+    permissions:
+      id-token: write
+      contents: read
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
