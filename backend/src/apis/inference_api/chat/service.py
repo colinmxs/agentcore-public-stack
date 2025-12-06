@@ -27,12 +27,6 @@ def get_agent(
     No caching - creates new agent each time to reflect latest configuration.
     Session message history is managed by AgentCore Memory automatically.
     """
-    logger.info(f"Creating agent for session {session_id}, user {user_id or 'anonymous'}")
-    logger.info(f"  Model: {model_id or 'default'}, Temperature: {temperature or 0.7}")
-    logger.info(f"  System prompt: {system_prompt[:50] if system_prompt else 'default'}...")
-    logger.info(f"  Caching: {caching_enabled if caching_enabled is not None else True}")
-    logger.info(f"  Tools: {enabled_tools or 'all'}")
-
     # Create agent with AgentCore Memory - messages and preferences automatically loaded/saved
     agent = StrandsAgent(
         session_id=session_id,
