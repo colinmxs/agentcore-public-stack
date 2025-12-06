@@ -5,6 +5,35 @@
 // ============================================================================
 
 /**
+ * Tool result content types
+ */
+export interface ToolResultContent {
+  text?: string;
+  json?: unknown;
+  image?: {
+    format: string;
+    data: string;
+  };
+  document?: Record<string, unknown>;
+}
+
+/**
+ * Tool use data structure
+ */
+export interface ToolUseData {
+  toolUseId: string;
+  name: string;
+  input: Record<string, unknown>;
+  /** Tool result - populated when tool execution completes */
+  result?: {
+    content: ToolResultContent[];
+    status: 'success' | 'error';
+  };
+  /** Tool execution status */
+  status?: 'pending' | 'complete' | 'error';
+}
+
+/**
  * Content block in a message.
  * Matches the backend MessageContent model.
  */
@@ -13,9 +42,9 @@ export interface ContentBlock {
   type: string;
   /** Text content (if type is text) */
   text?: string | null;
-  /** Tool use information (if type is toolUse) */
-  toolUse?: Record<string, unknown> | null;
-  /** Tool execution result (if type is toolResult) */
+  /** Tool use information (if type is toolUse) - now includes result */
+  toolUse?: ToolUseData | Record<string, unknown> | null;
+  /** Tool execution result (if type is toolResult) - deprecated, use toolUse.result instead */
   toolResult?: Record<string, unknown> | null;
   /** Image content (if type is image) */
   image?: Record<string, unknown> | null;

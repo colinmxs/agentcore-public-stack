@@ -64,7 +64,7 @@ export class ChatRequestService {
     return {
       message,
       session_id,
-      enabled_tools: ['calculator']
+      enabled_tools: ['calculator', 'fetch_url_content']
     };
   }
 }

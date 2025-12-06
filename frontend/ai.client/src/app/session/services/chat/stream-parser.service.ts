@@ -37,6 +37,17 @@ interface ContentBlockBuilder {
   toolUseId?: string;
   toolName?: string;
   inputChunks: string[];
+  // Tool result (merged into tool_use block)
+  result?: {
+    content: Array<{
+      text?: string;
+      json?: unknown;
+      image?: { format: string; data: string };
+      document?: Record<string, unknown>;
+    }>;
+    status: 'success' | 'error';
+  };
+  status?: 'pending' | 'complete' | 'error';
   isComplete: boolean;
 }
 
@@ -504,11 +515,15 @@ export class StreamParserService {
         case 'tool_use':
           this.handleToolUseProgress(data);
           break;
-          
+
+        case 'tool_result':
+          this.handleToolResult(data);
+          break;
+
         case 'message_stop':
           this.handleMessageStop(data);
           break;
-          
+
         case 'done':
           this.handleDone();
           break;
@@ -803,14 +818,14 @@ export class StreamParserService {
   private handleToolUseProgress(data: unknown): void {
     // This event provides accumulated tool input - useful for progress display
     // The actual content is built from content_block_delta events
-    
+
     // Validate event data
     if (!this.validateToolUseEvent(data)) {
       return; // Error already set by validator
     }
-    
+
     const eventData = data as ToolUseEvent;
-    
+
     if (eventData.tool_use) {
       this.toolProgressSignal.update(progress => ({
         ...progress,
@@ -819,6 +834,138 @@ export class StreamParserService {
         toolUseId: eventData.tool_use.tool_use_id
       }));
     }
+  }
+
+  private handleToolResult(data: unknown): void {
+    console.log('[StreamParser] handleToolResult:', data);
+
+    // Validate data structure
+    if (!data || typeof data !== 'object') {
+      this.setError('tool_result: data must be an object');
+      return;
+    }
+
+    // The backend sends: { tool_result: { toolUseId, content, status } }
+    const rawData = data as { tool_result?: any };
+    const toolResultData = rawData.tool_result;
+
+    if (!toolResultData || typeof toolResultData !== 'object') {
+      this.setError('tool_result: tool_result field must be an object');
+      return;
+    }
+
+    const toolUseId = toolResultData.toolUseId;
+    if (!toolUseId || typeof toolUseId !== 'string') {
+      this.setError('tool_result: toolUseId must be a non-empty string');
+      return;
+    }
+
+    const content = toolResultData.content || [];
+    const status = toolResultData.status || 'success';
+
+    // Ensure we have an active message builder
+    const currentBuilder = this.currentMessageBuilder();
+    if (!currentBuilder) {
+      this.setError('tool_result: received without active message. Ensure message_start was called first.');
+      return;
+    }
+
+    // Find the tool_use block that matches this toolUseId
+    let foundBlock: ContentBlockBuilder | null = null;
+    let foundIndex: number | null = null;
+
+    for (const [index, block] of currentBuilder.contentBlocks.entries()) {
+      if ((block.type === 'tool_use' || block.type === 'toolUse') && block.toolUseId === toolUseId) {
+        foundBlock = block;
+        foundIndex = index;
+        break;
+      }
+    }
+
+    if (!foundBlock || foundIndex === null) {
+      console.warn(`[StreamParser] tool_result: No matching tool_use block found for toolUseId ${toolUseId}`);
+      return;
+    }
+
+    // Merge the result into the tool_use block
+    this.currentMessageBuilder.update(builder => {
+      if (!builder) return builder;
+
+      const block = builder.contentBlocks.get(foundIndex!);
+      if (!block) return builder;
+
+      // Build result content array from the backend's content array
+      const resultContent: Array<{
+        text?: string;
+        json?: unknown;
+        image?: { format: string; data: string };
+      }> = [];
+
+      // Process content array from backend
+      if (Array.isArray(content)) {
+        for (const item of content) {
+          if (!item || typeof item !== 'object') continue;
+
+          // Handle text content
+          if ('text' in item && item.text) {
+            // Try to parse as JSON first
+            try {
+              const parsed = JSON.parse(item.text);
+              resultContent.push({ json: parsed });
+            } catch {
+              // Not JSON, treat as text
+              resultContent.push({ text: item.text });
+            }
+          }
+
+          // Handle image content
+          if ('image' in item && item.image) {
+            const image = item.image;
+            if (image.source && image.source.data) {
+              resultContent.push({
+                image: {
+                  format: image.format || 'png',
+                  data: image.source.data
+                }
+              });
+            }
+          }
+
+          // Handle JSON content directly
+          if ('json' in item && item.json) {
+            resultContent.push({ json: item.json });
+          }
+        }
+      }
+
+      // Update the block with result
+      const updatedBlock: ContentBlockBuilder = {
+        ...block,
+        result: {
+          content: resultContent,
+          status: status
+        },
+        status: (status === 'error' ? 'error' : 'complete') as 'pending' | 'complete' | 'error'
+      };
+
+      // Create new Map reference to trigger reactivity
+      const newBlocks = new Map(builder.contentBlocks);
+      newBlocks.set(foundIndex!, updatedBlock);
+
+      console.log('[StreamParser] Tool result merged into tool_use block:', {
+        toolUseId: toolUseId,
+        status: updatedBlock.status,
+        contentItems: resultContent.length
+      });
+
+      return {
+        ...builder,
+        contentBlocks: newBlocks
+      };
+    });
+
+    // Hide tool progress
+    this.toolProgressSignal.set({ visible: false });
   }
   
   private handleMessageStop(data: unknown): void {
@@ -1018,7 +1165,7 @@ export class StreamParserService {
     if (builder.type === 'tool_use' || builder.type === 'toolUse') {
       const inputStr = builder.inputChunks.join('');
       let parsedInput: Record<string, unknown> = {};
-      
+
       try {
         if (inputStr) {
           parsedInput = JSON.parse(inputStr);
@@ -1028,32 +1175,45 @@ export class StreamParserService {
         // If we're finalizing and JSON is still invalid, log error but don't fail
         const errorMsg = e instanceof Error ? e.message : 'Unknown JSON parse error';
         console.debug(`Tool input not yet valid JSON (${errorMsg}):`, inputStr.slice(0, 50));
-        
+
         // Set error if this is a finalized block with invalid JSON
         if (builder.isComplete) {
           this.setError(`Failed to parse tool input JSON for tool '${builder.toolName || 'unknown'}': ${errorMsg}`);
         }
       }
-      
+
       // Validate required fields
       if (!builder.toolUseId && builder.isComplete) {
         this.setError(`Tool use block missing toolUseId`);
       }
-      
+
       if (!builder.toolName && builder.isComplete) {
         this.setError(`Tool use block missing toolName`);
       }
-      
+
+      // Build tool use data with result if available
+      const toolUseData: any = {
+        toolUseId: builder.toolUseId || uuidv4(),
+        name: builder.toolName || 'unknown',
+        input: parsedInput
+      };
+
+      // Include result if available
+      if (builder.result) {
+        toolUseData.result = builder.result;
+      }
+
+      // Include status if available
+      if (builder.status) {
+        toolUseData.status = builder.status;
+      }
+
       return {
         type: 'toolUse',
-        toolUse: {
-          toolUseId: builder.toolUseId || uuidv4(),
-          name: builder.toolName || 'unknown',
-          input: parsedInput
-        }
+        toolUse: toolUseData
       } as ContentBlock;
     }
-    
+
     return {
       type: 'text',
       text: builder.textChunks.join('')
