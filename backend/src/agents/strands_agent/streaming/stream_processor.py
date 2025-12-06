@@ -216,6 +216,34 @@ def _handle_lifecycle_events(event: RawEvent) -> List[ProcessedEvent]:
             # (e.g., when it's nested in a result object, not a standalone message event)
             if not any(key in event for key in ["result"]):
                 events.append(_create_event("message", {"message": message}))
+                
+                # Extract toolResult from message content blocks and create tool_result events
+                # toolResult is located in message.content blocks
+                if "content" in message and isinstance(message["content"], list):
+                    for content_item in message["content"]:
+                        # Check for toolResult (both camelCase and snake_case)
+                        tool_result = None
+                        if isinstance(content_item, dict):
+                            tool_result = content_item.get("toolResult") or content_item.get("tool_result")
+                        
+                        if tool_result:
+                            # Create a tool_result event with the full wrapped message structure
+                            # The message sent to the client should be the full wrapped tool_result
+                            # with {"role": "user", etc...}
+                            wrapped_message = {
+                                "role": message.get("role"),
+                                "content": [content_item]  # Single content block with toolResult
+                            }
+                            # Include other message fields if present
+                            if "id" in message:
+                                wrapped_message["id"] = message["id"]
+                            if "model" in message:
+                                wrapped_message["model"] = message["model"]
+                            
+                            events.append(_create_event("tool_result", {
+                                "message": wrapped_message,
+                                "tool_result": tool_result
+                            }))
 
     # event: Raw event from the model stream
     # This is a pass-through for low-level model events
