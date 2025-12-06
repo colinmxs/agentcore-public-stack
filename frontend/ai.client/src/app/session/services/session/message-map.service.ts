@@ -203,9 +203,37 @@ export class MessageMapService {
             const toolResult = contentBlock.toolResult as any;
             const toolUseId = toolResult.toolUseId;
             if (toolUseId) {
+              // Determine status from explicit status field or by inspecting content
+              let status: 'success' | 'error' = toolResult.status || 'success';
+
+              // Check if content indicates an error (for backwards compatibility with old format)
+              if (status === 'success' && toolResult.content && Array.isArray(toolResult.content)) {
+                for (const contentItem of toolResult.content) {
+                  // Check if JSON content has success: false
+                  if (contentItem.json && typeof contentItem.json === 'object') {
+                    if (contentItem.json.success === false || contentItem.json.error) {
+                      status = 'error';
+                      break;
+                    }
+                  }
+                  // Check if text content indicates error
+                  if (contentItem.text && typeof contentItem.text === 'string') {
+                    try {
+                      const parsed = JSON.parse(contentItem.text);
+                      if (parsed.success === false || parsed.error) {
+                        status = 'error';
+                        break;
+                      }
+                    } catch {
+                      // Not JSON, ignore
+                    }
+                  }
+                }
+              }
+
               toolResultMap.set(toolUseId, {
                 content: toolResult.content || [],
-                status: toolResult.status || 'success'
+                status: status
               });
             }
           }
