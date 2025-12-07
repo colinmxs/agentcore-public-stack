@@ -25,6 +25,7 @@ import { ToolUseComponent } from './tool-use';
                     </div>
                 }
             }
+
         </div>
   `,
     styles: `
