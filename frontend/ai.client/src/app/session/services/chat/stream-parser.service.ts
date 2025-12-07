@@ -265,8 +265,6 @@ export class StreamParserService {
     this.isStreamCompleteSignal.set(false);
     this.metadataSignal.set(null);
     this.currentEventType = '';
-
-    console.log(`[StreamParser] Reset stream: ${oldStreamId} -> ${this.currentStreamId} (session: ${sessionId}, messageCount: ${startingMessageCount})`);
   }
   
   /**
@@ -495,19 +493,16 @@ export class StreamParserService {
   // =========================================================================
   
   private handleEvent(eventType: string, data: unknown): void {
-    console.log('[StreamParser] Event:', eventType, data);
-    
     // Validate event type
     if (!eventType || typeof eventType !== 'string') {
       this.setError('Invalid event type: must be a non-empty string');
       return;
     }
-    
+
     // Check if we should process this event (prevents race conditions)
     // Allow message_start and error events even if stream appears complete
     const isStartOrErrorEvent = eventType === 'message_start' || eventType === 'error';
     if (!isStartOrErrorEvent && !this.shouldProcessEvent()) {
-      console.log(`[StreamParser] Ignoring ${eventType} event - stream ${this.currentStreamId} is ${this.streamState}`);
       return;
     }
     
@@ -555,7 +550,6 @@ export class StreamParserService {
           
         default:
           // Ignore unknown events (ping, etc.)
-          console.log('[StreamParser] Unknown event type:', eventType);
           break;
       }
     } catch (error) {
@@ -590,8 +584,6 @@ export class StreamParserService {
   // =========================================================================
   
   private handleMessageStart(data: unknown): void {
-    console.log('[StreamParser] handleMessageStart:', data);
-
     // Validate event data
     if (!this.validateMessageStartEvent(data)) {
       return; // Error already set by validator
@@ -613,7 +605,6 @@ export class StreamParserService {
     // If there's an existing message, finalize it before starting a new one
     const currentBuilder = this.currentMessageBuilder();
     if (currentBuilder) {
-      console.log('[StreamParser] Finalizing previous message before starting new one');
       this.finalizeCurrentMessage();
     }
 
@@ -635,12 +626,10 @@ export class StreamParserService {
       isComplete: false
     };
 
-    console.log('[StreamParser] Created message builder with computed ID:', builder.id);
     this.currentMessageBuilder.set(builder);
   }
-  
+
   private handleContentBlockStart(data: unknown): void {
-    console.log('[StreamParser] handleContentBlockStart:', data);
     
     // Validate event data
     if (!this.validateContentBlockStartEvent(data)) {
@@ -667,9 +656,7 @@ export class StreamParserService {
         // This shouldn't happen after the check above, but handle defensively
         return builder;
       }
-      
-      console.log('[StreamParser] Current contentBlocks before adding:', builder.contentBlocks.size);
-      
+
       const blockBuilder: ContentBlockBuilder = {
         index: eventData.contentBlockIndex,
         type: eventData.type === 'tool_use' ? 'tool_use' : 'text',
@@ -679,14 +666,11 @@ export class StreamParserService {
         toolName: eventData.toolUse?.name,
         isComplete: false
       };
-      
+
       // Create new Map to trigger reactivity
       const newBlocks = new Map(builder.contentBlocks);
       newBlocks.set(eventData.contentBlockIndex, blockBuilder);
-      
-      console.log('[StreamParser] contentBlocks after adding:', newBlocks.size);
-      console.log('[StreamParser] Block indices:', Array.from(newBlocks.keys()));
-      
+
       return {
         ...builder,
         contentBlocks: newBlocks
@@ -725,20 +709,12 @@ export class StreamParserService {
         // This shouldn't happen after the check above, but handle defensively
         return builder;
       }
-      
-      console.log('[StreamParser] handleContentBlockDelta:', {
-        index: eventData.contentBlockIndex,
-        type: eventData.type,
-        hasText: !!eventData.text,
-        hasInput: !!eventData.input,
-        currentBlockCount: builder.contentBlocks.size
-      });
-      
+
       let block = builder.contentBlocks.get(eventData.contentBlockIndex);
       
       // Auto-create block if it doesn't exist (backend not sending content_block_start)
       if (!block) {
-        console.log('[StreamParser] Auto-creating content block at index', eventData.contentBlockIndex);
+
         block = {
           index: eventData.contentBlockIndex,
           type: eventData.type === 'tool_use' ? 'tool_use' : 'text',
@@ -774,9 +750,7 @@ export class StreamParserService {
       // Create new Map reference to trigger reactivity
       const newBlocks = new Map(builder.contentBlocks);
       newBlocks.set(eventData.contentBlockIndex, { ...block });
-      
-      console.log('[StreamParser] After delta - block indices:', Array.from(newBlocks.keys()));
-      
+
       return {
         ...builder,
         contentBlocks: newBlocks
@@ -785,8 +759,7 @@ export class StreamParserService {
   }
   
   private handleContentBlockStop(data: unknown): void {
-    console.log('[StreamParser] handleContentBlockStop:', data);
-    
+
     // Validate event data
     if (!this.validateContentBlockStopEvent(data)) {
       return; // Error already set by validator
@@ -828,9 +801,7 @@ export class StreamParserService {
       
       const newBlocks = new Map(builder.contentBlocks);
       newBlocks.set(eventData.contentBlockIndex, { ...block });
-      
-      console.log('[StreamParser] After stop - block indices:', Array.from(newBlocks.keys()), 'total:', newBlocks.size);
-      
+
       return {
         ...builder,
         contentBlocks: newBlocks
@@ -860,7 +831,6 @@ export class StreamParserService {
   }
 
   private handleToolResult(data: unknown): void {
-    console.log('[StreamParser] handleToolResult:', data);
 
     // Validate data structure
     if (!data || typeof data !== 'object') {
@@ -906,7 +876,7 @@ export class StreamParserService {
     }
 
     if (!foundBlock || foundIndex === null) {
-      console.warn(`[StreamParser] tool_result: No matching tool_use block found for toolUseId ${toolUseId}`);
+
       return;
     }
 
@@ -974,12 +944,6 @@ export class StreamParserService {
       // Create new Map reference to trigger reactivity
       const newBlocks = new Map(builder.contentBlocks);
       newBlocks.set(foundIndex!, updatedBlock);
-
-      console.log('[StreamParser] Tool result merged into tool_use block:', {
-        toolUseId: toolUseId,
-        status: updatedBlock.status,
-        contentItems: resultContent.length
-      });
 
       return {
         ...builder,
@@ -1062,7 +1026,7 @@ export class StreamParserService {
   
   private handleMetadata(data: unknown): void {
     if (!data || typeof data !== 'object') {
-      console.warn('[StreamParser] Invalid metadata event data:', data);
+
       return;
     }
     
@@ -1070,7 +1034,7 @@ export class StreamParserService {
     
     // Validate that at least usage or metrics is present
     if (!metadataData.usage && !metadataData.metrics) {
-      console.warn('[StreamParser] Metadata event missing both usage and metrics:', metadataData);
+
       return;
     }
     
@@ -1079,11 +1043,7 @@ export class StreamParserService {
     
     // Update the last completed message with metadata if it doesn't have it yet
     this.updateLastCompletedMessageWithMetadata();
-    
-    console.log('[StreamParser] Metadata received:', {
-      usage: metadataData.usage,
-      metrics: metadataData.metrics
-    });
+
   }
 
   /**
@@ -1124,10 +1084,7 @@ export class StreamParserService {
     const sortedBlocks = Array.from(builder.contentBlocks.entries())
       .sort(([a], [b]) => a - b)
       .map(([_, block]) => this.buildContentBlock(block));
-    
-    console.log('[StreamParser] buildMessage - contentBlocks Map size:', builder.contentBlocks.size);
-    console.log('[StreamParser] buildMessage - sorted blocks:', sortedBlocks);
-    
+
     return {
       id: builder.id,
       role: builder.role,
@@ -1197,7 +1154,6 @@ export class StreamParserService {
         // Input might be incomplete during streaming
         // If we're finalizing and JSON is still invalid, log error but don't fail
         const errorMsg = e instanceof Error ? e.message : 'Unknown JSON parse error';
-        console.debug(`Tool input not yet valid JSON (${errorMsg}):`, inputStr.slice(0, 50));
 
         // Set error if this is a finalized block with invalid JSON
         if (builder.isComplete) {
