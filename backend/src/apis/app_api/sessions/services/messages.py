@@ -301,6 +301,12 @@ async def get_messages_from_local(
     FileSessionManager uses directory structure:
     sessions/session_{session_id}/agents/agent_default/messages/message_N.json
 
+    Message metadata is stored separately in:
+    sessions/session_{session_id}/message-metadata.json
+
+    This simulates the cloud architecture where messages and metadata
+    are stored in separate tables/locations.
+
     Args:
         session_id: Session identifier
         user_id: User identifier (for consistency, not used in file lookup)
@@ -310,11 +316,22 @@ async def get_messages_from_local(
     Returns:
         MessagesListResponse with paginated conversation history
     """
-    # Use centralized path utility
-    from apis.app_api.storage.paths import get_messages_dir
+    # Use centralized path utilities
+    from apis.app_api.storage.paths import get_messages_dir, get_message_metadata_path
     messages_dir = get_messages_dir(session_id)
+    metadata_file = get_message_metadata_path(session_id)
 
     logger.info(f"Retrieving messages from local file - Session: {session_id}, Dir: {messages_dir}")
+
+    # Load metadata index once (simulates single query to metadata table)
+    metadata_index = {}
+    if metadata_file.exists():
+        try:
+            with open(metadata_file, 'r') as f:
+                metadata_index = json.load(f)
+            logger.info(f"Loaded metadata for {len(metadata_index)} messages")
+        except Exception as e:
+            logger.warning(f"Failed to load message metadata index: {e}")
 
     messages = []
 
@@ -341,8 +358,11 @@ async def get_messages_from_local(
                     if "created_at" in data:
                         msg["timestamp"] = data["created_at"]
 
-                    # Extract metadata if available
-                    metadata = data.get("metadata")
+                    # Get message_id from filename
+                    message_id = int(message_file.stem.split("_")[1])
+
+                    # Lookup metadata from the index (simulates join with metadata table)
+                    metadata = metadata_index.get(str(message_id))
 
                     # Convert to our Message model with metadata
                     message_obj = _convert_message(msg, metadata=metadata)
