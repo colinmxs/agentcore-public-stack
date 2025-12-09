@@ -4,7 +4,7 @@
   "@aws-cdk/core:checksumAssetForResourceTags": true,
   "projectPrefix": "agentcore",
   "awsAccount": "",
-  "awsRegion": "us-east-1",
+  "awsRegion": "us-west-2",
   "vpcCidr": "10.0.0.0/16",
   "domainName": "",
   "enableRoute53": false,
@@ -51,5 +51,11 @@
     "Environment": "dev",
     "Project": "AgentCore",
     "ManagedBy": "CDK"
-  }
+  },
+  "availability-zones:account=490617140655:region=us-west-2": [
+    "us-west-2a",
+    "us-west-2b",
+    "us-west-2c",
+    "us-west-2d"
+  ]
 }
