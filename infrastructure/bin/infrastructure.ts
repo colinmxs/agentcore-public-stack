@@ -16,7 +16,7 @@ if (config.frontend.enabled) {
     config,
     env,
     description: `${config.projectPrefix} Frontend Stack - S3, CloudFront, and Route53`,
-    stackName: `${config.projectPrefix}-FrontendStack`,
+    stackName: `${config.projectPrefix}-Frontend`,
   });
 }
 
@@ -26,7 +26,7 @@ if (config.appApi.enabled) {
     config,
     env,
     description: `${config.projectPrefix} App API Stack - VPC, ALB, Fargate, and Database`,
-    stackName: `${config.projectPrefix}-AppApiStack`,
+    stackName: `${config.projectPrefix}-AppApi`,
   });
 }
 
