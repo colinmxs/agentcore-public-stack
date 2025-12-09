@@ -68,6 +68,12 @@ main() {
     # Change to infrastructure directory
     cd "${INFRASTRUCTURE_DIR}"
     
+    # Check if node_modules exists
+    if [ ! -d "node_modules" ]; then
+        log_info "node_modules not found in CDK directory. Installing dependencies..."
+        npm install
+    fi
+    
     # Bootstrap CDK if needed (idempotent operation)
     log_info "Ensuring CDK is bootstrapped..."
     npx cdk bootstrap "aws://${CDK_AWS_ACCOUNT}/${CDK_AWS_REGION}" \
