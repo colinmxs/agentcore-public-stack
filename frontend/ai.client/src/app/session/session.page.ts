@@ -7,11 +7,13 @@ import { MessageMapService } from './services/session/message-map.service';
 import { Message } from './services/models/message.model';
 import { ChatInputComponent } from './components/chat-input/chat-input.component';
 import { SessionService } from './services/session/session.service';
+import { ChatStateService } from './services/chat/chat-state.service';
 import { JsonPipe } from '@angular/common';
+import { LoadingComponent } from '../components/loading.component';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, JsonPipe],
+  imports: [ChatInputComponent, MessageListComponent, JsonPipe, LoadingComponent],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })
@@ -23,8 +25,10 @@ export class ConversationPage implements OnDestroy {
   private sessionService = inject(SessionService);
   private chatRequestService = inject(ChatRequestService);
   private messageMapService = inject(MessageMapService);
+  private chatStateService = inject(ChatStateService);
   private routeSubscription?: Subscription;
   readonly sessionConversation = this.sessionService.currentSession;
+  readonly isChatLoading = this.chatStateService.isChatLoading;
 
   constructor() {
     // Subscribe to route parameter changes

@@ -137,8 +137,6 @@ export class SessionService {
       // Read params signal to make resource reactive to pagination changes
       const params = this.sessionsParams();
 
-      console.log('[SessionService] Resource loader called');
-
       // Ensure user is authenticated before making the request
       await this.authService.ensureAuthenticated();
 
