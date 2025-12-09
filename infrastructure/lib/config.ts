@@ -97,7 +97,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       enabled: true,
       cpu: 512,
       memory: 1024,
-      desiredCount: 2,
+      desiredCount: 0,
       maxCapacity: 10,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
