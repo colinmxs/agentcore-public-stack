@@ -38,12 +38,18 @@ export class ConversationPage implements OnDestroy {
       if (id) {
         this.messages = this.messageMapService.getMessagesForSession(id);
 
+        // Trigger fetching session metadata to populate currentSession
+        this.sessionService.setSessionMetadataId(id);
+
         // Load messages from API for deep linking support
         try {
           await this.messageMapService.loadMessagesForSession(id);
         } catch (error) {
           console.error('Failed to load messages for session:', id, error);
         }
+      } else {
+        // No session selected, clear the session metadata
+        this.sessionService.setSessionMetadataId(null);
       }
     });
   }

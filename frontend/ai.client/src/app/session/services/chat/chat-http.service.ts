@@ -106,16 +106,19 @@ export class ChatHttpService {
             onclose: () => {
                 this.messageMapService.endStreaming();
                 this.chatStateService.setChatLoading(false);
-                // Generate title for the new session (fire and forget - don't block on this)
-                this.generateTitle(requestObject.session_id, requestObject.message)
-                .then(response => {
-                    // Update the session title in the local cache
-                    this.sessionService.updateSessionTitleInCache(requestObject.session_id, response.title);
-                })
-                .catch(error => {
-                    // Log error but don't block the user experience
-                    console.error('Failed to generate session title:', error);
-                });
+
+                // Generate title only for new sessions (fire and forget - don't block on this)
+                if (this.sessionService.isNewSession(requestObject.session_id)) {
+                    this.generateTitle(requestObject.session_id, requestObject.message)
+                    .then(response => {
+                        // Update the session title in the local cache
+                        this.sessionService.updateSessionTitleInCache(requestObject.session_id, response.title);
+                    })
+                    .catch(error => {
+                        // Log error but don't block the user experience
+                        console.error('Failed to generate session title:', error);
+                    });
+                }
             },
             onerror: (err) => {
                 this.messageMapService.endStreaming();
