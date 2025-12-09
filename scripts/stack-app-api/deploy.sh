@@ -25,43 +25,6 @@ log_success() {
     echo "[SUCCESS] $1"
 }
 
-# Function to push Docker image to ECR
-push_to_ecr() {
-    local ecr_uri=$1
-    local image_name=$2
-    local image_tag=$3
-    
-    log_info "Pushing Docker image to ECR: ${ecr_uri}"
-    
-    # Extract region and account from ECR URI
-    local ecr_region=$(echo "${ecr_uri}" | cut -d'.' -f4)
-    local ecr_account=$(echo "${ecr_uri}" | cut -d'.' -f1 | cut -d'/' -f1)
-    
-    # Login to ECR
-    log_info "Logging in to ECR..."
-    aws ecr get-login-password --region "${ecr_region}" | \
-        docker login --username AWS --password-stdin "${ecr_account}.dkr.ecr.${ecr_region}.amazonaws.com"
-    
-    # Tag image for ECR
-    local local_image="${image_name}:${image_tag}"
-    local remote_image="${ecr_uri}:${image_tag}"
-    
-    log_info "Tagging image: ${local_image} -> ${remote_image}"
-    docker tag "${local_image}" "${remote_image}"
-    
-    # Push image
-    log_info "Pushing image to ECR (this may take several minutes)..."
-    docker push "${remote_image}"
-    
-    # Also push with 'latest' tag
-    local remote_latest="${ecr_uri}:latest"
-    log_info "Tagging and pushing with 'latest' tag..."
-    docker tag "${local_image}" "${remote_latest}"
-    docker push "${remote_latest}"
-    
-    log_success "Docker image pushed successfully to ECR"
-}
-
 # Function to update ECS service
 update_ecs_service() {
     local cluster_name=$1
@@ -123,39 +86,20 @@ main() {
     
     log_success "CDK deployment completed successfully"
     
-    # Get ECR repository URI from SSM Parameter Store
-    log_info "Retrieving ECR repository URI from SSM..."
-    set +e
-    ECR_URI=$(aws ssm get-parameter \
-        --name "/${CDK_PROJECT_PREFIX}/app-api/ecr-repository-uri" \
-        --region "${CDK_AWS_REGION}" \
-        --query 'Parameter.Value' \
-        --output text 2>&1)
-    local exit_code=$?
-    set -e
-    
-    if [ ${exit_code} -ne 0 ]; then
-        log_error "Failed to retrieve ECR repository URI from SSM"
-        log_error "Detailed error: ${ECR_URI}"
-        log_error "Possible causes:"
-        log_error "  1. CDK deployment didn't complete successfully"
-        log_error "  2. SSM parameter wasn't created"
-        log_error "  3. Insufficient AWS permissions"
-        exit 1
-    fi
+    # Construct ECR repository URI (no longer stored in SSM)
+    REPO_NAME="${CDK_PROJECT_PREFIX}-app-api"
+    ECR_URI="${CDK_AWS_ACCOUNT}.dkr.ecr.${CDK_AWS_REGION}.amazonaws.com/${REPO_NAME}"
     
     log_info "ECR Repository URI: ${ECR_URI}"
     
-    # Build Docker image
-    log_info "Building Docker image..."
-    IMAGE_NAME="${CDK_PROJECT_PREFIX}-app-api"
-    IMAGE_TAG="${DOCKER_IMAGE_TAG:-latest}"
+    # Validate that IMAGE_TAG is set (should be passed from build job)
+    if [ -z "${IMAGE_TAG:-}" ]; then
+        log_error "IMAGE_TAG is not set. This should be the version tag from the build step."
+        exit 1
+    fi
     
-    cd "${PROJECT_ROOT}"
-    "${SCRIPT_DIR}/build.sh"
-    
-    # Push Docker image to ECR
-    push_to_ecr "${ECR_URI}" "${IMAGE_NAME}" "${IMAGE_TAG}"
+    log_info "Using pre-built image with version tag: ${IMAGE_TAG}"
+    log_info "Image URI: ${ECR_URI}:${IMAGE_TAG}"
     
     # Get ECS cluster and service names from outputs
     if [ -f "${PROJECT_ROOT}/cdk-outputs-app-api.json" ]; then

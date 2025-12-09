@@ -22,10 +22,11 @@ export interface AppApiStackProps extends cdk.StackProps {
  * - VPC with public/private subnets across multiple AZs
  * - Application Load Balancer (ALB) in public subnets
  * - ECS Fargate cluster and service
- * - ECR repository for Docker images
  * - Database (DynamoDB or RDS Aurora Serverless v2)
  * - Security groups for network isolation
  * - SSM parameters for cross-stack references
+ * 
+ * Note: ECR repository is created by the build pipeline, not by CDK.
  */
 export class AppApiStack extends cdk.Stack {
   public readonly vpc: ec2.Vpc;
@@ -338,32 +339,10 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
-    // ECR Repository
-    // ============================================================
-    const ecrRepository = new ecr.Repository(this, 'AppApiRepository', {
-      repositoryName: getResourceName(config, 'app-api'),
-      imageScanOnPush: true,
-      imageTagMutability: ecr.TagMutability.MUTABLE,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      lifecycleRules: [
-        {
-          description: 'Keep last 10 images',
-          maxImageCount: 10,
-        },
-      ],
-    });
-
-    // Store ECR repository URI in SSM
-    new ssm.StringParameter(this, 'EcrRepositoryUriParameter', {
-      parameterName: `/${config.projectPrefix}/app-api/ecr-repository-uri`,
-      stringValue: ecrRepository.repositoryUri,
-      description: 'ECR repository URI for App API',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
     // ECS Task Definition
     // ============================================================
+    // Note: ECR Repository is created automatically by the build pipeline
+    // when pushing the first Docker image (see scripts/stack-app-api/push-to-ecr.sh)
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'AppApiTaskDefinition', {
       family: getResourceName(config, 'app-api-task'),
       cpu: config.appApi.cpu,
@@ -507,12 +486,6 @@ export class AppApiStack extends cdk.Stack {
       value: this.ecsService.serviceName,
       description: 'ECS Service Name',
       exportName: `${config.projectPrefix}-EcsServiceName`,
-    });
-
-    new cdk.CfnOutput(this, 'EcrRepositoryUri', {
-      value: ecrRepository.repositoryUri,
-      description: 'ECR Repository URI',
-      exportName: `${config.projectPrefix}-AppApiEcrRepositoryUri`,
     });
 
     new cdk.CfnOutput(this, 'TaskDefinitionArn', {

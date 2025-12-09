@@ -41,9 +41,25 @@ jobs:
     name: Build and Test App API
     runs-on: ubuntu-latest
     
+    # Use OIDC for secure AWS authentication (needed for ECR push)
+    permissions:
+      id-token: write
+      contents: read
+    
+    outputs:
+      image-tag: ${{ steps.push-ecr.outputs.IMAGE_TAG }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+      
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.AWS_REGION }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
       
       - name: Set up Python
         uses: actions/setup-python@v5
@@ -66,16 +82,27 @@ jobs:
       
       - name: Build Docker image
         env:
-          CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
-          CDK_AWS_REGION: ${{ env.AWS_REGION }}
+          CDK_PROJECT_PREFIX: ${{ env.CDK_PROJECT_PREFIX }}
         run: |
           chmod +x scripts/stack-app-api/build.sh
           scripts/stack-app-api/build.sh
       
       - name: Test Docker image
+        env:
+          CDK_PROJECT_PREFIX: ${{ env.CDK_PROJECT_PREFIX }}
         run: |
           chmod +x scripts/stack-app-api/test-docker.sh
           scripts/stack-app-api/test-docker.sh
+      
+      - name: Push to ECR
+        id: push-ecr
+        env:
+          CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+          CDK_AWS_REGION: ${{ env.AWS_REGION }}
+          CDK_PROJECT_PREFIX: ${{ env.CDK_PROJECT_PREFIX }}
+        run: |
+          chmod +x scripts/stack-app-api/push-to-ecr.sh
+          scripts/stack-app-api/push-to-ecr.sh
 
   deploy:
     name: Deploy App API Stack
@@ -90,23 +117,31 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+      - name: Install common dependencies
+        run: |
+          chmod +x scripts/common/install-deps.sh
+          scripts/common/install-deps.sh
       
-      - name: Configure AWS credentials
-        uses: ./.github/actions/configure-aws-credentials
-        with:
-          aws-region: ${{ env.AWS_REGION }}
-          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy App API Stack
+        env:
+          CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+          CDK_AWS_REGION: ${{ env.AWS_REGION }}
+          CDK_PROJECT_PREFIX: ${{ env.CDK_PROJECT_PREFIX }}
+          CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR || '10.0.0.0/16' }}
+          IMAGE_TAG: ${{ needs.build-and-test.outputs.image-tag }}
+        run: |
+          chmod +x scripts/stack-app-api/deploy.sh
+          scripts/stack-app-api/deploy.sh
       
-      - name: Set up Node.js
-        uses: actions/setup-node@v4
-        with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: infrastructure/package-lock.json
-      
+      - name: Tag image as latest
+        env:
+          CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+          CDK_AWS_REGION: ${{ env.AWS_REGION }}
+          CDK_PROJECT_PREFIX: ${{ env.CDK_PROJECT_PREFIX }}
+          IMAGE_TAG: ${{ needs.build-and-test.outputs.image-tag }}
+        run: |
+          chmod +x scripts/stack-app-api/tag-latest.sh
+          scripts/stack-app-api/tag-latest.sh
       - name: Set up Python
         uses: actions/setup-python@v5
         with:
@@ -146,6 +181,8 @@ jobs:
       
       - name: Deployment summary
         if: success()
+        env:
+          IMAGE_TAG: ${{ needs.build-and-test.outputs.image-tag }}
         run: |
           echo "## App API Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
@@ -153,6 +190,7 @@ jobs:
           echo "- **Region**: ${AWS_REGION}" >> $GITHUB_STEP_SUMMARY
           echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
           echo "- **Stack**: AppApiStack" >> $GITHUB_STEP_SUMMARY
+          echo "- **Image Tag**: ${IMAGE_TAG}" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           
           if [ -f cdk-outputs-app-api.json ]; then
