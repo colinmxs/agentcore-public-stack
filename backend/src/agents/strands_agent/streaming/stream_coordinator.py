@@ -128,19 +128,28 @@ class StreamCoordinator:
             # This returns the message ID of the flushed message
             message_id = self._flush_session(session_manager)
 
-            # Store metadata after flush completes (parallelized for performance)
-            # Run both message metadata and session metadata storage in parallel
-            if message_id is not None and (accumulated_metadata.get("usage") or first_token_time):
-                await self._store_metadata_parallel(
+            # Store metadata after flush completes
+            if message_id is not None:
+                # Always update session metadata (for last_model, message_count, etc.)
+                await self._update_session_metadata(
                     session_id=session_id,
                     user_id=user_id,
                     message_id=message_id,
-                    accumulated_metadata=accumulated_metadata,
-                    stream_start_time=stream_start_time,
-                    stream_end_time=stream_end_time,
-                    first_token_time=first_token_time,
-                    agent=agent  # Pass agent for model info extraction
+                    agent=agent
                 )
+
+                # Store message-level metadata only if we have usage or timing data
+                if accumulated_metadata.get("usage") or first_token_time:
+                    await self._store_message_metadata(
+                        session_id=session_id,
+                        user_id=user_id,
+                        message_id=message_id,
+                        accumulated_metadata=accumulated_metadata,
+                        stream_start_time=stream_start_time,
+                        stream_end_time=stream_end_time,
+                        first_token_time=first_token_time,
+                        agent=agent
+                    )
 
         except Exception as e:
             # Handle errors with emergency flush
@@ -593,6 +602,8 @@ class StreamCoordinator:
                 user_id=user_id,
                 session_metadata=metadata
             )
+
+            logger.info(f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}")
 
         except Exception as e:
             logger.error(f"Failed to update session metadata: {e}")
