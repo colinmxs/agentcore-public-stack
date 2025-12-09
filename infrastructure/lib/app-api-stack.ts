@@ -438,6 +438,8 @@ export class AppApiStack extends cdk.Stack {
       circuitBreaker: {
         rollback: true,
       },
+      minHealthyPercent: 100,
+      maxHealthyPercent: 200,
     });
 
     // Attach service to target group
