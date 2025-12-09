@@ -1,4 +1,4 @@
-name: FrontendStack.BuildTest.Deploy.MainDevelop
+name: FrontendStack.BuildTest.Deploy
 
 
 on:

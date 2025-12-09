@@ -1,4 +1,4 @@
-name: AppApiStack.BuildTest.Deploy.MainDevelop
+name: AppApiStack.BuildTest.Deploy
 
 on:
   push:
