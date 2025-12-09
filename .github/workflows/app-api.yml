@@ -117,6 +117,8 @@ jobs:
     
     steps:
       - name: Checkout code
+        uses: actions/checkout@v4
+      
       - name: Install common dependencies
         run: |
           chmod +x scripts/common/install-deps.sh
