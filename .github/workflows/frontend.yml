@@ -35,17 +35,23 @@ on:
         default: 'false'
 
 env:
-  AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
+  CDK_AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
   # CDK Configuration - from GitHub Variables
   CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX || 'agentcore' }}
-  CDK_AWS_REGION: ${{ vars.AWS_REGION || 'us-west-2' }}
-  CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR || '10.0.0.0/16' }}
   CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
   CDK_ENABLE_ROUTE53: ${{ vars.CDK_ENABLE_ROUTE53 || 'false' }}
   # CDK Secrets - from GitHub Secrets
   CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
   CDK_CERTIFICATE_ARN: ${{ secrets.CDK_CERTIFICATE_ARN }}
   CDK_FRONTEND_BUCKET_NAME: ${{ secrets.CDK_FRONTEND_BUCKET_NAME }}
+  # AWS Authentication
+  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+  # Build and Deploy Configuration
+  BUILD_CONFIG: production
+  CDK_REQUIRE_APPROVAL: never
+  WAIT_FOR_INVALIDATION: false
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -70,10 +76,10 @@ jobs:
           bash scripts/stack-frontend/install.sh
       
       - name: Build frontend
+        env:
+          BUILD_CONFIG: ${{ env.BUILD_CONFIG }}
         run: |
           bash scripts/stack-frontend/build.sh
-        env:
-          BUILD_CONFIG: production
       
       - name: Run frontend tests
         if: ${{ github.event.inputs.skip_tests != 'true' }}
@@ -116,21 +122,21 @@ jobs:
       - name: Configure AWS Credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ env.CDK_AWS_REGION }}
           role-session-name: GitHubActions-Frontend-CDK
-          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
       
       - name: Install system dependencies
         run: |
           bash scripts/common/install-deps.sh
       
       - name: Deploy CDK infrastructure
+        env:
+          CDK_REQUIRE_APPROVAL: ${{ env.CDK_REQUIRE_APPROVAL }}
         run: |
           bash scripts/stack-frontend/deploy-cdk.sh
-        env:
-          CDK_REQUIRE_APPROVAL: never
       
       - name: Save CDK outputs
         uses: actions/upload-artifact@v4
@@ -165,17 +171,17 @@ jobs:
       - name: Configure AWS Credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
-          aws-region: ${{ env.AWS_REGION }}
+          aws-region: ${{ env.CDK_AWS_REGION }}
           role-session-name: GitHubActions-Frontend-Assets
-          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
-          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
       
       - name: Deploy assets to S3 and invalidate CloudFront
+        env:
+          WAIT_FOR_INVALIDATION: ${{ env.WAIT_FOR_INVALIDATION }}
         run: |
           bash scripts/stack-frontend/deploy-assets.sh
-        env:
-          WAIT_FOR_INVALIDATION: false
       
       - name: Summary
         run: |
