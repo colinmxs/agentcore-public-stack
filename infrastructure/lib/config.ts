@@ -99,9 +99,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       cpu: scope.node.tryGetContext('appApi')?.cpu || 512,
       memory: scope.node.tryGetContext('appApi')?.memory || 1024,
       desiredCount: scope.node.tryGetContext('appApi')?.desiredCount ?? 0,
-      imageTag: process.env.IMAGE_TAG || (() => {
-        throw new Error('IMAGE_TAG environment variable is required for App API deployment');
-      })(),
+      imageTag: process.env.IMAGE_TAG || 'latest',
       maxCapacity: 10,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
