@@ -356,10 +356,17 @@ export class AppApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
+    // Reference the ECR repository created by the build pipeline
+    const ecrRepository = ecr.Repository.fromRepositoryName(
+      this,
+      'AppApiRepository',
+      getResourceName(config, 'app-api')
+    );
+
     // Container Definition
     const container = taskDefinition.addContainer('AppApiContainer', {
       containerName: 'app-api',
-      image: ecs.ContainerImage.fromRegistry('public.ecr.aws/docker/library/python:3.11-slim'),
+      image: ecs.ContainerImage.fromEcrRepository(ecrRepository, config.appApi.imageTag),
       logging: ecs.LogDrivers.awsLogs({
         streamPrefix: 'app-api',
         logGroup: logGroup,

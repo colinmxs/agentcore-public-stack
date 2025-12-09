@@ -33,6 +33,7 @@ export interface AppApiConfig {
   rdsInstanceClass?: string;
   rdsEngine?: string;
   rdsDatabaseName?: string;
+  imageTag: string;
 }
 
 export interface InferenceApiConfig {
@@ -93,11 +94,14 @@ export function loadConfig(scope: cdk.App): AppConfig {
       bucketName: process.env.CDK_FRONTEND_BUCKET_NAME || scope.node.tryGetContext('frontend')?.bucketName,
       cloudFrontPriceClass: scope.node.tryGetContext('frontend')?.cloudFrontPriceClass || 'PriceClass_100',
     },
-    appApi: scope.node.tryGetContext('appApi') || {
-      enabled: true,
-      cpu: 512,
-      memory: 1024,
-      desiredCount: 0,
+    appApi: {
+      enabled: scope.node.tryGetContext('appApi')?.enabled ?? true,
+      cpu: scope.node.tryGetContext('appApi')?.cpu || 512,
+      memory: scope.node.tryGetContext('appApi')?.memory || 1024,
+      desiredCount: scope.node.tryGetContext('appApi')?.desiredCount ?? 0,
+      imageTag: process.env.IMAGE_TAG || (() => {
+        throw new Error('IMAGE_TAG environment variable is required for App API deployment');
+      })(),
       maxCapacity: 10,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
