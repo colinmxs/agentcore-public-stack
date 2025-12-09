@@ -1,4 +1,5 @@
-name: Frontend Stack CI/CD
+name: FrontendStack.BuildTest.Deploy.MainDevelop
+
 
 on:
   push:
