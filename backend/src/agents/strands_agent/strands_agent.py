@@ -180,12 +180,14 @@ class StrandsAgent:
         prompt = self.multimodal_builder.build_prompt(message, files)
 
         # Stream using coordinator
+        # Pass self (StrandsAgent) as strands_agent_wrapper so coordinator can access model_config
         async for event in self.stream_coordinator.stream_response(
             agent=self.agent,
             prompt=prompt,
             session_manager=self.session_manager,
             session_id=session_id or self.session_id,
-            user_id=self.user_id
+            user_id=self.user_id,
+            strands_agent_wrapper=self  # Pass wrapper for metadata extraction
         ):
             yield event
 
