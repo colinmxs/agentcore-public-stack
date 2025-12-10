@@ -1,4 +1,4 @@
-import { inject, Injectable, signal, WritableSignal, resource, computed } from '@angular/core';
+import { inject, Injectable, signal, WritableSignal, resource, computed, effect } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { environment } from '../../../../environments/environment';
@@ -72,6 +72,14 @@ export class SessionService {
   });
 
   /**
+   * Computed signal that returns true if a session is currently selected.
+   * A session is considered selected if it has a non-empty sessionId.
+   */
+  readonly hasCurrentSession = computed(() => {
+    return this.currentSession().sessionId !== '';
+  });
+
+  /**
    * Signal for pagination parameters used by the sessions resource.
    * Update this signal to trigger a refetch with new parameters.
    * Angular's resource API automatically tracks signals read within the loader,
@@ -91,6 +99,12 @@ export class SessionService {
    * Set to null to disable the resource.
    */
   private sessionMetadataId = signal<string | null>(null);
+
+  /**
+   * Set of session IDs that are known to be new (not yet saved to backend).
+   * Used to skip unnecessary metadata fetches for brand new sessions.
+   */
+  private newSessionIds = new Set<string>();
 
   /**
    * Reactive resource for fetching sessions.
@@ -136,8 +150,6 @@ export class SessionService {
     loader: async () => {
       // Read params signal to make resource reactive to pagination changes
       const params = this.sessionsParams();
-
-      console.log('[SessionService] Resource loader called');
 
       // Ensure user is authenticated before making the request
       await this.authService.ensureAuthenticated();
@@ -221,9 +233,14 @@ export class SessionService {
       // Reading this signal inside the loader makes the resource reactive to its changes
       // Angular's resource API automatically tracks signal dependencies
       const sessionId = this.sessionMetadataId();
-      
+
       // If no session ID, return null
       if (!sessionId) {
+        return null;
+      }
+
+      // Skip API call for new sessions that haven't been saved yet
+      if (this.newSessionIds.has(sessionId)) {
         return null;
       }
 
@@ -238,11 +255,21 @@ export class SessionService {
    * Sets the session ID for the metadata resource.
    * This will automatically trigger a refetch of the resource.
    * Set to null to disable the resource.
-   * 
+   *
    * @param sessionId - Session ID to fetch metadata for, or null to disable
    */
   setSessionMetadataId(sessionId: string | null): void {
     this.sessionMetadataId.set(sessionId);
+  }
+
+  /**
+   * Checks if a session is new (not yet saved to backend).
+   *
+   * @param sessionId - The session ID to check
+   * @returns true if the session is new, false otherwise
+   */
+  isNewSession(sessionId: string): boolean {
+    return this.newSessionIds.has(sessionId);
   }
 
   /**
@@ -509,17 +536,13 @@ export class SessionService {
       messageCount: 0
     };
 
-    console.log('[SessionService] Adding session to cache:', sessionId);
-    console.log('[SessionService] Cache before update:', this.localSessionsCache());
+    // Mark this session as new to skip metadata fetches
+    this.newSessionIds.add(sessionId);
 
     // Add to local cache (will be merged with API data on next load)
     this.localSessionsCache.update(sessions => {
-      const updated = [newSession, ...sessions];
-      console.log('[SessionService] Local cache updated. Count:', updated.length);
-      return updated;
+      return [newSession, ...sessions];
     });
-
-    console.log('[SessionService] Cache after update:', this.localSessionsCache());
   }
 
   /**
@@ -548,11 +571,94 @@ export class SessionService {
   }
 
   /**
+   * Updates the title of a session in the local cache.
+   * This allows the UI to update immediately without waiting for an API refetch.
+   *
+   * @param sessionId - The session ID to update
+   * @param title - The new title for the session
+   *
+   * @example
+   * ```typescript
+   * // Update session title in cache
+   * sessionService.updateSessionTitleInCache('session-id-123', 'New Title');
+   * ```
+   */
+  updateSessionTitleInCache(sessionId: string, title: string): void {
+    // Remove from new sessions set since the title is generated after session creation
+    // This indicates the session now exists in the backend
+    this.newSessionIds.delete(sessionId);
+
+    this.localSessionsCache.update(sessions => {
+      return sessions.map(session =>
+        session.sessionId === sessionId
+          ? { ...session, title }
+          : session
+      );
+    });
+  }
+
+
+  /**
    * Clears the local session cache.
    * Useful when you want to force a full refresh from the API.
    */
   clearSessionCache(): void {
     this.localSessionsCache.set([]);
+  }
+
+  constructor() {
+    // Effect to trigger resource reload when session ID changes
+    effect(() => {
+      const id = this.sessionMetadataId();
+
+      if (id) {
+        // Check if this is a new session (in cache but not in backend yet)
+        if (this.newSessionIds.has(id)) {
+          // For new sessions, get metadata from local cache
+          const cachedSession = this.localSessionsCache().find(s => s.sessionId === id);
+          if (cachedSession) {
+            this.currentSession.set(cachedSession);
+          }
+        } else {
+          // For existing sessions, fetch from API
+          this.sessionMetadataResource.reload();
+        }
+      } else {
+        // Clear current session when no session is selected
+        this.currentSession.set({
+          sessionId: '',
+          userId: '',
+          title: '',
+          status: 'active',
+          createdAt: '',
+          lastMessageAt: '',
+          messageCount: 0
+        });
+      }
+    });
+
+    // Effect to sync sessionMetadataResource with currentSession signal
+    effect(() => {
+      const metadata = this.sessionMetadataResource.value();
+
+      if (metadata && typeof metadata === 'object' && 'sessionId' in metadata) {
+        this.currentSession.set(metadata);
+      }
+    });
+
+    // Effect to sync title updates from cache to currentSession
+    effect(() => {
+      const cache = this.localSessionsCache();
+      const currentSessionId = this.currentSession().sessionId;
+
+      // If we have a current session, check if its title was updated in the cache
+      if (currentSessionId && this.newSessionIds.has(currentSessionId)) {
+        const cachedSession = cache.find(s => s.sessionId === currentSessionId);
+        if (cachedSession && cachedSession.title !== this.currentSession().title) {
+          this.currentSession.set(cachedSession);
+        }
+      }
+    });
   }
 }
 

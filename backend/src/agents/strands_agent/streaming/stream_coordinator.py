@@ -32,7 +32,8 @@ class StreamCoordinator:
         prompt: Union[str, List[Dict[str, Any]]],
         session_manager: Any,
         session_id: str,
-        user_id: str
+        user_id: str,
+        strands_agent_wrapper: Any = None
     ) -> AsyncGenerator[str, None]:
         """
         Stream agent responses with proper lifecycle management
@@ -41,11 +42,12 @@ class StreamCoordinator:
         after the stream completes.
 
         Args:
-            agent: Strands Agent instance
+            agent: Strands Agent instance (internal agent)
             prompt: User prompt (string or ContentBlock list)
             session_manager: Session manager for persistence
             session_id: Session identifier
             user_id: User identifier
+            strands_agent_wrapper: StrandsAgent wrapper instance (has model_config, enabled_tools, etc.)
 
         Yields:
             str: SSE formatted events
@@ -128,19 +130,28 @@ class StreamCoordinator:
             # This returns the message ID of the flushed message
             message_id = self._flush_session(session_manager)
 
-            # Store metadata after flush completes (parallelized for performance)
-            # Run both message metadata and session metadata storage in parallel
-            if message_id is not None and (accumulated_metadata.get("usage") or first_token_time):
-                await self._store_metadata_parallel(
+            # Store metadata after flush completes
+            if message_id is not None:
+                # Always update session metadata (for last_model, message_count, etc.)
+                await self._update_session_metadata(
                     session_id=session_id,
                     user_id=user_id,
                     message_id=message_id,
-                    accumulated_metadata=accumulated_metadata,
-                    stream_start_time=stream_start_time,
-                    stream_end_time=stream_end_time,
-                    first_token_time=first_token_time,
-                    agent=agent  # Pass agent for model info extraction
+                    agent=strands_agent_wrapper  # Use wrapper instead of internal agent
                 )
+
+                # Store message-level metadata only if we have usage or timing data
+                if accumulated_metadata.get("usage") or first_token_time:
+                    await self._store_message_metadata(
+                        session_id=session_id,
+                        user_id=user_id,
+                        message_id=message_id,
+                        accumulated_metadata=accumulated_metadata,
+                        stream_start_time=stream_start_time,
+                        stream_end_time=stream_end_time,
+                        first_token_time=first_token_time,
+                        agent=strands_agent_wrapper  # Use wrapper instead of internal agent
+                    )
 
         except Exception as e:
             # Handle errors with emergency flush
@@ -509,8 +520,15 @@ class StreamCoordinator:
             from apis.app_api.sessions.services.metadata import store_session_metadata, get_session_metadata
             import hashlib
 
+            logger.info(f"🔍 _update_session_metadata called for session {session_id}, message_id {message_id}")
+
             # Get existing metadata or create new
             existing = await get_session_metadata(session_id, user_id)
+
+            if existing:
+                logger.info(f"📄 Found existing metadata: messageCount={existing.message_count}, has_preferences={existing.preferences is not None}")
+            else:
+                logger.info(f"📄 No existing metadata found - creating new")
 
             now = datetime.now(timezone.utc).isoformat()
 
@@ -518,6 +536,8 @@ class StreamCoordinator:
                 # First message - create session metadata
                 preferences = None
                 if agent and hasattr(agent, 'model_config'):
+                    logger.info(f"📦 Agent has model_config: model_id={agent.model_config.model_id}")
+
                     # Generate system prompt hash for tracking exact prompt version
                     # This hash represents the FINAL rendered system prompt (after date injection, etc.)
                     system_prompt_hash = None
@@ -536,6 +556,9 @@ class StreamCoordinator:
                         enabled_tools=enabled_tools,
                         system_prompt_hash=system_prompt_hash
                     )
+                    logger.info(f"✨ Created new preferences: last_model={preferences.last_model}")
+                else:
+                    logger.warning(f"⚠️ Agent is None or missing model_config")
 
                 metadata = SessionMetadata(
                     session_id=session_id,
@@ -553,8 +576,12 @@ class StreamCoordinator:
                 # Update existing - only update what changed
                 preferences = existing.preferences
                 if agent and hasattr(agent, 'model_config'):
+                    logger.info(f"📦 Updating preferences with model_id={agent.model_config.model_id}")
+
                     # Update preferences if model/temperature/tools/system_prompt changed
                     prefs_dict = preferences.model_dump(by_alias=False) if preferences else {}
+                    logger.info(f"📝 Existing prefs_dict: {prefs_dict}")
+
                     prefs_dict['last_model'] = agent.model_config.model_id
                     prefs_dict['last_temperature'] = getattr(agent.model_config, 'temperature', None)
 
@@ -573,6 +600,9 @@ class StreamCoordinator:
                             prefs_dict['system_prompt_hash'] = new_hash
 
                     preferences = SessionPreferences(**prefs_dict)
+                    logger.info(f"✨ Updated preferences: last_model={preferences.last_model}")
+                else:
+                    logger.warning(f"⚠️ Agent is None or missing model_config - keeping existing preferences")
 
                 metadata = SessionMetadata(
                     session_id=session_id,
@@ -593,6 +623,8 @@ class StreamCoordinator:
                 user_id=user_id,
                 session_metadata=metadata
             )
+
+            logger.info(f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}")
 
         except Exception as e:
             logger.error(f"Failed to update session metadata: {e}")

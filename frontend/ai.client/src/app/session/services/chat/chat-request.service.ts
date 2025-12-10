@@ -35,8 +35,6 @@ export class ChatRequestService {
     const isNewSession = !sessionId;
     sessionId = sessionId || uuidv4();
 
-    console.log('[ChatRequestService] submitChatRequest - isNewSession:', isNewSession, 'sessionId:', sessionId);
-
     this.navigateToSession(sessionId);
 
     // If this is a new session, add it to the session cache optimistically
@@ -44,8 +42,6 @@ export class ChatRequestService {
       // Get the current user from UserService
       const user = this.userService.getUser();
       const userId = user?.empl_id || 'anonymous';
-
-      console.log('[ChatRequestService] Adding new session to cache. userId:', userId);
 
       // Add the new session to the cache so it appears in the sidenav immediately
       this.sessionService.addSessionToCache(sessionId, userId);
