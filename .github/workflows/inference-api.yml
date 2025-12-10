@@ -64,7 +64,7 @@ jobs:
         run: |
           bash scripts/common/install-deps.sh
 
-      - name: Install CDK dependencies
+      - name: Install inference-api dependencies
         run: |
           bash scripts/stack-inference-api/install.sh
 

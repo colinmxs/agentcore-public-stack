@@ -11,23 +11,12 @@ RUN apt-get update && apt-get install -y \
     curl \
     && rm -rf /var/lib/apt/lists/*
 
-# Copy pyproject.toml to install dependencies
-COPY backend/pyproject.toml ./
+# Copy pyproject.toml and README for installation
+COPY backend/pyproject.toml backend/README.md ./
 
-# Install Python dependencies only (extract from pyproject.toml)
+# Install Python dependencies from pyproject.toml
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir \
-    fastapi==0.116.1 \
-    uvicorn[standard]==0.35.0 \
-    boto3>=1.40.1 \
-    python-dotenv>=1.0.0 \
-    httpx>=0.24.0 \
-    pyjwt[crypto]>=2.8.0 \
-    strands-agents==1.14.0 \
-    strands-agents-tools==0.2.3 \
-    ddgs>=9.0.0 \
-    bedrock-agentcore \
-    nova-act==2.3.18.0
+    pip install --no-cache-dir .
 
 # Production stage
 FROM python:3.11-slim

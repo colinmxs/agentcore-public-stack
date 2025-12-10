@@ -75,6 +75,21 @@ main() {
     fi
     
     log_success "App API dependencies installed successfully!"
+    
+    # ===========================================================
+    # Install CDK Dependencies
+    # ===========================================================
+    
+    log_info "Installing CDK dependencies..."
+    cd "${PROJECT_ROOT}/infrastructure"
+    
+    if [ -d "node_modules" ]; then
+        log_info "node_modules already exists, skipping npm install"
+    else
+        npm install
+    fi
+    
+    log_success "CDK dependencies installed successfully"
 }
 
 main "$@"

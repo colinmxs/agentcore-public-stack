@@ -69,7 +69,7 @@ jobs:
         run: |
           bash scripts/common/install-deps.sh
 
-      - name: Install CDK dependencies
+      - name: Install app-api dependencies
         run: |
           bash scripts/stack-app-api/install.sh
 
