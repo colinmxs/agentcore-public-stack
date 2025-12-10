@@ -73,6 +73,7 @@ ensure_ecr_repo() {
                         "description": "Keep last 30 commit SHA tagged images",
                         "selection": {
                             "tagStatus": "tagged",
+                            "tagPrefixList": [""],
                             "countType": "imageCountMoreThan",
                             "countNumber": 30
                         },
@@ -99,6 +100,55 @@ ensure_ecr_repo() {
         log_success "ECR repository created: ${repo_name}"
     else
         log_info "ECR repository already exists"
+        
+        # Ensure lifecycle policy exists (in case repo was created without it)
+        log_info "Ensuring lifecycle policy is set..."
+        aws ecr put-lifecycle-policy \
+            --repository-name "${repo_name}" \
+            --region "${region}" \
+            --lifecycle-policy-text '{
+                "rules": [
+                    {
+                        "rulePriority": 1,
+                        "description": "Keep images tagged with latest, deployed, prod, staging, or release tags",
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": ["latest", "deployed", "prod", "staging", "v", "release"],
+                            "countType": "imageCountMoreThan",
+                            "countNumber": 999
+                        },
+                        "action": {
+                            "type": "expire"
+                        }
+                    },
+                    {
+                        "rulePriority": 2,
+                        "description": "Keep last 30 commit SHA tagged images",
+                        "selection": {
+                            "tagStatus": "tagged",
+                            "tagPrefixList": [""],
+                            "countType": "imageCountMoreThan",
+                            "countNumber": 30
+                        },
+                        "action": {
+                            "type": "expire"
+                        }
+                    },
+                    {
+                        "rulePriority": 3,
+                        "description": "Delete untagged images after 7 days",
+                        "selection": {
+                            "tagStatus": "untagged",
+                            "countType": "sinceImagePushed",
+                            "countUnit": "days",
+                            "countNumber": 7
+                        },
+                        "action": {
+                            "type": "expire"
+                        }
+                    }
+                ]
+            }' > /dev/null 2>&1 || log_info "Lifecycle policy already exists or was updated"
     fi
 }
 
