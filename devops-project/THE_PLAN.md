@@ -139,31 +139,31 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 **Goal**: Dedicated Fargate Tasks sharing Stack 2's Network
 
 #### CDK Infrastructure
-- [ ] **Create InferenceApiStack File**: Create `infrastructure/lib/inference-api-stack.ts`.
-- [ ] **Import Network Resources**: Read VPC ID, Subnet IDs, ALB ARN, and Listener ARN from SSM Parameter Store.
-- [ ] **Define ECR Repository**: Create ECR repository for Inference API Docker images.
-- [ ] **Define Task Definition**: Create Fargate task definition with higher CPU/memory allocation for inference workloads, GPU support if configured.
-- [ ] **Define Target Group**: Create ALB target group with health check path `/health`.
-- [ ] **Define Listener Rule**: Add listener rule to ALB to route `/inference/**` to Inference API target group.
-- [ ] **Define ECS Service**: Create Fargate service in the imported VPC, attaching to the new target group.
-- [ ] **Add CloudFormation Outputs**: Export service name and task definition ARN.
+- [x] **Create InferenceApiStack File**: Create `infrastructure/lib/inference-api-stack.ts`.
+- [x] **Import Network Resources**: Read VPC ID, Subnet IDs, ALB ARN, and Listener ARN from SSM Parameter Store.
+- [x] **Define ECR Repository**: Create ECR repository for Inference API Docker images.
+- [x] **Define Task Definition**: Create Fargate task definition with higher CPU/memory allocation for inference workloads, GPU support if configured.
+- [x] **Define Target Group**: Create ALB target group with health check path `/health`.
+- [x] **Define Listener Rule**: Add listener rule to ALB to route `/inference/**` to Inference API target group.
+- [x] **Define ECS Service**: Create Fargate service in the imported VPC, attaching to the new target group.
+- [x] **Add CloudFormation Outputs**: Export service name and task definition ARN.
 
 #### Build & Deploy Scripts
-- [ ] **Create Scripts Directory**: Set up `scripts/stack-inference-api/`.
-- [ ] **Script: Install Dependencies**: Create `scripts/stack-inference-api/install.sh` to install Python dependencies.
-- [ ] **Script: Build Docker Image**: Create `scripts/stack-inference-api/build.sh` to build and tag Docker image.
-- [ ] **Script: Run Tests**: Create `scripts/stack-inference-api/test.sh` to run inference tests.
-- [ ] **Script: Deploy Infrastructure**: Create `scripts/stack-inference-api/deploy.sh` to deploy CDK stack and push Docker image to ECR.
+- [x] **Create Scripts Directory**: Set up `scripts/stack-inference-api/`.
+- [x] **Script: Install Dependencies**: Create `scripts/stack-inference-api/install.sh` to install Python dependencies.
+- [x] **Script: Build Docker Image**: Create `scripts/stack-inference-api/build.sh` to build and tag Docker image.
+- [x] **Script: Run Tests**: Create `scripts/stack-inference-api/test.sh` to run inference tests.
+- [x] **Script: Deploy Infrastructure**: Create `scripts/stack-inference-api/deploy.sh` to deploy CDK stack and push Docker image to ECR.
 
 #### CI/CD Pipeline
-- [ ] **Create Workflow File**: Create `.github/workflows/inference-api.yml`.
-- [ ] **Configure Path Triggers**: Set `paths` filter to trigger on `backend/src/apis/inference_api/**` changes.
-- [ ] **Add Dependency Installation Step**: Call `scripts/common/install-deps.sh`.
-- [ ] **Add Install Step**: Call `scripts/stack-inference-api/install.sh`.
-- [ ] **Add Build Step**: Call `scripts/stack-inference-api/build.sh`.
-- [ ] **Add Test Step**: Call `scripts/stack-inference-api/test.sh`.
-- [ ] **Add Deploy Step**: Call `scripts/stack-inference-api/deploy.sh`.
-- [ ] **Configure AWS Credentials**: Use GitHub OIDC or AWS credentials from secrets.
+- [x] **Create Workflow File**: Create `.github/workflows/inference-api.yml`.
+- [x] **Configure Path Triggers**: Set `paths` filter to trigger on `backend/src/apis/inference_api/**` changes.
+- [x] **Add Dependency Installation Step**: Call `scripts/common/install-deps.sh`.
+- [x] **Add Install Step**: Call `scripts/stack-inference-api/install.sh`.
+- [x] **Add Build Step**: Call `scripts/stack-inference-api/build.sh`.
+- [x] **Add Test Step**: Call `scripts/stack-inference-api/test.sh`.
+- [x] **Add Deploy Step**: Call `scripts/stack-inference-api/deploy.sh`.
+- [x] **Configure AWS Credentials**: Use GitHub OIDC or AWS credentials from secrets.
 
 **🔒 HUMAN APPROVAL REQUIRED**
 - [ ] [HUMAN] Phase 3 verified and approved to proceed to Phase 4

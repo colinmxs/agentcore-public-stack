@@ -2,6 +2,7 @@
 import * as cdk from 'aws-cdk-lib/core';
 import { FrontendStack } from '../lib/frontend-stack';
 import { AppApiStack } from '../lib/app-api-stack';
+import { InferenceApiStack } from '../lib/inference-api-stack';
 import { loadConfig, getStackEnv } from '../lib/config';
 
 const app = new cdk.App();
@@ -27,6 +28,16 @@ if (config.appApi.enabled) {
     env,
     description: `${config.projectPrefix} App API Stack - VPC, ALB, Fargate, and Database`,
     stackName: `${config.projectPrefix}-AppApiStack`,
+  });
+}
+
+// Inference API Stack - Fargate for AI Workloads
+if (config.inferenceApi.enabled) {
+  new InferenceApiStack(app, 'InferenceApiStack', {
+    config,
+    env,
+    description: `${config.projectPrefix} Inference API Stack - Fargate for AI Workloads`,
+    stackName: `${config.projectPrefix}-InferenceApiStack`,
   });
 }
 

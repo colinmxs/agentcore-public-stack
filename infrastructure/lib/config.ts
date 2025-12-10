@@ -44,6 +44,7 @@ export interface InferenceApiConfig {
   desiredCount: number;
   maxCapacity: number;
   enableGpu: boolean;
+  imageTag: string;
 }
 
 export interface AgentCoreConfig {
@@ -113,6 +114,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       desiredCount: 1,
       maxCapacity: 5,
       enableGpu: false,
+      imageTag: process.env.IMAGE_TAG || 'latest',
     },
     agentCore: scope.node.tryGetContext('agentCore') || {
       enabled: true,
