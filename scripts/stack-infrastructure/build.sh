@@ -11,8 +11,14 @@ set -e
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 
-# Source common utilities
-source "${PROJECT_ROOT}/scripts/common/load-env.sh"
+# Simple logging functions
+log_info() {
+    echo "[INFO] $1"
+}
+
+log_success() {
+    echo "[SUCCESS] $1"
+}
 
 # ===========================================================
 # Build CDK TypeScript Code
