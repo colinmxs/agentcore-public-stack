@@ -292,8 +292,8 @@ async def list_bedrock_models(
     by_provider: Optional[str] = Query(None, description="Filter by provider name (e.g., 'Anthropic', 'Amazon')"),
     by_output_modality: Optional[str] = Query(None, description="Filter by output modality (e.g., 'TEXT', 'IMAGE')"),
     by_inference_type: Optional[str] = Query(None, description="Filter by inference type (e.g., 'ON_DEMAND', 'PROVISIONED')"),
-    max_results: Optional[int] = Query(100, ge=1, le=1000, description="Maximum number of models to return"),
-    next_token: Optional[str] = Query(None, description="Pagination token for next page"),
+    by_customization_type: Optional[str] = Query(None, description="Filter by customization type (e.g., 'FINE_TUNING', 'CONTINUED_PRE_TRAINING')"),
+    max_results: Optional[int] = Query(None, ge=1, le=1000, description="Maximum number of models to return (client-side limit)"),
     admin_user: User = Depends(require_admin),
 ):
     """
@@ -302,16 +302,20 @@ async def list_bedrock_models(
     This endpoint queries AWS Bedrock to retrieve information about available
     foundation models, including their capabilities, providers, and configurations.
 
+    Note: The AWS Bedrock API doesn't support pagination or maxResults parameters.
+    All filtering is done server-side via query parameters. Client-side limiting
+    can be applied using the max_results parameter.
+
     Args:
         by_provider: Optional filter by provider name
         by_output_modality: Optional filter by output modality
         by_inference_type: Optional filter by inference type
-        max_results: Maximum number of models to return (1-1000, default: 100)
-        next_token: Pagination token for retrieving next page
+        by_customization_type: Optional filter by customization type
+        max_results: Optional client-side limit on number of models to return
         admin_user: Authenticated admin user (injected by dependency)
 
     Returns:
-        BedrockModelsResponse with list of foundation models and pagination info
+        BedrockModelsResponse with list of foundation models
 
     Raises:
         HTTPException:
@@ -326,46 +330,57 @@ async def list_bedrock_models(
         bedrock_region = os.environ.get('AWS_REGION', 'us-east-1')
         bedrock_client = boto3.client('bedrock', region_name=bedrock_region)
 
-        # Build request parameters
-        request_params = {
-            'maxResults': max_results,
-        }
+        # Build request parameters (only supported parameters)
+        request_params = {}
 
-        # Add optional filters
+        # Add optional filters (only these are supported by the API)
         if by_provider:
             request_params['byProvider'] = by_provider
         if by_output_modality:
             request_params['byOutputModality'] = by_output_modality
         if by_inference_type:
             request_params['byInferenceType'] = by_inference_type
-        if next_token:
-            request_params['nextToken'] = next_token
+        if by_customization_type:
+            request_params['byCustomizationType'] = by_customization_type
 
         # Call AWS Bedrock API
         logger.debug(f"Calling list_foundation_models with params: {request_params}")
         response = bedrock_client.list_foundation_models(**request_params)
 
         # Transform AWS response to our response model
-        model_summaries = [
-            FoundationModelSummary(
-                modelId=model.get('modelId', ''),
-                modelName=model.get('modelName', ''),
-                providerName=model.get('providerName', ''),
-                inputModalities=model.get('inputModalities', []),
-                outputModalities=model.get('outputModalities', []),
-                responseStreamingSupported=model.get('responseStreamingSupported', False),
-                customizationsSupported=model.get('customizationsSupported', []),
-                inferenceTypesSupported=model.get('inferenceTypesSupported', []),
-                modelLifecycle=model.get('modelLifecycle'),
+        all_models = response.get('modelSummaries', [])
+        
+        # Apply client-side limiting if requested
+        if max_results and len(all_models) > max_results:
+            all_models = all_models[:max_results]
+            logger.debug(f"Limited results to {max_results} models (client-side)")
+
+        model_summaries = []
+        for model in all_models:
+            # Extract modelLifecycle status - it can be a dict with 'status' key or a string
+            model_lifecycle = model.get('modelLifecycle')
+            if isinstance(model_lifecycle, dict):
+                model_lifecycle = model_lifecycle.get('status')
+            
+            model_summaries.append(
+                FoundationModelSummary(
+                    modelId=model.get('modelId', ''),
+                    modelName=model.get('modelName', ''),
+                    providerName=model.get('providerName', ''),
+                    inputModalities=model.get('inputModalities', []),
+                    outputModalities=model.get('outputModalities', []),
+                    responseStreamingSupported=model.get('responseStreamingSupported', False),
+                    customizationsSupported=model.get('customizationsSupported', []),
+                    inferenceTypesSupported=model.get('inferenceTypesSupported', []),
+                    modelLifecycle=model_lifecycle,
+                )
             )
-            for model in response.get('modelSummaries', [])
-        ]
 
         logger.info(f"✅ Retrieved {len(model_summaries)} Bedrock foundation models")
 
         return BedrockModelsResponse(
             models=model_summaries,
-            nextToken=response.get('nextToken'),
+            nextToken=None,  # API doesn't support pagination
             totalCount=len(model_summaries),
         )
 
