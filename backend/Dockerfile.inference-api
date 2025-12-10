@@ -23,9 +23,11 @@ RUN pip install --no-cache-dir --upgrade pip && \
     python-dotenv>=1.0.0 \
     httpx>=0.24.0 \
     pyjwt[crypto]>=2.8.0 \
-    anthropic>=0.30.0 \
-    langchain>=0.3.10 \
-    langchain-anthropic>=0.3.0
+    strands-agents==1.14.0 \
+    strands-agents-tools==0.2.3 \
+    ddgs>=9.0.0 \
+    bedrock-agentcore \
+    nova-act==2.3.18.0
 
 # Production stage
 FROM python:3.11-slim
