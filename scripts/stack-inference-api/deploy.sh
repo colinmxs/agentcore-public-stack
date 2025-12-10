@@ -88,6 +88,9 @@ main() {
     # Use CDK_REQUIRE_APPROVAL env var with fallback to never
     REQUIRE_APPROVAL="${CDK_REQUIRE_APPROVAL:-never}"
     
+    # Export IMAGE_TAG so it's available to CDK process
+    export IMAGE_TAG
+    
     npx cdk deploy InferenceApiStack \
         --require-approval ${REQUIRE_APPROVAL} \
         --context environment="${DEPLOY_ENVIRONMENT}" \
