@@ -70,19 +70,6 @@ ensure_ecr_repo() {
                     },
                     {
                         "rulePriority": 2,
-                        "description": "Keep last 30 commit SHA tagged images",
-                        "selection": {
-                            "tagStatus": "tagged",
-                            "tagPrefixList": [""],
-                            "countType": "imageCountMoreThan",
-                            "countNumber": 30
-                        },
-                        "action": {
-                            "type": "expire"
-                        }
-                    },
-                    {
-                        "rulePriority": 3,
                         "description": "Delete untagged images after 7 days",
                         "selection": {
                             "tagStatus": "untagged",
@@ -123,19 +110,6 @@ ensure_ecr_repo() {
                     },
                     {
                         "rulePriority": 2,
-                        "description": "Keep last 30 commit SHA tagged images",
-                        "selection": {
-                            "tagStatus": "tagged",
-                            "tagPrefixList": [""],
-                            "countType": "imageCountMoreThan",
-                            "countNumber": 30
-                        },
-                        "action": {
-                            "type": "expire"
-                        }
-                    },
-                    {
-                        "rulePriority": 3,
                         "description": "Delete untagged images after 7 days",
                         "selection": {
                             "tagStatus": "untagged",
