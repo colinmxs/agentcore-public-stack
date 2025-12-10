@@ -204,8 +204,7 @@ main() {
         --type "String" \
         --description "Current image tag for Inference API deployed to ECR" \
         --overwrite \
-        --region "${CDK_AWS_REGION}" \
-        --tags "Key=Project,Value=${CDK_PROJECT_PREFIX}" "Key=ManagedBy,Value=GitHubActions"
+        --region "${CDK_AWS_REGION}"
     
     log_success "Image tag stored in SSM: ${IMAGE_TAG}"
     
