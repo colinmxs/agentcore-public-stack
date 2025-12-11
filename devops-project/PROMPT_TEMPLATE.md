@@ -5,23 +5,17 @@ You are implementing a 5-stack AWS CDK application with platform-agnostic CI/CD 
 
 ## Context Files
 1. **THE_PLAN.md**: Your implementation checklist with all tasks
-2. **CLAUDES_INSTRUCTIONS.md**: Your operational constraints and quality standards
-3. **CLAUDES_LESSONS_PHASE*.md**: Lessons learned and best practices from completed phases
 
 ## Instructions
 1. Open and read `THE_PLAN.md` to understand all pending tasks
-2. Read `CLAUDES_INSTRUCTIONS.md` to understand constraints and rules
-3. Review relevant `CLAUDES_LESSONS_PHASE*.md` files to avoid repeating past mistakes
-4. Identify the next unchecked task in `THE_PLAN.md`
-5. Complete the task fully (write code, create files, test, etc.)
-6. Verify your work meets the quality standards
-7. Update `THE_PLAN.md` to mark the task as complete (`- [x]`)
-8. Repeat steps 4-7 until you reach a `[HUMAN]` checkpoint at the end of a phase
-9. **STOP** when you reach a `[HUMAN]` checkpoint and wait for human approval before continuing
+2. Identify the next unchecked task in `THE_PLAN.md`
+3. Complete the task fully (write code, create files, test, etc.)
+4. Verify your work meets the quality standards
+5. Update `THE_PLAN.md` to mark the task as complete (`- [x]`)
+6. Repeat steps 4-7 until you reach a `[HUMAN]` checkpoint at the end of a phase
+7. **STOP** when you reach a `[HUMAN]` checkpoint and wait for human approval before continuing
 
 ## Critical Rules
-- Follow ALL constraints in `CLAUDES_INSTRUCTIONS.md`. YOU MUST READ THIS FILE ENTIRELY.
-- **Apply lessons learned** from previous phases' `CLAUDES_LESSONS_PHASE*.md` documents to avoid repeating mistakes. READ THESE FILES ENTIRELY
 - **Create empty template** `CLAUDES_LESSONS_PHASE<N>.md` at phase start (do NOT pre-fill)
 - **Update lessons learned ONLY** during testing/troubleshooting with human
 - Complete tasks sequentially - do not skip ahead

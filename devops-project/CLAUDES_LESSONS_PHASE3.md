@@ -129,7 +129,189 @@ fi
 
 ## GitHub Actions & AWS
 
-_This section will be filled in as we troubleshoot CI/CD and AWS deployment issues during testing._
+### **Issue: Workflow Naming Consistency**
+**Problem**: Infrastructure workflow was named `"Infrastructure Stack CI/CD"` while others used pattern like `"AppApiStack.BuildTest.Deploy"`.
+
+**Solution**: Standardized all workflow names to `<StackName>.BuildTest.Deploy` format:
+- `InfrastructureStack.BuildTest.Deploy`
+- `AppApiStack.BuildTest.Deploy`
+- `InferenceApiStack.BuildTest.Deploy`
+- `FrontendStack.BuildTest.Deploy`
+
+**Lesson**: Establish naming conventions early and apply consistently across all workflows.
+
+---
+
+### **Issue: SSM Parameter Tags with `--overwrite`**
+**Problem**: AWS SSM `put-parameter` failed with error:
+```
+Invalid request: tags and overwrite can't be used together
+```
+
+**Root Cause**: Attempting to use `--tags` and `--overwrite` flags together when storing image tags in SSM.
+
+**Solution**: Remove `--tags` from put-parameter commands. AWS doesn't allow updating tags when overwriting existing parameters:
+```bash
+aws ssm put-parameter \
+    --name "${SSM_PARAM_NAME}" \
+    --value "${IMAGE_TAG}" \
+    --type "String" \
+    --overwrite \
+    --region "${CDK_AWS_REGION}"
+# No --tags flag when using --overwrite
+```
+
+**Lesson**: SSM parameters are immutable regarding tags once created. Tags can only be added via `AddTagsToResource` API after creation.
+
+---
+
+### **Issue: Docker Image Tag Management**
+**Problem**: ECS services attempted to deploy with `"latest"` tag instead of specific git SHA tags.
+
+**Root Cause**: 
+1. Config defaulted imageTag to `'latest'` as fallback
+2. IMAGE_TAG wasn't being passed to CDK properly
+
+**Solution Iteration**:
+1. ❌ Tried passing via environment variable - not available to subprocess
+2. ❌ Tried passing via `--context imageTag` - required for every stack
+3. ✅ **Final Solution**: Store image tag in SSM after ECR push, read from SSM in CDK
+
+**Implementation**:
+```bash
+# In push-to-ecr.sh - after successful push
+aws ssm put-parameter \
+    --name "/${CDK_PROJECT_PREFIX}/app-api/image-tag" \
+    --value "${IMAGE_TAG}" \
+    --type "String" \
+    --overwrite
+```
+
+```typescript
+// In CDK stack - read at deployment time
+const imageTag = ssm.StringParameter.valueForStringParameter(
+  this,
+  `/${config.projectPrefix}/app-api/image-tag`
+);
+```
+
+**Benefits**:
+- ✅ No need to pass imageTag via context
+- ✅ Image tag always matches what's in ECR
+- ✅ Decouples build from deploy
+- ✅ Works for frontend stack (no image tag needed)
+
+**Lesson**: For runtime values that vary between deployments, use SSM Parameter Store rather than CDK context. Context is for configuration, SSM is for deployment state.
+
+---
+
+### **Issue: GitHub Actions Cache "Failures"**
+**Problem**: Cache save step showed warnings:
+```
+Failed to save: Unable to reserve cache with key infrastructure-node-modules-<hash>, 
+another job may be creating this cache.
+```
+
+**Reality**: This is **expected behavior**, not a real failure.
+
+**Explanation**:
+- Cache keys are based on `package-lock.json` hash
+- Caches are immutable - once created, can't be overwritten
+- If package-lock.json hasn't changed, hash is identical
+- GitHub Actions skips saving duplicate cache
+- Subsequent jobs successfully restore from existing cache
+
+**Lesson**: "Cache save failed" warnings are normal when dependencies haven't changed. It means the caching system is working correctly by reusing existing caches.
+
+---
+
+### **Issue: Node Module Caching in Workflows**
+**Problem**: Cache save failed with "Path does not exist" for `infrastructure/node_modules`.
+
+**Root Cause**: Install jobs were calling Python/app-specific install scripts that didn't install CDK dependencies.
+
+**Solution**: Updated all install scripts to install both app dependencies AND CDK dependencies:
+```bash
+# In scripts/stack-app-api/install.sh
+log_info "Installing Python dependencies..."
+python3 -m pip install -e .
+
+# Install CDK dependencies
+log_info "Installing CDK dependencies..."
+cd "${PROJECT_ROOT}/infrastructure"
+npm install
+```
+
+**Lesson**: When workflows cache infrastructure dependencies, ensure install scripts actually create what's being cached. Don't assume stack-specific scripts will handle CDK installation.
+
+---
+
+### **Issue: Docker Build with `pyproject.toml`**
+**Problem 1**: Duplicated dependencies between `pyproject.toml` and Dockerfile.
+**Problem 2**: `pip install .` failed with "src does not exist" error.
+
+**Root Cause**: `pyproject.toml` configured with `package-dir = {"" = "src"}`, requiring src directory for installation.
+
+**Solution Iteration**:
+1. ❌ Tried removing duplicate list, using `pip install .` - failed without src
+2. ✅ Copy src directory to builder stage, then `pip install .`
+3. ✅ For inference-api: `pip install ".[agentcore]"` to include optional dependencies
+
+**Final Implementation**:
+```dockerfile
+# Copy pyproject.toml and source code for installation
+COPY backend/pyproject.toml backend/README.md ./
+COPY backend/src ./src
+
+# Install Python dependencies from pyproject.toml
+RUN pip install --no-cache-dir --upgrade pip && \
+    pip install --no-cache-dir ".[agentcore]"
+```
+
+**Benefits**:
+- ✅ Single source of truth (pyproject.toml)
+- ✅ No duplicate dependency lists
+- ✅ Proper handling of optional dependencies
+
+**Lesson**: When using src-layout packages, Docker needs the source directory during pip install. Multi-stage builds can copy src to builder, install packages, then copy only installed packages to production stage.
+
+---
+
+### **Issue: Missing Admin Module Import**
+**Problem**: App API failed to start with `ModuleNotFoundError: No module named 'admin'`.
+
+**Root Cause**: Import used absolute path `from admin.routes` instead of relative path `from .admin.routes`.
+
+**Solution**: Changed to relative import within the package:
+```python
+# Wrong - absolute import
+from admin.routes import router as admin_router
+
+# Correct - relative import  
+from .admin.routes import router as admin_router
+```
+
+**Lesson**: Within a package, always use relative imports (with `.` prefix) for sibling modules. Absolute imports assume the module is on PYTHONPATH or installed as a separate package.
+
+---
+
+### **Issue: Workflow Job Structure - Install/Test/Build/Deploy**
+**Problem**: Some workflows had monolithic jobs combining multiple concerns.
+
+**Solution**: Standardized all workflows to 4-job pattern:
+1. **install**: Install dependencies, cache node_modules
+2. **test**: Restore cache, run tests
+3. **build**: Restore cache, build artifacts (Docker for APIs, dist for frontend)
+4. **deploy**: Restore cache/artifacts, deploy to AWS
+
+**Benefits**:
+- ✅ Clear separation of concerns
+- ✅ Efficient caching reduces build times
+- ✅ Can skip tests via workflow_dispatch input
+- ✅ Test failures don't waste time building
+- ✅ Build failures caught before deployment
+
+**Lesson**: Break workflows into logical stages with proper dependency chaining and caching. Don't combine install/test/build/deploy into single monolithic jobs.
 
 ---
 
