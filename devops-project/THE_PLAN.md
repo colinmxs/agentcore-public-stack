@@ -168,30 +168,74 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 **🔒 HUMAN APPROVAL REQUIRED**
 - [x] [HUMAN] Phase 3 verified and approved to proceed to Phase 4
 
-### Phase 4: Agent Core Stack (Managed Services)
-**Goal**: Serverless/Managed infrastructure for agents
+### Phase 4: Agent Core Stack (AWS Bedrock AgentCore Runtime)
+**Goal**: Deploy Strands Agent as AWS Bedrock AgentCore Runtime with managed memory, code interpreter, and browser capabilities
 
 #### CDK Infrastructure
 - [ ] **Create AgentCoreStack File**: Create `infrastructure/lib/agent-core-stack.ts`.
-- [ ] **Define Agent Storage**: Create DynamoDB table for agent state/configuration or S3 bucket for agent artifacts.
-- [ ] **Define Lambda Functions**: Create Lambda functions for agent orchestration (if using serverless model).
-- [ ] **Define Step Functions**: Create Step Functions state machine for agent workflow execution (if applicable).
-- [ ] **Define IAM Roles**: Create execution roles with least-privilege access to required services.
-- [ ] **Export Agent Resources**: Store resource ARNs in SSM Parameter Store under `/${projectPrefix}/agents/`.
-- [ ] **Add CloudFormation Outputs**: Export Lambda function names and Step Function ARN.
+- [ ] **Define ECR Repository**: Create ECR repository for agent container images (`${projectPrefix}-agent-core-${awsAccount}`).
+- [ ] **Define IAM Execution Role**: Create execution role for AgentCore Runtime with permissions for:
+  - CloudWatch Logs (create log groups/streams, put log events)
+  - X-Ray tracing (put trace segments, telemetry records)
+  - CloudWatch Metrics (put metric data to `bedrock-agentcore` namespace)
+  - Bedrock model access (invoke models including Claude, Nova, etc.)
+  - AgentCore Gateway access (invoke gateway for MCP tools)
+  - AgentCore Memory access (create/retrieve events, memory records)
+  - AgentCore Code Interpreter access (create/invoke sessions)
+  - AgentCore Browser access (start/control browser sessions, web automation)
+  - SSM Parameter Store access (read parameters under `/${projectPrefix}/`)
+- [ ] **Define Memory Execution Role**: Create dedicated role for AgentCore Memory with Bedrock model inference policy.
+- [ ] **Create AgentCore Memory**: Deploy `CfnMemory` with L1 construct including:
+  - User preference extraction strategy
+  - Semantic fact extraction strategy
+  - Conversation summary strategy
+  - Event expiry duration (90 days for short-term memory)
+- [ ] **Create AgentCore Runtime**: Deploy `CfnRuntime` with:
+  - Container URI pointing to ECR repository (`${repositoryUri}:git sha`)
+  - Network mode: PUBLIC (for internet access)
+  - Protocol configuration: HTTP
+  - Environment variables: LOG_LEVEL, PROJECT_NAME, ENVIRONMENT, MEMORY_ARN, MEMORY_ID, BROWSER_ID, CODE_INTERPRETER_ID
+  - Dependencies on execution role, memory, code interpreter, and browser resources
+- [ ] **Export AgentCore Resources to SSM**: Store in Parameter Store:
+  - `/${projectPrefix}/agentcore/runtime-arn`
+  - `/${projectPrefix}/agentcore/runtime-id`
+  - `/${projectPrefix}/agentcore/memory-arn`
+  - `/${projectPrefix}/agentcore/memory-id`
+  - `/${projectPrefix}/agentcore/browser-id`
+  - `/${projectPrefix}/agentcore/code-interpreter-id`
+  - `/${projectPrefix}/agentcore/ecr-repository-uri`
+- [ ] **Add CloudFormation Outputs**: Export Runtime ARN, Memory ARN, ECR Repository URI.
 
 #### Build & Deploy Scripts
 - [ ] **Create Scripts Directory**: Set up `scripts/stack-agent-core/`.
-- [ ] **Script: Install Dependencies**: Create `scripts/stack-agent-core/install.sh` to install agent dependencies.
-- [ ] **Script: Run Tests**: Create `scripts/stack-agent-core/test.sh` to run agent tests.
-- [ ] **Script: Deploy Infrastructure**: Create `scripts/stack-agent-core/deploy.sh` to deploy CDK stack.
+- [ ] **Create Dockerfile for Agent**: Create `backend/Dockerfile.agent-core` to containerize the Strands Agent from `backend/src/agents/strands_agent/` with:
+  - ARM64 platform support (`--platform linux/arm64`)
+  - Python runtime with all agent dependencies
+  - Entry point configured for AgentCore Runtime HTTP protocol
+  - Include builtin_tools, local_tools, and utils modules
+- [ ] **Script: Install Dependencies**: Create `scripts/stack-agent-core/install.sh` to install Poetry/pip dependencies for agent.
+- [ ] **Script: Build Docker Image**: Create `scripts/stack-agent-core/build.sh` to build ARM64 container image and tag as `agent-core:latest`.
+- [ ] **Script: Push to ECR**: Create `scripts/stack-agent-core/push-to-ecr.sh` to authenticate and push to ECR repository.
+- [ ] **Script: Tag Latest**: Create `scripts/stack-agent-core/tag-latest.sh` to tag and push latest version.
+- [ ] **Script: Run Tests**: Create `scripts/stack-agent-core/test.sh` to run pytest for agent tests.
+- [ ] **Script: Test Docker Locally**: Create `scripts/stack-agent-core/test-docker.sh` to test container locally before deployment.
+- [ ] **Script: Deploy Infrastructure**: Create `scripts/stack-agent-core/deploy.sh` to:
+  - Deploy CDK stack (creates Runtime, Memory, Browser, Code Interpreter)
+  - Build Docker image
+  - Push to ECR
+  - Update Runtime to use new image (if Runtime already exists)
 
 #### CI/CD Pipeline
 - [ ] **Create Workflow File**: Create `.github/workflows/agent-core.yml`.
-- [ ] **Configure Path Triggers**: Set `paths` filter to trigger on `backend/src/agents/**` changes.
+- [ ] **Configure Path Triggers**: Set `paths` filter to trigger on:
+  - `backend/src/agents/**`
+  - `backend/Dockerfile.agent-core`
+  - `infrastructure/lib/agent-core-stack.ts`
 - [ ] **Add Dependency Installation Step**: Call `scripts/common/install-deps.sh`.
 - [ ] **Add Install Step**: Call `scripts/stack-agent-core/install.sh`.
+- [ ] **Add Build Step**: Call `scripts/stack-agent-core/build.sh`.
 - [ ] **Add Test Step**: Call `scripts/stack-agent-core/test.sh`.
+- [ ] **Add ECR Push Step**: Call `scripts/stack-agent-core/push-to-ecr.sh`.
 - [ ] **Add Deploy Step**: Call `scripts/stack-agent-core/deploy.sh`.
 - [ ] **Configure AWS Credentials**: Use GitHub OIDC or AWS credentials from secrets.
 
