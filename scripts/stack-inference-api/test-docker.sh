@@ -26,15 +26,29 @@ log_success() {
 }
 
 main() {
-    log_info "Testing Docker image..."
+    log_info "Testing ARM64 Docker image..."
+    
+    # Check if running on ARM64 or need QEMU emulation
+    ARCH=$(uname -m)
+    if [ "${ARCH}" != "aarch64" ] && [ "${ARCH}" != "arm64" ]; then
+        log_info "Running on x86_64, testing with QEMU emulation (this may be slower)"
+        
+        # Check if QEMU is available for ARM64 emulation
+        if ! docker run --rm --privileged multiarch/qemu-user-static --reset -p yes > /dev/null 2>&1; then
+            log_error "QEMU emulation setup failed. ARM64 testing may not work."
+            log_info "Continuing anyway..."
+        fi
+    else
+        log_info "Running on ARM64 platform natively"
+    fi
     
     # Use CDK_PROJECT_PREFIX from environment (set at workflow level)
     IMAGE_NAME="${CDK_PROJECT_PREFIX}-inference-api:latest"
     
     log_info "Testing Docker image: ${IMAGE_NAME}"
     
-    # Start container in background
-    CONTAINER_ID=$(docker run -d -p 8000:8000 "${IMAGE_NAME}")
+    # Start container in background on port 8080 (AgentCore Runtime standard)
+    CONTAINER_ID=$(docker run -d --platform linux/arm64 -p 8080:8080 "${IMAGE_NAME}")
     log_info "Container ID: ${CONTAINER_ID}"
     
     # Wait for container to be healthy
@@ -53,11 +67,17 @@ main() {
             exit 1
         fi
         
-        # Try health check
-        if curl -f http://localhost:8000/health 2>/dev/null; then
-            log_success "Container is healthy"
+        # Try health check on /ping endpoint (AgentCore Runtime standard)
+        if curl -f http://localhost:8080/ping 2>/dev/null; then
+            log_success "Container is healthy (ping endpoint responded)"
+            
+            # Also test /health endpoint if it exists
+            if curl -f http://localhost:8080/health 2>/dev/null; then
+                log_success "Health endpoint also responding"
+            fi
+            
             docker stop "${CONTAINER_ID}" > /dev/null
-            log_success "Docker image test passed"
+            log_success "ARM64 Docker image test passed"
             exit 0
         fi
         

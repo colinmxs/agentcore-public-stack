@@ -25,28 +25,37 @@ log_success() {
     echo "[SUCCESS] $1"
 }
 
-# Function to update ECS service
-update_ecs_service() {
-    local cluster_name=$1
-    local service_name=$2
+# Function to validate AgentCore Runtime health
+validate_runtime_health() {
+    local runtime_url=$1
+    local max_retries=12
+    local retry_count=0
+    local wait_time=10
     
-    log_info "Forcing new deployment of ECS service: ${service_name}"
+    log_info "Validating AgentCore Runtime health at: ${runtime_url}"
     
-    set +e
-    aws ecs update-service \
-        --cluster "${cluster_name}" \
-        --service "${service_name}" \
-        --force-new-deployment \
-        --region "${CDK_AWS_REGION}" \
-        > /dev/null 2>&1
-    local exit_code=$?
-    set -e
+    while [ ${retry_count} -lt ${max_retries} ]; do
+        log_info "Health check attempt $((retry_count + 1))/${max_retries}..."
+        
+        set +e
+        response=$(curl -s -o /dev/null -w "%{http_code}" "${runtime_url}/ping" 2>/dev/null)
+        local exit_code=$?
+        set -e
+        
+        if [ ${exit_code} -eq 0 ] && [ "${response}" = "200" ]; then
+            log_success "AgentCore Runtime is healthy!"
+            return 0
+        fi
+        
+        retry_count=$((retry_count + 1))
+        if [ ${retry_count} -lt ${max_retries} ]; then
+            log_info "Runtime not ready yet. Waiting ${wait_time} seconds before retry..."
+            sleep ${wait_time}
+        fi
+    done
     
-    if [ ${exit_code} -eq 0 ]; then
-        log_success "ECS service update initiated"
-    else
-        log_info "Note: ECS service update may not be needed (service might not exist yet)"
-    fi
+    log_error "AgentCore Runtime health check failed after ${max_retries} attempts"
+    return 1
 }
 
 main() {
@@ -113,23 +122,32 @@ main() {
     log_info "Using pre-built image with version tag: ${IMAGE_TAG}"
     log_info "Image URI: ${ECR_URI}:${IMAGE_TAG}"
     
-    # Get ECS cluster and service names from outputs
+    # Get AgentCore Runtime URL from outputs
     if [ -f "${PROJECT_ROOT}/cdk-outputs-inference-api.json" ]; then
-        CLUSTER_NAME="${CDK_PROJECT_PREFIX}-app-api-cluster" # Reuse App API cluster
-        SERVICE_NAME=$(jq -r ".InferenceApiStack.InferenceApiServiceName // empty" "${PROJECT_ROOT}/cdk-outputs-inference-api.json")
+        RUNTIME_URL=$(jq -r ".InferenceApiStack.InferenceApiRuntimeUrl // empty" "${PROJECT_ROOT}/cdk-outputs-inference-api.json")
         
-        if [ -n "${CLUSTER_NAME}" ] && [ -n "${SERVICE_NAME}" ]; then
-            update_ecs_service "${CLUSTER_NAME}" "${SERVICE_NAME}"
+        if [ -n "${RUNTIME_URL}" ]; then
+            log_info "AgentCore Runtime URL: ${RUNTIME_URL}"
+            
+            # Validate runtime health (with retries)
+            if validate_runtime_health "${RUNTIME_URL}"; then
+                log_success "AgentCore Runtime is accessible and healthy"
+            else
+                log_error "AgentCore Runtime health check failed. Please check CloudWatch Logs."
+                exit 1
+            fi
+        else
+            log_info "Note: Runtime URL not found in CDK outputs (may be first deployment)"
         fi
     fi
     
     log_success "Inference API deployment completed successfully!"
     log_info ""
     log_info "Next steps:"
-    log_info "  1. Check ECS service status in AWS Console"
+    log_info "  1. Check AgentCore Runtime status in AWS Bedrock Console"
     log_info "  2. Monitor CloudWatch Logs for container startup"
-    log_info "  3. Verify ALB health checks are passing"
-    log_info "  4. Test the /inference/* API endpoints"
+    log_info "  3. Test the Runtime HTTP endpoint"
+    log_info "  4. Verify Memory and Tools are accessible"
 }
 
 main "$@"

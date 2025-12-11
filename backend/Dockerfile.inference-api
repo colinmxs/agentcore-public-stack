@@ -1,5 +1,6 @@
-# Multi-stage build for Inference API
-FROM python:3.11-slim AS builder
+# Multi-stage build for Inference API (AWS Bedrock AgentCore Runtime)
+# Platform: linux/arm64 required for AgentCore Runtime
+FROM --platform=linux/arm64 python:3.11-slim AS builder
 
 # Set working directory
 WORKDIR /app
@@ -16,11 +17,13 @@ COPY backend/pyproject.toml backend/README.md ./
 COPY backend/src ./src
 
 # Install Python dependencies from pyproject.toml with agentcore extras
+# Include AWS OpenTelemetry instrumentation for AgentCore Runtime
 RUN pip install --no-cache-dir --upgrade pip && \
-    pip install --no-cache-dir ".[agentcore]"
+    pip install --no-cache-dir ".[agentcore]" && \
+    pip install --no-cache-dir aws-opentelemetry-distro==0.10.1
 
 # Production stage
-FROM python:3.11-slim
+FROM --platform=linux/arm64 python:3.11-slim
 
 # Set working directory
 WORKDIR /app
@@ -40,16 +43,28 @@ COPY backend/src /app/src
 # Create necessary directories
 RUN mkdir -p /app/output /app/uploads /app/generated_images
 
+# Create non-root user for security (AgentCore Runtime best practice)
+RUN useradd -m -u 1000 -s /bin/bash bedrock_agentcore && \
+    chown -R bedrock_agentcore:bedrock_agentcore /app
+
+# Switch to non-root user
+USER bedrock_agentcore
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src
 
-# Expose port
-EXPOSE 8000
+# Set AWS region environment variables (required for AgentCore Runtime)
+ENV AWS_REGION=${AWS_REGION:-us-east-1}
+ENV AWS_DEFAULT_REGION=${AWS_DEFAULT_REGION:-us-east-1}
 
-# Health check
+# Expose port 8080 (AgentCore Runtime standard port)
+EXPOSE 8080
+
+# Health check for /ping endpoint (AgentCore Runtime standard)
 HEALTHCHECK --interval=30s --timeout=5s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8000/health || exit 1
+    CMD curl -f http://localhost:8080/ping || exit 1
 
-# Run the application
-CMD ["uvicorn", "apis.inference_api.main:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run the application with OpenTelemetry instrumentation
+# AgentCore Runtime expects port 8080
+CMD ["opentelemetry-instrument", "uvicorn", "apis.inference_api.main:app", "--host", "0.0.0.0", "--port", "8080"]

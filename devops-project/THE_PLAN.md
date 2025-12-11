@@ -172,12 +172,12 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 **Goal**: Refactor Phase 3's Inference API Stack to use AWS Bedrock AgentCore Runtime instead of ECS/Fargate, adding managed memory, code interpreter, and browser capabilities
 
 #### CDK Infrastructure Refactoring
-- [ ] **Remove ECS/Fargate Resources**: Delete from `infrastructure/lib/inference-api-stack.ts`:
+- [x] **Remove ECS/Fargate Resources**: Delete from `infrastructure/lib/inference-api-stack.ts`:
   - ECS Cluster definition
   - ECS Task Definition
   - ECS Service
   - Target Group and ALB Listener Rule (no longer needed - AgentCore Runtime has built-in HTTP endpoint)
-- [ ] **Add IAM Execution Role**: Create execution role for AgentCore Runtime with permissions for:
+- [x] **Add IAM Execution Role**: Create execution role for AgentCore Runtime with permissions for:
   - CloudWatch Logs (create log groups/streams, put log events)
   - X-Ray tracing (put trace segments, telemetry records)
   - CloudWatch Metrics (put metric data to `bedrock-agentcore` namespace)
@@ -185,21 +185,21 @@ All logic resides here. CI/CD pipelines merely call these scripts.
   - AgentCore Gateway access (invoke gateway for MCP tools if Phase 5 is implemented)
   - AgentCore Memory access (create/retrieve events, memory records)
   - SSM Parameter Store access (read parameters under `/${projectPrefix}/`)
-- [ ] **Add Memory Execution Role**: Create dedicated role for AgentCore Memory with Bedrock model inference policy.
-- [ ] **Add AgentCore Memory**: Deploy `CfnMemory` with L1 construct including:
+- [x] **Add Memory Execution Role**: Create dedicated role for AgentCore Memory with Bedrock model inference policy.
+- [x] **Add AgentCore Memory**: Deploy `CfnMemory` with L1 construct including:
   - User preference extraction strategy
   - Semantic fact extraction strategy  
   - Conversation summary strategy
   - Event expiry duration (90 days for short-term memory)
-- [ ] **Add Code Interpreter**: Deploy `CfnCodeInterpreter` with L1 construct for Python code execution capabilities.
-- [ ] **Add Browser Tool**: Deploy `CfnBrowser` with L1 construct for web browsing capabilities.
-- [ ] **Add AgentCore Runtime**: Deploy `CfnRuntime` with L1 construct:
+- [x] **Add Code Interpreter**: Deploy `CfnCodeInterpreter` with L1 construct for Python code execution capabilities.
+- [x] **Add Browser Tool**: Deploy `CfnBrowser` with L1 construct for web browsing capabilities.
+- [x] **Add AgentCore Runtime**: Deploy `CfnRuntime` with L1 construct:
   - Container URI pointing to existing ECR repository (`${repositoryUri}:latest`)
   - Network mode: PUBLIC (for internet access)
   - Protocol configuration: HTTP
   - Environment variables: LOG_LEVEL, PROJECT_NAME, ENVIRONMENT, MEMORY_ARN, MEMORY_ID, BROWSER_ID, CODE_INTERPRETER_ID
   - Dependencies on execution role, memory, code interpreter, and browser resources
-- [ ] **Update SSM Parameter Exports**: Replace ECS-related parameters with:
+- [x] **Update SSM Parameter Exports**: Replace ECS-related parameters with:
   - `/${projectPrefix}/inference-api/runtime-arn`
   - `/${projectPrefix}/inference-api/runtime-id`
   - `/${projectPrefix}/inference-api/runtime-url` (HTTP endpoint for AgentCore Runtime)
@@ -207,10 +207,10 @@ All logic resides here. CI/CD pipelines merely call these scripts.
   - `/${projectPrefix}/inference-api/memory-id`
   - `/${projectPrefix}/inference-api/browser-id`
   - `/${projectPrefix}/inference-api/code-interpreter-id`
-- [ ] **Update CloudFormation Outputs**: Replace ECS outputs with Runtime ARN, Runtime URL, Memory ARN, ECR Repository URI.
+- [x] **Update CloudFormation Outputs**: Replace ECS outputs with Runtime ARN, Runtime URL, Memory ARN, ECR Repository URI.
 
 #### Dockerfile Refactoring
-- [ ] **Update Dockerfile.inference-api**: Modify `backend/Dockerfile.inference-api` to support AgentCore Runtime:
+- [x] **Update Dockerfile.inference-api**: Modify `backend/Dockerfile.inference-api` to support AgentCore Runtime:
   - Add FROM platform specification: `FROM --platform=linux/arm64` or build with `docker build --platform linux/arm64` (AgentCore Runtime requires ARM64)
   - Change EXPOSE from 8000 to 8080 (AgentCore Runtime expects port 8080)
   - Update CMD to use port 8080: `uvicorn apis.inference_api.main:app --host 0.0.0.0 --port 8080`
@@ -222,37 +222,37 @@ All logic resides here. CI/CD pipelines merely call these scripts.
   - Verify all agent dependencies are included from `backend/src/agents/` (already in current Dockerfile)
 
 #### Build & Deploy Script Updates
-- [ ] **Update build.sh**: Modify `scripts/stack-inference-api/build.sh`:
+- [x] **Update build.sh**: Modify `scripts/stack-inference-api/build.sh`:
   - Add `--platform linux/arm64` flag to Docker build command
   - Update image tag to include git commit SHA for versioning
-- [ ] **Update push-to-ecr.sh**: Modify `scripts/stack-inference-api/push-to-ecr.sh`:
+- [x] **Update push-to-ecr.sh**: Modify `scripts/stack-inference-api/push-to-ecr.sh`:
   - Ensure ARM64 image is pushed to ECR
   - Add tagging for both `latest` and git SHA
-- [ ] **Update deploy.sh**: Modify `scripts/stack-inference-api/deploy.sh`:
+- [x] **Update deploy.sh**: Modify `scripts/stack-inference-api/deploy.sh`:
   - Remove ECS service update logic
   - Add AgentCore Runtime update after image push (trigger Runtime to pull new image)
   - Add validation that Runtime is healthy after deployment
-- [ ] **Update test-docker.sh**: Modify `scripts/stack-inference-api/test-docker.sh`:
+- [x] **Update test-docker.sh**: Modify `scripts/stack-inference-api/test-docker.sh`:
   - Test ARM64 container locally with QEMU if on x86_64
   - Test HTTP protocol endpoints match AgentCore Runtime expectations
   - Validate health check endpoint returns 200 OK
 
 #### Agent Integration
-- [ ] **Integrate Strands Agent**: Update `backend/src/apis/inference_api/main.py` to:
+- [x] **Integrate Strands Agent**: Update `backend/src/apis/inference_api/main.py` to:
   - Import and initialize Strands Agent from `backend/src/agents/strands_agent/`
   - Pass Memory ARN/ID from environment variables to agent
   - Pass Code Interpreter ID and Browser ID to agent for tool access
   - Configure agent with project-specific tools from `local_tools/`
-- [ ] **Add Memory Integration**: Implement memory retrieval/storage in agent invocations:
+- [x] **Add Memory Integration**: Implement memory retrieval/storage in agent invocations:
   - Retrieve relevant memory events before agent execution
   - Store new memory events after agent responses
-- [ ] **Add Tool Integration**: Enable built-in tools in agent configuration:
+- [x] **Add Tool Integration**: Enable built-in tools in agent configuration:
   - Code interpreter tool for Python execution
   - Browser tool for web scraping and research
   - Local tools from `backend/src/agents/local_tools/`
 
 #### CI/CD Pipeline Updates
-- [ ] **Update Workflow File**: Modify `.github/workflows/inference-api.yml`:
+- [x] **Update Workflow File**: Modify `.github/workflows/inference-api.yml`:
   - Update build step to use ARM64 platform flag
   - Add validation step to ensure AgentCore Runtime is accessible after deployment
   - Update test step to verify HTTP protocol compatibility

@@ -133,7 +133,7 @@ push_to_ecr() {
     local image_tag=$3
     local region=$4
     
-    log_info "Pushing Docker image to ECR: ${ecr_uri}:${image_tag}"
+    log_info "Pushing ARM64 Docker image to ECR: ${ecr_uri}:${image_tag}"
     
     # Extract account from ECR URI
     local ecr_account=$(echo "${ecr_uri}" | cut -d'.' -f1 | cut -d'/' -f1)
@@ -143,7 +143,7 @@ push_to_ecr() {
     aws ecr get-login-password --region "${region}" | \
         docker login --username AWS --password-stdin "${ecr_account}.dkr.ecr.${region}.amazonaws.com"
     
-    # Tag image for ECR with version tag (NOT latest)
+    # Tag image for ECR with version tag
     local remote_image="${ecr_uri}:${image_tag}"
     
     log_info "Tagging image: ${local_image} -> ${remote_image}"
@@ -153,7 +153,15 @@ push_to_ecr() {
     log_info "Pushing versioned image to ECR (this may take several minutes)..."
     docker push "${remote_image}"
     
-    log_success "Docker image pushed successfully to ECR with tag: ${image_tag}"
+    # Also tag and push as 'latest' for convenience
+    local latest_image="${ecr_uri}:latest"
+    log_info "Tagging image as latest: ${latest_image}"
+    docker tag "${local_image}" "${latest_image}"
+    
+    log_info "Pushing latest image to ECR..."
+    docker push "${latest_image}"
+    
+    log_success "Docker image pushed successfully to ECR with tags: ${image_tag}, latest"
 }
 
 main() {

@@ -37,6 +37,21 @@ async def lifespan(app: FastAPI):
     # Startup
     logger.info("=== AgentCore Public Stack API Starting ===")
     logger.info("Agent execution engine initialized")
+    
+    # Log AgentCore Runtime environment variables
+    memory_arn = os.getenv('MEMORY_ARN')
+    memory_id = os.getenv('MEMORY_ID')
+    browser_id = os.getenv('BROWSER_ID')
+    code_interpreter_id = os.getenv('CODE_INTERPRETER_ID')
+    
+    if memory_arn:
+        logger.info(f"AgentCore Memory ARN: {memory_arn}")
+    if memory_id:
+        logger.info(f"AgentCore Memory ID: {memory_id}")
+    if browser_id:
+        logger.info(f"AgentCore Browser ID: {browser_id}")
+    if code_interpreter_id:
+        logger.info(f"AgentCore Code Interpreter ID: {code_interpreter_id}")
 
     # Create output directories if they don't exist
     base_dir = Path(__file__).parent.parent

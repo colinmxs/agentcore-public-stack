@@ -48,8 +48,9 @@ main() {
     fi
     
     # Build Docker image
-    log_info "Building Docker image (this may take several minutes)..."
+    log_info "Building Docker image for ARM64 platform (this may take several minutes)..."
     if docker build \
+        --platform linux/arm64 \
         -f "${DOCKERFILE}" \
         -t "${FULL_IMAGE_NAME}" \
         --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
@@ -75,7 +76,7 @@ main() {
     
     log_success "Build completed successfully!"
     log_info "To run the image locally:"
-    log_info "  docker run -p 8000:8000 ${FULL_IMAGE_NAME}"
+    log_info "  docker run -p 8080:8080 ${FULL_IMAGE_NAME}"
 }
 
 main "$@"

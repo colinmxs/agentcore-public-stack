@@ -1,10 +1,8 @@
 import * as cdk from 'aws-cdk-lib';
-import * as ec2 from 'aws-cdk-lib/aws-ec2';
-import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
-import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
-import * as logs from 'aws-cdk-lib/aws-logs';
+import * as iam from 'aws-cdk-lib/aws-iam';
+import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { AppConfig, getResourceName, applyStandardTags } from './config';
 
@@ -13,21 +11,22 @@ export interface InferenceApiStackProps extends cdk.StackProps {
 }
 
 /**
- * Inference API Stack - AI Workload Infrastructure
+ * Inference API Stack - AWS Bedrock AgentCore Runtime Infrastructure
  * 
  * This stack creates:
- * - ECS Fargate service for inference workloads
- * - Target group for ALB integration
- * - Listener rule for routing /inference/* paths
- * - Higher CPU/memory allocation for AI workloads
- * 
- * Dependencies:
- * - VPC, ALB, Listener, ECS Cluster from Infrastructure Stack (imported via SSM)
+ * - AWS Bedrock AgentCore Runtime for AI agent workloads
+ * - AgentCore Memory for conversation context and memory
+ * - Code Interpreter Custom for Python code execution
+ * - Browser Custom for web browsing capabilities
+ * - IAM roles with appropriate permissions
  * 
  * Note: ECR repository is created by the build pipeline, not by CDK.
  */
 export class InferenceApiStack extends cdk.Stack {
-  public readonly ecsService: ecs.FargateService;
+  public readonly runtime: bedrock.CfnRuntime;
+  public readonly memory: bedrock.CfnMemory;
+  public readonly codeInterpreter: bedrock.CfnCodeInterpreterCustom;
+  public readonly browser: bedrock.CfnBrowserCustom;
 
   constructor(scope: Construct, id: string, props: InferenceApiStackProps) {
     super(scope, id, props);
@@ -38,261 +37,343 @@ export class InferenceApiStack extends cdk.Stack {
     applyStandardTags(this, config);
 
     // ============================================================
-    // Import Network Resources from Infrastructure Stack
+    // Import Image Tag from SSM (set by push-to-ecr.sh)
     // ============================================================
     
-    // Import VPC
-    const vpcId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/vpc-id`
-    );
-    const vpcCidr = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/vpc-cidr`
-    );
-    const privateSubnetIdsString = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/private-subnet-ids`
-    );
-    const availabilityZonesString = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/availability-zones`
-    );
-
-    // Import image tag from SSM (set by push-to-ecr.sh)
     const imageTag = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/inference-api/image-tag`
     );
 
-    const vpc = ec2.Vpc.fromVpcAttributes(this, 'ImportedVpc', {
-      vpcId: vpcId,
-      vpcCidrBlock: vpcCidr,
-      availabilityZones: cdk.Fn.split(',', availabilityZonesString),
-      privateSubnetIds: cdk.Fn.split(',', privateSubnetIdsString),
-    });
-
-    // Import ALB Security Group
-    const albSecurityGroupId = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/alb-security-group-id`
-    );
-    const albSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
-      this,
-      'ImportedAlbSecurityGroup',
-      albSecurityGroupId
-    );
-
-    // Import ALB
-    const albArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/alb-arn`
-    );
-    const alb = elbv2.ApplicationLoadBalancer.fromApplicationLoadBalancerAttributes(
-      this,
-      'ImportedAlb',
-      {
-        loadBalancerArn: albArn,
-        securityGroupId: albSecurityGroupId,
-      }
-    );
-
-    // Import ALB Listener
-    const albListenerArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/alb-listener-arn`
-    );
-    const albListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
-      this,
-      'ImportedAlbListener',
-      {
-        listenerArn: albListenerArn,
-        securityGroup: albSecurityGroup,
-      }
-    );
-
-    // Import ECS Cluster
-    const ecsClusterName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/ecs-cluster-name`
-    );
-    const ecsClusterArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/network/ecs-cluster-arn`
-    );
-    const ecsCluster = ecs.Cluster.fromClusterAttributes(this, 'ImportedEcsCluster', {
-      clusterName: ecsClusterName,
-      clusterArn: ecsClusterArn,
-      vpc: vpc,
-      securityGroups: [],
-    });
-
     // ============================================================
-    // Security Groups
-    // ============================================================
-    
-    // ECS Task Security Group - Allow traffic from ALB
-    const ecsSecurityGroup = new ec2.SecurityGroup(this, 'InferenceEcsSecurityGroup', {
-      vpc: vpc,
-      securityGroupName: getResourceName(config, 'inference-ecs-sg'),
-      description: 'Security group for Inference API ECS Fargate tasks',
-      allowAllOutbound: true,
-    });
-
-    // Allow inbound traffic from ALB on port 8000
-    ecsSecurityGroup.addIngressRule(
-      albSecurityGroup,
-      ec2.Port.tcp(8000),
-      'Allow traffic from ALB to Inference API tasks'
-    );
-
-    // ============================================================
-    // ECS Task Definition
+    // ECR Repository Reference
     // ============================================================
     
     // Note: ECR Repository is created automatically by the build pipeline
     // when pushing the first Docker image (see scripts/stack-inference-api/push-to-ecr.sh)
-    const taskDefinition = new ecs.FargateTaskDefinition(this, 'InferenceApiTaskDefinition', {
-      family: getResourceName(config, 'inference-api-task'),
-      cpu: config.inferenceApi.cpu, // Higher CPU for inference workloads
-      memoryLimitMiB: config.inferenceApi.memory, // Higher memory for inference workloads
-    });
-
-    // Create log group for ECS task
-    const logGroup = new logs.LogGroup(this, 'InferenceApiLogGroup', {
-      logGroupName: `/ecs/${config.projectPrefix}/inference-api`,
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    // Reference the ECR repository created by the build pipeline
     const ecrRepository = ecr.Repository.fromRepositoryName(
       this,
       'InferenceApiRepository',
       getResourceName(config, 'inference-api')
     );
 
-    // Container Definition
-    const container = taskDefinition.addContainer('InferenceApiContainer', {
-      containerName: 'inference-api',
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepository, imageTag),
-      logging: ecs.LogDrivers.awsLogs({
-        streamPrefix: 'inference-api',
-        logGroup: logGroup,
-      }),
-      environment: {
-        AWS_REGION: config.awsRegion,
-        PROJECT_PREFIX: config.projectPrefix,
-        // Add any inference-specific environment variables here
+    const containerImageUri = `${ecrRepository.repositoryUri}:${imageTag}`;
+
+    // ============================================================
+    // IAM Execution Role for AgentCore Runtime
+    // ============================================================
+    
+    const runtimeExecutionRole = new iam.Role(this, 'AgentCoreRuntimeExecutionRole', {
+      roleName: getResourceName(config, 'agentcore-runtime-role'),
+      assumedBy: new iam.ServicePrincipal('bedrock.amazonaws.com'),
+      description: 'Execution role for AWS Bedrock AgentCore Runtime',
+    });
+
+    // CloudWatch Logs permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+      ],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/*`],
+    }));
+
+    // X-Ray tracing permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'xray:PutTraceSegments',
+        'xray:PutTelemetryRecords',
+      ],
+      resources: ['*'],
+    }));
+
+    // CloudWatch Metrics permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'cloudwatch:PutMetricData',
+      ],
+      resources: ['*'],
+      conditions: {
+        StringEquals: {
+          'cloudwatch:namespace': 'bedrock-agentcore',
+        },
       },
-      portMappings: [
+    }));
+
+    // Bedrock model access permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:InvokeModel',
+        'bedrock:InvokeModelWithResponseStream',
+      ],
+      resources: [
+        `arn:aws:bedrock:${config.awsRegion}::foundation-model/anthropic.claude-*`,
+        `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.nova-*`,
+      ],
+    }));
+
+    // SSM Parameter Store read permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ssm:GetParameter',
+        'ssm:GetParameters',
+        'ssm:GetParametersByPath',
+      ],
+      resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
+    }));
+
+    // ECR permissions to pull container images
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ecr:GetAuthorizationToken',
+        'ecr:BatchCheckLayerAvailability',
+        'ecr:GetDownloadUrlForLayer',
+        'ecr:BatchGetImage',
+      ],
+      resources: ['*'],
+    }));
+
+    // ============================================================
+    // IAM Execution Role for AgentCore Memory
+    // ============================================================
+    
+    const memoryExecutionRole = new iam.Role(this, 'AgentCoreMemoryExecutionRole', {
+      roleName: getResourceName(config, 'agentcore-memory-role'),
+      assumedBy: new iam.ServicePrincipal('bedrock.amazonaws.com'),
+      description: 'Execution role for AWS Bedrock AgentCore Memory',
+    });
+
+    // Bedrock model access for memory processing
+    memoryExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:InvokeModel',
+      ],
+      resources: [
+        `arn:aws:bedrock:${config.awsRegion}::foundation-model/anthropic.claude-*`,
+        `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.nova-*`,
+      ],
+    }));
+
+    // ============================================================
+    // IAM Execution Role for Code Interpreter
+    // ============================================================
+    
+    const codeInterpreterExecutionRole = new iam.Role(this, 'CodeInterpreterExecutionRole', {
+      roleName: getResourceName(config, 'code-interpreter-role'),
+      assumedBy: new iam.ServicePrincipal('bedrock.amazonaws.com'),
+      description: 'Execution role for AWS Bedrock AgentCore Code Interpreter',
+    });
+
+    // CloudWatch Logs permissions
+    codeInterpreterExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+      ],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/code-interpreter/*`],
+    }));
+
+    // ============================================================
+    // IAM Execution Role for Browser
+    // ============================================================
+    
+    const browserExecutionRole = new iam.Role(this, 'BrowserExecutionRole', {
+      roleName: getResourceName(config, 'browser-role'),
+      assumedBy: new iam.ServicePrincipal('bedrock.amazonaws.com'),
+      description: 'Execution role for AWS Bedrock AgentCore Browser',
+    });
+
+    // CloudWatch Logs permissions
+    browserExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'logs:CreateLogGroup',
+        'logs:CreateLogStream',
+        'logs:PutLogEvents',
+      ],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/browser/*`],
+    }));
+
+    // ============================================================
+    // AgentCore Memory
+    // ============================================================
+    
+    this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
+      name: getResourceName(config, 'agentcore-memory'),
+      eventExpiryDuration: 2160, // 90 days in hours (90 * 24)
+      memoryExecutionRoleArn: memoryExecutionRole.roleArn,
+      description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
+      memoryStrategies: [
         {
-          containerPort: 8000,
-          protocol: ecs.Protocol.TCP,
+          semanticMemoryStrategy: {
+            name: 'SemanticFactExtraction',
+            description: 'Extracts and stores semantic facts from conversations',
+          },
+        },
+        {
+          summaryMemoryStrategy: {
+            name: 'ConversationSummary',
+            description: 'Generates and stores conversation summaries',
+          },
+        },
+        {
+          userPreferenceMemoryStrategy: {
+            name: 'UserPreferenceExtraction',
+            description: 'Identifies and stores user preferences',
+          },
         },
       ],
-      healthCheck: {
-        command: ['CMD-SHELL', 'curl -f http://localhost:8000/health || exit 1'],
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        retries: 3,
-        startPeriod: cdk.Duration.seconds(60),
-      },
     });
 
     // ============================================================
-    // Target Group
+    // AgentCore Code Interpreter Custom
     // ============================================================
     
-    const targetGroup = new elbv2.ApplicationTargetGroup(this, 'InferenceApiTargetGroup', {
-      vpc: vpc,
-      targetGroupName: getResourceName(config, 'inference-api-tg'),
-      port: 8000,
-      protocol: elbv2.ApplicationProtocol.HTTP,
-      targetType: elbv2.TargetType.IP,
-      healthCheck: {
-        enabled: true,
-        path: '/health',
-        interval: cdk.Duration.seconds(30),
-        timeout: cdk.Duration.seconds(5),
-        healthyThresholdCount: 2,
-        unhealthyThresholdCount: 3,
-        healthyHttpCodes: '200',
+    this.codeInterpreter = new bedrock.CfnCodeInterpreterCustom(this, 'CodeInterpreterCustom', {
+      name: getResourceName(config, 'code-interpreter'),
+      description: 'Custom Code Interpreter for Python code execution with advanced configuration',
+      networkConfiguration: {
+        networkMode: 'PUBLIC',
       },
-      deregistrationDelay: cdk.Duration.seconds(30),
+      executionRoleArn: codeInterpreterExecutionRole.roleArn,
     });
 
+    this.codeInterpreter.node.addDependency(codeInterpreterExecutionRole);
+
     // ============================================================
-    // Listener Rule - Route /inference/** to Inference API
+    // AgentCore Browser Custom
     // ============================================================
     
-    new elbv2.ApplicationListenerRule(this, 'InferenceApiListenerRule', {
-      listener: albListener,
-      priority: 10, // Higher priority than App API (which uses priority 1)
-      conditions: [
-        elbv2.ListenerCondition.pathPatterns(['/inference/*', '/inference']),
+    this.browser = new bedrock.CfnBrowserCustom(this, 'BrowserCustom', {
+      name: getResourceName(config, 'browser'),
+      description: 'Custom Browser for secure web interaction and data extraction',
+      networkConfiguration: {
+        networkMode: 'PUBLIC',
+      },
+      executionRoleArn: browserExecutionRole.roleArn,
+    });
+
+    this.browser.node.addDependency(browserExecutionRole);
+
+    // ============================================================
+    // AgentCore Runtime
+    // ============================================================
+    
+    // Grant Runtime permission to access Memory
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:CreateEvent',
+        'bedrock:RetrieveMemory',
       ],
-      action: elbv2.ListenerAction.forward([targetGroup]),
-    });
+      resources: [this.memory.attrMemoryArn],
+    }));
 
-    // ============================================================
-    // ECS Fargate Service
-    // ============================================================
-    
-    this.ecsService = new ecs.FargateService(this, 'InferenceApiService', {
-      cluster: ecsCluster,
-      serviceName: getResourceName(config, 'inference-api-service'),
-      taskDefinition: taskDefinition,
-      desiredCount: config.inferenceApi.desiredCount,
-      securityGroups: [ecsSecurityGroup],
-      vpcSubnets: {
-        subnetType: ec2.SubnetType.PRIVATE_WITH_EGRESS,
+    // Grant Runtime permission to use Code Interpreter
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:InvokeCodeInterpreter',
+      ],
+      resources: [this.codeInterpreter.attrCodeInterpreterArn],
+    }));
+
+    // Grant Runtime permission to use Browser
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock:InvokeBrowser',
+      ],
+      resources: [this.browser.attrBrowserArn],
+    }));
+
+    this.runtime = new bedrock.CfnRuntime(this, 'AgentCoreRuntime', {
+      agentRuntimeName: getResourceName(config, 'agentcore-runtime'),
+      roleArn: runtimeExecutionRole.roleArn,
+      agentRuntimeArtifact: {
+        containerConfiguration: {
+          containerUri: containerImageUri,
+        },
       },
-      assignPublicIp: false,
-      healthCheckGracePeriod: cdk.Duration.seconds(60),
-      circuitBreaker: {
-        rollback: true,
+      networkConfiguration: {
+        networkMode: 'PUBLIC',
       },
-      minHealthyPercent: 100,
-      maxHealthyPercent: 200,
+      protocolConfiguration: 'HTTP',
+      description: 'AgentCore Runtime for AI agent workloads with LangGraph and Strands framework support',
+      environmentVariables: {
+        'LOG_LEVEL': 'INFO',
+        'PROJECT_NAME': config.projectPrefix,
+        'ENVIRONMENT': config.environment || 'production',
+        'AWS_REGION': config.awsRegion,
+        'MEMORY_ARN': this.memory.attrMemoryArn,
+        'MEMORY_ID': this.memory.attrMemoryId,
+        'CODE_INTERPRETER_ID': this.codeInterpreter.attrCodeInterpreterId,
+        'BROWSER_ID': this.browser.attrBrowserId,
+      },
     });
 
-    // Attach service to target group
-    this.ecsService.attachToApplicationTargetGroup(targetGroup);
-
-    // Auto-scaling configuration
-    const scaling = this.ecsService.autoScaleTaskCount({
-      minCapacity: config.inferenceApi.desiredCount,
-      maxCapacity: config.inferenceApi.maxCapacity,
-    });
-
-    scaling.scaleOnCpuUtilization('CpuScaling', {
-      targetUtilizationPercent: 70,
-      scaleInCooldown: cdk.Duration.seconds(60),
-      scaleOutCooldown: cdk.Duration.seconds(60),
-    });
-
-    scaling.scaleOnMemoryUtilization('MemoryScaling', {
-      targetUtilizationPercent: 80,
-      scaleInCooldown: cdk.Duration.seconds(60),
-      scaleOutCooldown: cdk.Duration.seconds(60),
-    });
+    // Ensure Runtime is created after IAM roles and dependencies
+    this.runtime.node.addDependency(runtimeExecutionRole);
+    this.runtime.node.addDependency(memoryExecutionRole);
+    this.runtime.node.addDependency(codeInterpreterExecutionRole);
+    this.runtime.node.addDependency(browserExecutionRole);
+    this.runtime.node.addDependency(this.memory);
+    this.runtime.node.addDependency(this.codeInterpreter);
+    this.runtime.node.addDependency(this.browser);
 
     // ============================================================
     // SSM Parameters for Cross-Stack References
     // ============================================================
     
-    new ssm.StringParameter(this, 'InferenceApiServiceNameParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/service-name`,
-      stringValue: this.ecsService.serviceName,
-      description: 'Inference API ECS Service Name',
+    new ssm.StringParameter(this, 'InferenceApiRuntimeArnParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-arn`,
+      stringValue: this.runtime.attrAgentRuntimeArn,
+      description: 'Inference API AgentCore Runtime ARN',
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'InferenceApiTaskDefinitionArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/task-definition-arn`,
-      stringValue: taskDefinition.taskDefinitionArn,
-      description: 'Inference API Task Definition ARN',
+    new ssm.StringParameter(this, 'InferenceApiRuntimeIdParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-id`,
+      stringValue: this.runtime.attrAgentRuntimeId,
+      description: 'Inference API AgentCore Runtime ID',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'InferenceApiMemoryArnParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/memory-arn`,
+      stringValue: this.memory.attrMemoryArn,
+      description: 'Inference API AgentCore Memory ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'InferenceApiMemoryIdParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/memory-id`,
+      stringValue: this.memory.attrMemoryId,
+      description: 'Inference API AgentCore Memory ID',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'InferenceApiCodeInterpreterIdParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-id`,
+      stringValue: this.codeInterpreter.attrCodeInterpreterId,
+      description: 'Inference API AgentCore Code Interpreter ID',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'InferenceApiBrowserIdParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/browser-id`,
+      stringValue: this.browser.attrBrowserId,
+      description: 'Inference API AgentCore Browser ID',
       tier: ssm.ParameterTier.STANDARD,
     });
 
@@ -300,22 +381,40 @@ export class InferenceApiStack extends cdk.Stack {
     // CloudFormation Outputs
     // ============================================================
     
-    new cdk.CfnOutput(this, 'InferenceApiServiceName', {
-      value: this.ecsService.serviceName,
-      description: 'Inference API ECS Service Name',
-      exportName: `${config.projectPrefix}-InferenceApiServiceName`,
+    new cdk.CfnOutput(this, 'InferenceApiRuntimeArn', {
+      value: this.runtime.attrAgentRuntimeArn,
+      description: 'Inference API AgentCore Runtime ARN',
+      exportName: `${config.projectPrefix}-InferenceApiRuntimeArn`,
     });
 
-    new cdk.CfnOutput(this, 'InferenceApiTaskDefinitionArn', {
-      value: taskDefinition.taskDefinitionArn,
-      description: 'Inference API Task Definition ARN',
-      exportName: `${config.projectPrefix}-InferenceApiTaskDefinitionArn`,
+    new cdk.CfnOutput(this, 'InferenceApiRuntimeId', {
+      value: this.runtime.attrAgentRuntimeId,
+      description: 'Inference API AgentCore Runtime ID',
+      exportName: `${config.projectPrefix}-InferenceApiRuntimeId`,
     });
 
-    new cdk.CfnOutput(this, 'InferenceApiTargetGroupArn', {
-      value: targetGroup.targetGroupArn,
-      description: 'Inference API Target Group ARN',
-      exportName: `${config.projectPrefix}-InferenceApiTargetGroupArn`,
+    new cdk.CfnOutput(this, 'InferenceApiMemoryArn', {
+      value: this.memory.attrMemoryArn,
+      description: 'Inference API AgentCore Memory ARN',
+      exportName: `${config.projectPrefix}-InferenceApiMemoryArn`,
+    });
+
+    new cdk.CfnOutput(this, 'InferenceApiCodeInterpreterId', {
+      value: this.codeInterpreter.attrCodeInterpreterId,
+      description: 'Inference API AgentCore Code Interpreter ID',
+      exportName: `${config.projectPrefix}-InferenceApiCodeInterpreterId`,
+    });
+
+    new cdk.CfnOutput(this, 'InferenceApiBrowserId', {
+      value: this.browser.attrBrowserId,
+      description: 'Inference API AgentCore Browser ID',
+      exportName: `${config.projectPrefix}-InferenceApiBrowserId`,
+    });
+
+    new cdk.CfnOutput(this, 'EcrRepositoryUri', {
+      value: ecrRepository.repositoryUri,
+      description: 'Inference API ECR Repository URI',
+      exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
     });
   }
 }
