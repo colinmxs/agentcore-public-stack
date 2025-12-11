@@ -4,6 +4,7 @@ import { InfrastructureStack } from '../lib/infrastructure-stack';
 import { FrontendStack } from '../lib/frontend-stack';
 import { AppApiStack } from '../lib/app-api-stack';
 import { InferenceApiStack } from '../lib/inference-api-stack';
+import { AgentCoreStack } from '../lib/agent-core-stack';
 import { loadConfig, getStackEnv } from '../lib/config';
 
 const app = new cdk.App();
@@ -47,6 +48,16 @@ if (config.inferenceApi.enabled) {
     env,
     description: `${config.projectPrefix} Inference API Stack - Fargate for AI Workloads`,
     stackName: `${config.projectPrefix}-InferenceApiStack`,
+  });
+}
+
+// Agent Core Stack - Managed Services for Agent Orchestration
+if (config.agentCore.enabled) {
+  new AgentCoreStack(app, 'AgentCoreStack', {
+    config,
+    env,
+    description: `${config.projectPrefix} Agent Core Stack - Managed Services for Agent Orchestration`,
+    stackName: `${config.projectPrefix}-AgentCoreStack`,
   });
 }
 

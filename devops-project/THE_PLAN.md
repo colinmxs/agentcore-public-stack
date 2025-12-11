@@ -172,28 +172,28 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 **Goal**: Serverless/Managed infrastructure for agents
 
 #### CDK Infrastructure
-- [ ] **Create AgentCoreStack File**: Create `infrastructure/lib/agent-core-stack.ts`.
-- [ ] **Define Agent Storage**: Create DynamoDB table for agent state/configuration or S3 bucket for agent artifacts.
-- [ ] **Define Lambda Functions**: Create Lambda functions for agent orchestration (if using serverless model).
-- [ ] **Define Step Functions**: Create Step Functions state machine for agent workflow execution (if applicable).
-- [ ] **Define IAM Roles**: Create execution roles with least-privilege access to required services.
-- [ ] **Export Agent Resources**: Store resource ARNs in SSM Parameter Store under `/${projectPrefix}/agents/`.
-- [ ] **Add CloudFormation Outputs**: Export Lambda function names and Step Function ARN.
+- [x] **Create AgentCoreStack File**: Create `infrastructure/lib/agent-core-stack.ts`.
+- [x] **Define Agent Storage**: Create DynamoDB table for agent state/configuration or S3 bucket for agent artifacts.
+- [x] **Define Lambda Functions**: Create Lambda functions for agent orchestration (if using serverless model).
+- [x] **Define Step Functions**: Create Step Functions state machine for agent workflow execution (if applicable).
+- [x] **Define IAM Roles**: Create execution roles with least-privilege access to required services.
+- [x] **Export Agent Resources**: Store resource ARNs in SSM Parameter Store under `/${projectPrefix}/agents/`.
+- [x] **Add CloudFormation Outputs**: Export Lambda function names and Step Function ARN.
 
 #### Build & Deploy Scripts
-- [ ] **Create Scripts Directory**: Set up `scripts/stack-agent-core/`.
-- [ ] **Script: Install Dependencies**: Create `scripts/stack-agent-core/install.sh` to install agent dependencies.
-- [ ] **Script: Run Tests**: Create `scripts/stack-agent-core/test.sh` to run agent tests.
-- [ ] **Script: Deploy Infrastructure**: Create `scripts/stack-agent-core/deploy.sh` to deploy CDK stack.
+- [x] **Create Scripts Directory**: Set up `scripts/stack-agent-core/`.
+- [x] **Script: Install Dependencies**: Create `scripts/stack-agent-core/install.sh` to install agent dependencies.
+- [x] **Script: Run Tests**: Create `scripts/stack-agent-core/test.sh` to run agent tests.
+- [x] **Script: Deploy Infrastructure**: Create `scripts/stack-agent-core/deploy.sh` to deploy CDK stack.
 
 #### CI/CD Pipeline
-- [ ] **Create Workflow File**: Create `.github/workflows/agent-core.yml`.
-- [ ] **Configure Path Triggers**: Set `paths` filter to trigger on `backend/src/agents/**` changes.
-- [ ] **Add Dependency Installation Step**: Call `scripts/common/install-deps.sh`.
-- [ ] **Add Install Step**: Call `scripts/stack-agent-core/install.sh`.
-- [ ] **Add Test Step**: Call `scripts/stack-agent-core/test.sh`.
-- [ ] **Add Deploy Step**: Call `scripts/stack-agent-core/deploy.sh`.
-- [ ] **Configure AWS Credentials**: Use GitHub OIDC or AWS credentials from secrets.
+- [x] **Create Workflow File**: Create `.github/workflows/agent-core.yml`.
+- [x] **Configure Path Triggers**: Set `paths` filter to trigger on `backend/src/agents/**` changes.
+- [x] **Add Dependency Installation Step**: Call `scripts/common/install-deps.sh`.
+- [x] **Add Install Step**: Call `scripts/stack-agent-core/install.sh`.
+- [x] **Add Test Step**: Call `scripts/stack-agent-core/test.sh`.
+- [x] **Add Deploy Step**: Call `scripts/stack-agent-core/deploy.sh`.
+- [x] **Configure AWS Credentials**: Use GitHub OIDC or AWS credentials from secrets.
 
 **🔒 HUMAN APPROVAL REQUIRED**
 - [ ] [HUMAN] Phase 4 verified and approved to proceed to Phase 5
