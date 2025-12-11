@@ -1,6 +1,7 @@
 import { Routes } from '@angular/router';
 import { ConversationPage } from './session/session.page';
 import { authGuard } from './auth/auth.guard';
+import { adminGuard } from './auth/admin.guard';
 
 export const routes: Routes = [
     {
@@ -20,5 +21,10 @@ export const routes: Routes = [
     {
         path: 'auth/callback',
         loadComponent: () => import('./auth/callback/callback.page').then(m => m.CallbackPage),
+    },
+    {
+        path: 'admin/bedrock/models',
+        loadComponent: () => import('./admin/bedrock-models/bedrock-models.page').then(m => m.BedrockModelsPage),
+        canActivate: [adminGuard],
     }
 ];
