@@ -61,40 +61,53 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
-  build-and-test:
-    name: Build and Test Frontend
+  install:
+    name: Install Dependencies
     runs-on: ubuntu-latest
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-      
+
       - name: Install system dependencies
         run: |
           bash scripts/common/install-deps.sh
-      
+
       - name: Install frontend dependencies
         run: |
           bash scripts/stack-frontend/install.sh
-      
-      - name: Build frontend        
-        run: |
-          bash scripts/stack-frontend/build.sh
-      
+
+      - name: Cache frontend node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Cache CDK node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: install
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
       - name: Run frontend tests
-        if: ${{ github.event.inputs.skip_tests != 'true' }}
         run: |
           bash scripts/stack-frontend/test.sh
-      
-      - name: Upload build artifacts
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-build
-          path: frontend/ai.client/dist/
-          retention-days: 7
-      
+
       - name: Upload test results
-        if: ${{ github.event.inputs.skip_tests != 'true' }}
         uses: actions/upload-artifact@v4
         with:
           name: frontend-test-results
@@ -102,16 +115,39 @@ jobs:
           retention-days: 7
           if-no-files-found: ignore
 
+  build:
+    name: Build Frontend
+    runs-on: ubuntu-latest
+    needs: test
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Build frontend
+        run: |
+          bash scripts/stack-frontend/build.sh
+
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/ai.client/dist/
+          retention-days: 7
+
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
     runs-on: ubuntu-latest
-    needs: build-and-test
+    needs: build
     # if: |
     #   github.event_name == 'push' || github.event_name == 'workflow_dispatch' &&
     #   github.event.inputs.skip_deploy != 'true'
-
     
-    # Use OIDC for secure AWS authentication
     permissions:
       id-token: write
       contents: read
@@ -119,6 +155,12 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Restore CDK node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
       
       - name: Configure AWS Credentials
         uses: ./.github/actions/configure-aws-credentials
@@ -147,12 +189,11 @@ jobs:
   deploy-assets:
     name: Deploy Frontend Assets
     runs-on: ubuntu-latest
-    needs: [build-and-test, deploy-infrastructure]
+    needs: [build, deploy-infrastructure]
     # if: |
     #   github.event_name == 'push' || github.event_name == 'workflow_dispatch' &&
     #   github.event.inputs.skip_deploy != 'true'
     
-    # Use OIDC for secure AWS authentication
     permissions:
       id-token: write
       contents: read
