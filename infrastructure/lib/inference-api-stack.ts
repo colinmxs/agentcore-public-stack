@@ -204,36 +204,36 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/browser/*`],
     }));
 
-    // // ============================================================
-    // // AgentCore Memory
-    // // ============================================================
+    // ============================================================
+    // AgentCore Memory
+    // ============================================================
     
-    // this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
-    //   name: getResourceName(config, 'agentcore_memory').replace(/-/g, '_'),
-    //   eventExpiryDuration: 2160, // 90 days in hours (90 * 24)
-    //   memoryExecutionRoleArn: memoryExecutionRole.roleArn,
-    //   description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
-    //   memoryStrategies: [
-    //     {
-    //       semanticMemoryStrategy: {
-    //         name: 'SemanticFactExtraction',
-    //         description: 'Extracts and stores semantic facts from conversations',
-    //       },
-    //     },
-    //     {
-    //       summaryMemoryStrategy: {
-    //         name: 'ConversationSummary',
-    //         description: 'Generates and stores conversation summaries',
-    //       },
-    //     },
-    //     {
-    //       userPreferenceMemoryStrategy: {
-    //         name: 'UserPreferenceExtraction',
-    //         description: 'Identifies and stores user preferences',
-    //       },
-    //     },
-    //   ],
-    // });
+    this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
+      name: getResourceName(config, 'agentcore_memory').replace(/-/g, '_'),
+      eventExpiryDuration: 2160, // 90 days in hours (90 * 24)
+      memoryExecutionRoleArn: memoryExecutionRole.roleArn,
+      description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
+      memoryStrategies: [
+        {
+          semanticMemoryStrategy: {
+            name: 'SemanticFactExtraction',
+            description: 'Extracts and stores semantic facts from conversations',
+          },
+        },
+        {
+          summaryMemoryStrategy: {
+            name: 'ConversationSummary',
+            description: 'Generates and stores conversation summaries',
+          },
+        },
+        {
+          userPreferenceMemoryStrategy: {
+            name: 'UserPreferenceExtraction',
+            description: 'Identifies and stores user preferences',
+          },
+        },
+      ],
+    });
 
     // // ============================================================
     // // AgentCore Code Interpreter Custom
