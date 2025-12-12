@@ -5,20 +5,26 @@
 export interface GeminiModelSummary {
   /** Model name (e.g., 'gemini-2.0-flash-exp', 'gemini-1.5-pro') */
   name: string;
+  /** Base model identifier */
+  baseModelId?: string;
+  /** Version of the model */
+  version?: string;
   /** Display name for the model */
   displayName: string;
   /** Model description */
   description?: string;
-  /** Version of the model */
-  version?: string;
-  /** List of supported generation methods (e.g., 'generateContent', 'streamGenerateContent') */
-  supportedGenerationMethods: string[];
   /** Maximum input tokens */
   inputTokenLimit?: number;
   /** Maximum output tokens */
   outputTokenLimit?: number;
-  /** Temperature range */
+  /** List of supported generation methods (e.g., 'generateContent', 'streamGenerateContent') */
+  supportedGenerationMethods: string[];
+  /** Whether this is a thinking/reasoning model */
+  thinking?: boolean;
+  /** Default temperature */
   temperature?: number;
+  /** Maximum temperature */
+  maxTemperature?: number;
   /** Top-p range */
   topP?: number;
   /** Top-k range */

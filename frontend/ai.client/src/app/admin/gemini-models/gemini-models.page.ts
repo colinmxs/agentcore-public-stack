@@ -71,9 +71,24 @@ export class GeminiModelsPage {
 
   /**
    * Check if a model supports streaming based on its generation methods
+   *
+   * Note: The Gemini API does not include 'streamGenerateContent' in the supportedGenerationMethods array.
+   * However, if a model supports 'generateContent', it also supports streaming via the SDK's
+   * generate_content_stream() method. This is a feature of how the SDK works, not explicitly listed in the API.
    */
   supportsStreaming(model: GeminiModelSummary): boolean {
-    return model.supportedGenerationMethods.some(method => method.toLowerCase().includes('stream'));
+    // If there are no methods listed, we can't determine streaming support
+    if (!model.supportedGenerationMethods || model.supportedGenerationMethods.length === 0) {
+      return false;
+    }
+
+    // If the model supports generateContent, it supports streaming
+    // (even though streamGenerateContent is not listed in the array)
+    const hasGenerateContent = model.supportedGenerationMethods.some(method =>
+      method.toLowerCase() === 'generatecontent'
+    );
+
+    return hasGenerateContent;
   }
 
   /**
