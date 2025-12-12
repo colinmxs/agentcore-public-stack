@@ -30,10 +30,10 @@ export interface ManagedModel {
   outputModalities: string[];
   /** Whether the model supports response streaming */
   responseStreamingSupported: boolean;
-  /** List of customization types supported (e.g., 'FINE_TUNING') */
-  customizationsSupported: string[];
-  /** List of inference types supported (e.g., 'ON_DEMAND', 'PROVISIONED') */
-  inferenceTypesSupported: string[];
+  /** Maximum number of input tokens the model can accept */
+  maxInputTokens: number;
+  /** Maximum number of output tokens the model can generate */
+  maxOutputTokens: number;
   /** Lifecycle status of the model (e.g., 'ACTIVE', 'LEGACY') */
   modelLifecycle?: string | null;
   /** Roles that have access to this model */
@@ -68,10 +68,10 @@ export interface ManagedModelFormData {
   outputModalities: string[];
   /** Whether the model supports response streaming */
   responseStreamingSupported: boolean;
-  /** List of customization types supported */
-  customizationsSupported: string[];
-  /** List of inference types supported */
-  inferenceTypesSupported: string[];
+  /** Maximum number of input tokens the model can accept */
+  maxInputTokens: number;
+  /** Maximum number of output tokens the model can generate */
+  maxOutputTokens: number;
   /** Lifecycle status of the model */
   modelLifecycle?: string | null;
   /** Roles that have access to this model */

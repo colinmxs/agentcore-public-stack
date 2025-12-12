@@ -96,8 +96,8 @@ export class GeminiModelsPage {
         inputModalities: inputModalities.join(','),
         outputModalities: outputModalities.join(','),
         responseStreamingSupported: this.supportsStreaming(model),
-        customizationsSupported: '',
-        inferenceTypesSupported: 'ON_DEMAND',
+        maxInputTokens: 1000000, // Default value for Gemini models, user can adjust
+        maxOutputTokens: 8192, // Default value, user can adjust
         modelLifecycle: 'ACTIVE',
       }
     });

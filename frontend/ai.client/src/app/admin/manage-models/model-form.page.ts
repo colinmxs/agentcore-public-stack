@@ -11,8 +11,8 @@ interface ModelFormGroup {
   inputModalities: FormControl<string[]>;
   outputModalities: FormControl<string[]>;
   responseStreamingSupported: FormControl<boolean>;
-  customizationsSupported: FormControl<string[]>;
-  inferenceTypesSupported: FormControl<string[]>;
+  maxInputTokens: FormControl<number>;
+  maxOutputTokens: FormControl<number>;
   modelLifecycle: FormControl<string | null>;
   availableToRoles: FormControl<string[]>;
   enabled: FormControl<boolean>;
@@ -36,8 +36,6 @@ export class ModelFormPage implements OnInit {
   readonly availableRoles = AVAILABLE_ROLES;
   readonly availableProviders = AVAILABLE_PROVIDERS;
   readonly availableModalities = ['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'EMBEDDING'];
-  readonly availableInferenceTypes = ['ON_DEMAND', 'PROVISIONED'];
-  readonly availableCustomizations = ['FINE_TUNING', 'CONTINUED_PRE_TRAINING'];
   readonly availableLifecycles = ['ACTIVE', 'LEGACY'];
 
   // Form state
@@ -54,8 +52,8 @@ export class ModelFormPage implements OnInit {
     inputModalities: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     outputModalities: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     responseStreamingSupported: this.fb.control(false, { nonNullable: true }),
-    customizationsSupported: this.fb.control<string[]>([], { nonNullable: true }),
-    inferenceTypesSupported: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
+    maxInputTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(1)] }),
+    maxOutputTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(1)] }),
     modelLifecycle: this.fb.control<string | null>('ACTIVE'),
     availableToRoles: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     enabled: this.fb.control(true, { nonNullable: true }),
@@ -103,8 +101,8 @@ export class ModelFormPage implements OnInit {
         inputModalities: params['inputModalities'] ? params['inputModalities'].split(',') : [],
         outputModalities: params['outputModalities'] ? params['outputModalities'].split(',') : [],
         responseStreamingSupported: params['responseStreamingSupported'] === 'true',
-        customizationsSupported: params['customizationsSupported'] ? params['customizationsSupported'].split(',') : [],
-        inferenceTypesSupported: params['inferenceTypesSupported'] ? params['inferenceTypesSupported'].split(',') : [],
+        maxInputTokens: params['maxInputTokens'] ? parseInt(params['maxInputTokens'], 10) : 0,
+        maxOutputTokens: params['maxOutputTokens'] ? parseInt(params['maxOutputTokens'], 10) : 0,
         modelLifecycle: params['modelLifecycle'] || 'ACTIVE',
       });
     }
