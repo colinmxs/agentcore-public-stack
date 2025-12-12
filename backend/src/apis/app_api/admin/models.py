@@ -57,3 +57,25 @@ class BedrockModelsResponse(BaseModel):
     models: List[FoundationModelSummary]
     next_token: Optional[str] = Field(None, alias="nextToken")
     total_count: Optional[int] = Field(None, alias="totalCount")
+
+
+class GeminiModelSummary(BaseModel):
+    """Summary information for a Gemini model."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    name: str
+    display_name: str = Field(..., alias="displayName")
+    description: Optional[str] = None
+    version: Optional[str] = None
+    supported_generation_methods: List[str] = Field(default_factory=list, alias="supportedGenerationMethods")
+    input_token_limit: Optional[int] = Field(None, alias="inputTokenLimit")
+    output_token_limit: Optional[int] = Field(None, alias="outputTokenLimit")
+    temperature: Optional[float] = None
+    top_p: Optional[float] = Field(None, alias="topP")
+    top_k: Optional[int] = Field(None, alias="topK")
+
+
+class GeminiModelsResponse(BaseModel):
+    """Response model for listing Gemini models."""
+    models: List[GeminiModelSummary]
+    total_count: int = Field(..., alias="totalCount")

@@ -28,6 +28,11 @@ export const routes: Routes = [
         canActivate: [adminGuard],
     },
     {
+        path: 'admin/gemini/models',
+        loadComponent: () => import('./admin/gemini-models/gemini-models.page').then(m => m.GeminiModelsPage),
+        canActivate: [adminGuard],
+    },
+    {
         path: 'admin/manage-models',
         loadComponent: () => import('./admin/manage-models/manage-models.page').then(m => m.ManageModelsPage),
         canActivate: [adminGuard],

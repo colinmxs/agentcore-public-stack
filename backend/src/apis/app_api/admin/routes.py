@@ -19,6 +19,8 @@ from .models import (
     SystemStatsResponse,
     BedrockModelsResponse,
     FoundationModelSummary,
+    GeminiModelsResponse,
+    GeminiModelSummary,
 )
 from apis.shared.auth import User, require_admin, require_roles, has_any_role, get_current_user
 from apis.app_api.sessions.services.metadata import list_user_sessions, get_session_metadata
@@ -403,4 +405,97 @@ async def list_bedrock_models(
         raise HTTPException(
             status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
             detail=f"Unexpected error: {str(e)}"
+        )
+
+
+@router.get("/gemini/models", response_model=GeminiModelsResponse)
+async def list_gemini_models(
+    max_results: Optional[int] = Query(None, ge=1, le=1000, description="Maximum number of models to return"),
+    admin_user: User = Depends(require_admin),
+):
+    """
+    List available Google Gemini models (admin only).
+
+    This endpoint uses the Google AI Python SDK to retrieve information about available
+    Gemini models, including their capabilities, token limits, and supported methods.
+
+    Args:
+        max_results: Optional limit on number of models to return
+        admin_user: Authenticated admin user (injected by dependency)
+
+    Returns:
+        GeminiModelsResponse with list of Gemini models
+
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 403 if user lacks admin role
+            - 500 if Google API error or server error
+    """
+    logger.info(f"Admin {admin_user.email} listing Gemini models")
+
+    try:
+        # Check if Google API key is configured
+        # Try both GOOGLE_API_KEY and GOOGLE_GEMINI_API_KEY for compatibility
+        google_api_key = os.environ.get('GOOGLE_API_KEY') or os.environ.get('GOOGLE_GEMINI_API_KEY')
+        if not google_api_key:
+            logger.error("GOOGLE_API_KEY or GOOGLE_GEMINI_API_KEY environment variable not set")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Google API key not configured. Please set GOOGLE_API_KEY or GOOGLE_GEMINI_API_KEY environment variable."
+            )
+
+        # Import Google AI SDK
+        try:
+            from google import genai
+        except ImportError:
+            logger.error("Google GenAI SDK not installed")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Google GenAI SDK not installed. Please install google-genai package."
+            )
+
+        # Initialize Gemini client
+        client = genai.Client(api_key=google_api_key)
+
+        # List available models
+        logger.debug("Fetching Gemini models from Google API")
+        all_models = []
+
+        for model in client.models.list():
+            # Extract model information
+            model_data = GeminiModelSummary(
+                name=model.name,
+                displayName=getattr(model, 'display_name', model.name),
+                description=getattr(model, 'description', None),
+                version=getattr(model, 'version', None),
+                supportedGenerationMethods=getattr(model, 'supported_generation_methods', []),
+                inputTokenLimit=getattr(model, 'input_token_limit', None),
+                outputTokenLimit=getattr(model, 'output_token_limit', None),
+                temperature=getattr(model, 'temperature', None),
+                topP=getattr(model, 'top_p', None),
+                topK=getattr(model, 'top_k', None),
+            )
+            all_models.append(model_data)
+
+        # Apply client-side limiting if requested
+        if max_results and len(all_models) > max_results:
+            all_models = all_models[:max_results]
+            logger.debug(f"Limited results to {max_results} models")
+
+        logger.info(f"✅ Retrieved {len(all_models)} Gemini models")
+
+        return GeminiModelsResponse(
+            models=all_models,
+            totalCount=len(all_models),
+        )
+
+    except HTTPException:
+        # Re-raise HTTP exceptions
+        raise
+    except Exception as e:
+        logger.error(f"Unexpected error listing Gemini models: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Error fetching Gemini models: {str(e)}"
         )
