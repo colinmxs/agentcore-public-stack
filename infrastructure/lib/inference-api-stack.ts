@@ -209,7 +209,7 @@ export class InferenceApiStack extends cdk.Stack {
     // ============================================================
     
     this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
-      name: getResourceName(config, 'agentcore-memory'),
+      name: getResourceName(config, 'agentcore_memory').replace(/-/g, '_'),
       eventExpiryDuration: 2160, // 90 days in hours (90 * 24)
       memoryExecutionRoleArn: memoryExecutionRole.roleArn,
       description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
@@ -240,7 +240,7 @@ export class InferenceApiStack extends cdk.Stack {
     // ============================================================
     
     this.codeInterpreter = new bedrock.CfnCodeInterpreterCustom(this, 'CodeInterpreterCustom', {
-      name: getResourceName(config, 'code-interpreter'),
+      name: getResourceName(config, 'code_interpreter').replace(/-/g, '_'),
       description: 'Custom Code Interpreter for Python code execution with advanced configuration',
       networkConfiguration: {
         networkMode: 'PUBLIC',
@@ -255,7 +255,7 @@ export class InferenceApiStack extends cdk.Stack {
     // ============================================================
     
     this.browser = new bedrock.CfnBrowserCustom(this, 'BrowserCustom', {
-      name: getResourceName(config, 'browser'),
+      name: getResourceName(config, 'browser').replace(/-/g, '_'),
       description: 'Custom Browser for secure web interaction and data extraction',
       networkConfiguration: {
         networkMode: 'PUBLIC',
@@ -298,7 +298,7 @@ export class InferenceApiStack extends cdk.Stack {
     }));
 
     this.runtime = new bedrock.CfnRuntime(this, 'AgentCoreRuntime', {
-      agentRuntimeName: getResourceName(config, 'agentcore-runtime'),
+      agentRuntimeName: getResourceName(config, 'agentcore_runtime').replace(/-/g, '_'),
       roleArn: runtimeExecutionRole.roleArn,
       agentRuntimeArtifact: {
         containerConfiguration: {
