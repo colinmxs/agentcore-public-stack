@@ -80,7 +80,9 @@ export class ChatRequestService {
     return {
       message,
       session_id,
-      enabled_tools: ['calculator', 'fetch_url_content']
+      model_id: 'gpt-5.2',
+      enabled_tools: ['calculator', 'fetch_url_content'],
+      provider: 'openai'
     };
   }
 }
