@@ -44,6 +44,8 @@ from decimal import Decimal
 from typing import Any, AsyncGenerator, Dict, List, Optional, Tuple, TypedDict
 from uuid import UUID
 
+from apis.shared.errors import StreamErrorEvent, ErrorCode
+
 logger = logging.getLogger(__name__)
 
 # Type aliases for better readability
@@ -296,7 +298,16 @@ def _handle_completion_events(event: RawEvent) -> Tuple[List[ProcessedEvent], bo
     # We also break because processing should stop on error
     if event.get("force_stop", False):
         reason = event.get("force_stop_reason", "unknown reason")
-        events.append(_create_event("error", {"error": f"Agent force-stopped: {reason}"}))
+
+        # Create structured error event
+        error_event = StreamErrorEvent(
+            error=f"Agent force-stopped: {reason}",
+            code=ErrorCode.AGENT_ERROR,
+            detail=str(reason) if reason != "unknown reason" else None,
+            recoverable=False
+        )
+        # Convert to event dict format
+        events.append(_create_event("error", error_event.model_dump(exclude_none=True)))
         should_break = True
 
     return events, should_break
@@ -1322,10 +1333,24 @@ async def process_agent_stream(
         else:
             # Unexpected RuntimeError - treat as error
             logger.error(f"Runtime error processing agent stream: {e}", exc_info=True)
-            yield _create_event("error", {"error": str(e)})
+            # Create structured error event
+            error_event = StreamErrorEvent(
+                error="Runtime error during streaming",
+                code=ErrorCode.STREAM_ERROR,
+                detail=str(e),
+                recoverable=False
+            )
+            yield _create_event("error", error_event.model_dump(exclude_none=True))
 
     except Exception as e:
         # ERROR HANDLING: If anything else goes wrong, log it and send an error event
         # This ensures the client always gets a response, even on failure
         logger.error(f"Error processing agent stream: {e}", exc_info=True)
-        yield _create_event("error", {"error": str(e)})
+        # Create structured error event
+        error_event = StreamErrorEvent(
+            error="An unexpected error occurred during streaming",
+            code=ErrorCode.STREAM_ERROR,
+            detail=str(e),
+            recoverable=False
+        )
+        yield _create_event("error", error_event.model_dump(exclude_none=True))

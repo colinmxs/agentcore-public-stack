@@ -26,8 +26,8 @@ export class ModelService {
       providerName: 'OpenAI'
     },
     {
-      name: 'Gemini 3',
-      modelId: 'gemini-3-pro-preview',
+      name: 'Gemini 2.5 Pro',
+      modelId: 'gemini-2.5-pro',
       provider: 'gemini',
       providerName: 'Google'
     }

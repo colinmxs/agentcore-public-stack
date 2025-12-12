@@ -1,10 +1,10 @@
 // services/stream-parser.service.ts
 import { Injectable, signal, computed, inject } from '@angular/core';
-import { 
-  Message, 
-  ContentBlock, 
-  TextContentBlock, 
-  ToolUseContentBlock, 
+import {
+  Message,
+  ContentBlock,
+  TextContentBlock,
+  ToolUseContentBlock,
   MessageStartEvent,
   ContentBlockStartEvent,
   ContentBlockDeltaEvent,
@@ -15,6 +15,7 @@ import {
 import { MetadataEvent } from '../models/content-types';
 import { ChatStateService } from './chat-state.service';
 import { v4 as uuidv4 } from 'uuid';
+import { ErrorService, StreamErrorEvent } from '../../../services/error/error.service';
 
 /**
  * Internal representation of a message being built from stream events.
@@ -77,6 +78,7 @@ enum StreamState {
 })
 export class StreamParserService {
   private chatStateService = inject(ChatStateService);
+  private errorService = inject(ErrorService);
 
   // =========================================================================
   // State Signals
@@ -1034,16 +1036,43 @@ export class StreamParserService {
   
   private handleError(data: unknown): void {
     let errorMessage = 'Unknown error';
-    
+
+    // Check if this is a structured error event from backend
     if (data && typeof data === 'object') {
-      const errorData = data as { error?: string; message?: string };
-      errorMessage = errorData.error || errorData.message || errorMessage;
+      const potentialStructuredError = data as Partial<StreamErrorEvent>;
+
+      if (potentialStructuredError.error && potentialStructuredError.code) {
+        // This is a structured StreamErrorEvent from backend
+        const streamError: StreamErrorEvent = {
+          error: potentialStructuredError.error,
+          code: potentialStructuredError.code,
+          detail: potentialStructuredError.detail,
+          recoverable: potentialStructuredError.recoverable ?? false,
+          metadata: potentialStructuredError.metadata
+        };
+
+        // Use ErrorService to display the error
+        this.errorService.handleStreamError(streamError);
+        errorMessage = streamError.error;
+      } else {
+        // Legacy unstructured error
+        const errorData = data as { error?: string; message?: string };
+        errorMessage = errorData.error || errorData.message || errorMessage;
+
+        // Add to ErrorService with generic code
+        this.errorService.addError(
+          'Stream Error',
+          errorMessage
+        );
+      }
     } else if (typeof data === 'string') {
       errorMessage = data;
+      this.errorService.addError('Stream Error', errorMessage);
     } else if (data instanceof Error) {
       errorMessage = data.message;
+      this.errorService.addError('Stream Error', errorMessage);
     }
-    
+
     this.setError(`Stream error: ${errorMessage}`);
   }
   
