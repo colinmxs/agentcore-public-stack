@@ -24,12 +24,28 @@ export class BedrockModelsPage {
   inferenceTypeFilter = signal<string>('');
   customizationTypeFilter = signal<string>('');
   maxResultsFilter = signal<number | undefined>(undefined);
+  searchQuery = signal<string>('');
 
   // Access the models resource from the service
   readonly modelsResource = this.bedrockModelsService.modelsResource;
 
   // Computed signal for models data
-  readonly models = computed(() => this.modelsResource.value()?.models ?? []);
+  readonly allModels = computed(() => this.modelsResource.value()?.models ?? []);
+
+  // Computed signal for filtered models based on search query
+  readonly models = computed(() => {
+    const query = this.searchQuery().toLowerCase().trim();
+    if (!query) {
+      return this.allModels();
+    }
+
+    return this.allModels().filter(model =>
+      model.modelId.toLowerCase().includes(query) ||
+      model.modelName.toLowerCase().includes(query) ||
+      model.providerName.toLowerCase().includes(query)
+    );
+  });
+
   readonly totalCount = computed(() => this.modelsResource.value()?.totalCount ?? 0);
   readonly isLoading = computed(() => this.modelsResource.isLoading());
   readonly error = computed(() => {
@@ -39,25 +55,25 @@ export class BedrockModelsPage {
 
   // Available filter options (populated from data)
   readonly availableProviders = computed(() => {
-    const models = this.models();
+    const models = this.allModels();
     const providers = new Set(models.map(m => m.providerName));
     return Array.from(providers).sort();
   });
 
   readonly availableOutputModalities = computed(() => {
-    const models = this.models();
+    const models = this.allModels();
     const modalities = new Set(models.flatMap(m => m.outputModalities));
     return Array.from(modalities).sort();
   });
 
   readonly availableInferenceTypes = computed(() => {
-    const models = this.models();
+    const models = this.allModels();
     const types = new Set(models.flatMap(m => m.inferenceTypesSupported));
     return Array.from(types).sort();
   });
 
   readonly availableCustomizationTypes = computed(() => {
-    const models = this.models();
+    const models = this.allModels();
     const types = new Set(models.flatMap(m => m.customizationsSupported));
     return Array.from(types).sort();
   });
@@ -88,6 +104,7 @@ export class BedrockModelsPage {
     this.inferenceTypeFilter.set('');
     this.customizationTypeFilter.set('');
     this.maxResultsFilter.set(undefined);
+    this.searchQuery.set('');
     this.bedrockModelsService.resetModelsParams();
   }
 
@@ -100,7 +117,8 @@ export class BedrockModelsPage {
       this.outputModalityFilter() ||
       this.inferenceTypeFilter() ||
       this.customizationTypeFilter() ||
-      this.maxResultsFilter()
+      this.maxResultsFilter() ||
+      this.searchQuery()
     );
   });
 

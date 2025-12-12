@@ -20,12 +20,27 @@ export class OpenAIModelsPage {
 
   // Filter signals
   maxResultsFilter = signal<number | undefined>(undefined);
+  searchQuery = signal<string>('');
 
   // Access the models resource from the service
   readonly modelsResource = this.openaiModelsService.modelsResource;
 
   // Computed signal for models data
-  readonly models = computed(() => this.modelsResource.value()?.models ?? []);
+  readonly allModels = computed(() => this.modelsResource.value()?.models ?? []);
+
+  // Computed signal for filtered models based on search query
+  readonly models = computed(() => {
+    const query = this.searchQuery().toLowerCase().trim();
+    if (!query) {
+      return this.allModels();
+    }
+
+    return this.allModels().filter(model =>
+      model.id.toLowerCase().includes(query) ||
+      model.ownedBy?.toLowerCase().includes(query)
+    );
+  });
+
   readonly totalCount = computed(() => this.modelsResource.value()?.totalCount ?? 0);
   readonly isLoading = computed(() => this.modelsResource.isLoading());
   readonly error = computed(() => {
@@ -51,6 +66,7 @@ export class OpenAIModelsPage {
    */
   resetFilters(): void {
     this.maxResultsFilter.set(undefined);
+    this.searchQuery.set('');
     this.openaiModelsService.resetModelsParams();
   }
 
@@ -58,7 +74,7 @@ export class OpenAIModelsPage {
    * Check if any filters are currently applied.
    */
   readonly hasActiveFilters = computed(() => {
-    return !!(this.maxResultsFilter());
+    return !!(this.maxResultsFilter() || this.searchQuery());
   });
 
   /**

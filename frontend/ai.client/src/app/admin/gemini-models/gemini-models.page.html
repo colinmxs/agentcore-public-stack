@@ -13,6 +13,21 @@
       <h2 class="mb-4 text-lg/7 font-semibold text-gray-900 dark:text-white">Filters</h2>
 
       <div class="grid grid-cols-1 gap-4 md:grid-cols-2 lg:grid-cols-3">
+        <!-- Search Filter -->
+        <div>
+          <label for="search" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+            Search Models
+          </label>
+          <input
+            type="text"
+            id="search"
+            [ngModel]="searchQuery()"
+            (ngModelChange)="searchQuery.set($event)"
+            placeholder="Search by name or description..."
+            class="mt-1 block w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-500"
+          />
+        </div>
+
         <!-- Max Results Filter -->
         <div>
           <label for="maxResults" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
