@@ -210,7 +210,7 @@ export class InferenceApiStack extends cdk.Stack {
     
     this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
       name: getResourceName(config, 'agentcore_memory').replace(/-/g, '_'),
-      eventExpiryDuration: 2160, // 90 days in hours (90 * 24)
+      eventExpiryDuration: 90, // 90 days (property expects days, not hours; max is 365, min is 7)
       memoryExecutionRoleArn: memoryExecutionRole.roleArn,
       description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
       memoryStrategies: [
