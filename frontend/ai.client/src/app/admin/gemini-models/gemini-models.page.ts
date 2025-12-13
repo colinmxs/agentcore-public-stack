@@ -127,10 +127,9 @@ export class GeminiModelsPage {
         providerName: 'Google',
         inputModalities: inputModalities.join(','),
         outputModalities: outputModalities.join(','),
-        responseStreamingSupported: this.supportsStreaming(model),
+        isReasoningModel: model.thinking || false,
         maxInputTokens: 1000000, // Default value for Gemini models, user can adjust
         maxOutputTokens: 8192, // Default value, user can adjust
-        modelLifecycle: 'ACTIVE',
       }
     });
   }

@@ -89,22 +89,6 @@
             }
           </div>
 
-          <!-- Model Lifecycle -->
-          <div>
-            <label for="modelLifecycle" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
-              Lifecycle Status
-            </label>
-            <select
-              id="modelLifecycle"
-              formControlName="modelLifecycle"
-              class="mt-1 block w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            >
-              @for (lifecycle of availableLifecycles; track lifecycle) {
-                <option [value]="lifecycle">{{ lifecycle }}</option>
-              }
-            </select>
-          </div>
-
           <!-- Reasoning Model Checkbox -->
           <div class="flex items-center gap-3">
             <input
@@ -238,19 +222,6 @@
                 <p class="mt-1 text-sm/6 text-red-600 dark:text-red-400">Enter a valid token limit (1 or greater)</p>
               }
             </div>
-          </div>
-
-          <!-- Response Streaming -->
-          <div class="flex items-center gap-3">
-            <input
-              type="checkbox"
-              id="responseStreamingSupported"
-              formControlName="responseStreamingSupported"
-              class="size-4 rounded-xs border-gray-300 text-blue-600 focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700"
-            />
-            <label for="responseStreamingSupported" class="text-sm/6 font-medium text-gray-700 dark:text-gray-300">
-              Supports Response Streaming
-            </label>
           </div>
         </div>
       </div>

@@ -141,10 +141,8 @@ export class BedrockModelsPage {
         providerName: model.providerName,
         inputModalities: model.inputModalities.join(','),
         outputModalities: model.outputModalities.join(','),
-        responseStreamingSupported: model.responseStreamingSupported,
         maxInputTokens: 200000, // Default value, user can adjust
         maxOutputTokens: 4096, // Default value, user can adjust
-        modelLifecycle: model.modelLifecycle,
       }
     });
   }

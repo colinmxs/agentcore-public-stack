@@ -2,6 +2,7 @@ import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } 
 import { Router, ActivatedRoute } from '@angular/router';
 import { FormBuilder, FormGroup, FormControl, Validators, ReactiveFormsModule } from '@angular/forms';
 import { AVAILABLE_ROLES, AVAILABLE_PROVIDERS, ManagedModelFormData, ModelProvider } from './models/managed-model.model';
+import { ManagedModelsService } from './services/managed-models.service';
 
 interface ModelFormGroup {
   modelId: FormControl<string>;
@@ -10,10 +11,8 @@ interface ModelFormGroup {
   providerName: FormControl<string>;
   inputModalities: FormControl<string[]>;
   outputModalities: FormControl<string[]>;
-  responseStreamingSupported: FormControl<boolean>;
   maxInputTokens: FormControl<number>;
   maxOutputTokens: FormControl<number>;
-  modelLifecycle: FormControl<string | null>;
   availableToRoles: FormControl<string[]>;
   enabled: FormControl<boolean>;
   inputPricePerMillionTokens: FormControl<number>;
@@ -33,12 +32,12 @@ export class ModelFormPage implements OnInit {
   private fb = inject(FormBuilder);
   private router = inject(Router);
   private route = inject(ActivatedRoute);
+  private managedModelsService = inject(ManagedModelsService);
 
   // Available options for multi-select fields
   readonly availableRoles = AVAILABLE_ROLES;
   readonly availableProviders = AVAILABLE_PROVIDERS;
   readonly availableModalities = ['TEXT', 'IMAGE', 'VIDEO', 'AUDIO', 'EMBEDDING'];
-  readonly availableLifecycles = ['ACTIVE', 'LEGACY'];
 
   // Form state
   readonly isEditMode = signal<boolean>(false);
@@ -53,10 +52,8 @@ export class ModelFormPage implements OnInit {
     providerName: this.fb.control('', { nonNullable: true, validators: [Validators.required] }),
     inputModalities: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     outputModalities: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
-    responseStreamingSupported: this.fb.control(false, { nonNullable: true }),
     maxInputTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(1)] }),
     maxOutputTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(1)] }),
-    modelLifecycle: this.fb.control<string | null>('ACTIVE'),
     availableToRoles: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     enabled: this.fb.control(true, { nonNullable: true }),
     inputPricePerMillionTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(0)] }),
@@ -84,12 +81,34 @@ export class ModelFormPage implements OnInit {
   }
 
   /**
-   * Load model data for editing (mock implementation)
+   * Load model data for editing
    */
-  private loadModelData(id: string): void {
-    // In a real app, this would fetch from an API
-    // For now, just mock data
-    console.log('Loading model data for ID:', id);
+  private async loadModelData(id: string): Promise<void> {
+    try {
+      const model = await this.managedModelsService.getModel(id);
+
+      // Populate form with model data
+      this.modelForm.patchValue({
+        modelId: model.modelId,
+        modelName: model.modelName,
+        provider: model.provider as ModelProvider,
+        providerName: model.providerName,
+        inputModalities: model.inputModalities,
+        outputModalities: model.outputModalities,
+        maxInputTokens: model.maxInputTokens,
+        maxOutputTokens: model.maxOutputTokens,
+        availableToRoles: model.availableToRoles,
+        enabled: model.enabled,
+        inputPricePerMillionTokens: model.inputPricePerMillionTokens,
+        outputPricePerMillionTokens: model.outputPricePerMillionTokens,
+        isReasoningModel: model.isReasoningModel,
+        knowledgeCutoffDate: model.knowledgeCutoffDate,
+      });
+    } catch (error) {
+      console.error('Error loading model data:', error);
+      alert('Failed to load model data. Please try again.');
+      this.router.navigate(['/admin/manage-models']);
+    }
   }
 
   /**
@@ -104,10 +123,8 @@ export class ModelFormPage implements OnInit {
         providerName: params['providerName'] || '',
         inputModalities: params['inputModalities'] ? params['inputModalities'].split(',') : [],
         outputModalities: params['outputModalities'] ? params['outputModalities'].split(',') : [],
-        responseStreamingSupported: params['responseStreamingSupported'] === 'true',
         maxInputTokens: params['maxInputTokens'] ? parseInt(params['maxInputTokens'], 10) : 0,
         maxOutputTokens: params['maxOutputTokens'] ? parseInt(params['maxOutputTokens'], 10) : 0,
-        modelLifecycle: params['modelLifecycle'] || 'ACTIVE',
         isReasoningModel: params['isReasoningModel'] === 'true',
         knowledgeCutoffDate: params['knowledgeCutoffDate'] || null,
       });
@@ -150,17 +167,22 @@ export class ModelFormPage implements OnInit {
     try {
       const formData = this.modelForm.value as ManagedModelFormData;
 
-      // In a real app, this would call an API
-      console.log('Saving model:', formData);
-
-      // Simulate API call
-      await new Promise(resolve => setTimeout(resolve, 500));
+      if (this.isEditMode() && this.modelId()) {
+        // Update existing model
+        await this.managedModelsService.updateModel(this.modelId()!, formData);
+      } else {
+        // Create new model
+        await this.managedModelsService.createModel(formData);
+      }
 
       // Navigate back to manage models page
       this.router.navigate(['/admin/manage-models']);
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error saving model:', error);
-      alert('Failed to save model. Please try again.');
+
+      // Extract error message if available
+      const errorMessage = error?.error?.detail || error?.message || 'Failed to save model. Please try again.';
+      alert(errorMessage);
     } finally {
       this.isSubmitting.set(false);
     }

@@ -1,5 +1,17 @@
-import { Injectable, signal, computed } from '@angular/core';
-import { ManagedModel } from '../models/managed-model.model';
+import { Injectable, inject, signal, computed, resource } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
+import { firstValueFrom } from 'rxjs';
+import { environment } from '../../../../environments/environment';
+import { AuthService } from '../../../auth/auth.service';
+import { ManagedModel, ManagedModelFormData } from '../models/managed-model.model';
+
+/**
+ * Response model for managed models list endpoint
+ */
+export interface ManagedModelsListResponse {
+  models: ManagedModel[];
+  totalCount: number;
+}
 
 /**
  * Service to manage the list of models that have been added to the system.
@@ -10,105 +22,36 @@ import { ManagedModel } from '../models/managed-model.model';
   providedIn: 'root'
 })
 export class ManagedModelsService {
-  // Mock data for managed models (same as in manage-models.page.ts)
-  // In a real app, this would be fetched from an API
-  private managedModels = signal<ManagedModel[]>([
-    {
-      id: '1',
-      modelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
-      modelName: 'Claude 3.5 Sonnet v2',
-      provider: 'bedrock',
-      providerName: 'Anthropic',
-      inputModalities: ['TEXT', 'IMAGE'],
-      outputModalities: ['TEXT'],
-      responseStreamingSupported: true,
-      maxInputTokens: 200000,
-      maxOutputTokens: 8192,
-      modelLifecycle: 'ACTIVE',
-      availableToRoles: ['Admin', 'SuperAdmin', 'User'],
-      enabled: true,
-      inputPricePerMillionTokens: 3.0,
-      outputPricePerMillionTokens: 15.0,
-      isReasoningModel: false,
-      knowledgeCutoffDate: '2024-04-01',
-      createdAt: new Date('2024-10-22'),
-      updatedAt: new Date('2024-12-01'),
-    },
-    {
-      id: '2',
-      modelId: 'anthropic.claude-3-haiku-20240307-v1:0',
-      modelName: 'Claude 3 Haiku',
-      provider: 'bedrock',
-      providerName: 'Anthropic',
-      inputModalities: ['TEXT', 'IMAGE'],
-      outputModalities: ['TEXT'],
-      responseStreamingSupported: true,
-      maxInputTokens: 200000,
-      maxOutputTokens: 4096,
-      modelLifecycle: 'ACTIVE',
-      availableToRoles: ['Admin', 'SuperAdmin', 'User', 'Guest'],
-      enabled: true,
-      inputPricePerMillionTokens: 0.25,
-      outputPricePerMillionTokens: 1.25,
-      isReasoningModel: false,
-      knowledgeCutoffDate: '2023-08-01',
-      createdAt: new Date('2024-03-07'),
-      updatedAt: new Date('2024-11-15'),
-    },
-    {
-      id: '3',
-      modelId: 'amazon.titan-text-express-v1',
-      modelName: 'Titan Text G1 - Express',
-      provider: 'bedrock',
-      providerName: 'Amazon',
-      inputModalities: ['TEXT'],
-      outputModalities: ['TEXT'],
-      responseStreamingSupported: true,
-      maxInputTokens: 8192,
-      maxOutputTokens: 8192,
-      modelLifecycle: 'ACTIVE',
-      availableToRoles: ['Admin', 'SuperAdmin'],
-      enabled: false,
-      inputPricePerMillionTokens: 0.2,
-      outputPricePerMillionTokens: 0.6,
-      isReasoningModel: false,
-      knowledgeCutoffDate: null,
-      createdAt: new Date('2024-01-15'),
-      updatedAt: new Date('2024-10-20'),
-    },
-    {
-      id: '4',
-      modelId: 'meta.llama3-70b-instruct-v1:0',
-      modelName: 'Llama 3 70B Instruct',
-      provider: 'bedrock',
-      providerName: 'Meta',
-      inputModalities: ['TEXT'],
-      outputModalities: ['TEXT'],
-      responseStreamingSupported: true,
-      maxInputTokens: 8192,
-      maxOutputTokens: 2048,
-      modelLifecycle: 'ACTIVE',
-      availableToRoles: ['Admin', 'User'],
-      enabled: true,
-      inputPricePerMillionTokens: 0.99,
-      outputPricePerMillionTokens: 0.99,
-      isReasoningModel: false,
-      knowledgeCutoffDate: '2023-12-01',
-      createdAt: new Date('2024-04-18'),
-      updatedAt: new Date('2024-11-30'),
-    },
-  ]);
+  private http = inject(HttpClient);
+  private authService = inject(AuthService);
+
+  /**
+   * Reactive resource for fetching managed models.
+   *
+   * This resource automatically refetches when manually reloaded.
+   * Provides reactive signals for data, loading state, and errors.
+   */
+  readonly modelsResource = resource({
+    loader: async () => {
+      // Ensure user is authenticated before making the request
+      await this.authService.ensureAuthenticated();
+
+      // Fetch models from API
+      return this.fetchManagedModels();
+    }
+  });
 
   // Computed set of model IDs for quick lookup
-  private addedModelIds = computed(() => {
-    return new Set(this.managedModels().map(m => m.modelId));
+  readonly addedModelIds = computed(() => {
+    const models = this.modelsResource.value()?.models ?? [];
+    return new Set(models.map(m => m.modelId));
   });
 
   /**
-   * Get all managed models
+   * Get all managed models (from resource)
    */
-  getManagedModels() {
-    return this.managedModels();
+  getManagedModels(): ManagedModel[] {
+    return this.modelsResource.value()?.models ?? [];
   }
 
   /**
@@ -119,25 +62,116 @@ export class ManagedModelsService {
   }
 
   /**
-   * Add a new managed model (for future implementation)
+   * Fetches managed models from the admin API.
+   *
+   * @returns Promise resolving to ManagedModelsListResponse
+   * @throws Error if the API request fails or user lacks admin privileges
    */
-  addModel(model: ManagedModel): void {
-    this.managedModels.update(models => [...models, model]);
+  async fetchManagedModels(): Promise<ManagedModelsListResponse> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get<ManagedModelsListResponse>(
+          `${environment.appApiUrl}/admin/managed-models`
+        )
+      );
+
+      return response;
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
-   * Remove a managed model (for future implementation)
+   * Create a new managed model
+   *
+   * @param modelData - Model creation data
+   * @returns Promise resolving to the created model
+   * @throws Error if the API request fails
    */
-  removeModel(modelId: string): void {
-    this.managedModels.update(models => models.filter(m => m.id !== modelId));
+  async createModel(modelData: ManagedModelFormData): Promise<ManagedModel> {
+    try {
+      const response = await firstValueFrom(
+        this.http.post<ManagedModel>(
+          `${environment.appApiUrl}/admin/managed-models`,
+          modelData
+        )
+      );
+
+      // Reload the resource to refresh the list
+      this.modelsResource.reload();
+
+      return response;
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**
-   * Update a managed model (for future implementation)
+   * Get a specific enabled model by ID
+   *
+   * @param modelId - Model identifier
+   * @returns Promise resolving to the model
+   * @throws Error if the API request fails or model not found
    */
-  updateModel(modelId: string, updatedModel: Partial<ManagedModel>): void {
-    this.managedModels.update(models =>
-      models.map(m => m.id === modelId ? { ...m, ...updatedModel } : m)
-    );
+  async getModel(modelId: string): Promise<ManagedModel> {
+    try {
+      const response = await firstValueFrom(
+        this.http.get<ManagedModel>(
+          `${environment.appApiUrl}/admin/managed-models/${modelId}`
+        )
+      );
+
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Update an enabled model
+   *
+   * @param modelId - Model identifier
+   * @param updates - Fields to update
+   * @returns Promise resolving to the updated model
+   * @throws Error if the API request fails or model not found
+   */
+  async updateModel(modelId: string, updates: Partial<ManagedModelFormData>): Promise<ManagedModel> {
+    try {
+      const response = await firstValueFrom(
+        this.http.put<ManagedModel>(
+          `${environment.appApiUrl}/admin/managed-models/${modelId}`,
+          updates
+        )
+      );
+
+      // Reload the resource to refresh the list
+      this.modelsResource.reload();
+
+      return response;
+    } catch (error) {
+      throw error;
+    }
+  }
+
+  /**
+   * Delete an enabled model
+   *
+   * @param modelId - Model identifier
+   * @returns Promise resolving when deletion completes
+   * @throws Error if the API request fails or model not found
+   */
+  async deleteModel(modelId: string): Promise<void> {
+    try {
+      await firstValueFrom(
+        this.http.delete<void>(
+          `${environment.appApiUrl}/admin/managed-models/${modelId}`
+        )
+      );
+
+      // Reload the resource to refresh the list
+      this.modelsResource.reload();
+    } catch (error) {
+      throw error;
+    }
   }
 }

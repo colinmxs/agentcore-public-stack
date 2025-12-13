@@ -130,10 +130,8 @@ export class OpenAIModelsPage {
         providerName: 'OpenAI',
         inputModalities: inputModalities.join(','),
         outputModalities: outputModalities.join(','),
-        responseStreamingSupported: true, // Most OpenAI models support streaming
         maxInputTokens: maxInputTokens,
         maxOutputTokens: maxOutputTokens,
-        modelLifecycle: 'ACTIVE',
       }
     });
   }

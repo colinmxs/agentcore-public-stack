@@ -72,9 +72,14 @@ export class ManageModelsPage {
   /**
    * Delete a model
    */
-  deleteModel(modelId: string): void {
+  async deleteModel(modelId: string): Promise<void> {
     if (confirm('Are you sure you want to delete this model?')) {
-      this.managedModelsService.removeModel(modelId);
+      try {
+        await this.managedModelsService.deleteModel(modelId);
+      } catch (error) {
+        console.error('Error deleting model:', error);
+        alert('Failed to delete model. Please try again.');
+      }
     }
   }
 }
