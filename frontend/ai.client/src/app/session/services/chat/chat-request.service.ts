@@ -81,12 +81,19 @@ export class ChatRequestService {
   private buildChatRequestObject(message: string, session_id: string) {
     const selectedModel = this.modelService.getSelectedModel();
 
+    if (!selectedModel) {
+      throw new Error('No model selected. Please select a model before sending a message.');
+    }
+
+    // If using the system default model, send null for model_id to let backend use its default
+    const isDefaultModel = this.modelService.isUsingDefaultModel();
+    
     return {
       message,
       session_id,
-      model_id: selectedModel.modelId,
+      model_id: isDefaultModel ? null : selectedModel.modelId,
       enabled_tools: ['calculator', 'fetch_url_content'],
-      provider: selectedModel.provider
+      provider: isDefaultModel ? null : selectedModel.provider
     };
   }
 }
