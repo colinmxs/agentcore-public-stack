@@ -69,23 +69,44 @@ export class InferenceApiStack extends cdk.Stack {
       description: 'Execution role for AWS Bedrock AgentCore Runtime',
     });
 
-    // CloudWatch Logs permissions
+    // CloudWatch Logs permissions - structured per AWS best practices
+    // Log group creation and stream description
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
+        'logs:DescribeLogStreams',
         'logs:CreateLogGroup',
+      ],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock-agentcore/runtimes/*`],
+    }));
+
+    // Describe all log groups (required for runtime initialization)
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'logs:DescribeLogGroups',
+      ],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:*`],
+    }));
+
+    // Log stream writing
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      effect: iam.Effect.ALLOW,
+      actions: [
         'logs:CreateLogStream',
         'logs:PutLogEvents',
       ],
-      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/*`],
+      resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock-agentcore/runtimes/*:log-stream:*`],
     }));
 
-    // X-Ray tracing permissions
+    // X-Ray tracing permissions (full tracing capability)
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
         'xray:PutTraceSegments',
         'xray:PutTelemetryRecords',
+        'xray:GetSamplingRules',
+        'xray:GetSamplingTargets',
       ],
       resources: ['*'],
     }));
@@ -104,16 +125,17 @@ export class InferenceApiStack extends cdk.Stack {
       },
     }));
 
-    // Bedrock model access permissions
+    // Bedrock model invocation permissions (all foundation models + account resources)
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'BedrockModelInvocation',
       effect: iam.Effect.ALLOW,
       actions: [
         'bedrock:InvokeModel',
         'bedrock:InvokeModelWithResponseStream',
       ],
       resources: [
-        `arn:aws:bedrock:${config.awsRegion}::foundation-model/anthropic.claude-*`,
-        `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.nova-*`,
+        `arn:aws:bedrock:*::foundation-model/*`,
+        `arn:aws:bedrock:${config.awsRegion}:${config.awsAccount}:*`,
       ],
     }));
 
@@ -128,16 +150,41 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
     }));
 
-    // ECR permissions to pull container images
+    // ECR image access - scoped to specific repository
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ECRImageAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'ecr:BatchGetImage',
+        'ecr:GetDownloadUrlForLayer',
+        'ecr:BatchCheckLayerAvailability',
+      ],
+      resources: [ecrRepository.repositoryArn],
+    }));
+
+    // ECR token access - required for authentication (must be wildcard)
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ECRTokenAccess',
       effect: iam.Effect.ALLOW,
       actions: [
         'ecr:GetAuthorizationToken',
-        'ecr:BatchCheckLayerAvailability',
-        'ecr:GetDownloadUrlForLayer',
-        'ecr:BatchGetImage',
       ],
       resources: ['*'],
+    }));
+
+    // Bedrock AgentCore workload identity and access token permissions
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'GetAgentAccessToken',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock-agentcore:GetWorkloadAccessToken',
+        'bedrock-agentcore:GetWorkloadAccessTokenForJWT',
+        'bedrock-agentcore:GetWorkloadAccessTokenForUserId',
+      ],
+      resources: [
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/default`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/default/workload-identity/hosted_agent_*`,
+      ],
     }));
 
     // ============================================================
