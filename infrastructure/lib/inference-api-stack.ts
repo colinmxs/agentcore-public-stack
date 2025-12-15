@@ -320,8 +320,9 @@ export class InferenceApiStack extends cdk.Stack {
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       effect: iam.Effect.ALLOW,
       actions: [
-        'bedrock:CreateEvent',
-        'bedrock:RetrieveMemory',
+        'bedrock-agentcore:CreateEvent',
+        'bedrock-agentcore:RetrieveMemory',
+        'bedrock-agentcore:ListEvents',
       ],
       resources: [this.memory.attrMemoryArn],
     }));
