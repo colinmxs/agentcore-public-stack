@@ -88,37 +88,10 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-  test:
-    name: Run Tests
-    runs-on: ubuntu-latest
-    needs: install
-    if: ${{ github.event.inputs.skip_tests != 'true' }}
-    steps:
-      - name: Checkout code
-        uses: actions/checkout@v4
-
-      - name: Restore frontend node_modules cache
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/ai.client/node_modules
-          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
-
-      - name: Run frontend tests
-        run: |
-          bash scripts/stack-frontend/test.sh
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-test-results
-          path: frontend/ai.client/coverage/
-          retention-days: 7
-          if-no-files-found: ignore
-
   build:
     name: Build Frontend
     runs-on: ubuntu-latest
-    needs: test
+    needs: install
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -139,6 +112,39 @@ jobs:
           name: frontend-build
           path: frontend/ai.client/dist/
           retention-days: 7
+
+  test:
+    name: Run Tests
+    runs-on: ubuntu-latest
+    needs: build
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Download build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-build
+          path: frontend/ai.client/dist/
+
+      - name: Run frontend tests
+        run: |
+          bash scripts/stack-frontend/test.sh
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: frontend/ai.client/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
