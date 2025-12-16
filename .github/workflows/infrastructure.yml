@@ -147,7 +147,11 @@ jobs:
             infrastructure/lib/**/*.d.ts
             infrastructure/bin/**/*.js
             infrastructure/bin/**/*.d.ts
-          key: infrastructure-build-${{ github.sha }}     
+          key: infrastructure-build-${{ github.sha }}
+
+      - name: Install system dependencies
+        run: |
+          bash scripts/common/install-deps.sh
 
       - name: Synthesize CloudFormation template
         run: |
