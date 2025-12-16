@@ -36,7 +36,12 @@ fi
 
 # Bootstrap CDK (if not already bootstrapped)
 log_info "Ensuring CDK is bootstrapped..."
-cdk bootstrap aws://${CDK_DEFAULT_ACCOUNT}/${CDK_DEFAULT_REGION} || log_info "CDK already bootstrapped or bootstrap failed (continuing anyway)"
+cdk bootstrap aws://${CDK_DEFAULT_ACCOUNT}/${CDK_DEFAULT_REGION} \
+    --context environment="${DEPLOY_ENVIRONMENT}" \
+    --context projectPrefix="${CDK_PROJECT_PREFIX}" \
+    --context awsAccount="${CDK_AWS_ACCOUNT}" \
+    --context awsRegion="${CDK_AWS_REGION}" \
+    || log_info "CDK already bootstrapped or bootstrap failed (continuing anyway)"
 
 # Deploy the Infrastructure Stack
 # Check if pre-synthesized template exists (from CI/CD pipeline)
@@ -51,6 +56,12 @@ else
     log_info "No pre-synthesized template found. Synthesizing and deploying..."
     log_info "Deploying InfrastructureStack..."
     cdk deploy InfrastructureStack \
+        --context environment="${DEPLOY_ENVIRONMENT}" \
+        --context projectPrefix="${CDK_PROJECT_PREFIX}" \
+        --context awsAccount="${CDK_AWS_ACCOUNT}" \
+        --context awsRegion="${CDK_AWS_REGION}" \
+        --context vpcCidr="${CDK_VPC_CIDR}" \
+        --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
         --require-approval never \
         --outputs-file "${PROJECT_ROOT}/infrastructure/infrastructure-outputs.json"
 fi

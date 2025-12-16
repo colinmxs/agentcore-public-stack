@@ -37,6 +37,12 @@ fi
 # Synthesize the Infrastructure Stack
 log_info "Running CDK synth for InfrastructureStack..."
 cdk synth InfrastructureStack \
+    --context environment="${DEPLOY_ENVIRONMENT}" \
+    --context projectPrefix="${CDK_PROJECT_PREFIX}" \
+    --context awsAccount="${CDK_AWS_ACCOUNT}" \
+    --context awsRegion="${CDK_AWS_REGION}" \
+    --context vpcCidr="${CDK_VPC_CIDR}" \
+    --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
     --output "${PROJECT_ROOT}/infrastructure/cdk.out"
 
 log_success "Infrastructure Stack CloudFormation template synthesized successfully"
