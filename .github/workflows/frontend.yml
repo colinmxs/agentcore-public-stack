@@ -88,15 +88,10 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-  build:
+  build-frontend:
     name: Build Frontend
     runs-on: ubuntu-latest
     needs: install
-    
-    permissions:
-      id-token: write
-      contents: read
-    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -117,6 +112,64 @@ jobs:
           name: frontend-build
           path: frontend/ai.client/dist/
           retention-days: 7
+
+  build-cdk:
+    name: Build CDK
+    runs-on: ubuntu-latest
+    needs: install
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore CDK node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Build CDK TypeScript
+        run: |
+          bash scripts/stack-frontend/build-cdk.sh
+
+  test-frontend:
+    name: Test Frontend
+    runs-on: ubuntu-latest
+    needs: build-frontend
+    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Run frontend tests
+        run: |
+          bash scripts/stack-frontend/test.sh
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-test-results
+          path: frontend/ai.client/coverage/
+          retention-days: 7
+          if-no-files-found: ignore
+
+  synth-cdk:
+    name: Synthesize CDK
+    runs-on: ubuntu-latest
+    needs: build-cdk
+    
+    permissions:
+      id-token: write
+      contents: read
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
 
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v4
@@ -148,32 +201,13 @@ jobs:
           path: infrastructure/cdk.out/
           retention-days: 7
 
-  test:
-    name: Run Tests
+  test-cdk:
+    name: Test CDK
     runs-on: ubuntu-latest
-    needs: build
-    if: ${{ github.event.inputs.skip_tests != 'true' }}
+    needs: synth-cdk
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
-
-      - name: Restore frontend node_modules cache
-        uses: actions/cache/restore@v4
-        with:
-          path: frontend/ai.client/node_modules
-          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
-
-      - name: Run frontend tests
-        run: |
-          bash scripts/stack-frontend/test.sh
-
-      - name: Upload test results
-        uses: actions/upload-artifact@v4
-        with:
-          name: frontend-test-results
-          path: frontend/ai.client/coverage/
-          retention-days: 7
-          if-no-files-found: ignore
 
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v4
@@ -189,13 +223,12 @@ jobs:
 
       - name: Validate CDK template with diff
         run: |
-          cd infrastructure
-          npx cdk diff FrontendStack --app "cdk.out/"
+          bash scripts/stack-frontend/test-cdk.sh
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
     runs-on: ubuntu-latest
-    needs: [build, test]
+    needs: test-cdk
     # if: |
     #   github.event_name == 'push' || github.event_name == 'workflow_dispatch' &&
     #   github.event.inputs.skip_deploy != 'true'
@@ -247,7 +280,7 @@ jobs:
   deploy-assets:
     name: Deploy Frontend Assets
     runs-on: ubuntu-latest
-    needs: [build, deploy-infrastructure]
+    needs: [build-frontend, test-frontend, deploy-infrastructure]
     # if: |
     #   github.event_name == 'push' || github.event_name == 'workflow_dispatch' &&
     #   github.event.inputs.skip_deploy != 'true'
