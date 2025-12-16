@@ -5,10 +5,7 @@ export interface AppConfig {
   projectPrefix: string;
   awsAccount: string;
   awsRegion: string;
-  vpcCidr: string;
-  // domainName?: string;
-  // enableRoute53: boolean;
-  // certificateArn?: string;
+  vpcCidr: string;  
   infrastructureHostedZoneDomain?: string;
   frontend: FrontendConfig;
   appApi: AppApiConfig;
@@ -19,6 +16,9 @@ export interface AppConfig {
 }
 
 export interface FrontendConfig {
+  domainName?: string;
+  enableRoute53: boolean;
+  certificateArn?: string;
   enabled: boolean;
   bucketName?: string;
   cloudFrontPriceClass: string;
@@ -100,12 +100,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
     projectPrefix,
     awsAccount,
     awsRegion,
-    vpcCidr: scope.node.tryGetContext('vpcCidr') || '10.0.0.0/16',
-    // domainName: process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName'),
-    // enableRoute53: parseBooleanEnv(process.env.CDK_ENABLE_ROUTE53) ?? scope.node.tryGetContext('enableRoute53') ?? false,
-    // certificateArn: process.env.CDK_CERTIFICATE_ARN || scope.node.tryGetContext('certificateArn'),
+    vpcCidr: scope.node.tryGetContext('vpcCidr') || '10.0.0.0/16',    
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     frontend: {
+      domainName: process.env.CDK_FRONTEND_DOMAIN_NAME || scope.node.tryGetContext('frontend').domainName,
+      enableRoute53: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLE_ROUTE53) ?? scope.node.tryGetContext('frontend').enableRoute53 ?? false,
+      certificateArn: process.env.CDK_FRONTEND_CERTIFICATE_ARN || scope.node.tryGetContext('frontend').certificateArn,
       enabled: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLED) ?? scope.node.tryGetContext('frontend')?.enabled ?? true,
       bucketName: process.env.CDK_FRONTEND_BUCKET_NAME || scope.node.tryGetContext('frontend')?.bucketName,
       cloudFrontPriceClass: process.env.CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS || scope.node.tryGetContext('frontend')?.cloudFrontPriceClass || 'PriceClass_100',

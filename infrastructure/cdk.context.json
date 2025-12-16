@@ -6,10 +6,11 @@
   "awsAccount": "",
   "awsRegion": "us-west-2",
   "vpcCidr": "10.0.0.0/16",
-  "domainName": "",
-  "enableRoute53": false,
-  "certificateArn": "",
+  "infrastructureHostedZoneDomain": "",
   "frontend": {
+    "domainName": "",
+    "enableRoute53": false,
+    "certificateArn": "",
     "enabled": true,
     "bucketName": "",
     "cloudFrontPriceClass": "PriceClass_100"
