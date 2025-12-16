@@ -156,7 +156,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       enableWaf: false,
     },
     tags: {
-      Environment: config.environment,
+      Environment: environment,
       Project: projectPrefix,
       ManagedBy: 'CDK',
       ...scope.node.tryGetContext('tags'),
