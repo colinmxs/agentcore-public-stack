@@ -35,9 +35,12 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Bootstrap CDK (if not already bootstrapped)
+# Run from parent directory to avoid loading the CDK app
 log_info "Ensuring CDK is bootstrapped..."
+cd "${PROJECT_ROOT}"
 cdk bootstrap aws://${CDK_DEFAULT_ACCOUNT}/${CDK_DEFAULT_REGION} \
     || log_info "CDK already bootstrapped or bootstrap failed (continuing anyway)"
+cd "${PROJECT_ROOT}/infrastructure"
 
 # Deploy the Infrastructure Stack
 # Check if pre-synthesized template exists (from CI/CD pipeline)
