@@ -3,6 +3,14 @@ import { Component, input, output, ChangeDetectionStrategy } from '@angular/core
 import { RouterLink } from '@angular/router';
 import { CdkMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  heroChevronDown,
+  heroCpuChip,
+  heroPencilSquare,
+  heroCurrencyDollar,
+  heroArrowRightOnRectangle
+} from '@ng-icons/heroicons/outline';
 
 export interface User {
   name: string;
@@ -13,7 +21,16 @@ export interface User {
 @Component({
   selector: 'app-user-dropdown',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, CdkMenuTrigger, CdkMenu, CdkMenuItem],
+  imports: [RouterLink, CdkMenuTrigger, CdkMenu, CdkMenuItem, NgIcon],
+  providers: [
+    provideIcons({
+      heroChevronDown,
+      heroCpuChip,
+      heroPencilSquare,
+      heroCurrencyDollar,
+      heroArrowRightOnRectangle
+    })
+  ],
   template: `
     <div class="relative">
       <button
@@ -44,19 +61,11 @@ export interface User {
           <span aria-hidden="true" class="ml-4 text-sm/6 font-semibold text-gray-900 dark:text-white">
             {{ user().name }}
           </span>
-          <svg 
-            viewBox="0 0 20 20" 
-            fill="currentColor" 
-            aria-hidden="true" 
+          <ng-icon
+            name="heroChevronDown"
             class="ml-2 size-5 text-gray-400 transition-transform"
             [class.rotate-180]="isMenuOpen()"
-          >
-            <path 
-              d="M5.22 8.22a.75.75 0 0 1 1.06 0L10 11.94l3.72-3.72a.75.75 0 1 1 1.06 1.06l-4.25 4.25a.75.75 0 0 1-1.06 0L5.22 9.28a.75.75 0 0 1 0-1.06Z" 
-              clip-rule="evenodd" 
-              fill-rule="evenodd" 
-            />
-          </svg>
+          />
         </span>
       </button>
 
@@ -92,16 +101,10 @@ export interface User {
                   class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
                   role="menuitem"
                 >
-                  <svg
+                  <ng-icon
+                    name="heroCpuChip"
                     class="size-5 text-gray-400 dark:text-gray-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M10 3.5a1.5 1.5 0 0 1 3 0V4a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-.5a1.5 1.5 0 0 0 0 3h.5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-.5a1.5 1.5 0 0 0-3 0v.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1h-.5a1.5 1.5 0 0 1 0-3H4a1 1 0 0 0 1-1V6a1 1 0 0 1 1-1h3a1 1 0 0 0 1-1v-.5Z"
-                    />
-                  </svg>
+                  />
                   <span>Bedrock Models</span>
                 </a>
 
@@ -111,16 +114,10 @@ export interface User {
                   class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
                   role="menuitem"
                 >
-                  <svg
+                  <ng-icon
+                    name="heroCpuChip"
                     class="size-5 text-gray-400 dark:text-gray-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M10 3.5a1.5 1.5 0 0 1 3 0V4a1 1 0 0 0 1 1h3a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-.5a1.5 1.5 0 0 0 0 3h.5a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-3a1 1 0 0 1-1-1v-.5a1.5 1.5 0 0 0-3 0v.5a1 1 0 0 1-1 1H6a1 1 0 0 1-1-1v-3a1 1 0 0 0-1-1h-.5a1.5 1.5 0 0 1 0-3H4a1 1 0 0 0 1-1V6a1 1 0 0 1 1-1h3a1 1 0 0 0 1-1v-.5Z"
-                    />
-                  </svg>
+                  />
                   <span>Gemini Models</span>
                 </a>
 
@@ -130,16 +127,10 @@ export interface User {
                   class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
                   role="menuitem"
                 >
-                  <svg
+                  <ng-icon
+                    name="heroPencilSquare"
                     class="size-5 text-gray-400 dark:text-gray-500"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                    aria-hidden="true"
-                  >
-                    <path
-                      d="M2.695 14.763l-1.262 3.154a.5.5 0 00.65.65l3.155-1.262a4 4 0 001.343-.885L17.5 5.5a2.121 2.121 0 00-3-3L3.58 13.42a4 4 0 00-.885 1.343z"
-                    />
-                  </svg>
+                  />
                   <span>Manage Models</span>
                 </a>
               }
@@ -151,21 +142,10 @@ export interface User {
                 class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
                 role="menuitem"
               >
-                <svg
+                <ng-icon
+                  name="heroCurrencyDollar"
                   class="size-5 text-gray-400 dark:text-gray-500"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    d="M10.75 10.818v2.614A3.13 3.13 0 0 0 11.888 13c.482-.315.612-.648.612-.875 0-.227-.13-.56-.612-.875a3.13 3.13 0 0 0-1.138-.432ZM8.33 8.62c.053.055.115.11.184.164.208.16.46.284.736.363V6.603a2.45 2.45 0 0 0-.35.13c-.14.065-.27.143-.386.233-.377.292-.514.627-.514.909 0 .184.058.39.202.592.037.051.08.102.128.152Z"
-                  />
-                  <path
-                    fill-rule="evenodd"
-                    d="M18 10a8 8 0 1 1-16 0 8 8 0 0 1 16 0Zm-8-6a.75.75 0 0 1 .75.75v.316a3.78 3.78 0 0 1 1.653.713c.426.33.744.74.925 1.2a.75.75 0 0 1-1.395.55 1.35 1.35 0 0 0-.447-.563 2.187 2.187 0 0 0-.736-.363V9.3c.698.093 1.383.32 1.959.696.787.514 1.29 1.27 1.29 2.13 0 .86-.504 1.616-1.29 2.13-.576.377-1.261.603-1.96.696v.299a.75.75 0 1 1-1.5 0v-.3c-.697-.092-1.382-.318-1.958-.695-.482-.315-.857-.717-1.078-1.188a.75.75 0 1 1 1.359-.636c.08.173.245.376.54.569.313.205.706.353 1.137.417v-2.62a6.985 6.985 0 0 1-1.653-.713c-.426-.33-.744-.74-.925-1.2a.75.75 0 0 1 1.395-.55c.085.232.239.43.447.563.176.113.42.214.736.363v-1.55A.75.75 0 0 1 10 4Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+                />
                 <span>Cost Dashboard</span>
               </a>
 
@@ -176,23 +156,10 @@ export interface User {
                 class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
                 role="menuitem"
               >
-                <svg
+                <ng-icon
+                  name="heroArrowRightOnRectangle"
                   class="size-5 text-gray-400 dark:text-gray-500"
-                  viewBox="0 0 20 20"
-                  fill="currentColor"
-                  aria-hidden="true"
-                >
-                  <path
-                    fill-rule="evenodd"
-                    d="M3 4.25A2.25 2.25 0 0 1 5.25 2h5.5A2.25 2.25 0 0 1 13 4.25v2a.75.75 0 0 1-1.5 0v-2a.75.75 0 0 0-.75-.75h-5.5a.75.75 0 0 0-.75.75v11.5c0 .414.336.75.75.75h5.5a.75.75 0 0 0 .75-.75v-2a.75.75 0 0 1 1.5 0v2A2.25 2.25 0 0 1 10.75 18h-5.5A2.25 2.25 0 0 1 3 15.75V4.25Z"
-                    clip-rule="evenodd"
-                  />
-                  <path
-                    fill-rule="evenodd"
-                    d="M6 10a.75.75 0 0 1 .75-.75h9.546l-1.048-.943a.75.75 0 1 1 1.004-1.114l2.5 2.25a.75.75 0 0 1 0 1.114l-2.5 2.25a.75.75 0 1 1-1.004-1.114l1.048-.943H6.75A.75.75 0 0 1 6 10Z"
-                    clip-rule="evenodd"
-                  />
-                </svg>
+                />
                 <span>Logout</span>
               </button>
             </div>
