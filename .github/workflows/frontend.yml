@@ -215,6 +215,10 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
+      - name: Install system dependencies
+        run: |
+          bash scripts/common/install-deps.sh
+
       - name: Download CDK artifacts
         uses: actions/download-artifact@v4
         with:
