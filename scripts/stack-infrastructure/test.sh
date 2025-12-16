@@ -38,7 +38,6 @@ log_info "Running cdk diff to compare synthesized template with deployed stack..
 # Run cdk diff using the pre-synthesized template
 # This will show what would change if we deployed
 cdk diff InfrastructureStack \
-    --app "cdk.out/" \
-    --no-fail || true
+    --app "cdk.out/"
 
 log_success "CloudFormation template validation completed"
