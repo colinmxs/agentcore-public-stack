@@ -72,7 +72,7 @@ jobs:
         run: |
           bash scripts/stack-infrastructure/install.sh
 
-      - name: Cache node_modules
+      - name: Save node_modules cache
         uses: actions/cache/save@v4
         with:
           path: infrastructure/node_modules
@@ -92,11 +92,11 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-      - name: Build CDK code
+      - name: Build CDK
         run: |
           bash scripts/stack-infrastructure/build.sh
 
-      - name: Cache build artifacts
+      - name: Save build artifacts cache
         uses: actions/cache/save@v4
         with:
           path: |
@@ -138,7 +138,7 @@ jobs:
         run: |
           bash scripts/stack-infrastructure/synth.sh
 
-      - name: Cache synthesized templates
+      - name: Save synthesized templates cache
         uses: actions/cache/save@v4
         with:
           path: infrastructure/cdk.out
@@ -249,7 +249,7 @@ jobs:
         run: |
           bash scripts/common/install-deps.sh
 
-      - name: Deploy Infrastructure Stack
+      - name: Deploy infrastructure
         run: |
           bash scripts/stack-infrastructure/deploy.sh
 
