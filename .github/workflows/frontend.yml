@@ -134,7 +134,7 @@ jobs:
   test-frontend:
     name: Test Frontend
     runs-on: ubuntu-latest
-    needs: build-frontend
+    needs: install
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     steps:
       - name: Checkout code
