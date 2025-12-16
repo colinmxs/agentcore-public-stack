@@ -78,7 +78,8 @@ main() {
     # Note: Run from project root to avoid loading CDK app context (see CLAUDES_LESSONS_PHASE4.md Challenge 1)
     log_info "Ensuring CDK is bootstrapped..."
     cd "${REPO_ROOT}"
-    npx cdk bootstrap "aws://${CDK_AWS_ACCOUNT}/${CDK_AWS_REGION}"
+    npx cdk bootstrap "aws://${CDK_AWS_ACCOUNT}/${CDK_AWS_REGION}" \
+        || log_info "CDK already bootstrapped or bootstrap failed (continuing anyway)"
     cd infrastructure/
     
     # Deploy CDK stack

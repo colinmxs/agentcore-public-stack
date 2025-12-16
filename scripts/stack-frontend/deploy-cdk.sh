@@ -73,10 +73,7 @@ log_info "CDK version: $(cdk --version)"
 log_info "Ensuring CDK is bootstrapped in ${CDK_AWS_REGION}..."
 cd "${REPO_ROOT}"
 cdk bootstrap aws://${CDK_AWS_ACCOUNT}/${CDK_AWS_REGION} \
-    --cloudformation-execution-policies arn:aws:iam::aws:policy/AdministratorAccess \
-    --toolkit-stack-name ${CDK_PROJECT_PREFIX}-CDKToolkit \
-    --qualifier ${CDK_PROJECT_PREFIX:0:10} \
-    || log_warn "Bootstrap may have already been completed"
+    || log_info "CDK already bootstrapped or bootstrap failed (continuing anyway)"
 cd infrastructure/
 
 # Check if pre-synthesized template exists
