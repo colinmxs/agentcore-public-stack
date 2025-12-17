@@ -139,14 +139,7 @@ export class GatewayStack extends cdk.Stack {
         GOOGLE_CREDENTIALS_SECRET_NAME: googleCredentialsSecret.secretName,
         LOG_LEVEL: config.gateway.logLevel || 'INFO',
       },
-    });
-
-    // CloudWatch Log Group for Lambda
-    new logs.LogGroup(this, 'GoogleSearchLogGroup', {
-      logGroupName: `/aws/lambda/${this.googleSearchFunction.functionName}`,
-      retention: logs.RetentionDays.ONE_WEEK,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
+    });   
 
     // ============================================================
     // AgentCore Gateway
