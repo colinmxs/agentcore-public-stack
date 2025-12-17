@@ -96,6 +96,46 @@ _(To be documented when issues are encountered)_
 
 ## Best Practices Reinforced
 
+### CDK Stack Naming: Logical IDs vs Prefixed Names
+
+**Issue**: Initial gateway scripts built stack names with `${CDK_PROJECT_PREFIX}-GatewayStack` when calling CDK commands, causing "No stacks match the name" errors.
+
+**Root Cause**: Inconsistency with how other stacks reference themselves in scripts.
+
+**Correct Pattern**:
+- **In infrastructure.ts**: Use `stackName` property with prefix for CloudFormation stack names:
+  ```typescript
+  new GatewayStack(app, 'GatewayStack', {
+    stackName: `${config.projectPrefix}-GatewayStack`,  // CloudFormation name
+  });
+  ```
+
+- **In scripts (synth/deploy)**: Use the logical construct ID, NOT the prefixed stackName:
+  ```bash
+  # ✅ CORRECT - use logical ID
+  cdk synth GatewayStack ${CONTEXT_PARAMS}
+  cdk deploy GatewayStack --app "cdk.out/"
+  
+  # ❌ WRONG - don't build name with prefix
+  STACK_NAME="${CDK_PROJECT_PREFIX}-GatewayStack"
+  cdk synth "${STACK_NAME}" ${CONTEXT_PARAMS}
+  ```
+
+**Why This Matters**:
+- CDK CLI resolves stacks by their **logical construct ID** (first parameter to constructor)
+- The `stackName` property only affects the **CloudFormation stack name** in AWS
+- Trying to reference stacks by their CloudFormation name fails CDK commands
+- All existing stacks (Infrastructure, AppApi, InferenceApi, Frontend) follow this pattern
+
+**Reference Examples**:
+- `scripts/stack-app-api/synth.sh`: `cdk synth AppApiStack`
+- `scripts/stack-inference-api/deploy.sh`: `cdk deploy InferenceApiStack`
+- `scripts/stack-infrastructure/synth.sh`: `cdk synth InfrastructureStack`
+
+**Consistency Check**: When adding new stacks, always grep existing scripts to match the established pattern.
+
+---
+
 ### Pattern 1: [Placeholder]
 _(To be documented during implementation)_
 
