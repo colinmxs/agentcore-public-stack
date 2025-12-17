@@ -418,7 +418,7 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 **Goal**: Interactive deployment script for local development
 
 - [ ] **Create Orchestration Script**: Create `deploy.sh` in repository root.
-- [ ] **Implement Menu System**: Add interactive menu with options: "1) Deploy Frontend", "2) Deploy App API", "3) Deploy Inference API", "4) Deploy Agent Core", "5) Deploy Gateway", "6) Deploy All", "7) Exit".
+- [ ] **Implement Menu System**: Add interactive menu with options: "1) Deploy Infrastructure", "2) Deploy App API", "3) Deploy Inference API", "4) Deploy Gateway", "5) Deploy Frontend", "6) Deploy All", "7) Exit".
 - [ ] **Implement Stack Deployment Functions**: Create functions that call the individual stack deploy scripts.
 - [ ] **Add Environment Validation**: Check for required environment variables and AWS credentials before deploying.
 - [ ] **Add Dry-Run Option**: Implement `--dry-run` flag to show what would be deployed without executing.
