@@ -392,8 +392,8 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 - [x] **Add Concurrency Control**: Use `concurrency: { group: gateway-${{ github.ref }}, cancel-in-progress: false }`
 
 #### Documentation & Testing
-- [ ] **Update README**: Document Gateway stack in main README.md with architecture diagram.
-- [ ] **Create Gateway Usage Guide**: Add section to README documenting how to:
+- [x] **Update README**: Document Gateway stack in main README.md with architecture diagram.
+- [x] **Create Gateway Usage Guide**: Add section to README documenting how to:
   - **Set Google API Keys**: Create Secrets Manager secret before deployment:
     ```bash
     aws secretsmanager create-secret \
@@ -417,14 +417,14 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 ### Phase 6: Local Orchestration
 **Goal**: Interactive deployment script for local development
 
-- [ ] **Create Orchestration Script**: Create `deploy.sh` in repository root.
-- [ ] **Implement Menu System**: Add interactive menu with options: "1) Deploy Infrastructure", "2) Deploy App API", "3) Deploy Inference API", "4) Deploy Gateway", "5) Deploy Frontend", "6) Deploy All", "7) Exit".
-- [ ] **Implement Stack Deployment Functions**: Create functions that call the individual stack deploy scripts.
-- [ ] **Add Environment Validation**: Check for required environment variables and AWS credentials before deploying.
-- [ ] **Add Dry-Run Option**: Implement `--dry-run` flag to show what would be deployed without executing.
-- [ ] **Add Logging**: Output clear status messages for each deployment step.
-- [ ] **Make Script Executable**: Ensure script has proper shebang and execute permissions.
-- [ ] **Test Local Deployment**: Verify the orchestration script works on local machine by running a test deployment.
+- [x] **Create Orchestration Script**: Create `deploy.sh` in repository root.
+- [x] **Implement Menu System**: Add interactive menu with options: "1) Deploy Infrastructure", "2) Deploy App API", "3) Deploy Inference API", "4) Deploy Gateway", "5) Deploy Frontend", "6) Deploy All", "7) Exit".
+- [x] **Implement Stack Deployment Functions**: Create functions that call the individual stack deploy scripts.
+- [x] **Add Environment Validation**: Check for required environment variables and AWS credentials before deploying.
+- [x] **Add Dry-Run Option**: Implement `--dry-run` flag to show what would be deployed without executing.
+- [x] **Add Logging**: Output clear status messages for each deployment step.
+- [x] **Make Script Executable**: Ensure script has proper shebang and execute permissions.
+- [x] **Test Local Deployment**: Verify the orchestration script works on local machine by running a test deployment.
 
 ---
 
