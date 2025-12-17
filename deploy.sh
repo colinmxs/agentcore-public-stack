@@ -362,11 +362,9 @@ validate_environment() {
         log_success "AWS credentials valid: ${caller_identity}"
     fi
     
-    # Check if CDK is installed
+    # Check if CDK is installed (optional - install-deps.sh will install it)
     if ! command -v cdk &>/dev/null; then
-        log_error "AWS CDK CLI is not installed"
-        log_info "Run: npm install -g aws-cdk"
-        ((errors++))
+        log_warning "AWS CDK CLI not found (will be installed by install-deps.sh)"
     else
         local cdk_version=$(cdk --version 2>/dev/null || echo "Unknown")
         log_success "AWS CDK installed: ${cdk_version}"
