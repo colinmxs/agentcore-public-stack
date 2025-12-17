@@ -105,20 +105,11 @@ main() {
             --outputs-file "${PROJECT_ROOT}/cdk-outputs-app-api.json"
     else
         # Deploy with context parameters (will synthesize first)
-        npx cdk deploy AppApiStack \
-            --require-approval ${REQUIRE_APPROVAL} \
-            --context environment="${DEPLOY_ENVIRONMENT}" \
-            --context projectPrefix="${CDK_PROJECT_PREFIX}" \
-            --context awsAccount="${CDK_AWS_ACCOUNT}" \
-            --context awsRegion="${CDK_AWS_REGION}" \
-            --context vpcCidr="${CDK_VPC_CIDR}" \
-            --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
-            --context appApi.enabled="${CDK_APP_API_ENABLED}" \
-            --context appApi.cpu="${CDK_APP_API_CPU}" \
-            --context appApi.memory="${CDK_APP_API_MEMORY}" \
-            --context appApi.desiredCount="${CDK_APP_API_DESIRED_COUNT}" \
-            --context appApi.maxCapacity="${CDK_APP_API_MAX_CAPACITY}" \
-            --outputs-file "${PROJECT_ROOT}/cdk-outputs-app-api.json"
+        # Build context parameters using shared helper function
+        CONTEXT_PARAMS=$(build_cdk_context_params)
+        
+        # Execute CDK deploy with context parameters
+        eval "npx cdk deploy AppApiStack --require-approval ${REQUIRE_APPROVAL} ${CONTEXT_PARAMS} --outputs-file \"${PROJECT_ROOT}/cdk-outputs-app-api.json\""
     fi
     
     log_success "CDK deployment completed successfully"

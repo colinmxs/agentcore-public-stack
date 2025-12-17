@@ -59,6 +59,153 @@ get_json_value() {
     fi
 }
 
+# Helper function to conditionally add CDK context parameters
+# Usage: add_context_param "contextKey" "${ENV_VAR_NAME}"
+# Only adds --context if the environment variable is set and non-empty
+add_context_param() {
+    local context_key="$1"
+    local env_var_value="$2"
+    
+    # Only output context parameter if value is set and non-empty
+    if [ -n "${env_var_value}" ]; then
+        echo "--context ${context_key}=\"${env_var_value}\""
+    fi
+}
+
+# Helper function to build all context parameters for CDK commands
+# Returns a string of --context parameters for required and optional configs
+# Only includes optional parameters if their environment variables are set
+build_cdk_context_params() {
+    local context_params=""
+    
+    # Required parameters - always include (will fail validation if empty)
+    context_params="${context_params} --context environment=\"${DEPLOY_ENVIRONMENT}\""
+    context_params="${context_params} --context projectPrefix=\"${CDK_PROJECT_PREFIX}\""
+    context_params="${context_params} --context awsAccount=\"${CDK_AWS_ACCOUNT}\""
+    context_params="${context_params} --context awsRegion=\"${CDK_AWS_REGION}\""
+    
+    # Optional parameters - only include if set
+    if [ -n "${CDK_VPC_CIDR:-}" ]; then
+        context_params="${context_params} --context vpcCidr=\"${CDK_VPC_CIDR}\""
+    fi
+    
+    if [ -n "${CDK_HOSTED_ZONE_DOMAIN:-}" ]; then
+        context_params="${context_params} --context infrastructureHostedZoneDomain=\"${CDK_HOSTED_ZONE_DOMAIN}\""
+    fi
+    
+    # App API optional parameters
+    if [ -n "${CDK_APP_API_ENABLED:-}" ]; then
+        context_params="${context_params} --context appApi.enabled=\"${CDK_APP_API_ENABLED}\""
+    fi
+    if [ -n "${CDK_APP_API_CPU:-}" ]; then
+        context_params="${context_params} --context appApi.cpu=\"${CDK_APP_API_CPU}\""
+    fi
+    if [ -n "${CDK_APP_API_MEMORY:-}" ]; then
+        context_params="${context_params} --context appApi.memory=\"${CDK_APP_API_MEMORY}\""
+    fi
+    if [ -n "${CDK_APP_API_DESIRED_COUNT:-}" ]; then
+        context_params="${context_params} --context appApi.desiredCount=\"${CDK_APP_API_DESIRED_COUNT}\""
+    fi
+    if [ -n "${CDK_APP_API_MAX_CAPACITY:-}" ]; then
+        context_params="${context_params} --context appApi.maxCapacity=\"${CDK_APP_API_MAX_CAPACITY}\""
+    fi
+    
+    # Inference API optional parameters
+    if [ -n "${CDK_INFERENCE_API_ENABLED:-}" ]; then
+        context_params="${context_params} --context inferenceApi.enabled=\"${CDK_INFERENCE_API_ENABLED}\""
+    fi
+    if [ -n "${CDK_INFERENCE_API_CPU:-}" ]; then
+        context_params="${context_params} --context inferenceApi.cpu=\"${CDK_INFERENCE_API_CPU}\""
+    fi
+    if [ -n "${CDK_INFERENCE_API_MEMORY:-}" ]; then
+        context_params="${context_params} --context inferenceApi.memory=\"${CDK_INFERENCE_API_MEMORY}\""
+    fi
+    if [ -n "${CDK_INFERENCE_API_DESIRED_COUNT:-}" ]; then
+        context_params="${context_params} --context inferenceApi.desiredCount=\"${CDK_INFERENCE_API_DESIRED_COUNT}\""
+    fi
+    if [ -n "${CDK_INFERENCE_API_MAX_CAPACITY:-}" ]; then
+        context_params="${context_params} --context inferenceApi.maxCapacity=\"${CDK_INFERENCE_API_MAX_CAPACITY}\""
+    fi
+    if [ -n "${CDK_INFERENCE_API_ENABLE_GPU:-}" ]; then
+        context_params="${context_params} --context inferenceApi.enableGpu=\"${CDK_INFERENCE_API_ENABLE_GPU}\""
+    fi
+    
+    # Inference API environment variables
+    if [ -n "${ENV_INFERENCE_API_ENABLE_AUTHENTICATION:-}" ]; then
+        context_params="${context_params} --context inferenceApi.enableAuthentication=\"${ENV_INFERENCE_API_ENABLE_AUTHENTICATION}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_LOG_LEVEL:-}" ]; then
+        context_params="${context_params} --context inferenceApi.logLevel=\"${ENV_INFERENCE_API_LOG_LEVEL}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_UPLOAD_DIR:-}" ]; then
+        context_params="${context_params} --context inferenceApi.uploadDir=\"${ENV_INFERENCE_API_UPLOAD_DIR}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_OUTPUT_DIR:-}" ]; then
+        context_params="${context_params} --context inferenceApi.outputDir=\"${ENV_INFERENCE_API_OUTPUT_DIR}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_GENERATED_IMAGES_DIR:-}" ]; then
+        context_params="${context_params} --context inferenceApi.generatedImagesDir=\"${ENV_INFERENCE_API_GENERATED_IMAGES_DIR}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_API_URL:-}" ]; then
+        context_params="${context_params} --context inferenceApi.apiUrl=\"${ENV_INFERENCE_API_API_URL}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_FRONTEND_URL:-}" ]; then
+        context_params="${context_params} --context inferenceApi.frontendUrl=\"${ENV_INFERENCE_API_FRONTEND_URL}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_CORS_ORIGINS:-}" ]; then
+        context_params="${context_params} --context inferenceApi.corsOrigins=\"${ENV_INFERENCE_API_CORS_ORIGINS}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_TAVILY_API_KEY:-}" ]; then
+        context_params="${context_params} --context inferenceApi.tavilyApiKey=\"${ENV_INFERENCE_API_TAVILY_API_KEY}\""
+    fi
+    if [ -n "${ENV_INFERENCE_API_NOVA_ACT_API_KEY:-}" ]; then
+        context_params="${context_params} --context inferenceApi.novaActApiKey=\"${ENV_INFERENCE_API_NOVA_ACT_API_KEY}\""
+    fi
+    
+    # Gateway optional parameters
+    if [ -n "${CDK_GATEWAY_ENABLED:-}" ]; then
+        context_params="${context_params} --context gateway.enabled=\"${CDK_GATEWAY_ENABLED}\""
+    fi
+    if [ -n "${CDK_GATEWAY_API_TYPE:-}" ]; then
+        context_params="${context_params} --context gateway.apiType=\"${CDK_GATEWAY_API_TYPE}\""
+    fi
+    if [ -n "${CDK_GATEWAY_THROTTLE_RATE_LIMIT:-}" ]; then
+        context_params="${context_params} --context gateway.throttleRateLimit=\"${CDK_GATEWAY_THROTTLE_RATE_LIMIT}\""
+    fi
+    if [ -n "${CDK_GATEWAY_THROTTLE_BURST_LIMIT:-}" ]; then
+        context_params="${context_params} --context gateway.throttleBurstLimit=\"${CDK_GATEWAY_THROTTLE_BURST_LIMIT}\""
+    fi
+    if [ -n "${CDK_GATEWAY_ENABLE_WAF:-}" ]; then
+        context_params="${context_params} --context gateway.enableWaf=\"${CDK_GATEWAY_ENABLE_WAF}\""
+    fi
+    if [ -n "${CDK_GATEWAY_LOG_LEVEL:-}" ]; then
+        context_params="${context_params} --context gateway.logLevel=\"${CDK_GATEWAY_LOG_LEVEL}\""
+    fi
+    
+    # Frontend optional parameters
+    if [ -n "${CDK_FRONTEND_DOMAIN_NAME:-}" ]; then
+        context_params="${context_params} --context frontend.domainName=\"${CDK_FRONTEND_DOMAIN_NAME}\""
+    fi
+    if [ -n "${CDK_FRONTEND_ENABLE_ROUTE53:-}" ]; then
+        context_params="${context_params} --context frontend.enableRoute53=\"${CDK_FRONTEND_ENABLE_ROUTE53}\""
+    fi
+    if [ -n "${CDK_FRONTEND_CERTIFICATE_ARN:-}" ]; then
+        context_params="${context_params} --context frontend.certificateArn=\"${CDK_FRONTEND_CERTIFICATE_ARN}\""
+    fi
+    if [ -n "${CDK_FRONTEND_ENABLED:-}" ]; then
+        context_params="${context_params} --context frontend.enabled=\"${CDK_FRONTEND_ENABLED}\""
+    fi
+    if [ -n "${CDK_FRONTEND_BUCKET_NAME:-}" ]; then
+        context_params="${context_params} --context frontend.bucketName=\"${CDK_FRONTEND_BUCKET_NAME}\""
+    fi
+    if [ -n "${CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS:-}" ]; then
+        context_params="${context_params} --context frontend.cloudFrontPriceClass=\"${CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS}\""
+    fi
+    
+    echo "${context_params}"
+}
+
+
 # Default to 'prod' environment if not set
 export DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-prod}"
 

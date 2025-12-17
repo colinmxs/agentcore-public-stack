@@ -36,19 +36,12 @@ fi
 
 # Synthesize the App API Stack
 log_info "Running CDK synth for AppApiStack..."
-cdk synth AppApiStack \
-    --context environment="${DEPLOY_ENVIRONMENT}" \
-    --context projectPrefix="${CDK_PROJECT_PREFIX}" \
-    --context awsAccount="${CDK_AWS_ACCOUNT}" \
-    --context awsRegion="${CDK_AWS_REGION}" \
-    --context vpcCidr="${CDK_VPC_CIDR}" \
-    --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
-    --context appApi.enabled="${CDK_APP_API_ENABLED}" \
-    --context appApi.cpu="${CDK_APP_API_CPU}" \
-    --context appApi.memory="${CDK_APP_API_MEMORY}" \
-    --context appApi.desiredCount="${CDK_APP_API_DESIRED_COUNT}" \
-    --context appApi.maxCapacity="${CDK_APP_API_MAX_CAPACITY}" \
-    --output "${PROJECT_ROOT}/infrastructure/cdk.out"
+
+# Build context parameters using shared helper function
+CONTEXT_PARAMS=$(build_cdk_context_params)
+
+# Execute CDK synth with context parameters
+eval "cdk synth AppApiStack ${CONTEXT_PARAMS} --output \"${PROJECT_ROOT}/infrastructure/cdk.out\""
 
 log_success "App API Stack CloudFormation template synthesized successfully"
 log_info "Template output directory: infrastructure/cdk.out"

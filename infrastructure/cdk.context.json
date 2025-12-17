@@ -33,7 +33,17 @@
     "memory": 2048,
     "desiredCount": 1,
     "maxCapacity": 5,
-    "enableGpu": false
+    "enableGpu": false,
+    "enableAuthentication": "true",
+    "logLevel": "INFO",
+    "uploadDir": "uploads",
+    "outputDir": "output",
+    "generatedImagesDir": "generated_images",
+    "apiUrl": "",
+    "frontendUrl": "",
+    "corsOrigins": "",
+    "tavilyApiKey": "",
+    "novaActApiKey": ""
   },
   "agentCore": {
     "enabled": true,
@@ -46,7 +56,8 @@
     "apiType": "HTTP",
     "throttleRateLimit": 10000,
     "throttleBurstLimit": 5000,
-    "enableWaf": false
+    "enableWaf": false,
+    "logLevel": "INFO"
   },
   "tags": {
     "Environment": "dev",
