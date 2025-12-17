@@ -109,6 +109,11 @@ install_node() {
                 curl -fsSL https://deb.nodesource.com/setup_20.x | sudo -E bash -
                 sudo apt-get install -y nodejs
                 ;;
+            amzn)
+                # Amazon Linux 2 or Amazon Linux 2023
+                curl -fsSL https://rpm.nodesource.com/setup_20.x | sudo bash -
+                sudo yum install -y nodejs
+                ;;
             macos)
                 if command_exists brew; then
                     brew install node@20
@@ -180,6 +185,10 @@ install_python() {
                 sudo apt-get update
                 sudo apt-get install -y python3 python3-pip python3-venv
                 ;;
+            amzn)
+                # Amazon Linux 2 or Amazon Linux 2023
+                sudo yum install -y python3 python3-pip
+                ;;
             macos)
                 if command_exists brew; then
                     brew install python@3.11
@@ -249,6 +258,10 @@ install_jq() {
             ubuntu|debian)
                 sudo apt-get update
                 sudo apt-get install -y jq
+                ;;
+            amzn)
+                # Amazon Linux 2 or Amazon Linux 2023
+                sudo yum install -y jq
                 ;;
             macos)
                 if command_exists brew; then
