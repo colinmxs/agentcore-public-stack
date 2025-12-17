@@ -148,6 +148,7 @@ export class AppApiStack extends cdk.Stack {
       'Allow traffic from ALB to App API tasks'
     );
 
+    
     // // ============================================================
     // // Database Layer (Optional - controlled by config.appApi.databaseType)
     // // ============================================================
