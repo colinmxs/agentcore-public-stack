@@ -109,13 +109,13 @@ if [ $LIST_TARGETS_EXIT -ne 0 ]; then
 fi
 
 # Count targets
-TARGET_COUNT=$(echo "${TARGETS}" | jq '.gatewayTargetSummaries | length')
+TARGET_COUNT=$(echo "${TARGETS}" | jq '.items | length')
 log_success "Found ${TARGET_COUNT} Gateway Targets"
 
 # Display targets
 if [ "${TARGET_COUNT}" -gt 0 ]; then
     log_info "Available Tools:"
-    echo "${TARGETS}" | jq -r '.gatewayTargetSummaries[] | "  - \(.name): \(.description // "No description")"'
+    echo "${TARGETS}" | jq -r '.items[] | "  - \(.name): \(.description // "No description")"'
 else
     log_warning "No Gateway Targets found. This may indicate a deployment issue."
 fi
