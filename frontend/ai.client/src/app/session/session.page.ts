@@ -1,4 +1,4 @@
-import { Component, inject, effect, Signal, signal, computed, OnDestroy } from '@angular/core';
+import { Component, inject, effect, Signal, signal, computed, OnDestroy, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { MessageListComponent } from './components/message-list/message-list.component';
@@ -29,6 +29,9 @@ export class ConversationPage implements OnDestroy {
   private routeSubscription?: Subscription;
   readonly sessionConversation = this.sessionService.currentSession;
   readonly isChatLoading = this.chatStateService.isChatLoading;
+
+  // Get reference to MessageListComponent
+  private messageListComponent = viewChild(MessageListComponent);
 
   // Computed signal to check if session has messages
   readonly hasMessages = computed(() => this.messages().length > 0);
@@ -65,6 +68,11 @@ export class ConversationPage implements OnDestroy {
     this.chatRequestService.submitChatRequest(message.content, this.sessionId()).catch((error) => {
       console.error('Error sending chat request:', error);
     });
+
+    // Wait for DOM to update (user message to be added) then scroll to it
+    setTimeout(() => {
+      this.messageListComponent()?.scrollToLastUserMessage();
+    }, 100);
   }
 
   onFileAttached(file: File) {

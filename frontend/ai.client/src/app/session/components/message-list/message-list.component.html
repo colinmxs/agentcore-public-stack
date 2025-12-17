@@ -1,15 +1,20 @@
 <div class="space-y-6">
   <!-- Debug: Show JSON -->
-  <details class="rounded-sm border border-gray-300 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
+  <!-- <details class="rounded-sm border border-gray-300 bg-gray-50 p-2 dark:border-gray-700 dark:bg-gray-800">
     <summary class="cursor-pointer text-sm font-semibold">Debug: View Messages JSON</summary>
     <pre class="mt-2 overflow-x-auto text-xs">{{ messages() | json }}</pre>
-  </details>
+  </details> -->
 
-  @for (message of messages(); track message.id) {
+  @for (message of messages(); track message.id; let i = $index) {
     @if (message.role === 'user') {
-      <app-user-message [message]="message"></app-user-message>
+      <div [attr.id]="'message-' + message.id">
+        <app-user-message [message]="message"></app-user-message>
+      </div>
     } @else {
-        <div class="group relative max-w-[80%]" role="group" aria-label="Assistant message with metadata">
+        <div
+          class="group relative max-w-[80%]"
+          role="group"
+          aria-label="Assistant message with metadata">
             <div class="rounded-2xl bg-gray-100 px-4 py-3 text-sm/6 text-gray-900 dark:bg-gray-800 dark:text-gray-100">
                 <app-assistant-message [message]="message"></app-assistant-message>
             </div>
@@ -24,6 +29,15 @@
     <div class="py-12 text-center text-gray-500 dark:text-gray-400">
       <p class="text-lg">No messages yet</p>
       <p class="text-sm">Start a conversation to see messages here</p>
+    </div>
+  }
+
+  <!-- Spacer div to create scrollable space at the bottom -->
+  @if (messages().length > 0) {
+    <div
+      aria-hidden="true"
+      [style.height.px]="spacerHeight()"
+      class="pointer-events-none">
     </div>
   }
 </div>
