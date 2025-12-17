@@ -45,12 +45,6 @@
     "tavilyApiKey": "",
     "novaActApiKey": ""
   },
-  "agentCore": {
-    "enabled": true,
-    "lambdaMemory": 512,
-    "lambdaTimeout": 300,
-    "enableStepFunctions": true
-  },
   "gateway": {
     "enabled": true,
     "apiType": "HTTP",

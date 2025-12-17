@@ -151,9 +151,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
     },
   };
 
-  // console.log the loaded config for debugging
-  console.log('Loaded AppConfig:', JSON.stringify(config, null, 2));
-
   // Validate configuration
   validateConfig(config);
 

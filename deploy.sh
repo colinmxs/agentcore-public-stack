@@ -56,6 +56,123 @@ log_header() {
     echo ""
 }
 
+debug_log() {
+    if [ "$VERBOSE" = true ]; then
+        echo "[DEBUG] $1" >&2
+    fi
+}
+
+###############################################################################
+# Interactive configuration prompts
+###############################################################################
+prompt_for_config() {
+    local var_name=$1
+    local prompt_text=$2
+    local current_value="${!var_name}"
+    
+    if [ -n "$current_value" ]; then
+        read -p "${prompt_text} [${current_value}]: " user_input
+        if [ -n "$user_input" ]; then
+            export "${var_name}=${user_input}"
+        fi
+    else
+        read -p "${prompt_text} [empty]: " user_input
+        if [ -n "$user_input" ]; then
+            export "${var_name}=${user_input}"
+        fi
+    fi
+}
+
+configure_infrastructure() {
+    log_header "Configure Infrastructure Stack"
+    
+    echo "Configure Infrastructure settings (press Enter to keep current/default values):"
+    echo ""
+    
+    prompt_for_config "CDK_PROJECT_PREFIX" "Project Prefix (lowercase, alphanumeric, 2-21 chars)"
+    prompt_for_config "CDK_AWS_ACCOUNT" "AWS Account ID"
+    prompt_for_config "CDK_AWS_REGION" "AWS Region"
+    prompt_for_config "CDK_VPC_CIDR" "VPC CIDR Block"
+    prompt_for_config "CDK_HOSTED_ZONE_DOMAIN" "Hosted Zone Domain (optional)"
+    
+    echo ""
+    log_success "Configuration updated"
+    echo ""
+}
+
+configure_app_api() {
+    log_header "Configure App API Stack"
+    
+    echo "Configure App API settings (press Enter to keep current/default values):"
+    echo ""
+    
+    prompt_for_config "CDK_APP_API_ENABLED" "Enable App API Stack (true/false)"
+    prompt_for_config "CDK_APP_API_CPU" "CPU units (256, 512, 1024, 2048, 4096)"
+    prompt_for_config "CDK_APP_API_MEMORY" "Memory in MB (512, 1024, 2048, 4096, 8192)"
+    prompt_for_config "CDK_APP_API_DESIRED_COUNT" "Desired task count"
+    prompt_for_config "CDK_APP_API_MAX_CAPACITY" "Max auto-scaling capacity"
+    
+    echo ""
+    log_success "Configuration updated"
+    echo ""
+}
+
+configure_inference_api() {
+    log_header "Configure Inference API Stack"
+    
+    echo "Configure Inference API (AgentCore Runtime) settings (press Enter to keep current/default values):"
+    echo ""
+    
+    prompt_for_config "CDK_INFERENCE_API_ENABLED" "Enable Inference API Stack (true/false)"
+    prompt_for_config "CDK_INFERENCE_API_CPU" "CPU units (256, 512, 1024, 2048, 4096)"
+    prompt_for_config "CDK_INFERENCE_API_MEMORY" "Memory in MB (512, 1024, 2048, 4096, 8192)"
+    prompt_for_config "CDK_INFERENCE_API_ENABLE_GPU" "Enable GPU support (true/false)"
+    prompt_for_config "ENV_INFERENCE_API_LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)"
+    prompt_for_config "ENV_INFERENCE_API_ENABLE_AUTHENTICATION" "Enable authentication (true/false)"
+    prompt_for_config "ENV_INFERENCE_API_TAVILY_API_KEY" "Tavily API Key (optional)"
+    prompt_for_config "ENV_INFERENCE_API_NOVA_ACT_API_KEY" "Nova Act API Key (optional)"
+    
+    echo ""
+    log_success "Configuration updated"
+    echo ""
+}
+
+configure_gateway() {
+    log_header "Configure Gateway Stack"
+    
+    echo "Configure MCP Gateway settings (press Enter to keep current/default values):"
+    echo ""
+    
+    prompt_for_config "CDK_GATEWAY_ENABLED" "Enable Gateway Stack (true/false)"
+    prompt_for_config "CDK_GATEWAY_API_TYPE" "API Type (REST/HTTP)"
+    prompt_for_config "CDK_GATEWAY_THROTTLE_RATE_LIMIT" "Throttle rate limit (requests/second)"
+    prompt_for_config "CDK_GATEWAY_THROTTLE_BURST_LIMIT" "Throttle burst limit"
+    prompt_for_config "CDK_GATEWAY_ENABLE_WAF" "Enable WAF protection (true/false)"
+    prompt_for_config "CDK_GATEWAY_LOG_LEVEL" "Log level (INFO, DEBUG, ERROR)"
+    
+    echo ""
+    log_success "Configuration updated"
+    echo ""
+}
+
+configure_frontend() {
+    log_header "Configure Frontend Stack"
+    
+    echo "Configure Frontend (Angular + S3 + CloudFront) settings (press Enter to keep current/default values):"
+    echo ""
+    
+    prompt_for_config "CDK_FRONTEND_ENABLED" "Enable Frontend Stack (true/false)"
+    prompt_for_config "CDK_FRONTEND_DOMAIN_NAME" "Custom domain name (optional)"
+    prompt_for_config "CDK_FRONTEND_ENABLE_ROUTE53" "Enable Route53 integration (true/false)"
+    prompt_for_config "CDK_FRONTEND_CERTIFICATE_ARN" "ACM Certificate ARN (optional)"
+    prompt_for_config "CDK_FRONTEND_BUCKET_NAME" "S3 bucket name (optional, auto-generated if empty)"
+    prompt_for_config "CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS" "CloudFront price class (PriceClass_100/PriceClass_200/PriceClass_All)"
+    
+    echo ""
+    log_success "Configuration updated"
+    echo ""
+}
+
 # Global dry-run flag
 DRY_RUN=false
 SKIP_TESTS=false
@@ -271,17 +388,19 @@ execute_command() {
 # Timing functions
 ###############################################################################
 start_timer() {
-    if [ "$DRY_RUN" = false ]; then
-        echo $SECONDS
-    else
-        echo 0
-    fi
+    debug_log "start_timer called"
+    local timestamp=$(date +%s)
+    debug_log "timestamp=${timestamp}"
+    echo "${timestamp}"
 }
 
 elapsed_time() {
+    debug_log "elapsed_time called with start_time=$1"
     local start_time=$1
-    local end_time=$SECONDS
+    local end_time=$(date +%s)
+    debug_log "end_time=${end_time}"
     local elapsed=$((end_time - start_time))
+    debug_log "elapsed=${elapsed}"
     
     local minutes=$((elapsed / 60))
     local seconds=$((elapsed % 60))
@@ -297,49 +416,69 @@ elapsed_time() {
 # Pipeline step execution with progress tracking
 ###############################################################################
 execute_pipeline_step() {
+    debug_log "=== execute_pipeline_step ENTRY ==="
+    debug_log "Number of arguments: $#"
+    debug_log "All arguments: $*"
+    
     local step_num=$1
     local total_steps=$2
     local step_name=$3
     local script_path=$4
     
+    debug_log "step_num=${step_num}"
+    debug_log "total_steps=${total_steps}"
+    debug_log "step_name=${step_name}"
+    debug_log "script_path=${script_path}"
+    
     log_header "Step ${step_num}/${total_steps}: ${step_name}"
     
+    debug_log "About to call start_timer..."
     local step_start=$(start_timer)
+    debug_log "step_start=${step_start}"
     
     if [ "$DRY_RUN" = true ]; then
         log_info "[DRY-RUN] Would execute: ${script_path}"
+        debug_log "DRY_RUN mode, returning 0"
         return 0
     fi
     
+    debug_log "Checking if script exists: ${script_path}"
     if [ ! -f "${script_path}" ]; then
         log_error "Script not found: ${script_path}"
+        debug_log "Script does not exist!"
         if [ "$CONTINUE_ON_ERROR" = false ]; then
+            debug_log "CONTINUE_ON_ERROR is false, returning 1"
             return 1
         else
             log_warning "Continuing despite error (--continue-on-error enabled)"
+            debug_log "CONTINUE_ON_ERROR is true, returning 0"
             return 0
         fi
     fi
     
-    # Execute script
+    debug_log "Script exists, about to execute..."
+    # Execute script - always show script logs (stderr), optionally show debug output
     local exit_code=0
-    if [ "$VERBOSE" = true ]; then
-        bash "${script_path}" || exit_code=$?
-    else
-        bash "${script_path}" > /dev/null 2>&1 || exit_code=$?
-    fi
+    bash "${script_path}" || exit_code=$?
     
+    debug_log "Script execution completed with exit_code=${exit_code}"
+    
+    debug_log "Calculating elapsed time..."
     local step_elapsed=$(elapsed_time $step_start)
+    debug_log "step_elapsed=${step_elapsed}"
     
     if [ $exit_code -eq 0 ]; then
         log_success "${step_name} completed in ${step_elapsed}"
+        debug_log "Returning 0 (success)"
         return 0
     else
         log_error "${step_name} failed (exit code: ${exit_code})"
         if [ "$CONTINUE_ON_ERROR" = false ]; then
+            debug_log "CONTINUE_ON_ERROR is false, returning 1"
             return 1
         else
             log_warning "Continuing despite error (--continue-on-error enabled)"
+            debug_log "CONTINUE_ON_ERROR is true, returning 0"
             return 0
         fi
     fi
@@ -350,52 +489,65 @@ execute_pipeline_step() {
 ###############################################################################
 
 deploy_infrastructure() {
+    # Prompt for configuration
+    configure_infrastructure
+    
     log_header "INFRASTRUCTURE STACK - Full Pipeline Deployment"
     
+    debug_log "Starting deploy_infrastructure function"
+    debug_log "PROJECT_ROOT=${PROJECT_ROOT}"
+    debug_log "DRY_RUN=${DRY_RUN}"
+    debug_log "SKIP_TESTS=${SKIP_TESTS}"
+    
+    debug_log "Calling start_timer..."
     STACK_START_TIME=$(start_timer)
+    debug_log "start_timer returned: ${STACK_START_TIME}"
+    
     local stack_name="Infrastructure"
+    debug_log "Stack name set to: ${stack_name}"
     
     # Pipeline steps
     local total_steps=6
     local current_step=0
+    debug_log "Initialized: total_steps=${total_steps}, current_step=${current_step}"
     
     # Step 1: Install system dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install system dependencies (Node.js, CDK, Python, Docker)" \
         "${PROJECT_ROOT}/scripts/common/install-deps.sh" || return 1
     
     # Step 2: Install CDK dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install CDK dependencies" \
         "${PROJECT_ROOT}/scripts/stack-infrastructure/install.sh" || return 1
     
     # Step 3: Build CDK (compile TypeScript)
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build CDK stack (compile TypeScript)" \
         "${PROJECT_ROOT}/scripts/stack-infrastructure/build.sh" || return 1
     
-    # Step 4: Run tests
-    if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
-        execute_pipeline_step $current_step $total_steps \
-            "Run tests" \
-            "${PROJECT_ROOT}/scripts/stack-infrastructure/test.sh" || return 1
-    else
-        ((current_step++))
-        log_warning "Step ${current_step}/${total_steps}: Tests skipped (--skip-tests enabled)"
-    fi
-    
-    # Step 5: Synthesize CloudFormation
-    ((current_step++))
+    # Step 4: Synthesize CloudFormation
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Synthesize CloudFormation templates" \
         "${PROJECT_ROOT}/scripts/stack-infrastructure/synth.sh" || return 1
     
+    # Step 5: Validate CloudFormation (test)
+    if [ "$SKIP_TESTS" = false ]; then
+        current_step=$((current_step + 1))
+        execute_pipeline_step $current_step $total_steps \
+            "Validate CloudFormation template" \
+            "${PROJECT_ROOT}/scripts/stack-infrastructure/test.sh" || return 1
+    else
+        current_step=$((current_step + 1))
+        log_warning "Step ${current_step}/${total_steps}: Tests skipped (--skip-tests enabled)"
+    fi
+    
     # Step 6: Deploy stack
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy Infrastructure Stack to AWS" \
         "${PROJECT_ROOT}/scripts/stack-infrastructure/deploy.sh" || return 1
@@ -410,6 +562,9 @@ deploy_infrastructure() {
 }
 
 deploy_app_api() {
+    # Prompt for configuration
+    configure_app_api
+    
     log_header "APP API STACK - Full Pipeline Deployment"
     
     STACK_START_TIME=$(start_timer)
@@ -420,76 +575,76 @@ deploy_app_api() {
     local current_step=0
     
     # Step 1: Install system dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install system dependencies" \
         "${PROJECT_ROOT}/scripts/common/install-deps.sh" || return 1
     
     # Step 2: Install Python dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install Python dependencies" \
         "${PROJECT_ROOT}/scripts/stack-app-api/install.sh" || return 1
     
     # Step 3: Build Docker image
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build Docker image" \
         "${PROJECT_ROOT}/scripts/stack-app-api/build.sh" || return 1
     
     # Step 4: Test Docker container
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Test Docker container" \
             "${PROJECT_ROOT}/scripts/stack-app-api/test-docker.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Docker tests skipped"
     fi
     
     # Step 5: Run Python unit tests
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Run Python unit tests" \
             "${PROJECT_ROOT}/scripts/stack-app-api/test.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Unit tests skipped"
     fi
     
     # Step 6: Build CDK
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build CDK stack (compile TypeScript)" \
         "${PROJECT_ROOT}/scripts/stack-app-api/build-cdk.sh" || return 1
     
     # Step 7: Synthesize CloudFormation
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Synthesize CloudFormation templates" \
         "${PROJECT_ROOT}/scripts/stack-app-api/synth.sh" || return 1
     
     # Step 8: Test CDK
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Validate CDK templates" \
             "${PROJECT_ROOT}/scripts/stack-app-api/test-cdk.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: CDK tests skipped"
     fi
     
     # Step 9: Push Docker image to ECR
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Push Docker image to ECR" \
         "${PROJECT_ROOT}/scripts/stack-app-api/push-to-ecr.sh" || return 1
     
     # Step 10: Deploy stack
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy App API Stack to AWS" \
         "${PROJECT_ROOT}/scripts/stack-app-api/deploy.sh" || return 1
@@ -504,6 +659,9 @@ deploy_app_api() {
 }
 
 deploy_inference_api() {
+    # Prompt for configuration
+    configure_inference_api
+    
     log_header "INFERENCE API STACK - Full Pipeline Deployment"
     
     STACK_START_TIME=$(start_timer)
@@ -514,76 +672,76 @@ deploy_inference_api() {
     local current_step=0
     
     # Step 1: Install system dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install system dependencies" \
         "${PROJECT_ROOT}/scripts/common/install-deps.sh" || return 1
     
     # Step 2: Install Python dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install Python dependencies" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/install.sh" || return 1
     
     # Step 3: Build ARM64 Docker image
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build ARM64 Docker image (AgentCore Runtime)" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/build.sh" || return 1
     
     # Step 4: Test Docker container
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Test ARM64 Docker container" \
             "${PROJECT_ROOT}/scripts/stack-inference-api/test-docker.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Docker tests skipped"
     fi
     
     # Step 5: Run Python unit tests
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Run Python unit tests" \
             "${PROJECT_ROOT}/scripts/stack-inference-api/test.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Unit tests skipped"
     fi
     
     # Step 6: Build CDK
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build CDK stack (compile TypeScript)" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/build-cdk.sh" || return 1
     
     # Step 7: Synthesize CloudFormation
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Synthesize CloudFormation templates" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/synth.sh" || return 1
     
     # Step 8: Test CDK
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Validate CDK templates" \
             "${PROJECT_ROOT}/scripts/stack-inference-api/test-cdk.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: CDK tests skipped"
     fi
     
     # Step 9: Push Docker image to ECR
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Push ARM64 Docker image to ECR" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/push-to-ecr.sh" || return 1
     
     # Step 10: Deploy stack
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy Inference API Stack (AgentCore Runtime)" \
         "${PROJECT_ROOT}/scripts/stack-inference-api/deploy.sh" || return 1
@@ -598,6 +756,9 @@ deploy_inference_api() {
 }
 
 deploy_gateway() {
+    # Prompt for configuration
+    configure_gateway
+    
     log_header "GATEWAY STACK - Full Pipeline Deployment"
     
     STACK_START_TIME=$(start_timer)
@@ -608,54 +769,54 @@ deploy_gateway() {
     local current_step=0
     
     # Step 1: Install system dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install system dependencies" \
         "${PROJECT_ROOT}/scripts/common/install-deps.sh" || return 1
     
     # Step 2: Install CDK dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install CDK dependencies" \
         "${PROJECT_ROOT}/scripts/stack-gateway/install.sh" || return 1
     
     # Step 3: Build CDK
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build CDK stack (compile TypeScript)" \
         "${PROJECT_ROOT}/scripts/stack-gateway/build-cdk.sh" || return 1
     
     # Step 4: Synthesize CloudFormation
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Synthesize CloudFormation (CDK packages Lambda automatically)" \
         "${PROJECT_ROOT}/scripts/stack-gateway/synth.sh" || return 1
     
     # Step 5: Test CDK
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Validate CDK templates" \
             "${PROJECT_ROOT}/scripts/stack-gateway/test-cdk.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: CDK tests skipped"
     fi
     
     # Step 6: Deploy stack
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy Gateway Stack (MCP Gateway + Lambda)" \
         "${PROJECT_ROOT}/scripts/stack-gateway/deploy.sh" || return 1
     
     # Step 7: Test Gateway connectivity
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Test Gateway connectivity" \
             "${PROJECT_ROOT}/scripts/stack-gateway/test.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Gateway tests skipped"
     fi
     
@@ -669,6 +830,9 @@ deploy_gateway() {
 }
 
 deploy_frontend() {
+    # Prompt for configuration
+    configure_frontend
+    
     log_header "FRONTEND STACK - Full Pipeline Deployment"
     
     STACK_START_TIME=$(start_timer)
@@ -679,65 +843,65 @@ deploy_frontend() {
     local current_step=0
     
     # Step 1: Install system dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install system dependencies" \
         "${PROJECT_ROOT}/scripts/common/install-deps.sh" || return 1
     
     # Step 2: Install Angular dependencies
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Install Angular dependencies" \
         "${PROJECT_ROOT}/scripts/stack-frontend/install.sh" || return 1
     
     # Step 3: Build Angular application
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build Angular application (production mode)" \
         "${PROJECT_ROOT}/scripts/stack-frontend/build.sh" || return 1
     
     # Step 4: Run Vitest tests
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Run Vitest tests" \
             "${PROJECT_ROOT}/scripts/stack-frontend/test.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: Tests skipped"
     fi
     
     # Step 5: Build CDK
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Build CDK stack (compile TypeScript)" \
         "${PROJECT_ROOT}/scripts/stack-frontend/build-cdk.sh" || return 1
     
     # Step 6: Synthesize CloudFormation
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Synthesize CloudFormation templates" \
         "${PROJECT_ROOT}/scripts/stack-frontend/synth.sh" || return 1
     
     # Step 7: Test CDK
     if [ "$SKIP_TESTS" = false ]; then
-        ((current_step++))
+        current_step=$((current_step + 1))
         execute_pipeline_step $current_step $total_steps \
             "Validate CDK templates" \
             "${PROJECT_ROOT}/scripts/stack-frontend/test-cdk.sh" || return 1
     else
-        ((current_step++))
+        current_step=$((current_step + 1))
         log_warning "Step ${current_step}/${total_steps}: CDK tests skipped"
     fi
     
     # Step 8: Deploy CDK stack
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy Frontend Stack (S3 + CloudFront)" \
         "${PROJECT_ROOT}/scripts/stack-frontend/deploy-cdk.sh" || return 1
     
     # Step 9: Deploy assets
-    ((current_step++))
+    current_step=$((current_step + 1))
     execute_pipeline_step $current_step $total_steps \
         "Deploy assets (sync to S3, invalidate CloudFront)" \
         "${PROJECT_ROOT}/scripts/stack-frontend/deploy-assets.sh" || return 1

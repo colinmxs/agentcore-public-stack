@@ -501,6 +501,7 @@ All logic resides here. CI/CD pipelines merely call these scripts.
 - [x] **Add Deployment Summary Table**: At the end, display table with all stack URLs and important ARNs.
 - [x] **Add Continue-on-Error Option**: Add `--skip-tests` flag to skip test steps and `--continue-on-error` to continue even if a step fails.
 - [x] **Add Verbose Mode**: Add `--verbose` or `-v` flag to show full command output.
+- [x] **Add Interactive Configuration Prompts**: Before each stack deployment, prompt user to confirm/enter configuration values (from config.ts) with option to press Enter to keep defaults.
 - [ ] **Add Stack Status Check**: Before deploying, check if stack already exists and show current status.
 
 #### Error Handling & Recovery
