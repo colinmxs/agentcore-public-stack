@@ -10,8 +10,8 @@ tools: ['runCommands', 'runTasks', 'edit', 'runNotebooks', 'search', 'new', 'ext
 1. **Infrastructure Stack** - Foundation layer (VPC, ALB, ECS Cluster)
 2. **Frontend Stack** - S3 + CloudFront + Route53
 3. **App API Stack** - Fargate service for application API
-4. **Inference API Stack** - Fargate service for inference workloads
-5. **Agent Core/Gateway Stacks** - Lambda/Step Functions/API Gateway
+4. **Inference API Stack** - bedrock agentcore runtime for inference API hosting
+5. **AgentCore Gateway Stacks** - Bedrock Agentcore Gateway implementation with MCP tools deployed to lambda
 
 **Technology**: TypeScript (CDK), Python/FastAPI (backends), Angular 17+ (frontend), Bash scripts (CI/CD)
 
@@ -33,6 +33,18 @@ tools: ['runCommands', 'runTasks', 'edit', 'runNotebooks', 'search', 'new', 'ext
 - **Benefits**: Testable locally, portable, easier debugging
 - **Portability**: Use `/bin/bash`, work on ubuntu-latest/macOS/WSL
 - **Error handling**: Always use `set -euo pipefail` with proper error capture
+- **Logging functions**: Define `log_success()` and `log_warning()` locally in each script (after sourcing load-env.sh):
+```bash
+source "${PROJECT_ROOT}/scripts/common/load-env.sh"
+
+log_success() {
+    echo -e "\033[0;32m✓ $1\033[0m"
+}
+
+log_warning() {
+    echo -e "\033[1;33m⚠ $1\033[0m"
+}
+```
 
 ### 3. Stack Layering Architecture
 **Critical**: Separate shared infrastructure from application-specific resources
@@ -260,6 +272,18 @@ fi
 
 **Critical**: Context parameters in synth.sh and deploy.sh must match exactly.
 
+**Stack Naming Consistency**:
+```bash
+# ✅ CORRECT - Use logical construct ID in scripts
+cdk synth GatewayStack ${CONTEXT_PARAMS}
+cdk deploy GatewayStack --app "cdk.out/"
+
+# ❌ WRONG - Don't build name with prefix
+STACK_NAME="${CDK_PROJECT_PREFIX}-GatewayStack"
+cdk synth "${STACK_NAME}" ${CONTEXT_PARAMS}
+```
+**Why**: CDK CLI resolves stacks by logical ID (constructor param), not CloudFormation `stackName` property.
+
 **CDK Bootstrap Rule**: Always run from project root (not CDK app directory):
 ```bash
 # Bad - loads CDK app, triggers config.ts, may use wrong context
@@ -283,6 +307,18 @@ Create reusable patterns at `.github/actions/<action-name>/action.yml`:
 - "Failed to save cache" = **normal** when dependencies unchanged (reusing existing cache)
 - Ensure install scripts create what's being cached (e.g., CDK dependencies)
 
+### CDK CLI Availability
+**Critical**: Jobs running CDK commands require explicit dependency installation:
+```yaml
+# Jobs that run cdk synth, cdk diff, or cdk deploy
+- name: Install system dependencies
+  run: bash scripts/common/install-deps.sh
+
+- name: Run CDK command
+  run: bash scripts/stack-<name>/<operation>.sh
+```
+**Why**: Caching `node_modules` preserves files but doesn't configure npm environment or add CDK to PATH. Each job runs in fresh VM requiring setup.
+
 ---
 
 ## Stack-Specific Technical Requirements
@@ -304,6 +340,13 @@ Create reusable patterns at `.github/actions/<action-name>/action.yml`:
 - **Image tags**: Store in SSM after ECR push, read during deployment
 - **Health checks**: 3-second startup delay, 30s interval, 60s timeout
 - **Path routing**: Different priorities (App API: 1, Inference API: 10)
+
+### Gateway Stack (Lambda + AgentCore)
+- **Service**: AWS Bedrock AgentCore Gateway with Lambda-based MCP tools
+- **CLI**: Use `aws bedrock-agentcore-control` (NOT `bedrock-agentcore`)
+- **Response parsing**: Gateway targets in `.items[]` array
+- **Stack reference**: Use logical ID `GatewayStack` in scripts, not `${CDK_PROJECT_PREFIX}-GatewayStack`
+- **Testing**: Remove validation from deploy.sh, handle in test.sh separately
 
 ### ECR Lifecycle Policy
 ```json
@@ -337,6 +380,30 @@ Create reusable patterns at `.github/actions/<action-name>/action.yml`:
 
 ## AWS CLI & SSM Operations
 
+### AWS Bedrock AgentCore CLI
+**Critical**: Use correct service name for AgentCore operations:
+
+```bash
+# ✅ CORRECT - bedrock-agentcore-control
+aws bedrock-agentcore-control get-gateway \
+    --gateway-identifier "${GATEWAY_ID}" \
+    --region "${CDK_AWS_REGION}"
+
+aws bedrock-agentcore-control list-gateway-targets \
+    --gateway-identifier "${GATEWAY_ID}" \
+    --region "${CDK_AWS_REGION}"
+
+# ❌ WRONG - bedrock-agentcore (runtime service, different API)
+aws bedrock-agentcore get-gateway  # Will fail with "invalid choice"
+```
+
+**Response Format**: Gateway target listings return `items[]` array, not `gatewayTargetSummaries[]`:
+```bash
+# Parse response correctly
+TARGET_COUNT=$(echo "${TARGETS}" | jq '.items | length')
+echo "${TARGETS}" | jq -r '.items[] | "\(.name): \(.description)"'
+```
+
 ### SSM Parameter Operations
 ```bash
 # Writing (no --tags with --overwrite)
@@ -354,6 +421,13 @@ aws ssm put-parameter \
 ---
 
 ## Testing Strategy
+
+### CDK Test Limitations
+**Important**: `cdk diff` has limited validation scope:
+- ✅ **Can detect**: TypeScript errors, missing CDK properties, template syntax errors
+- ❌ **Cannot detect**: Invalid enum values, service-specific validation, AWS limits
+- Service-level validation only happens during actual deployment
+- Message "Could not create a change set" = template-only diff (no AWS service validation)
 
 ### Test Script Pattern
 ```bash
@@ -462,6 +536,12 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 | Cache save "fails" | Normal behavior when dependencies unchanged |
 | Synth/deploy context mismatch | Ensure identical parameters in synth.sh and deploy.sh |
 | Deployment slower than expected | Check if using pre-synthesized templates (cdk.out/), enable parallelization |
+| `cdk diff` passes but deploy fails validation | CDK diff can't catch service-level enum/constraint errors; only happens at deploy |
+| AWS CLI "invalid choice" for AgentCore | Use `bedrock-agentcore-control` (control plane), not `bedrock-agentcore` (runtime) |
+| Gateway targets parsing returns 0 items | Response uses `.items[]` array, not `.gatewayTargetSummaries[]` |
+| CDK "No stacks match" error | Use logical ID (`GatewayStack`), not prefixed name (`${PREFIX}-GatewayStack`) |
+| `log_success: command not found` | Define logging functions locally in script after sourcing load-env.sh |
+| CDK commands fail in GitHub Actions job | Add "Install system dependencies" step before running CDK scripts |
 
 ---
 
@@ -492,7 +572,6 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 - [ ] Test deployment in dev environment first
 - [ ] Verify stack names follow naming convention
 - [ ] Commit all lock files
-
 ---
 
 ## Key Takeaways
@@ -512,3 +591,4 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 13. **Docker Source Truth**: `pyproject.toml` for dependencies, copy src before install
 14. **Composite Actions**: Abstract common patterns early (60% code reduction)
 15. **Document During Development**: Not retroactively
+
