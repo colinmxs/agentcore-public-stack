@@ -128,23 +128,93 @@ FROM python:3.11-slim
 
 ## GitHub Actions Best Practices
 
-### Workflow Structure (4-Job Pattern)
-```yaml
-jobs:
-  install:
-    # Install dependencies, cache node_modules
-  test:
-    needs: install
-    # Restore cache, run tests
-  build:
-    needs: test
-    # Restore cache, build artifacts (Docker/dist)
-  deploy:
-    needs: build
-    # Restore cache/artifacts, deploy to AWS
+### Modular Workflow Architecture (9-Job Pattern for Docker Stacks)
+
+**Architecture Pattern**:
+```
+Workflow Structure:
+├── install (dependencies, cache node_modules)
+├── Parallel Track A: Docker Pipeline
+│   ├── build-docker (generate git SHA tag, export as tar artifact)
+│   ├── test-docker (download, load, test image)
+│   └── push-to-ecr (download, load, push with git SHA tag)
+├── Parallel Track B: CDK Pipeline  
+│   ├── build-cdk (compile TypeScript)
+│   ├── synth-cdk (synthesize CloudFormation, upload templates)
+│   ├── test-cdk (validate with cdk diff)
+│   └── deploy-infrastructure (use pre-synthesized templates)
+└── test-python (unit tests, parallel to Docker track)
 ```
 
-**Benefits**: Clear separation, efficient caching, fail fast, skip tests option
+**Key Principles**:
+1. **No Inline Logic**: All workflow steps call backing scripts - zero bash in YAML
+2. **Standardized Naming**: Consistent step names ("Configure AWS credentials", "Upload synthesized templates")
+3. **Parallel Execution**: Independent tracks (Docker, CDK, Python) run simultaneously
+4. **Artifact Passing**: Share Docker images (tar) and CFN templates between jobs
+5. **Single Responsibility**: Each job performs one clear function
+6. **Job Outputs**: IMAGE_TAG generated once, propagated via outputs/env
+
+**Benefits**: Clear failure points, 40-60% faster execution via parallelization, locally testable scripts
+
+### Docker Image Sharing Between Jobs
+
+**Critical**: GitHub Actions jobs are isolated - Docker images don't persist between jobs.
+
+**Solution**: Export/import images as tar artifacts:
+
+1. **Build Job** - Generate tag once, export image:
+```yaml
+build-docker:
+  outputs:
+    image-tag: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+  steps:
+    - name: Set image tag
+      id: set-tag
+      run: |
+        IMAGE_TAG=$(git rev-parse --short HEAD)
+        echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+    
+    - name: Build and export Docker image
+      uses: docker/build-push-action@v6
+      with:
+        context: .
+        file: backend/Dockerfile.app-api
+        tags: ${{ env.CDK_PROJECT_PREFIX }}-app-api:${{ steps.set-tag.outputs.IMAGE_TAG }}
+        outputs: type=docker,dest=${{ runner.temp }}/app-api-image.tar
+    
+    - name: Upload Docker image artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: app-api-docker-image
+        path: ${{ runner.temp }}/app-api-image.tar
+        retention-days: 1
+```
+
+2. **Test/Push Jobs** - Download and load:
+```yaml
+test-docker:
+  needs: build-docker
+  env:
+    IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+  steps:
+    - name: Download Docker image artifact
+      uses: actions/download-artifact@v4
+      with:
+        name: app-api-docker-image
+        path: ${{ runner.temp }}
+    
+    - name: Load Docker image
+      run: |
+        docker load --input ${{ runner.temp }}/app-api-image.tar
+        docker image ls -a
+```
+
+**Best Practices**:
+- Use `docker/build-push-action@v6` (not shell scripts) for better caching/multi-platform support
+- Generate git SHA tag once in build job, propagate via `outputs` and `env`
+- Scripts accept `IMAGE_TAG` env var with fallback: `IMAGE_TAG="${IMAGE_TAG:-latest}"`
+- Keep artifact retention low (1 day) to minimize storage costs
+- Reference: https://docs.docker.com/build/ci/github-actions/share-image-jobs/
 
 ### Workflow Naming Convention
 - Format: `<StackName>.BuildTest.Deploy`
@@ -162,6 +232,40 @@ jobs:
 ```
 
 **Rule**: Job-level env doesn't auto-propagate secrets; reference explicitly in each step
+
+### CDK Synth/Deploy Pattern
+
+**Best Practice**: Synthesize CloudFormation once, reuse for test and deploy.
+
+**Required Scripts** (per stack):
+- `build-cdk.sh` - Compile TypeScript CDK code
+- `synth.sh` - Synthesize CloudFormation with all context parameters  
+- `test-cdk.sh` - Validate using `cdk diff --app "cdk.out/"`
+- `deploy.sh` - Deploy with pre-synthesized template detection
+
+**deploy.sh Pattern**:
+```bash
+if [ -d "cdk.out" ] && [ -f "cdk.out/AppApiStack.template.json" ]; then
+    log_info "Using pre-synthesized templates from cdk.out/"
+    cdk deploy AppApiStack --app "cdk.out/" --require-approval never
+else
+    log_info "Synthesizing on-the-fly"
+    cdk deploy AppApiStack [all context parameters] --require-approval never
+fi
+```
+
+**Critical**: Context parameters in synth.sh and deploy.sh must match exactly.
+
+**CDK Bootstrap Rule**: Always run from project root (not CDK app directory):
+```bash
+# Bad - loads CDK app, triggers config.ts, may use wrong context
+cd infrastructure
+cdk bootstrap aws://${ACCOUNT}/${REGION}
+
+# Good - neutral directory, no app loading
+cd project-root  
+cdk bootstrap aws://${ACCOUNT}/${REGION}  # No --context flags!
+```
 
 ### Composite Actions
 Create reusable patterns at `.github/actions/<action-name>/action.yml`:
@@ -340,7 +444,10 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 | Issue | Solution |
 |-------|----------|
 | CDK deploys to wrong region | Pass explicit `--context awsRegion=...` flags |
+| CDK bootstrap loads app context | Run from project root, NOT infrastructure directory, NO `--context` flags |
 | `Vpc.fromLookup()` fails with Tokens | Use `Vpc.fromVpcAttributes()` instead |
+| Docker image not available in next job | Export as tar artifact, upload/download between jobs |
+| Image tag mismatch between jobs | Generate git SHA once in build, propagate via job `outputs` |
 | Python imports fail in Docker | Use relative imports (`.module`) not absolute |
 | Docker `pip install .` fails | Copy src directory first (src-layout packages) |
 | Secrets not available in workflow | Explicitly reference: `${{ secrets.SECRET_NAME }}` |
@@ -349,6 +456,8 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 | Angular tests fail (HTTP) | Add `provideHttpClient()` and `provideHttpClientTesting()` |
 | Test script requires AWS config | Set minimal vars directly, don't source `load-env.sh` |
 | Cache save "fails" | Normal behavior when dependencies unchanged |
+| Synth/deploy context mismatch | Ensure identical parameters in synth.sh and deploy.sh |
+| Deployment slower than expected | Check if using pre-synthesized templates (cdk.out/), enable parallelization |
 
 ---
 
@@ -389,8 +498,13 @@ stackName: `${config.projectPrefix}-${StackName}Stack`
 3. **Configuration Injection**: Environment variables > context files for flexibility
 4. **Script Portability**: All logic in bash scripts, not GitHub Actions YAML
 5. **Cross-Stack via SSM**: Never hardcode resource references
-6. **CDK Explicit Context**: Always pass region/account as context flags
-7. **Python Relative Imports**: Always use `.module` for sibling imports in packages
-8. **Docker Source Truth**: `pyproject.toml` for dependencies, copy src before install
-9. **Composite Actions**: Abstract common patterns early (60% code reduction)
-10. **Document During Development**: Not retroactively
+6. **CDK Bootstrap Isolation**: Run from project root, no context parameters, avoid app loading
+7. **Job Isolation**: Docker images/artifacts don't persist - use tar export/import pattern
+8. **Single Source of Truth**: Generate version tags (git SHA) once, propagate via job outputs
+9. **Modular Workflows**: 9-job architecture with parallel Docker/CDK tracks (40-60% faster)
+10. **Pre-Synthesized Templates**: Synthesize once, reuse for test and deploy
+11. **Context Parameter Discipline**: synth.sh and deploy.sh must have identical parameters
+12. **Python Relative Imports**: Always use `.module` for sibling imports in packages
+13. **Docker Source Truth**: `pyproject.toml` for dependencies, copy src before install
+14. **Composite Actions**: Abstract common patterns early (60% code reduction)
+15. **Document During Development**: Not retroactively
