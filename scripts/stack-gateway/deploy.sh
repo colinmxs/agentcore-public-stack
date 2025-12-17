@@ -68,16 +68,13 @@ fi
 
 cd "${INFRASTRUCTURE_DIR}"
 
-# Get stack name
-STACK_NAME="${CDK_PROJECT_PREFIX}-GatewayStack"
-
-log_info "Deploying ${STACK_NAME}..."
+log_info "Deploying GatewayStack..."
 
 # Check if pre-synthesized templates exist
-if [ -d "cdk.out" ] && [ -f "cdk.out/${STACK_NAME}.template.json" ]; then
+if [ -d "cdk.out" ] && [ -f "cdk.out/GatewayStack.template.json" ]; then
     log_info "Using pre-synthesized templates from cdk.out/"
     
-    cdk deploy "${STACK_NAME}" \
+    cdk deploy GatewayStack \
         --app "cdk.out/" \
         --require-approval never \
         || {
@@ -91,7 +88,7 @@ else
     CONTEXT_PARAMS=$(build_cdk_context_params)
     
     # Execute CDK deploy with context parameters
-    eval "cdk deploy \"${STACK_NAME}\" ${CONTEXT_PARAMS} --require-approval never" || {
+    eval "cdk deploy GatewayStack ${CONTEXT_PARAMS} --require-approval never" || {
         log_error "CDK deployment failed"
         exit 1
     }

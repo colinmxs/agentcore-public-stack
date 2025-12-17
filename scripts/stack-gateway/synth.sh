@@ -29,17 +29,14 @@ if [ ! -d "node_modules" ]; then
     npm install
 fi
 
-# Get stack name
-STACK_NAME="${CDK_PROJECT_PREFIX}-GatewayStack"
-
-log_info "Synthesizing ${STACK_NAME}..."
+log_info "Running CDK synth for GatewayStack..."
 
 # Build context parameters using shared helper function
 CONTEXT_PARAMS=$(build_cdk_context_params)
 
 # Execute CDK synth with context parameters
-eval "cdk synth \"${STACK_NAME}\" ${CONTEXT_PARAMS}" || {
-    log_error "CDK synth failed for ${STACK_NAME}"
+eval "cdk synth GatewayStack ${CONTEXT_PARAMS}" || {
+    log_error "CDK synth failed for GatewayStack"
     exit 1
 }
 
