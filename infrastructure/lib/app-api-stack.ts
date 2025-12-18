@@ -319,6 +319,8 @@ export class AppApiStack extends cdk.Stack {
       environment: {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
+        DYNAMODB_QUOTA_TABLE: userQuotasTable.tableName,
+        DYNAMODB_EVENTS_TABLE: quotaEventsTable.tableName,
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -426,12 +428,6 @@ export class AppApiStack extends cdk.Stack {
       value: this.ecsService.serviceName,
       description: 'ECS Service Name',
       exportName: `${config.projectPrefix}-AppEcsServiceName`,
-    });
-
-    new cdk.CfnOutput(this, 'AppApiServiceName', {
-      value: alb.loadBalancerDnsName,
-      description: 'App API Service URL',
-      exportName: `${config.projectPrefix}-AppApiServiceName`,
     });
 
     new cdk.CfnOutput(this, 'TaskDefinitionArn', {
