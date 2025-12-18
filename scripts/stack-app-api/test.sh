@@ -29,64 +29,43 @@ main() {
     cd "${BACKEND_DIR}"
     log_info "Working directory: $(pwd)"
     
-    # Install project in editable mode (dependencies should be cached)
-    log_info "Installing project in editable mode..."
-    python3 -m pip install -e ".[agentcore,dev]" --quiet
+    # Upgrade pip
+    log_info "Upgrading pip..."
+    python3 -m pip install --upgrade pip --quiet
     
-    # Check if pytest is installed (should be from cache or install step)
-    if ! python3 -m pytest --version &> /dev/null; then
-        log_info "pytest not found, installing test dependencies..."
-        python3 -m pip install pytest pytest-asyncio pytest-cov
-    fi
+    # Install ALL dependencies fresh
+    log_info "Installing all dependencies (fresh install for debugging)..."
+    python3 -m pip install -e ".[agentcore,dev]"
+    
+    # Verify installation
+    log_info "Verifying installation..."
+    python3 -c "import fastapi; import uvicorn; import strands; print('✓ Core dependencies installed')"
     
     # Run tests
     log_info "Executing tests..."
     
-    # Run pytest with coverage if tests directory exists
-    if [ -d "tests" ]; then
-        log_info "Running tests from tests/ directory..."
-        
-        # Verify src directory exists
-        if [ ! -d "${BACKEND_DIR}/src" ]; then
-            log_error "src directory not found at ${BACKEND_DIR}/src"
-            exit 1
-        fi
-        
-        # Verify conftest.py exists
-        if [ ! -f "${BACKEND_DIR}/tests/conftest.py" ]; then
-            log_error "conftest.py not found at ${BACKEND_DIR}/tests/conftest.py"
-            exit 1
-        fi
-        
-        # Verify the quota modules exist
-        if [ ! -f "${BACKEND_DIR}/src/agents/strands_agent/quota/checker.py" ]; then
-            log_error "Quota checker module not found"
-            exit 1
-        fi
-        
-        # Export PYTHONPATH to ensure src is on the path
-        export PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}"
-        
-        # Verify that imports work
-        log_info "Verifying Python imports..."
-        if ! python3 -c "import sys; sys.path.insert(0, '${BACKEND_DIR}/src'); from agents.strands_agent.quota.checker import QuotaChecker; print('✓ Imports working')" 2>&1; then
-            log_error "Import verification failed! Checking dependencies..."
-            python3 -c "import sys; sys.path.insert(0, '${BACKEND_DIR}/src'); import agents" 2>&1 || true
-            log_error "Tests cannot run without working imports"
-            exit 1
-        fi
-        
-        # Run pytest
-        log_info "Running pytest with PYTHONPATH=${PYTHONPATH}"
-        python3 -m pytest tests/ \
-            --import-mode=importlib \
-            -v \
-            --tb=short \
-            --color=yes \
-            --disable-warnings
-    else
+    if [ ! -d "tests" ]; then
         log_info "No tests/ directory found. Skipping tests."
+        log_success "App API tests completed successfully!"
+        return 0
     fi
+    
+    # Set PYTHONPATH explicitly
+    export PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}"
+    log_info "PYTHONPATH=${PYTHONPATH}"
+    
+    # Test import directly
+    log_info "Testing direct import..."
+    python3 -c "from agents.strands_agent.quota.checker import QuotaChecker; print('✓ Direct import works')"
+    
+    # Run pytest with import-mode=importlib
+    log_info "Running pytest..."
+    python3 -m pytest tests/ \
+        --import-mode=importlib \
+        -v \
+        --tb=short \
+        --color=yes \
+        --disable-warnings
     
     log_success "App API tests completed successfully!"
 }

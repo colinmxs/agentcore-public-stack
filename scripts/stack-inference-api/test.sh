@@ -29,43 +29,43 @@ main() {
     cd "${BACKEND_DIR}"
     log_info "Working directory: $(pwd)"
     
-    # Install project in editable mode (dependencies should be cached)
-    log_info "Installing project in editable mode..."
-    python3 -m pip install -e ".[agentcore,dev]" --quiet
+    # Upgrade pip
+    log_info "Upgrading pip..."
+    python3 -m pip install --upgrade pip --quiet
     
-    # Check if pytest is installed (should be from cache or install step)
-    if ! python3 -m pytest --version &> /dev/null; then
-        log_info "pytest not found, installing test dependencies..."
-        python3 -m pip install pytest pytest-asyncio pytest-cov
-    fi
+    # Install ALL dependencies fresh
+    log_info "Installing all dependencies (fresh install for debugging)..."
+    python3 -m pip install -e ".[agentcore,dev]"
+    
+    # Verify installation
+    log_info "Verifying installation..."
+    python3 -c "import fastapi; import uvicorn; import strands; print('✓ Core dependencies installed')"
     
     # Run tests
     log_info "Executing tests..."
     
-    # Run pytest with coverage if tests directory exists
-    if [ -d "tests" ]; then
-        log_info "Running tests from tests/ directory..."
-        
-        # Verify src directory exists
-        if [ ! -d "${BACKEND_DIR}/src" ]; then
-            log_error "src directory not found at ${BACKEND_DIR}/src"
-            exit 1
-        fi
-        
-        # Export PYTHONPATH to ensure src is on the path
-        export PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}"
-        
-        # Run pytest with explicit PYTHONPATH
-        log_info "Running pytest with PYTHONPATH=${PYTHONPATH}"
-        python3 -m pytest tests/ \
-            --import-mode=importlib \
-            -v \
-            --tb=short \
-            --color=yes \
-            --disable-warnings
-    else
+    if [ ! -d "tests" ]; then
         log_info "No tests/ directory found. Skipping tests."
+        log_success "Inference API tests completed successfully!"
+        return 0
     fi
+    
+    # Set PYTHONPATH explicitly
+    export PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}"
+    log_info "PYTHONPATH=${PYTHONPATH}"
+    
+    # Test import directly
+    log_info "Testing direct import..."
+    python3 -c "from agents.strands_agent.quota.checker import QuotaChecker; print('✓ Direct import works')"
+    
+    # Run pytest with import-mode=importlib
+    log_info "Running pytest..."
+    python3 -m pytest tests/ \
+        --import-mode=importlib \
+        -v \
+        --tb=short \
+        --color=yes \
+        --disable-warnings
     
     log_success "Inference API tests completed successfully!"
 }
