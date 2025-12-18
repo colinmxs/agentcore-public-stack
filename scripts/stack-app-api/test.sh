@@ -79,7 +79,7 @@ main() {
         # Run pytest
         log_info "Running pytest with PYTHONPATH=${PYTHONPATH}"
         python3 -m pytest tests/ \
-            --override-ini="pythonpath=${BACKEND_DIR}/src" \
+            --import-mode=importlib \
             -v \
             --tb=short \
             --color=yes \

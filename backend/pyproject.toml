@@ -84,3 +84,4 @@ disallow_untyped_defs = false
 # pythonpath is relative to the directory where pytest is run (backend/)
 pythonpath = ["src"]
 testpaths = ["tests"]
+addopts = ["--import-mode=importlib"]
