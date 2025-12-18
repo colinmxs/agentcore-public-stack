@@ -29,6 +29,10 @@ main() {
     cd "${BACKEND_DIR}"
     log_info "Working directory: $(pwd)"
     
+    # Install project in editable mode (dependencies should be cached)
+    log_info "Installing project in editable mode..."
+    python3 -m pip install -e . --no-deps
+    
     # Check if pytest is installed (should be from cache or install step)
     if ! python3 -m pytest --version &> /dev/null; then
         log_info "pytest not found, installing test dependencies..."
