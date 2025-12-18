@@ -64,9 +64,17 @@ main() {
             exit 1
         fi
         
-        # Run pytest with explicit PYTHONPATH
+        # Debug: Test if import works
+        log_info "Testing if imports work..."
+        if ! python3 -c "from agents.strands_agent.quota.checker import QuotaChecker; print('Import successful!')" 2>&1; then
+            log_error "Import test failed! Trying to diagnose..."
+            python3 -c "import sys; print('sys.path:', sys.path)"
+            python3 -c "import agentcore_stack; print('Package location:', agentcore_stack.__file__ if hasattr(agentcore_stack, '__file__') else 'no __file__')"
+        fi
+        
+        # Run pytest
         log_info "Running pytest..."
-        PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}" python3 -m pytest tests/ \
+        python3 -m pytest tests/ \
             -v \
             --tb=short \
             --color=yes \
