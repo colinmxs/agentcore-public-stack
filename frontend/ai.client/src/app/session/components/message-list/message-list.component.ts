@@ -1,5 +1,5 @@
 import { Component, input, signal, effect, OnDestroy, inject, PLATFORM_ID } from '@angular/core';
-import { isPlatformBrowser, JsonPipe } from '@angular/common';
+import { isPlatformBrowser } from '@angular/common';
 import { Message } from '../../services/models/message.model';
 import { UserMessageComponent } from './components/user-message.component';
 import { AssistantMessageComponent } from './components/assistant-message.component';
@@ -7,7 +7,7 @@ import { MessageMetadataBadgesComponent } from './components/message-metadata-ba
 
 @Component({
   selector: 'app-message-list',
-  imports: [JsonPipe, UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent],
+  imports: [UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.css',
 })

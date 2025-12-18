@@ -8,12 +8,11 @@ import { Message } from './services/models/message.model';
 import { ChatInputComponent } from './components/chat-input/chat-input.component';
 import { SessionService } from './services/session/session.service';
 import { ChatStateService } from './services/chat/chat-state.service';
-import { JsonPipe } from '@angular/common';
 import { LoadingComponent } from '../components/loading.component';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, JsonPipe, LoadingComponent],
+  imports: [ChatInputComponent, MessageListComponent, LoadingComponent],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })
