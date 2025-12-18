@@ -43,7 +43,9 @@ main() {
     # Run pytest with coverage if tests directory exists
     if [ -d "tests" ]; then
         log_info "Running tests from tests/ directory..."
+        log_info "PYTHONPATH: ${PYTHONPATH}"
         python3 -m pytest tests/ \
+            --pythonpath="${BACKEND_DIR}/src" \
             -v \
             --tb=short \
             --color=yes \
