@@ -8,11 +8,10 @@ import { Message } from './services/models/message.model';
 import { ChatInputComponent } from './components/chat-input/chat-input.component';
 import { SessionService } from './services/session/session.service';
 import { ChatStateService } from './services/chat/chat-state.service';
-import { LoadingComponent } from '../components/loading.component';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, LoadingComponent],
+  imports: [ChatInputComponent, MessageListComponent ],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })

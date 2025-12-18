@@ -1,12 +1,12 @@
 import { Component, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { CostService } from './services/cost.service';
-import { DecimalPipe, DatePipe } from '@angular/common';
+import { DecimalPipe } from '@angular/common';
 import { UserCostSummary } from './models/cost-summary.model';
 
 @Component({
   selector: 'app-cost-dashboard-page',
-  imports: [FormsModule, DecimalPipe, DatePipe],
+  imports: [FormsModule, DecimalPipe],
   templateUrl: './cost-dashboard.page.html',
   styleUrl: './cost-dashboard.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
