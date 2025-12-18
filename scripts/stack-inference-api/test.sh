@@ -57,7 +57,8 @@ main() {
         
         # Run pytest with explicit PYTHONPATH
         log_info "Running pytest with PYTHONPATH=${PYTHONPATH}"
-        PYTHONPATH="${BACKEND_DIR}/src:${PYTHONPATH:-}" python3 -m pytest tests/ \
+        python3 -m pytest tests/ \
+            --override-ini="pythonpath=${BACKEND_DIR}/src" \
             -v \
             --tb=short \
             --color=yes \
