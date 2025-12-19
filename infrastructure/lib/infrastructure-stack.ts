@@ -334,9 +334,6 @@ export class InfrastructureStack extends cdk.Stack {
           });
         }
       }
-          exportName: `${config.projectPrefix}-alb-url-https`,
-        });
-      }
     }
 
     // ============================================================
