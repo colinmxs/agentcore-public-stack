@@ -1,5 +1,5 @@
 
-<div class="relative pb-30 max-w-4xl mx-auto px-4 py-6">
+<div class="relative pb-30 max-w-[720px] mx-auto px-4 py-6">
     @if (!hasMessages()) {
         <div class="flex items-center justify-center px-4 pt-40">
           <div class="w-full max-w-3xl animate-fade-in">
@@ -36,7 +36,7 @@
     @if(hasMessages()) {
         <!-- Footer (fixed, content scrolls underneath) -->
         <div class="pb-4 fixed bottom-0 left-0 right-0 lg:left-72 animate-fade-in">
-            <div class="max-w-4xl mx-auto px-4">
+            <div class="max-w-[720px] mx-auto px-4">
                 <app-chat-input (messageSubmitted)="onMessageSubmitted($event)" (fileAttached)="onFileAttached($event)"></app-chat-input>
             </div>
         </div>
