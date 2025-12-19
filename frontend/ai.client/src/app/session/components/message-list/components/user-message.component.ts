@@ -12,7 +12,7 @@ import { ContentBlock, Message } from '../../../services/models/message.model';
     @if (hasTextContent()) {
       <div class="flex w-full justify-end">
         <div
-          class="max-w-[80%] rounded-2xl bg-primary-500 px-4 py-3 text-sm/6 text-white"
+          class="max-w-[80%] rounded-2xl bg-primary-500 px-4 py-3 text-base/8 text-white/90"
         >
           @for (block of message().content; track $index) {
             @if (block.type === 'text' && block.text) {
