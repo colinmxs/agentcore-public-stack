@@ -18,7 +18,7 @@
           @switch (toolStatus()) {
             @case ('pending') {
               <svg
-                class="size-4 text-primary-600 dark:text-tertiary-400 animate-spin"
+                class="size-4 text-gray-600 dark:text-gray-400 animate-spin"
                 fill="none"
                 viewBox="0 0 24 24"
                 aria-hidden="true"
@@ -75,7 +75,7 @@
 
         <!-- Expand/collapse chevron -->
         <svg
-          class="chevron size-3.5 shrink-0 text-primary-600 dark:text-tertiary-400"
+          class="chevron size-3.5 shrink-0 text-gray-600 dark:text-gray-400"
           [class.open]="isDetailsExpanded()"
           fill="none"
           stroke="currentColor"
@@ -91,7 +91,7 @@
         </svg>
 
         <!-- Tool name -->
-        <span class="text-sm/5 font-medium text-primary-900 dark:text-white flex-1 text-left">
+        <span class="text-sm/5 font-medium text-gray-900 dark:text-white flex-1 text-left">
           {{ toolName() }}
         </span>
 
@@ -110,11 +110,11 @@
           <!-- Input section -->
           @if (hasInput()) {
             <div>
-              <div class="text-xs/5 font-medium text-primary-700 dark:text-tertiary-300 mb-1">
+              <div class="text-xs/5 font-medium text-gray-700 dark:text-gray-300 mb-1">
                 Input
               </div>
               <pre
-                class="p-2 bg-primary-50/30 dark:bg-primary-950/20 rounded-sm font-mono text-xs overflow-x-auto border border-primary-200/50 dark:border-primary-800/30"
+                class="p-2 bg-gray-100 dark:bg-gray-800 rounded-sm font-mono text-xs overflow-x-auto border border-gray-300 dark:border-gray-600"
               ><code [innerHTML]="formattedJson() | jsonSyntaxHighlight"></code></pre>
             </div>
           }
@@ -122,7 +122,7 @@
           <!-- Result section -->
           @if (hasResult()) {
             <div>
-              <div class="text-xs/5 font-medium text-primary-700 dark:text-tertiary-300 mb-1 flex items-center gap-1.5">
+              <div class="text-xs/5 font-medium text-gray-700 dark:text-gray-300 mb-1 flex items-center gap-1.5">
                 <span>Output</span>
                 @if (toolResult()?.status === 'error') {
                   <span class="text-red-600 dark:text-red-400">(Error)</span>
@@ -131,18 +131,18 @@
               <div class="space-y-2">
                 <!-- Text/JSON content -->
                 @for (item of resultTextContent(); track $index) {
-                  <div class="p-2 bg-primary-50/30 dark:bg-primary-950/20 rounded-sm border border-primary-200/50 dark:border-primary-800/30">
+                  <div class="p-2 bg-gray-100 dark:bg-gray-800 rounded-sm border border-gray-300 dark:border-gray-600">
                     @if (item.json) {
                       <pre class="font-mono text-xs overflow-x-auto"><code [innerHTML]="formatResultContent(item) | jsonSyntaxHighlight"></code></pre>
                     } @else {
-                      <div class="text-sm/6 text-primary-900 dark:text-primary-100 whitespace-pre-wrap">{{ formatResultContent(item) }}</div>
+                      <div class="text-sm/6 text-gray-900 dark:text-gray-100 whitespace-pre-wrap">{{ formatResultContent(item) }}</div>
                     }
                   </div>
                 }
 
                 <!-- Image content -->
                 @for (item of resultImageContent(); track $index) {
-                  <div class="rounded-sm overflow-hidden bg-primary-50/30 dark:bg-primary-950/20 p-2 border border-primary-200/50 dark:border-primary-800/30">
+                  <div class="rounded-sm overflow-hidden bg-gray-100 dark:bg-gray-800 p-2 border border-gray-300 dark:border-gray-600">
                     <img
                       [src]="getImageDataUrl(item)"
                       alt="Tool result image"

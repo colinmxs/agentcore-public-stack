@@ -5,9 +5,9 @@ import {
   heroPlus,
   heroAdjustmentsHorizontal,
   heroClock,
-  heroStop,
-  heroPaperAirplane
+  heroStop
 } from '@ng-icons/heroicons/outline';
+import { heroPaperAirplaneSolid } from '@ng-icons/heroicons/solid';
 import { ChatStateService } from '../../services/chat/chat-state.service';
 import { ModelDropdownComponent } from '../../../components/model-dropdown/model-dropdown.component';
 
@@ -25,7 +25,7 @@ interface Message {
       heroAdjustmentsHorizontal,
       heroClock,
       heroStop,
-      heroPaperAirplane
+      heroPaperAirplaneSolid
     })
   ],
   templateUrl: './chat-input.component.html',
