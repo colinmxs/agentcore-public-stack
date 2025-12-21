@@ -1,8 +1,9 @@
 """Core domain models for quota management system."""
 
-from pydantic import BaseModel, Field, ConfigDict, field_validator
+from pydantic import BaseModel, Field, ConfigDict, field_validator, model_serializer, model_validator
 from typing import Optional, Literal, Dict, Any
 from enum import Enum
+from decimal import Decimal
 
 
 class QuotaAssignmentType(str, Enum):
@@ -21,14 +22,14 @@ class QuotaTier(BaseModel):
     tier_name: str = Field(..., alias="tierName")
     description: Optional[str] = None
 
-    # Quota limits
-    monthly_cost_limit: float = Field(..., alias="monthlyCostLimit", gt=0)
-    daily_cost_limit: Optional[float] = Field(None, alias="dailyCostLimit", gt=0)
+    # Quota limits - stored as Decimal for DynamoDB compatibility
+    monthly_cost_limit: Decimal = Field(..., alias="monthlyCostLimit", gt=0)
+    daily_cost_limit: Optional[Decimal] = Field(None, alias="dailyCostLimit", gt=0)
     period_type: Literal["daily", "monthly"] = Field(default="monthly", alias="periodType")
 
     # Soft limit configuration
-    soft_limit_percentage: float = Field(
-        default=80.0,
+    soft_limit_percentage: Decimal = Field(
+        default=Decimal("80.0"),
         alias="softLimitPercentage",
         ge=0,
         le=100,
@@ -46,6 +47,18 @@ class QuotaTier(BaseModel):
     created_at: str = Field(..., alias="createdAt")
     updated_at: str = Field(..., alias="updatedAt")
     created_by: str = Field(..., alias="createdBy")
+
+    @field_validator('monthly_cost_limit', 'daily_cost_limit', 'soft_limit_percentage', mode='before')
+    @classmethod
+    def convert_to_decimal(cls, v):
+        """Convert float/int to Decimal for DynamoDB compatibility"""
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return Decimal(str(v))
+        if isinstance(v, str):
+            return Decimal(v)
+        return v
 
 
 class QuotaAssignment(BaseModel):
@@ -106,13 +119,25 @@ class QuotaEvent(BaseModel):
         alias="eventType"
     )
 
-    # Context
-    current_usage: float = Field(..., alias="currentUsage")
-    quota_limit: float = Field(..., alias="quotaLimit")
-    percentage_used: float = Field(..., alias="percentageUsed")
+    # Context - using Decimal for DynamoDB compatibility
+    current_usage: Decimal = Field(..., alias="currentUsage")
+    quota_limit: Decimal = Field(..., alias="quotaLimit")
+    percentage_used: Decimal = Field(..., alias="percentageUsed")
 
     timestamp: str
     metadata: Optional[Dict[str, Any]] = None
+
+    @field_validator('current_usage', 'quota_limit', 'percentage_used', mode='before')
+    @classmethod
+    def convert_to_decimal(cls, v):
+        """Convert float/int to Decimal for DynamoDB compatibility"""
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return Decimal(str(v))
+        if isinstance(v, str):
+            return Decimal(v)
+        return v
 
 
 class QuotaCheckResult(BaseModel):
@@ -122,14 +147,26 @@ class QuotaCheckResult(BaseModel):
     allowed: bool
     message: str
     tier: Optional[QuotaTier] = None
-    current_usage: float = Field(default=0.0, alias="currentUsage")
-    quota_limit: Optional[float] = Field(None, alias="quotaLimit")
-    percentage_used: float = Field(default=0.0, alias="percentageUsed")
-    remaining: Optional[float] = None
+    current_usage: Decimal = Field(default=Decimal("0.0"), alias="currentUsage")
+    quota_limit: Optional[Decimal] = Field(None, alias="quotaLimit")
+    percentage_used: Decimal = Field(default=Decimal("0.0"), alias="percentageUsed")
+    remaining: Optional[Decimal] = None
     warning_level: Optional[Literal["none", "80%", "90%"]] = Field(
         default="none",
         alias="warningLevel"
     )
+
+    @field_validator('current_usage', 'quota_limit', 'percentage_used', 'remaining', mode='before')
+    @classmethod
+    def convert_to_decimal(cls, v):
+        """Convert float/int to Decimal for DynamoDB compatibility"""
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return Decimal(str(v))
+        if isinstance(v, str):
+            return Decimal(v)
+        return v
 
 
 class ResolvedQuota(BaseModel):
@@ -159,9 +196,9 @@ class QuotaOverride(BaseModel):
         alias="overrideType"
     )
 
-    # Custom limits (required if override_type == "custom_limit")
-    monthly_cost_limit: Optional[float] = Field(None, alias="monthlyCostLimit", gt=0)
-    daily_cost_limit: Optional[float] = Field(None, alias="dailyCostLimit", gt=0)
+    # Custom limits (required if override_type == "custom_limit") - using Decimal for DynamoDB
+    monthly_cost_limit: Optional[Decimal] = Field(None, alias="monthlyCostLimit", gt=0)
+    daily_cost_limit: Optional[Decimal] = Field(None, alias="dailyCostLimit", gt=0)
 
     # Temporal bounds
     valid_from: str = Field(..., alias="validFrom")
@@ -173,7 +210,19 @@ class QuotaOverride(BaseModel):
     created_at: str = Field(..., alias="createdAt")
     enabled: bool = Field(default=True)
 
-    @field_validator('monthly_cost_limit')
+    @field_validator('monthly_cost_limit', 'daily_cost_limit', mode='before')
+    @classmethod
+    def convert_to_decimal(cls, v):
+        """Convert float/int to Decimal for DynamoDB compatibility"""
+        if v is None:
+            return v
+        if isinstance(v, (int, float)):
+            return Decimal(str(v))
+        if isinstance(v, str):
+            return Decimal(v)
+        return v
+
+    @field_validator('monthly_cost_limit', mode='after')
     @classmethod
     def validate_custom_limit(cls, v, info):
         """Ensure custom_limit type has a limit specified"""

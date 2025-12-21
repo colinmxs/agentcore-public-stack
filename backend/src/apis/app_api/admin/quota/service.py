@@ -2,6 +2,7 @@
 
 from typing import Optional, List
 from datetime import datetime, timedelta
+from decimal import Decimal
 import uuid
 import logging
 from apis.shared.auth.models import User
@@ -48,13 +49,15 @@ class QuotaAdminService:
 
         now = datetime.utcnow().isoformat() + 'Z'
 
+        # Convert float values to Decimal for DynamoDB
         tier = QuotaTier(
             tier_id=tier_data.tier_id,
             tier_name=tier_data.tier_name,
             description=tier_data.description,
-            monthly_cost_limit=tier_data.monthly_cost_limit,
-            daily_cost_limit=tier_data.daily_cost_limit,
+            monthly_cost_limit=Decimal(str(tier_data.monthly_cost_limit)),
+            daily_cost_limit=Decimal(str(tier_data.daily_cost_limit)) if tier_data.daily_cost_limit else None,
             period_type=tier_data.period_type,
+            soft_limit_percentage=Decimal(str(tier_data.soft_limit_percentage)),
             action_on_limit=tier_data.action_on_limit,
             enabled=tier_data.enabled,
             created_at=now,
@@ -93,8 +96,13 @@ class QuotaAdminService:
         # Convert to dict and filter None values
         update_dict = updates.model_dump(by_alias=True, exclude_none=True)
 
-        # Add audit fields
-        update_dict["updatedAt"] = datetime.utcnow().isoformat() + 'Z'
+        # Convert float values to Decimal for DynamoDB
+        if "monthlyCostLimit" in update_dict:
+            update_dict["monthlyCostLimit"] = Decimal(str(update_dict["monthlyCostLimit"]))
+        if "dailyCostLimit" in update_dict:
+            update_dict["dailyCostLimit"] = Decimal(str(update_dict["dailyCostLimit"]))
+
+        # Note: updatedAt is added by the repository layer
 
         updated = await self.repository.update_tier(tier_id, update_dict)
 
@@ -354,12 +362,13 @@ class QuotaAdminService:
         override_id = str(uuid.uuid4())
         now = datetime.utcnow().isoformat() + 'Z'
 
+        # Convert float values to Decimal for DynamoDB
         override = QuotaOverride(
             override_id=override_id,
             user_id=override_data.user_id,
             override_type=override_data.override_type,
-            monthly_cost_limit=override_data.monthly_cost_limit,
-            daily_cost_limit=override_data.daily_cost_limit,
+            monthly_cost_limit=Decimal(str(override_data.monthly_cost_limit)) if override_data.monthly_cost_limit else None,
+            daily_cost_limit=Decimal(str(override_data.daily_cost_limit)) if override_data.daily_cost_limit else None,
             valid_from=override_data.valid_from,
             valid_until=override_data.valid_until,
             reason=override_data.reason,
@@ -394,6 +403,12 @@ class QuotaAdminService:
 
         if not updates_dict:
             return await self.repository.get_override(override_id)
+
+        # Convert float values to Decimal for DynamoDB
+        if "monthlyCostLimit" in updates_dict:
+            updates_dict["monthlyCostLimit"] = Decimal(str(updates_dict["monthlyCostLimit"]))
+        if "dailyCostLimit" in updates_dict:
+            updates_dict["dailyCostLimit"] = Decimal(str(updates_dict["dailyCostLimit"]))
 
         # Get existing override to invalidate cache
         existing = await self.repository.get_override(override_id)

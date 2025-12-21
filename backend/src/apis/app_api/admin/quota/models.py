@@ -15,7 +15,7 @@ from agents.strands_agent.quota.models import (
 
 class QuotaTierCreate(BaseModel):
     """Create quota tier request"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     tier_id: str = Field(..., alias="tierId", description="Unique tier identifier")
     tier_name: str = Field(..., alias="tierName", description="Display name")
@@ -31,7 +31,7 @@ class QuotaTierCreate(BaseModel):
 
 class QuotaTierUpdate(BaseModel):
     """Update quota tier request (partial)"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     tier_name: Optional[str] = Field(None, alias="tierName")
     description: Optional[str] = None
@@ -45,7 +45,7 @@ class QuotaTierUpdate(BaseModel):
 
 class QuotaAssignmentCreate(BaseModel):
     """Create quota assignment request"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     tier_id: str = Field(..., alias="tierId")
     assignment_type: QuotaAssignmentType = Field(..., alias="assignmentType")
@@ -61,7 +61,7 @@ class QuotaAssignmentCreate(BaseModel):
 
 class QuotaAssignmentUpdate(BaseModel):
     """Update quota assignment request (partial)"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     tier_id: Optional[str] = Field(None, alias="tierId")
     priority: Optional[int] = Field(None, ge=0)
@@ -72,9 +72,9 @@ class QuotaAssignmentUpdate(BaseModel):
 
 class UserQuotaInfo(BaseModel):
     """Comprehensive quota information for a user (admin inspector)"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
-    user_id: str = Field(..., alias="userId")
+    user_id: str = Field(..., validation_alias="userId", serialization_alias="userId")
     email: str
     roles: List[str]
 
@@ -99,7 +99,7 @@ class UserQuotaInfo(BaseModel):
 
 class QuotaOverrideCreate(BaseModel):
     """Create quota override request"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     user_id: str = Field(..., alias="userId")
     override_type: Literal["custom_limit", "unlimited"] = Field(..., alias="overrideType")
@@ -114,7 +114,7 @@ class QuotaOverrideCreate(BaseModel):
 
 class QuotaOverrideUpdate(BaseModel):
     """Update quota override request (partial)"""
-    model_config = ConfigDict(populate_by_name=True)
+    model_config = ConfigDict(populate_by_name=True, alias_generator=None)
 
     valid_until: Optional[str] = Field(None, alias="validUntil")
     enabled: Optional[bool] = None

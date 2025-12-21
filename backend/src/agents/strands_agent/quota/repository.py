@@ -6,6 +6,7 @@ import boto3
 from botocore.exceptions import ClientError
 import logging
 import uuid
+import os
 from .models import QuotaTier, QuotaAssignment, QuotaEvent, QuotaAssignmentType, QuotaOverride
 
 logger = logging.getLogger(__name__)
@@ -16,12 +17,20 @@ class QuotaRepository:
 
     def __init__(
         self,
-        table_name: str = "UserQuotas",
-        events_table_name: str = "QuotaEvents"
+        table_name: str = None,
+        events_table_name: str = None
     ):
+        # Use environment variables if table names not provided
+        if table_name is None:
+            table_name = os.getenv("DYNAMODB_QUOTA_TABLE", "UserQuotas")
+        if events_table_name is None:
+            events_table_name = os.getenv("DYNAMODB_QUOTA_EVENTS_TABLE", "QuotaEvents")
+
         self.dynamodb = boto3.resource('dynamodb')
         self.table = self.dynamodb.Table(table_name)
         self.events_table = self.dynamodb.Table(events_table_name)
+
+        logger.info(f"QuotaRepository initialized with tables: {table_name}, {events_table_name}")
 
     # ========== Quota Tiers ==========
 
@@ -49,13 +58,14 @@ class QuotaRepository:
             return None
 
     async def list_tiers(self, enabled_only: bool = False) -> List[QuotaTier]:
-        """List all quota tiers (query with begins_with)"""
+        """List all quota tiers (scan with filter)"""
         try:
-            # Use Query on PK prefix instead of Scan
-            response = self.table.query(
-                KeyConditionExpression="begins_with(PK, :prefix)",
+            # Use Scan with FilterExpression since begins_with cannot be used on PK in Query
+            response = self.table.scan(
+                FilterExpression="begins_with(PK, :prefix) AND SK = :sk",
                 ExpressionAttributeValues={
-                    ":prefix": "QUOTA_TIER#"
+                    ":prefix": "QUOTA_TIER#",
+                    ":sk": "METADATA"
                 }
             )
 
@@ -98,12 +108,16 @@ class QuotaRepository:
             expr_attr_names = {}
             expr_attr_values = {}
 
+            # Remove updatedAt from updates if present - we'll add it ourselves with current timestamp
+            updates = updates.copy()  # Don't mutate the original dict
+            updates.pop("updatedAt", None)
+
             for key, value in updates.items():
                 update_parts.append(f"#{key} = :{key}")
                 expr_attr_names[f"#{key}"] = key
                 expr_attr_values[f":{key}"] = value
 
-            # Add updatedAt timestamp
+            # Add updatedAt timestamp (always use current time from repository)
             now = datetime.utcnow().isoformat() + 'Z'
             update_parts.append("#updatedAt = :updatedAt")
             expr_attr_names["#updatedAt"] = "updatedAt"
@@ -597,11 +611,12 @@ class QuotaRepository:
                     ScanIndexForward=False  # Latest first
                 )
             else:
-                # Query all overrides
-                response = self.table.query(
-                    KeyConditionExpression="begins_with(PK, :prefix)",
+                # Scan all overrides (begins_with cannot be used on PK in Query)
+                response = self.table.scan(
+                    FilterExpression="begins_with(PK, :prefix) AND SK = :sk",
                     ExpressionAttributeValues={
-                        ":prefix": "OVERRIDE#"
+                        ":prefix": "OVERRIDE#",
+                        ":sk": "METADATA"
                     }
                 )
 

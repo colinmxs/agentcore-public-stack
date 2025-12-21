@@ -25,7 +25,7 @@ import {
 })
 export class QuotaHttpService {
   private http = inject(HttpClient);
-  private baseUrl = `${environment.appApiUrl}/api/admin/quota`;
+  private baseUrl = `${environment.appApiUrl}/admin/quota`;
 
   // ========== Quota Tiers ==========
 
