@@ -190,6 +190,11 @@ async def update_session_metadata_endpoint(
                     custom_prompt_text=request.custom_prompt_text
                 )
 
+            # IMPORTANT: Do NOT set message_count here - it should only be managed by
+            # the streaming coordinator (_update_session_metadata in stream_coordinator.py)
+            # Setting it here causes a race condition where the PUT endpoint writes 0,
+            # then the streaming coordinator writes the correct count, but the deep merge
+            # preserves the incorrect 0 value.
             metadata = SessionMetadata(
                 session_id=session_id,
                 user_id=user_id,
@@ -197,7 +202,8 @@ async def update_session_metadata_endpoint(
                 status=request.status or "active",
                 created_at=now,
                 last_message_at=now,
-                message_count=0,
+                # message_count will be set by streaming coordinator on first message
+                message_count=0,  # Safe default - will be overwritten by first message
                 starred=request.starred or False,
                 tags=request.tags or [],
                 preferences=preferences

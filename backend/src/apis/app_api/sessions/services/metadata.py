@@ -5,21 +5,54 @@ streaming completes. It supports both local file storage and cloud DynamoDB stor
 
 Architecture:
 - Local: Embeds metadata in message JSON files
-- Cloud: Stores metadata in DynamoDB table specified by CONVERSATIONS_TABLE_NAME
+- Cloud: Stores metadata in DynamoDB table specified by DYNAMODB_SESSIONS_METADATA_TABLE_NAME
 """
 
 import logging
 import json
 import os
 import base64
-from typing import Optional, Tuple
+from typing import Optional, Tuple, Any
 from pathlib import Path
+from decimal import Decimal
 
 from apis.app_api.messages.models import MessageMetadata
 from apis.app_api.sessions.models import SessionMetadata
 from apis.app_api.storage.paths import get_message_path, get_session_metadata_path, get_sessions_root, get_message_metadata_path
 
 logger = logging.getLogger(__name__)
+
+
+def _convert_floats_to_decimal(obj: Any) -> Any:
+    """
+    Recursively convert floats to Decimal for DynamoDB
+
+    DynamoDB doesn't support float type, requires Decimal instead.
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: _convert_floats_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_floats_to_decimal(item) for item in obj]
+    else:
+        return obj
+
+
+def _convert_decimal_to_float(obj: Any) -> Any:
+    """
+    Recursively convert Decimal to float for JSON serialization
+
+    DynamoDB returns Decimal objects, which need to be converted back to float.
+    """
+    if isinstance(obj, Decimal):
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: _convert_decimal_to_float(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_decimal_to_float(item) for item in obj]
+    else:
+        return obj
 
 
 async def store_message_metadata(
@@ -44,15 +77,15 @@ async def store_message_metadata(
         This should be called AFTER the session manager flushes messages,
         ensuring the message file exists before we try to update it.
     """
-    conversations_table = os.environ.get('CONVERSATIONS_TABLE_NAME')
+    sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
 
-    if conversations_table:
+    if sessions_metadata_table:
         await _store_message_metadata_cloud(
             session_id=session_id,
             user_id=user_id,
             message_id=message_id,
             message_metadata=message_metadata,
-            table_name=conversations_table
+            table_name=sessions_metadata_table
         )
     else:
         await _store_message_metadata_local(
@@ -131,7 +164,7 @@ async def _store_message_metadata_cloud(
         user_id: User identifier
         message_id: Message number
         message_metadata: MessageMetadata to store
-        table_name: DynamoDB table name from CONVERSATIONS_TABLE_NAME env var
+        table_name: DynamoDB table name from DYNAMODB_SESSIONS_METADATA_TABLE_NAME env var
 
     Note:
         Implementation depends on your DynamoDB schema.
@@ -187,14 +220,14 @@ async def store_session_metadata(
         This performs a deep merge - existing fields are preserved unless
         explicitly overwritten by new values.
     """
-    conversations_table = os.environ.get('CONVERSATIONS_TABLE_NAME')
+    sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
 
-    if conversations_table:
+    if sessions_metadata_table:
         await _store_session_metadata_cloud(
             session_id=session_id,
             user_id=user_id,
             session_metadata=session_metadata,
-            table_name=conversations_table
+            table_name=sessions_metadata_table
         )
     else:
         await _store_session_metadata_local(
@@ -277,65 +310,88 @@ async def _store_session_metadata_cloud(
     Store session metadata in DynamoDB
 
     This creates or updates the session record in DynamoDB.
+    - If item exists: Uses update_item for partial updates (deep merge behavior)
+    - If item doesn't exist: Uses put_item to create new item
 
     Args:
         session_id: Session identifier
         user_id: User identifier
         session_metadata: SessionMetadata to store
-        table_name: DynamoDB table name from CONVERSATIONS_TABLE_NAME env var
+        table_name: DynamoDB table name from DYNAMODB_SESSIONS_METADATA_TABLE_NAME env var
 
-    Note:
-        Implementation depends on your DynamoDB schema.
-        This is a placeholder showing the general approach.
-
-    TODO: Implement based on your DynamoDB schema
-
-    Recommended schema for chronological listing:
+    Schema:
         PK: USER#{user_id}
-        SK: SESSION#{created_at_iso}#{session_id}
+        SK: SESSION#{session_id}
 
-        Example SK: SESSION#2025-01-15T10:30:00.000Z#anon0000_abc123_xyz789
-
-        Benefits:
-        - Sessions naturally sorted by creation time
-        - Query with ScanIndexForward=False for newest first
-        - No additional GSI needed for creation order
-
-    Alternative: Add GSI for activity-based sorting
-        GSI_PK: USER#{user_id}
-        GSI_SK: ACTIVITY#{last_message_at}#{session_id}
-
-        Benefits:
-        - Shows most recently active sessions
-        - Main table still sorted by creation
-        - Best of both worlds
+        This allows querying all sessions for a user and supports activity-based sorting
+        via last_message_at attribute.
     """
     try:
-        # TODO: Implement DynamoDB update
-        # Example pseudocode:
-        # import boto3
-        # dynamodb = boto3.resource('dynamodb')
-        # table = dynamodb.Table(table_name)
-        #
-        # # Prepare item for DynamoDB
-        # item = session_metadata.model_dump(by_alias=True, exclude_none=True)
-        # item['PK'] = f'USER#{user_id}'
-        #
-        # # Use timestamp-based SK for chronological ordering
-        # created_at = session_metadata.created_at  # ISO 8601 format
-        # item['SK'] = f'SESSION#{created_at}#{session_id}'
-        #
-        # # Optional: Add GSI keys for activity-based sorting
-        # item['GSI_PK'] = f'USER#{user_id}'
-        # item['GSI_SK'] = f'ACTIVITY#{session_metadata.last_message_at}#{session_id}'
-        #
-        # table.put_item(Item=item)
+        import boto3
+        from botocore.exceptions import ClientError
 
-        logger.info(f"💾 Would store session metadata in DynamoDB table {table_name}")
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(table_name)
+
+        # Prepare item for DynamoDB
+        item = session_metadata.model_dump(by_alias=True, exclude_none=True)
+
+        # Convert floats to Decimal for DynamoDB compatibility
+        item = _convert_floats_to_decimal(item)
+
+        # Build update expression for partial update (deep merge)
+        update_expression_parts = []
+        expression_attribute_names = {}
+        expression_attribute_values = {}
+
+        for key_name, value in item.items():
+            # Skip keys that are part of the primary key
+            if key_name in ['sessionId', 'userId']:
+                continue
+
+            # Use placeholder names to handle reserved words and special characters
+            placeholder_name = f"#{key_name}"
+            placeholder_value = f":{key_name}"
+
+            update_expression_parts.append(f"{placeholder_name} = {placeholder_value}")
+            expression_attribute_names[placeholder_name] = key_name
+            expression_attribute_values[placeholder_value] = value
+
+        update_expression = "SET " + ", ".join(update_expression_parts)
+
+        key = {
+            'PK': f'USER#{user_id}',
+            'SK': f'SESSION#{session_id}'
+        }
+
+        try:
+            # Try update_item first (most common case - item already exists)
+            # This preserves existing fields (deep merge behavior)
+            table.update_item(
+                Key=key,
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames=expression_attribute_names,
+                ExpressionAttributeValues=expression_attribute_values,
+                # This condition ensures the item exists
+                ConditionExpression='attribute_exists(PK)'
+            )
+            logger.info(f"💾 Updated session metadata in DynamoDB table {table_name}")
+
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
+                # Item doesn't exist - create it with put_item
+                item['PK'] = key['PK']
+                item['SK'] = key['SK']
+                table.put_item(Item=item)
+                logger.info(f"💾 Created session metadata in DynamoDB table {table_name}")
+            else:
+                # Re-raise other errors
+                raise
+
         logger.info(f"   Session: {session_id}, User: {user_id}")
 
     except Exception as e:
-        logger.error(f"Failed to store session metadata in DynamoDB: {e}")
+        logger.error(f"Failed to store session metadata in DynamoDB: {e}", exc_info=True)
         # Don't raise - metadata storage failures shouldn't break the app
 
 
@@ -350,13 +406,13 @@ async def get_session_metadata(session_id: str, user_id: str) -> Optional[Sessio
     Returns:
         SessionMetadata object if found, None otherwise
     """
-    conversations_table = os.environ.get('CONVERSATIONS_TABLE_NAME')
+    sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
 
-    if conversations_table:
+    if sessions_metadata_table:
         return await _get_session_metadata_cloud(
             session_id=session_id,
             user_id=user_id,
-            table_name=conversations_table
+            table_name=sessions_metadata_table
         )
     else:
         return await _get_session_metadata_local(session_id=session_id)
@@ -404,47 +460,41 @@ async def _get_session_metadata_cloud(
     Returns:
         SessionMetadata object if found, None otherwise
 
-    TODO: Implement based on your DynamoDB schema
+    Schema:
+        PK: USER#{user_id}
+        SK: SESSION#{session_id}
 
-    Note: With timestamp-based SK, retrieval requires a query instead of get_item:
-        - Query with PK = USER#{user_id}
-        - Filter with begins_with(SK, 'SESSION#') AND contains(SK, session_id)
-        - Or store a GSI with session_id for direct lookup
-
-    Recommended: Add GSI for session lookup by ID
-        GSI_PK: SESSION_ID#{session_id}
-        GSI_SK: USER#{user_id}
+        Direct get_item lookup using composite key.
     """
     try:
-        # TODO: Implement DynamoDB retrieval
-        # Example pseudocode (Option 1: Query with filter):
-        # import boto3
-        # from boto3.dynamodb.conditions import Key, Attr
-        # dynamodb = boto3.resource('dynamodb')
-        # table = dynamodb.Table(table_name)
-        #
-        # response = table.query(
-        #     KeyConditionExpression=Key('PK').eq(f'USER#{user_id}'),
-        #     FilterExpression=Attr('sessionId').eq(session_id)
-        # )
-        #
-        # if response['Items']:
-        #     return SessionMetadata.model_validate(response['Items'][0])
-        #
-        # Example pseudocode (Option 2: Use GSI for direct lookup):
-        # response = table.query(
-        #     IndexName='SessionIdIndex',
-        #     KeyConditionExpression=Key('GSI_PK').eq(f'SESSION_ID#{session_id}')
-        # )
-        #
-        # if response['Items']:
-        #     return SessionMetadata.model_validate(response['Items'][0])
+        import boto3
 
-        logger.info(f"Would retrieve session metadata from DynamoDB table {table_name}")
-        return None
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(table_name)
+
+        # Direct get_item lookup using PK and SK
+        response = table.get_item(
+            Key={
+                'PK': f'USER#{user_id}',
+                'SK': f'SESSION#{session_id}'
+            }
+        )
+
+        if 'Item' not in response:
+            logger.info(f"Session metadata not found in DynamoDB: {session_id}")
+            return None
+
+        # Convert Decimal to float for JSON serialization
+        item = _convert_decimal_to_float(response['Item'])
+
+        # Remove DynamoDB keys before validation
+        item.pop('PK', None)
+        item.pop('SK', None)
+
+        return SessionMetadata.model_validate(item)
 
     except Exception as e:
-        logger.error(f"Failed to retrieve session metadata from DynamoDB: {e}")
+        logger.error(f"Failed to retrieve session metadata from DynamoDB: {e}", exc_info=True)
         return None
 
 
@@ -519,12 +569,12 @@ async def list_user_sessions(
         Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
         Sessions are sorted by last_message_at descending (most recent first)
     """
-    conversations_table = os.environ.get('CONVERSATIONS_TABLE_NAME')
+    sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
 
-    if conversations_table:
+    if sessions_metadata_table:
         return await _list_user_sessions_cloud(
             user_id=user_id,
-            table_name=conversations_table,
+            table_name=sessions_metadata_table,
             limit=limit,
             next_token=next_token
         )
@@ -625,70 +675,81 @@ async def _list_user_sessions_cloud(
         Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
         Sessions are sorted by last_message_at descending (most recent first)
 
-    TODO: Implement based on your DynamoDB schema
-
-    Recommended schema:
+    Schema:
         PK: USER#{user_id}
-        SK: SESSION#{created_at_iso}#{session_id}
+        SK: SESSION#{session_id}
 
-    Query example with pagination:
-        - Query with PK = USER#{user_id}
-        - FilterExpression: begins_with(SK, 'SESSION#')
-        - ScanIndexForward=False for newest first
-        - Use ExclusiveStartKey for pagination (decode from next_token)
-        - Use Limit parameter for limit
+        Query all sessions for a user, then sort by last_message_at in memory.
     """
     try:
-        # TODO: Implement DynamoDB query with pagination
-        # Example pseudocode:
-        # import boto3
-        # from boto3.dynamodb.conditions import Key
-        # dynamodb = boto3.resource('dynamodb')
-        # table = dynamodb.Table(table_name)
-        #
-        # # Decode next_token to get ExclusiveStartKey if provided
-        # exclusive_start_key = None
-        # if next_token:
-        #     try:
-        #         decoded = base64.b64decode(next_token).decode('utf-8')
-        #         # Parse decoded token to reconstruct DynamoDB key
-        #         exclusive_start_key = json.loads(decoded)
-        #     except Exception as e:
-        #         logger.warning(f"Invalid next_token: {e}")
-        #
-        # query_params = {
-        #     'KeyConditionExpression': Key('PK').eq(f'USER#{user_id}'),
-        #     'FilterExpression': begins_with('SK', 'SESSION#'),
-        #     'ScanIndexForward': False,  # Newest first
-        #     'Limit': limit if limit else None
-        # }
-        # if exclusive_start_key:
-        #     query_params['ExclusiveStartKey'] = exclusive_start_key
-        #
-        # response = table.query(**query_params)
-        #
-        # sessions = []
-        # for item in response['Items']:
-        #     try:
-        #         metadata = SessionMetadata.model_validate(item)
-        #         sessions.append(metadata)
-        #     except Exception as e:
-        #         logger.warning(f"Failed to parse session item: {e}")
-        #         continue
-        #
-        # # Generate next_token from LastEvaluatedKey if present
-        # next_page_token = None
-        # if 'LastEvaluatedKey' in response:
-        #     next_page_token = base64.b64encode(json.dumps(response['LastEvaluatedKey']).encode('utf-8')).decode('utf-8')
-        #
-        # return sessions, next_page_token
+        import boto3
+        from boto3.dynamodb.conditions import Key
 
-        logger.info(f"Would list user sessions from DynamoDB table {table_name}")
-        # For now, return empty list with no next token
-        return [], None
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(table_name)
+
+        # Decode next_token to get ExclusiveStartKey if provided
+        exclusive_start_key = None
+        if next_token:
+            try:
+                decoded = base64.b64decode(next_token).decode('utf-8')
+                exclusive_start_key = json.loads(decoded)
+            except Exception as e:
+                logger.warning(f"Invalid next_token: {e}")
+
+        # Build query parameters
+        query_params = {
+            'KeyConditionExpression': Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('SESSION#'),
+        }
+
+        if exclusive_start_key:
+            query_params['ExclusiveStartKey'] = exclusive_start_key
+
+        if limit:
+            # Request more items than limit because we'll sort in memory
+            # This isn't perfect but works for reasonable page sizes
+            query_params['Limit'] = limit * 2
+
+        # Execute query
+        response = table.query(**query_params)
+
+        # Parse items
+        sessions = []
+        for item in response['Items']:
+            try:
+                # Convert Decimal to float
+                item = _convert_decimal_to_float(item)
+
+                # Remove DynamoDB keys
+                item.pop('PK', None)
+                item.pop('SK', None)
+
+                metadata = SessionMetadata.model_validate(item)
+                sessions.append(metadata)
+            except Exception as e:
+                logger.warning(f"Failed to parse session item: {e}")
+                continue
+
+        # Sort by last_message_at descending (most recent first)
+        sessions.sort(key=lambda x: x.last_message_at, reverse=True)
+
+        # Apply limit after sorting
+        if limit and len(sessions) > limit:
+            sessions = sessions[:limit]
+
+        # Generate next_token from LastEvaluatedKey if present
+        next_page_token = None
+        if 'LastEvaluatedKey' in response:
+            next_page_token = base64.b64encode(
+                json.dumps(response['LastEvaluatedKey']).encode('utf-8')
+            ).decode('utf-8')
+
+        logger.info(f"Listed {len(sessions)} sessions for user {user_id} from DynamoDB")
+
+        return sessions, next_page_token
 
     except Exception as e:
-        logger.error(f"Failed to list user sessions from DynamoDB: {e}")
+        logger.error(f"Failed to list user sessions from DynamoDB: {e}", exc_info=True)
         return [], None
 
 

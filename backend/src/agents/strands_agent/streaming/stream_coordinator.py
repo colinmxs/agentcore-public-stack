@@ -128,31 +128,30 @@ class StreamCoordinator:
             stream_end_time = time.time()
 
             # Flush buffered messages (turn-based session manager)
-            # This returns the message ID of the flushed message
+            # This returns the message ID of the flushed message (may be None due to eventual consistency)
             message_id = self._flush_session(session_manager)
 
-            # Store metadata after flush completes
-            if message_id is not None:
-                # Always update session metadata (for last_model, message_count, etc.)
-                await self._update_session_metadata(
+            # Always update session metadata (for last_model, message_count, etc.)
+            # even if message_id is None (which happens due to AgentCore Memory eventual consistency)
+            await self._update_session_metadata(
+                session_id=session_id,
+                user_id=user_id,
+                message_id=message_id,  # May be None
+                agent=strands_agent_wrapper  # Use wrapper instead of internal agent
+            )
+
+            # Store message-level metadata only if we have usage/timing data AND a valid message_id
+            if message_id is not None and (accumulated_metadata.get("usage") or first_token_time):
+                await self._store_message_metadata(
                     session_id=session_id,
                     user_id=user_id,
                     message_id=message_id,
+                    accumulated_metadata=accumulated_metadata,
+                    stream_start_time=stream_start_time,
+                    stream_end_time=stream_end_time,
+                    first_token_time=first_token_time,
                     agent=strands_agent_wrapper  # Use wrapper instead of internal agent
                 )
-
-                # Store message-level metadata only if we have usage or timing data
-                if accumulated_metadata.get("usage") or first_token_time:
-                    await self._store_message_metadata(
-                        session_id=session_id,
-                        user_id=user_id,
-                        message_id=message_id,
-                        accumulated_metadata=accumulated_metadata,
-                        stream_start_time=stream_start_time,
-                        stream_end_time=stream_end_time,
-                        first_token_time=first_token_time,
-                        agent=strands_agent_wrapper  # Use wrapper instead of internal agent
-                    )
 
         except Exception as e:
             # Handle errors with emergency flush
@@ -615,6 +614,24 @@ class StreamCoordinator:
             else:
                 logger.info(f"📄 No existing metadata found - creating new")
 
+            # Calculate message count incrementally
+            # NOTE: We cannot query AgentCore Memory immediately after flush due to eventual consistency.
+            # The turn-based session manager calls create_message() then immediately calls list_messages(),
+            # but the newly created message is not yet available for reading (can take several seconds).
+            #
+            # Instead, we use incremental counting:
+            # - Each streaming turn creates 1 merged message in AgentCore Memory
+            # - We increment the count by 1 per turn
+            #
+            # This count represents "turns" (user-assistant exchanges), not individual message events.
+            # Tool use creates multiple content blocks within a single turn/message.
+            if not existing:
+                actual_message_count = 1
+                logger.info(f"📊 First turn in session - message_count: {actual_message_count}")
+            else:
+                actual_message_count = existing.message_count + 1
+                logger.info(f"📊 Incremental turn count: {existing.message_count} + 1 = {actual_message_count}")
+
             now = datetime.now(timezone.utc).isoformat()
 
             if not existing:
@@ -652,7 +669,7 @@ class StreamCoordinator:
                     status="active",
                     created_at=now,
                     last_message_at=now,
-                    message_count=1,
+                    message_count=actual_message_count,
                     starred=False,
                     tags=[],
                     preferences=preferences
@@ -696,7 +713,7 @@ class StreamCoordinator:
                     status=existing.status,
                     created_at=existing.created_at,
                     last_message_at=now,
-                    message_count=existing.message_count + 1,
+                    message_count=actual_message_count,
                     starred=existing.starred,
                     tags=existing.tags,
                     preferences=preferences
@@ -712,5 +729,5 @@ class StreamCoordinator:
             logger.info(f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}")
 
         except Exception as e:
-            logger.error(f"Failed to update session metadata: {e}")
+            logger.error(f"Failed to update session metadata: {e}", exc_info=True)
             # Don't raise - metadata failures shouldn't break streaming

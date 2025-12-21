@@ -123,10 +123,24 @@ def _convert_message(msg: Any, metadata: Any = None) -> Message:
         content = msg.get("content", [])
         timestamp = msg.get("timestamp")
     else:
-        # Handle SessionMessage object
-        role = getattr(msg, "role", "assistant")
-        content = getattr(msg, "content", [])
-        timestamp = getattr(msg, "timestamp", None)
+        # Handle SessionMessage object (from AgentCore Memory)
+        # SessionMessage has a nested 'message' field that contains the actual Message
+        inner_message = getattr(msg, "message", None)
+        if inner_message:
+            # The inner message can be either a dict or an object
+            if isinstance(inner_message, dict):
+                role = inner_message.get("role", "assistant")
+                content = inner_message.get("content", [])
+            else:
+                role = getattr(inner_message, "role", "assistant")
+                content = getattr(inner_message, "content", [])
+        else:
+            # Fallback: try to get role/content directly (shouldn't happen)
+            role = getattr(msg, "role", "assistant")
+            content = getattr(msg, "content", [])
+
+        # SessionMessage uses created_at field
+        timestamp = getattr(msg, "created_at", None)
 
     # Convert content blocks
     content_blocks = []
@@ -246,14 +260,25 @@ async def get_messages_from_cloud(
         # The session manager uses the base manager's list_messages method
         messages_raw = session_manager.list_messages(session_id, agent_id="default")
 
+        logger.info(f"AgentCore Memory returned {len(messages_raw) if messages_raw else 0} raw messages")
+
         # Convert to our Message model
         messages = []
         if messages_raw:
             for idx, msg in enumerate(messages_raw):
                 try:
+                    # Debug log the message structure
+                    logger.info(f"Message {idx}: type={type(msg)}, hasattr message={hasattr(msg, 'message')}")
+                    if hasattr(msg, 'message'):
+                        inner = getattr(msg, 'message')
+                        logger.info(f"  Inner message: type={type(inner)}, hasattr role={hasattr(inner, 'role')}, hasattr content={hasattr(inner, 'content')}")
+                        if hasattr(inner, 'content'):
+                            content = getattr(inner, 'content')
+                            logger.info(f"  Content: type={type(content)}, len={len(content) if isinstance(content, list) else 'N/A'}")
+
                     messages.append(_convert_message(msg))
                 except Exception as e:
-                    logger.error(f"Error converting message: {e}")
+                    logger.error(f"Error converting message {idx}: {e}", exc_info=True)
                     continue
 
         # Sort messages by timestamp to ensure consistent ordering
@@ -426,10 +451,12 @@ async def get_messages(
     Returns:
         MessagesListResponse with paginated conversation history
     """
+    # Check AGENTCORE_MEMORY_TYPE to decide between cloud/local
+    memory_type = os.environ.get('AGENTCORE_MEMORY_TYPE', 'file').lower()
     memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
 
-    # Use cloud if AGENTCORE_MEMORY_ID is set and library is available
-    if memory_id and AGENTCORE_MEMORY_AVAILABLE:
+    # Use cloud if memory_type is dynamodb and library is available
+    if memory_type == 'dynamodb' and memory_id and AGENTCORE_MEMORY_AVAILABLE:
         logger.info(f"Using AgentCore Memory for session {session_id}")
         return await get_messages_from_cloud(session_id, user_id, limit, next_token)
     else:

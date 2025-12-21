@@ -6,6 +6,8 @@ import os
 from pathlib import Path
 from typing import Optional, Any
 
+from agents.strands_agent.session.memory_config import load_memory_config
+
 logger = logging.getLogger(__name__)
 
 # AgentCore Memory integration (optional, only for cloud deployment)
@@ -37,16 +39,16 @@ class SessionFactory:
         Returns:
             Session manager instance (TurnBasedSessionManager or LocalSessionBuffer)
         """
-        memory_id = os.environ.get('AGENTCORE_MEMORY_ID')
-        aws_region = os.environ.get('AWS_REGION', 'us-west-2')
+        # Load memory configuration from environment
+        config = load_memory_config()
 
-        if memory_id and AGENTCORE_MEMORY_AVAILABLE:
-            # Cloud deployment: Use AgentCore Memory with Turn-based buffering
+        if config.is_cloud_mode and AGENTCORE_MEMORY_AVAILABLE:
+            # Cloud deployment: Use AgentCore Memory (AWS-managed DynamoDB)
             return SessionFactory._create_cloud_session_manager(
-                memory_id=memory_id,
+                memory_id=config.memory_id,
                 session_id=session_id,
                 user_id=user_id,
-                aws_region=aws_region,
+                aws_region=config.region,
                 caching_enabled=caching_enabled
             )
         else:
@@ -65,7 +67,7 @@ class SessionFactory:
         Create AgentCore Memory session manager with turn-based buffering
 
         Args:
-            memory_id: AgentCore Memory ID
+            memory_id: AgentCore Memory ID (AWS Bedrock service)
             session_id: Session identifier
             user_id: User identifier
             aws_region: AWS region
@@ -73,10 +75,16 @@ class SessionFactory:
 
         Returns:
             TurnBasedSessionManager: Session manager with AgentCore Memory
+
+        Note:
+            AgentCore Memory uses AWS-managed DynamoDB tables. The table is automatically
+            created and managed by AWS Bedrock - you only need to provide the memory_id.
         """
         from agents.strands_agent.session.turn_based_session_manager import TurnBasedSessionManager
 
-        logger.info(f"🚀 Cloud mode: Using AgentCore Memory (memory_id={memory_id})")
+        logger.info(f"🚀 Cloud mode: Using AWS Bedrock AgentCore Memory")
+        logger.info(f"   • Memory ID: {memory_id}")
+        logger.info(f"   • Region: {aws_region}")
 
         # Configure AgentCore Memory with user preferences and facts retrieval
         agentcore_memory_config = AgentCoreMemoryConfig(
@@ -100,6 +108,7 @@ class SessionFactory:
 
         logger.info(f"✅ AgentCore Memory initialized: user_id={user_id}")
         logger.info(f"   • Session: {session_id}, User: {user_id}")
+        logger.info(f"   • Storage: AWS-managed DynamoDB")
         logger.info(f"   • Short-term memory: Conversation history (90 days retention)")
         logger.info(f"   • Long-term memory: User preferences and facts across sessions")
 
@@ -149,6 +158,10 @@ class SessionFactory:
         Check if running in cloud mode
 
         Returns:
-            bool: True if AgentCore Memory is available and configured
+            bool: True if AgentCore Memory is available and configured for DynamoDB
         """
-        return bool(os.environ.get('AGENTCORE_MEMORY_ID') and AGENTCORE_MEMORY_AVAILABLE)
+        try:
+            config = load_memory_config()
+            return config.is_cloud_mode and AGENTCORE_MEMORY_AVAILABLE
+        except Exception:
+            return False

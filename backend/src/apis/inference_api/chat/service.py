@@ -292,29 +292,57 @@ async def generate_conversation_title(
         logger.info(f"✅ Generated title: '{title}' for session {session_id}")
 
         # Update session metadata with the generated title
-        # This uses the existing metadata storage infrastructure
-        # which handles both local file storage and DynamoDB
-        now = datetime.now(timezone.utc).isoformat()
-        session_metadata = SessionMetadata(
-            session_id=session_id,
-            user_id=user_id,
-            title=title,
-            status="active",
-            created_at=now,
-            last_message_at=now,
-            message_count=0,  # Will be updated by streaming handler
-            starred=False,
-            tags=[],
-            preferences=None
-        )
+        # IMPORTANT: We must read existing metadata first and only update the title field.
+        # The streaming coordinator has already set message_count correctly, and we must
+        # not overwrite it. This function is called async after streaming completes,
+        # so there's a race condition where we could overwrite the correct message_count
+        # with 0 if we don't preserve existing values.
+        from apis.app_api.sessions.services.metadata import get_session_metadata
 
+        logger.info(f"📖 Title generation: Reading existing metadata for session {session_id}")
+        existing_metadata = await get_session_metadata(session_id, user_id)
+
+        if existing_metadata:
+            logger.info(f"📊 Title generation: Found existing metadata with message_count={existing_metadata.message_count}")
+            # Preserve existing metadata, only update title
+            session_metadata = SessionMetadata(
+                session_id=session_id,
+                user_id=user_id,
+                title=title,  # Only update this field
+                status=existing_metadata.status,
+                created_at=existing_metadata.created_at,
+                last_message_at=existing_metadata.last_message_at,
+                message_count=existing_metadata.message_count,  # PRESERVE existing count
+                starred=existing_metadata.starred,
+                tags=existing_metadata.tags,
+                preferences=existing_metadata.preferences
+            )
+        else:
+            logger.warning(f"⚠️ Title generation: No existing metadata found - creating new with message_count=0")
+            # Fallback: If metadata doesn't exist yet (rare edge case), create it
+            # The streaming coordinator will update message_count shortly after
+            now = datetime.now(timezone.utc).isoformat()
+            session_metadata = SessionMetadata(
+                session_id=session_id,
+                user_id=user_id,
+                title=title,
+                status="active",
+                created_at=now,
+                last_message_at=now,
+                message_count=0,  # Safe fallback - will be set by streaming coordinator
+                starred=False,
+                tags=[],
+                preferences=None
+            )
+
+        logger.info(f"📝 Title generation: About to store metadata with message_count={session_metadata.message_count}")
         await store_session_metadata(
             session_id=session_id,
             user_id=user_id,
             session_metadata=session_metadata
         )
 
-        logger.info(f"💾 Updated session metadata with title for session {session_id}")
+        logger.info(f"💾 Title generation: Stored session metadata with title for session {session_id}")
 
         return title
 
@@ -327,20 +355,42 @@ async def generate_conversation_title(
         fallback_title = "New Conversation"
 
         # Still try to store metadata with fallback title
+        # Same as above: preserve existing metadata to avoid race conditions
         try:
-            now = datetime.now(timezone.utc).isoformat()
-            session_metadata = SessionMetadata(
-                session_id=session_id,
-                user_id=user_id,
-                title=fallback_title,
-                status="active",
-                created_at=now,
-                last_message_at=now,
-                message_count=0,
-                starred=False,
-                tags=[],
-                preferences=None
-            )
+            from apis.app_api.sessions.services.metadata import get_session_metadata
+
+            existing_metadata = await get_session_metadata(session_id, user_id)
+
+            if existing_metadata:
+                # Preserve existing metadata, only update title
+                session_metadata = SessionMetadata(
+                    session_id=session_id,
+                    user_id=user_id,
+                    title=fallback_title,
+                    status=existing_metadata.status,
+                    created_at=existing_metadata.created_at,
+                    last_message_at=existing_metadata.last_message_at,
+                    message_count=existing_metadata.message_count,  # PRESERVE
+                    starred=existing_metadata.starred,
+                    tags=existing_metadata.tags,
+                    preferences=existing_metadata.preferences
+                )
+            else:
+                # Fallback: metadata doesn't exist yet
+                now = datetime.now(timezone.utc).isoformat()
+                session_metadata = SessionMetadata(
+                    session_id=session_id,
+                    user_id=user_id,
+                    title=fallback_title,
+                    status="active",
+                    created_at=now,
+                    last_message_at=now,
+                    message_count=0,
+                    starred=False,
+                    tags=[],
+                    preferences=None
+                )
+
             await store_session_metadata(
                 session_id=session_id,
                 user_id=user_id,
