@@ -493,6 +493,12 @@ export class InferenceApiStack extends cdk.Stack {
       exportName: `${config.projectPrefix}-InferenceApiMemoryArn`,
     });
 
+    new cdk.CfnOutput(this, 'InferenceApiMemoryId', {
+      value: this.memory.attrMemoryId,
+      description: 'Inference API AgentCore Memory ID',
+      exportName: `${config.projectPrefix}-InferenceApiMemoryId`,
+    });
+
     new cdk.CfnOutput(this, 'InferenceApiCodeInterpreterId', {
       value: this.codeInterpreter.attrCodeInterpreterId,
       description: 'Inference API AgentCore Code Interpreter ID',
