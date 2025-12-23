@@ -7,9 +7,12 @@ This module provides a storage abstraction layer that supports:
 This enables seamless switching between environments without code changes.
 """
 
+import logging
 from abc import ABC, abstractmethod
 from typing import Optional, List, Dict, Any
 from datetime import datetime
+
+logger = logging.getLogger(__name__)
 
 
 class MetadataStorage(ABC):
@@ -107,7 +110,10 @@ class MetadataStorage(ABC):
         period: str,
         cost_delta: float,
         usage_delta: Dict[str, int],
-        timestamp: str
+        timestamp: str,
+        model_id: Optional[str] = None,
+        model_name: Optional[str] = None,
+        cache_savings_delta: float = 0.0
     ) -> None:
         """
         Update pre-aggregated cost summary (atomic increment)
@@ -120,6 +126,9 @@ class MetadataStorage(ABC):
             cost_delta: Cost to add to total
             usage_delta: Token counts to add (inputTokens, outputTokens, etc.)
             timestamp: ISO timestamp of the update
+            model_id: Model identifier for per-model breakdown (optional)
+            model_name: Human-readable model name (optional)
+            cache_savings_delta: Cache savings to add to total (optional)
         """
         pass
 
@@ -154,17 +163,32 @@ def get_metadata_storage() -> MetadataStorage:
         MetadataStorage: Either LocalFileStorage or DynamoDBStorage
 
     Environment Variables:
-        ENVIRONMENT: Set to "production" to use DynamoDB
-        DYNAMODB_SESSIONS_METADATA_TABLE_NAME: DynamoDB table name (production only)
-        DYNAMODB_COST_SUMMARY_TABLE_NAME: DynamoDB cost summary table (production only)
+        AGENTCORE_MEMORY_TYPE: Set to "dynamodb" to use DynamoDB (consistent with session storage)
+        DYNAMODB_SESSIONS_METADATA_TABLE_NAME: DynamoDB table name for message metadata
+        DYNAMODB_COST_SUMMARY_TABLE_NAME: DynamoDB table for cost summaries
+
+    Note:
+        Uses AGENTCORE_MEMORY_TYPE for consistency with AgentCore Memory session storage.
+        DynamoDB is used when AGENTCORE_MEMORY_TYPE=dynamodb AND the required table names are set.
     """
     import os
 
-    environment = os.environ.get("ENVIRONMENT", "development")
+    memory_type = os.environ.get("AGENTCORE_MEMORY_TYPE", "file").lower()
+    sessions_table = os.environ.get("DYNAMODB_SESSIONS_METADATA_TABLE_NAME")
+    cost_summary_table = os.environ.get("DYNAMODB_COST_SUMMARY_TABLE_NAME")
 
-    if environment == "production":
+    # Use DynamoDB if memory type is dynamodb and at least one table is configured
+    if memory_type == "dynamodb" and (sessions_table or cost_summary_table):
+        logger.info(
+            f"Using DynamoDB metadata storage - "
+            f"sessions_table={sessions_table}, cost_summary_table={cost_summary_table}"
+        )
         from .dynamodb_storage import DynamoDBStorage
         return DynamoDBStorage()
     else:
+        logger.info(
+            f"Using local file metadata storage - "
+            f"memory_type={memory_type}, tables_configured={bool(sessions_table or cost_summary_table)}"
+        )
         from .local_file_storage import LocalFileStorage
         return LocalFileStorage()

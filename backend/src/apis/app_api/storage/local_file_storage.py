@@ -127,6 +127,8 @@ class LocalFileStorage(MetadataStorage):
             "totalRequests": 0,
             "totalInputTokens": 0,
             "totalOutputTokens": 0,
+            "totalCacheReadTokens": 0,
+            "totalCacheWriteTokens": 0,
             "cacheSavings": 0.0,
             "modelBreakdown": {}
         }
@@ -175,8 +177,13 @@ class LocalFileStorage(MetadataStorage):
                         summary["totalInputTokens"] += token_usage.get("inputTokens", 0)
                         summary["totalOutputTokens"] += token_usage.get("outputTokens", 0)
 
-                        # Calculate cache savings
+                        # Aggregate cache tokens
                         cache_read_tokens = token_usage.get("cacheReadInputTokens", 0)
+                        cache_write_tokens = token_usage.get("cacheWriteInputTokens", 0)
+                        summary["totalCacheReadTokens"] += cache_read_tokens
+                        summary["totalCacheWriteTokens"] += cache_write_tokens
+
+                        # Calculate cache savings
                         if cache_read_tokens > 0:
                             model_info = metadata.get("modelInfo", {})
                             pricing = model_info.get("pricingSnapshot", {})
@@ -222,17 +229,21 @@ class LocalFileStorage(MetadataStorage):
         period: str,
         cost_delta: float,
         usage_delta: Dict[str, int],
-        timestamp: str
+        timestamp: str,
+        model_id: Optional[str] = None,
+        model_name: Optional[str] = None,
+        cache_savings_delta: float = 0.0
     ) -> None:
         """
         Update pre-aggregated cost summary
 
         Note: In local file storage, we don't maintain global summaries.
-        This is a no-op in development mode.
+        The get_user_cost_summary method scans and aggregates on demand.
+        This is a no-op in development mode for simplicity.
         """
         # Local file storage doesn't maintain global summaries
         # This would require a central file or database
-        # For development, this is a no-op
+        # For development, this is a no-op - get_user_cost_summary does on-demand aggregation
         pass
 
     async def get_user_messages_in_range(

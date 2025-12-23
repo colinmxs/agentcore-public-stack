@@ -1,11 +1,14 @@
 """Cost aggregator service for user cost summaries and reporting"""
 
+import logging
 from datetime import datetime, timezone
 from typing import Optional
 from decimal import Decimal
 
 from .models import UserCostSummary, ModelCostSummary, CostBreakdown
 from apis.app_api.storage.metadata_storage import get_metadata_storage
+
+logger = logging.getLogger(__name__)
 
 
 class CostAggregator:
@@ -38,6 +41,13 @@ class CostAggregator:
             # No data for this period, return empty summary
             return self._create_empty_summary(user_id, period)
 
+        # Extract cache token totals
+        total_cache_read = summary.get("totalCacheReadTokens", 0)
+        total_cache_write = summary.get("totalCacheWriteTokens", 0)
+
+        # Get cache savings - either pre-calculated or compute from tokens
+        cache_savings = float(summary.get("cacheSavings", 0.0))
+
         # Convert to UserCostSummary model
         return UserCostSummary(
             userId=user_id,
@@ -48,7 +58,9 @@ class CostAggregator:
             totalRequests=summary["totalRequests"],
             totalInputTokens=summary["totalInputTokens"],
             totalOutputTokens=summary["totalOutputTokens"],
-            totalCacheSavings=float(summary.get("cacheSavings", 0.0))
+            totalCacheReadTokens=total_cache_read,
+            totalCacheWriteTokens=total_cache_write,
+            totalCacheSavings=cache_savings
         )
 
     async def get_detailed_cost_report(
@@ -81,6 +93,8 @@ class CostAggregator:
         total_requests = len(messages)
         total_input_tokens = 0
         total_output_tokens = 0
+        total_cache_read_tokens = 0
+        total_cache_write_tokens = 0
         total_cache_savings = 0.0
 
         model_stats = {}
@@ -97,6 +111,8 @@ class CostAggregator:
 
             total_input_tokens += input_tokens
             total_output_tokens += output_tokens
+            total_cache_read_tokens += cache_read_tokens
+            total_cache_write_tokens += cache_write_tokens
 
             # Calculate cache savings
             if cache_read_tokens > 0:
@@ -160,6 +176,8 @@ class CostAggregator:
             totalRequests=total_requests,
             totalInputTokens=total_input_tokens,
             totalOutputTokens=total_output_tokens,
+            totalCacheReadTokens=total_cache_read_tokens,
+            totalCacheWriteTokens=total_cache_write_tokens,
             totalCacheSavings=total_cache_savings
         )
 
@@ -222,5 +240,7 @@ class CostAggregator:
             totalRequests=0,
             totalInputTokens=0,
             totalOutputTokens=0,
+            totalCacheReadTokens=0,
+            totalCacheWriteTokens=0,
             totalCacheSavings=0.0
         )

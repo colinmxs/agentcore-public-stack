@@ -59,6 +59,16 @@ class UserCostSummary(BaseModel):
     total_requests: int = Field(..., alias="totalRequests")
     total_input_tokens: int = Field(..., alias="totalInputTokens")
     total_output_tokens: int = Field(..., alias="totalOutputTokens")
+    total_cache_read_tokens: int = Field(
+        0,
+        alias="totalCacheReadTokens",
+        description="Total tokens read from cache"
+    )
+    total_cache_write_tokens: int = Field(
+        0,
+        alias="totalCacheWriteTokens",
+        description="Total tokens written to cache"
+    )
     total_cache_savings: float = Field(
         0.0,
         alias="totalCacheSavings",

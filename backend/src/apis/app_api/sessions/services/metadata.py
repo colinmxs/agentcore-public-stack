@@ -90,6 +90,7 @@ async def store_message_metadata(
     else:
         await _store_message_metadata_local(
             session_id=session_id,
+            user_id=user_id,
             message_id=message_id,
             message_metadata=message_metadata
         )
@@ -97,6 +98,7 @@ async def store_message_metadata(
 
 async def _store_message_metadata_local(
     session_id: str,
+    user_id: str,
     message_id: int,
     message_metadata: MessageMetadata
 ) -> None:
@@ -116,6 +118,7 @@ async def _store_message_metadata_local(
 
     Args:
         session_id: Session identifier
+        user_id: User identifier
         message_id: Message number (0-based sequence)
         message_metadata: MessageMetadata to store
     """
@@ -142,6 +145,16 @@ async def _store_message_metadata_local(
 
         logger.info(f"💾 Stored message metadata for message {message_id} in {metadata_file}")
 
+        # Update cost summary in local storage (for consistency with cloud behavior)
+        # This updates the pre-aggregated cost summary using the local file storage backend
+        timestamp = message_metadata.attribution.timestamp if message_metadata.attribution else None
+        if timestamp:
+            await _update_cost_summary_async(
+                user_id=user_id,
+                timestamp=timestamp,
+                message_metadata=message_metadata
+            )
+
     except Exception as e:
         logger.error(f"Failed to store message metadata in local file: {e}")
         # Don't raise - metadata storage failures shouldn't break the app
@@ -155,9 +168,10 @@ async def _store_message_metadata_cloud(
     table_name: str
 ) -> None:
     """
-    Store message metadata in DynamoDB
+    Store message metadata in DynamoDB and update cost summary
 
-    This updates the message record in DynamoDB with metadata.
+    This updates the message record in DynamoDB with metadata and atomically
+    increments the user's cost summary for fast quota checks.
 
     Args:
         session_id: Session identifier
@@ -211,9 +225,127 @@ async def _store_message_metadata_cloud(
         logger.info(f"💾 Stored message metadata in DynamoDB table {table_name}")
         logger.info(f"   Session: {session_id}, Message: {message_id}")
 
+        # Update pre-aggregated cost summary for fast quota checks
+        # This is done asynchronously and non-blocking - failures don't affect the main flow
+        await _update_cost_summary_async(
+            user_id=user_id,
+            timestamp=timestamp,
+            message_metadata=message_metadata
+        )
+
     except Exception as e:
         logger.error(f"Failed to store message metadata in DynamoDB: {e}", exc_info=True)
         # Don't raise - metadata storage failures shouldn't break the app
+
+
+async def _update_cost_summary_async(
+    user_id: str,
+    timestamp: str,
+    message_metadata: MessageMetadata
+) -> None:
+    """
+    Update pre-aggregated cost summary (async, non-blocking)
+
+    This atomically increments the user's cost summary in DynamoDB for <10ms quota checks.
+    Uses atomic ADD operations for concurrent safety.
+    Also updates per-model breakdown and calculates cache savings.
+
+    Args:
+        user_id: User identifier
+        timestamp: ISO timestamp of the message
+        message_metadata: MessageMetadata containing cost, usage, and model info
+    """
+    try:
+        from datetime import datetime
+
+        # Extract cost and usage from metadata
+        cost = message_metadata.cost or 0.0
+        token_usage = message_metadata.token_usage
+
+        usage_delta = {}
+        cache_read_tokens = 0
+        if token_usage:
+            cache_read_tokens = token_usage.cache_read_input_tokens or 0
+            usage_delta = {
+                "inputTokens": token_usage.input_tokens or 0,
+                "outputTokens": token_usage.output_tokens or 0,
+                "cacheReadInputTokens": cache_read_tokens,
+                "cacheWriteInputTokens": token_usage.cache_write_input_tokens or 0,
+            }
+
+        # Extract model info for per-model breakdown
+        model_id = None
+        model_name = None
+        if message_metadata.model_info:
+            model_id = message_metadata.model_info.model_id
+            model_name = message_metadata.model_info.model_name
+
+        # Calculate cache savings from pricing snapshot
+        # Savings = (cache_read_tokens * input_price) - (cache_read_tokens * cache_read_price)
+        cache_savings = 0.0
+        if cache_read_tokens > 0:
+            logger.debug(f"🔍 Cache savings calculation: cache_read_tokens={cache_read_tokens}")
+            if message_metadata.model_info:
+                pricing = message_metadata.model_info.pricing_snapshot
+                logger.debug(f"🔍 Pricing snapshot: {pricing}")
+                if pricing:
+                    # Get pricing values (handle both dict and Pydantic model)
+                    if hasattr(pricing, 'model_dump'):
+                        pricing_dict = pricing.model_dump(by_alias=True)
+                    else:
+                        pricing_dict = pricing
+
+                    logger.debug(f"🔍 Pricing dict: {pricing_dict}")
+
+                    input_price = pricing_dict.get("inputPricePerMtok", 0)
+                    cache_read_price = pricing_dict.get("cacheReadPricePerMtok", 0)
+
+                    # Calculate savings: what we would have paid vs what we actually paid
+                    standard_cost = (cache_read_tokens / 1_000_000) * input_price
+                    actual_cache_cost = (cache_read_tokens / 1_000_000) * cache_read_price
+                    cache_savings = standard_cost - actual_cache_cost
+
+                    logger.info(
+                        f"💰 Cache savings: ${cache_savings:.6f} "
+                        f"({cache_read_tokens:,} tokens @ input=${input_price}/Mtok vs cache_read=${cache_read_price}/Mtok, "
+                        f"standard_cost=${standard_cost:.6f}, actual_cache_cost=${actual_cache_cost:.6f})"
+                    )
+                else:
+                    logger.warning(f"⚠️ No pricing snapshot available for cache savings calculation")
+            else:
+                logger.warning(f"⚠️ No model_info available for cache savings calculation")
+
+        # Determine period key from timestamp (YYYY-MM format)
+        try:
+            dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
+            period = dt.strftime('%Y-%m')
+        except (ValueError, AttributeError):
+            # Fallback to current month if timestamp parsing fails
+            from datetime import timezone
+            period = datetime.now(timezone.utc).strftime('%Y-%m')
+
+        # Use storage abstraction for the atomic update
+        from apis.app_api.storage.metadata_storage import get_metadata_storage
+        storage = get_metadata_storage()
+
+        await storage.update_user_cost_summary(
+            user_id=user_id,
+            period=period,
+            cost_delta=cost,
+            usage_delta=usage_delta,
+            timestamp=timestamp,
+            model_id=model_id,
+            model_name=model_name,
+            cache_savings_delta=cache_savings
+        )
+
+        model_info_str = f", model={model_id}" if model_id else ""
+        savings_str = f", savings=${cache_savings:.6f}" if cache_savings > 0 else ""
+        logger.info(f"📊 Updated cost summary: user={user_id}, period={period}, cost=${cost:.6f}{model_info_str}{savings_str}")
+
+    except Exception as e:
+        # Log but don't raise - cost summary updates shouldn't break the app
+        logger.error(f"Failed to update cost summary: {e}", exc_info=True)
 
 
 async def store_session_metadata(
@@ -818,6 +950,13 @@ async def _list_user_sessions_cloud(
         sessions = []
         for item in response['Items']:
             try:
+                # Skip message records - they have #MSG# in the SK
+                # Session records: SESSION#{session_id}
+                # Message records: SESSION#{session_id}#MSG#{message_id}
+                sk = item.get('SK', '')
+                if '#MSG#' in sk:
+                    continue
+
                 # Convert Decimal to float
                 item = _convert_decimal_to_float(item)
 
