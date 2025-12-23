@@ -27,8 +27,8 @@
 
   <!-- Loading indicator -->
   @if (isChatLoading()) {
-    <div class="flex justify-start items-center py-8">
-      <app-thinking-dots [label]="'Thinking...'" />
+    <div class="py-4">
+      <app-pulsating-loader />
     </div>
   }
 
