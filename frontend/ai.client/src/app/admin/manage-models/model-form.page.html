@@ -332,12 +332,29 @@
             </div>
           </div>
 
-          <!-- Cache Pricing (Bedrock Only) -->
+          <!-- Prompt Caching (Bedrock Only) -->
           @if (modelForm.value.provider === 'bedrock') {
             <div>
               <h3 class="mb-3 text-base/7 font-medium text-gray-900 dark:text-white">
-                Cache Pricing (Bedrock Only)
+                Prompt Caching (Bedrock Only)
               </h3>
+
+              <!-- Supports Caching Toggle -->
+              <div class="mb-4 flex items-center gap-3">
+                <input
+                  type="checkbox"
+                  id="supportsCaching"
+                  formControlName="supportsCaching"
+                  class="size-4 rounded-xs border-gray-300 text-blue-600 focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700"
+                />
+                <label for="supportsCaching" class="text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                  Model Supports Prompt Caching
+                </label>
+              </div>
+              <p class="mb-4 text-sm/6 text-gray-600 dark:text-gray-400">
+                Disable this if the model doesn't support prompt caching (e.g., some Amazon models). When disabled, the agent will skip cache-related API calls.
+              </p>
+
               <p class="mb-4 text-sm/6 text-gray-600 dark:text-gray-400">
                 Optional pricing for prompt caching. Cache writes typically cost ~25% more, while cache reads cost ~90% less than standard input tokens.
               </p>

@@ -24,6 +24,25 @@ from apis.app_api.admin.models import ManagedModel, ManagedModelCreate, ManagedM
 
 logger = logging.getLogger(__name__)
 
+
+def _resolve_supports_caching(supports_caching: Optional[bool], provider: str) -> bool:
+    """
+    Resolve the supports_caching value based on explicit setting or provider defaults.
+
+    Args:
+        supports_caching: Explicit value from model data (None if not set)
+        provider: The model provider (bedrock, openai, gemini)
+
+    Returns:
+        bool: Whether the model supports caching
+    """
+    if supports_caching is not None:
+        return supports_caching
+
+    # Default behavior: Only Bedrock models support caching by default
+    # Admins can explicitly set this to False for Bedrock models that don't support it
+    return provider.lower() == 'bedrock'
+
 # Initialize DynamoDB client
 dynamodb = boto3.resource('dynamodb')
 
@@ -152,6 +171,7 @@ async def _create_managed_model_local(model_data: ManagedModelCreate) -> Managed
         cache_read_price_per_million_tokens=model_data.cache_read_price_per_million_tokens,
         is_reasoning_model=model_data.is_reasoning_model,
         knowledge_cutoff_date=model_data.knowledge_cutoff_date,
+        supports_caching=_resolve_supports_caching(model_data.supports_caching, model_data.provider),
         created_at=now,
         updated_at=now,
     )
@@ -230,6 +250,7 @@ async def _create_managed_model_cloud(model_data: ManagedModelCreate, table_name
         cache_read_price_per_million_tokens=model_data.cache_read_price_per_million_tokens,
         is_reasoning_model=model_data.is_reasoning_model,
         knowledge_cutoff_date=model_data.knowledge_cutoff_date,
+        supports_caching=_resolve_supports_caching(model_data.supports_caching, model_data.provider),
         created_at=now,
         updated_at=now,
     )
@@ -254,6 +275,7 @@ async def _create_managed_model_cloud(model_data: ManagedModelCreate, table_name
         'inputPricePerMillionTokens': model_data.input_price_per_million_tokens,
         'outputPricePerMillionTokens': model_data.output_price_per_million_tokens,
         'isReasoningModel': model_data.is_reasoning_model,
+        'supportsCaching': _resolve_supports_caching(model_data.supports_caching, model_data.provider),
         'createdAt': now.isoformat(),
         'updatedAt': now.isoformat(),
     }

@@ -134,6 +134,11 @@ class ManagedModelCreate(BaseModel):
     )
     is_reasoning_model: bool = Field(False, alias="isReasoningModel")
     knowledge_cutoff_date: Optional[str] = Field(None, alias="knowledgeCutoffDate")
+    supports_caching: Optional[bool] = Field(
+        None,
+        alias="supportsCaching",
+        description="Whether this model supports prompt caching. Defaults to True for Bedrock Claude models, False for others."
+    )
 
 
 class ManagedModelUpdate(BaseModel):
@@ -166,6 +171,11 @@ class ManagedModelUpdate(BaseModel):
     )
     is_reasoning_model: Optional[bool] = Field(None, alias="isReasoningModel")
     knowledge_cutoff_date: Optional[str] = Field(None, alias="knowledgeCutoffDate")
+    supports_caching: Optional[bool] = Field(
+        None,
+        alias="supportsCaching",
+        description="Whether this model supports prompt caching."
+    )
 
 
 class ManagedModel(BaseModel):
@@ -197,6 +207,11 @@ class ManagedModel(BaseModel):
     )
     is_reasoning_model: bool = Field(..., alias="isReasoningModel")
     knowledge_cutoff_date: Optional[str] = Field(None, alias="knowledgeCutoffDate")
+    supports_caching: bool = Field(
+        True,
+        alias="supportsCaching",
+        description="Whether this model supports prompt caching. Defaults to True."
+    )
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")
 

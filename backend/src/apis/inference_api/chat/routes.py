@@ -18,6 +18,7 @@ from .models import InvocationRequest
 from .service import get_agent
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
+from apis.app_api.admin.services.managed_models import list_managed_models
 from apis.shared.errors import (
     ErrorCode,
     create_error_response,
@@ -37,6 +38,50 @@ logger = logging.getLogger(__name__)
 
 # Router with no prefix - endpoints will be at root level
 router = APIRouter(tags=["agentcore-runtime"])
+
+
+async def _resolve_caching_enabled(
+    model_id: str | None,
+    explicit_caching_enabled: bool | None
+) -> bool | None:
+    """
+    Resolve whether caching should be enabled for a request.
+
+    Priority:
+    1. If explicitly set in request, use that value
+    2. If model_id provided, look up the managed model's supports_caching field
+    3. Otherwise return None (let agent use default)
+
+    Args:
+        model_id: The model ID from the request
+        explicit_caching_enabled: Explicit caching setting from request
+
+    Returns:
+        bool or None: Whether caching should be enabled
+    """
+    # If explicitly set in request, use that value
+    if explicit_caching_enabled is not None:
+        return explicit_caching_enabled
+
+    # If no model_id, let agent use default
+    if not model_id:
+        return None
+
+    # Look up the managed model to check supports_caching
+    try:
+        managed_models = await list_managed_models()
+        for model in managed_models:
+            if model.model_id == model_id:
+                logger.debug(f"Found managed model {model_id}, supports_caching={model.supports_caching}")
+                return model.supports_caching
+
+        # Model not found in managed models - use default
+        logger.debug(f"Model {model_id} not found in managed models, using default caching behavior")
+        return None
+
+    except Exception as e:
+        logger.warning(f"Failed to look up managed model {model_id}: {e}")
+        return None
 
 
 # ============================================================
@@ -206,6 +251,16 @@ async def invocations(
         )
 
     try:
+        # Resolve caching_enabled based on managed model configuration
+        # This allows admins to disable caching for models that don't support it
+        caching_enabled = await _resolve_caching_enabled(
+            model_id=input_data.model_id,
+            explicit_caching_enabled=input_data.caching_enabled
+        )
+
+        if caching_enabled is False:
+            logger.info(f"Prompt caching disabled for model {input_data.model_id}")
+
         # Get agent instance with user-specific configuration
         # AgentCore Memory tracks preferences across sessions per user_id
         # Supports multiple LLM providers: AWS Bedrock, OpenAI, and Google Gemini
@@ -216,7 +271,7 @@ async def invocations(
             model_id=input_data.model_id,
             temperature=input_data.temperature,
             system_prompt=input_data.system_prompt,
-            caching_enabled=input_data.caching_enabled,
+            caching_enabled=caching_enabled,
             provider=input_data.provider,
             max_tokens=input_data.max_tokens
         )

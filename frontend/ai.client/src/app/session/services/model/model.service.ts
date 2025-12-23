@@ -34,6 +34,7 @@ export class ModelService {
     outputPricePerMillionTokens: 0,
     isReasoningModel: false,
     knowledgeCutoffDate: null,
+    supportsCaching: true,
   };
 
   // Models fetched from API

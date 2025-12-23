@@ -52,6 +52,8 @@ export interface ManagedModel {
   isReasoningModel: boolean;
   /** Knowledge cutoff date for the model */
   knowledgeCutoffDate?: string | null;
+  /** Whether this model supports prompt caching (Bedrock only) */
+  supportsCaching: boolean;
   /** Date the model was added to the system (ISO string from API) */
   createdAt?: string | Date;
   /** Date the model was last updated (ISO string from API) */
@@ -98,6 +100,8 @@ export interface ManagedModelFormData {
   isReasoningModel: boolean;
   /** Knowledge cutoff date for the model */
   knowledgeCutoffDate?: string | null;
+  /** Whether this model supports prompt caching (Bedrock only) */
+  supportsCaching?: boolean;
 }
 
 /**
