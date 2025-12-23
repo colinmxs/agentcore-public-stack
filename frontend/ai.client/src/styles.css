@@ -29,7 +29,7 @@
         width: 100%;
         margin-bottom: 1rem;
         font-size: 0.875rem;
-        border: 1px solid var(--color-gray-300);
+        border: 1px solid var(--color-gray-400);
         border-radius: 0.5rem;
         overflow: hidden;
     }
@@ -52,11 +52,15 @@
     }
 
     th {
-        background-color: var(--color-gray-100);
+        background-color: var(--color-gray-200);
         font-weight: 600;
     }
 
-    tr:nth-child(even) {
+    tr:nth-child(odd) td {
+        background-color: white;
+    }
+
+    tr:nth-child(even) td {
         background-color: var(--color-gray-50);
     }
 
@@ -196,7 +200,11 @@ html.dark .message-block {
         background-color: var(--color-gray-700);
     }
 
-    tr:nth-child(even) {
+    tr:nth-child(odd) td {
+        background-color: var(--color-gray-900);
+    }
+
+    tr:nth-child(even) td {
         background-color: var(--color-gray-800);
     }
 
