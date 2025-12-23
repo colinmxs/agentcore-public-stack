@@ -159,11 +159,18 @@ const LOADING_PHRASES = [
   `,
 })
 export class PulsatingLoaderComponent implements OnInit, OnDestroy {
-  // Animation timing constants (in milliseconds) - faster speeds
-  private readonly TYPE_SPEED = 30;
-  private readonly DELETE_SPEED = 20;
+  // Base timing constants (in milliseconds)
+  private readonly TYPE_SPEED_BASE = 45;
+  private readonly TYPE_SPEED_VARIANCE = 35;
+  private readonly DELETE_SPEED_BASE = 15;
+  private readonly DELETE_SPEED_VARIANCE = 10;
   private readonly PAUSE_AFTER_TYPING = 1200;
   private readonly PAUSE_AFTER_DELETING = 300;
+
+  // Characters that cause slight hesitation (less common, harder to reach)
+  private readonly SLOW_CHARS = new Set(['z', 'x', 'q', 'j', 'k', 'v', 'b', 'p', 'y', 'w']);
+  // Characters that flow quickly (home row, common)
+  private readonly FAST_CHARS = new Set(['a', 's', 'd', 'f', 'e', 'r', 't', 'i', 'o', 'n', ' ']);
 
   // State signals
   private currentPhraseIndex = signal(0);
@@ -208,7 +215,8 @@ export class PulsatingLoaderComponent implements OnInit, OnDestroy {
       if (charIndex < currentPhrase.length) {
         // Type next character
         this.currentCharIndex.update((v) => v + 1);
-        this.scheduleNextTick(this.TYPE_SPEED);
+        const nextChar = currentPhrase[charIndex] || '';
+        this.scheduleNextTick(this.getTypingDelay(nextChar));
       } else {
         // Finished typing, pause then start deleting
         this.isPaused.set(true);
@@ -219,11 +227,11 @@ export class PulsatingLoaderComponent implements OnInit, OnDestroy {
         }, this.PAUSE_AFTER_TYPING);
       }
     } else {
-      // Deleting mode
+      // Deleting mode (faster, less variance - like holding backspace)
       if (charIndex > 0) {
         // Delete previous character
         this.currentCharIndex.update((v) => v - 1);
-        this.scheduleNextTick(this.DELETE_SPEED);
+        this.scheduleNextTick(this.getDeletingDelay());
       } else {
         // Finished deleting, pause then move to next phrase
         this.isPaused.set(true);
@@ -236,6 +244,42 @@ export class PulsatingLoaderComponent implements OnInit, OnDestroy {
         }, this.PAUSE_AFTER_DELETING);
       }
     }
+  }
+
+  /**
+   * Calculate typing delay based on character difficulty and randomness
+   */
+  private getTypingDelay(char: string): number {
+    const lowerChar = char.toLowerCase();
+    let baseDelay = this.TYPE_SPEED_BASE;
+
+    // Adjust base delay based on character
+    if (this.FAST_CHARS.has(lowerChar)) {
+      baseDelay *= 0.7; // Faster for common/easy chars
+    } else if (this.SLOW_CHARS.has(lowerChar)) {
+      baseDelay *= 1.4; // Slower for uncommon/harder chars
+    }
+
+    // Add pause after spaces (natural word break)
+    if (char === ' ') {
+      baseDelay += Math.random() * 60;
+    }
+
+    // Random variance for organic feel
+    const variance = (Math.random() - 0.5) * 2 * this.TYPE_SPEED_VARIANCE;
+
+    // Occasional micro-pause (5% chance) - simulates brief hesitation
+    const microPause = Math.random() < 0.05 ? 80 : 0;
+
+    return Math.max(15, baseDelay + variance + microPause);
+  }
+
+  /**
+   * Calculate deletion delay - faster and more consistent (like holding backspace)
+   */
+  private getDeletingDelay(): number {
+    const variance = (Math.random() - 0.5) * 2 * this.DELETE_SPEED_VARIANCE;
+    return Math.max(10, this.DELETE_SPEED_BASE + variance);
   }
 
   private scheduleNextTick(delay: number): void {

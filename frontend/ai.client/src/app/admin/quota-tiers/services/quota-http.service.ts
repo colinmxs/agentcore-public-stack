@@ -179,7 +179,7 @@ export class QuotaHttpService {
     email?: string,
     roles?: string[]
   ): Observable<UserQuotaInfo> {
-    let params = new HttpParams().set('user_id', userId);
+    let params = new HttpParams();
 
     if (email) {
       params = params.set('email', email);
@@ -188,7 +188,7 @@ export class QuotaHttpService {
       params = params.set('roles', roles.join(','));
     }
 
-    return this.http.get<UserQuotaInfo>(`${this.baseUrl}/users/inspect`, {
+    return this.http.get<UserQuotaInfo>(`${this.baseUrl}/users/${userId}`, {
       params,
     });
   }

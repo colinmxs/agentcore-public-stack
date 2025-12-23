@@ -10,6 +10,7 @@ import {
 import { heroPaperAirplaneSolid } from '@ng-icons/heroicons/solid';
 import { ChatStateService } from '../../services/chat/chat-state.service';
 import { ModelDropdownComponent } from '../../../components/model-dropdown/model-dropdown.component';
+import { QuotaWarningBannerComponent } from '../../../components/quota-warning-banner/quota-warning-banner.component';
 
 interface Message {
   content: string;
@@ -18,7 +19,7 @@ interface Message {
 
 @Component({
   selector: 'app-chat-input',
-  imports: [FormsModule, ModelDropdownComponent, NgIcon],
+  imports: [FormsModule, ModelDropdownComponent, NgIcon, QuotaWarningBannerComponent],
   providers: [
     provideIcons({
       heroPlus,

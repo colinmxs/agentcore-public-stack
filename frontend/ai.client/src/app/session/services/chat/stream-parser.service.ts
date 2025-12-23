@@ -14,6 +14,7 @@ import { MetadataEvent } from '../models/content-types';
 import { ChatStateService } from './chat-state.service';
 import { v4 as uuidv4 } from 'uuid';
 import { ErrorService, StreamErrorEvent } from '../../../services/error/error.service';
+import { QuotaWarningService, QuotaWarning } from '../../../services/quota/quota-warning.service';
 
 /**
  * Internal representation of a message being built from stream events.
@@ -77,6 +78,7 @@ enum StreamState {
 export class StreamParserService {
   private chatStateService = inject(ChatStateService);
   private errorService = inject(ErrorService);
+  private quotaWarningService = inject(QuotaWarningService);
 
   // =========================================================================
   // State Signals
@@ -559,7 +561,11 @@ export class StreamParserService {
         case 'metadata':
           this.handleMetadata(data);
           break;
-          
+
+        case 'quota_warning':
+          this.handleQuotaWarning(data);
+          break;
+
         default:
           // Ignore unknown events (ping, etc.)
           break;
@@ -1094,6 +1100,29 @@ export class StreamParserService {
     // Update the last completed message with metadata if it doesn't have it yet
     this.updateLastCompletedMessageWithMetadata();
 
+  }
+
+  /**
+   * Handle quota_warning events from the SSE stream.
+   * These are sent when user usage exceeds soft_limit_percentage on their tier.
+   */
+  private handleQuotaWarning(data: unknown): void {
+    if (!data || typeof data !== 'object') {
+      return;
+    }
+
+    const warningData = data as Partial<QuotaWarning>;
+
+    // Validate required fields
+    if (warningData.type !== 'quota_warning' ||
+        typeof warningData.currentUsage !== 'number' ||
+        typeof warningData.quotaLimit !== 'number' ||
+        typeof warningData.percentageUsed !== 'number') {
+      return;
+    }
+
+    // Delegate to QuotaWarningService
+    this.quotaWarningService.setWarning(warningData as QuotaWarning);
   }
 
   /**
