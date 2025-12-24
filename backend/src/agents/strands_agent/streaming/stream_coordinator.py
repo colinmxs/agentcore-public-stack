@@ -846,10 +846,16 @@ class StreamCoordinator:
                 # Get pricing snapshot from managed models database
                 pricing_snapshot = await self._get_pricing_snapshot(model_id)
 
+                # Extract provider from model config
+                provider = None
+                if hasattr(agent.model_config, 'get_provider'):
+                    provider = agent.model_config.get_provider().value
+
                 model_info = ModelInfo(
                     model_id=model_id,
                     model_name=self._extract_model_name(model_id),
                     model_version=self._extract_model_version(model_id),
+                    provider=provider,
                     pricing_snapshot=pricing_snapshot
                 )
 

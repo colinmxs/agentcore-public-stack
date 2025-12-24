@@ -74,6 +74,7 @@ class ModelInfo(BaseModel):
     model_id: str = Field(..., alias="modelId", description="Full model identifier (e.g., anthropic.claude-3-5-sonnet-20241022-v2:0)")
     model_name: str = Field(..., alias="modelName", description="Human-readable model name (e.g., Claude 3.5 Sonnet)")
     model_version: Optional[str] = Field(None, alias="modelVersion", description="Model version (e.g., v2)")
+    provider: Optional[str] = Field(None, description="LLM provider (bedrock, openai, gemini)")
     # Pricing snapshot for historical cost accuracy (optional - can calculate from config later)
     pricing_snapshot: Optional[PricingSnapshot] = Field(None, alias="pricingSnapshot", description="Pricing at time of request")
 

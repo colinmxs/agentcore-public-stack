@@ -198,7 +198,7 @@ class LocalFileStorage(MetadataStorage):
                         if model_id not in summary["modelBreakdown"]:
                             summary["modelBreakdown"][model_id] = {
                                 "modelName": model_info.get("modelName", "Unknown"),
-                                "provider": "bedrock",  # TODO: Extract from model_id
+                                "provider": model_info.get("provider", "unknown"),
                                 "cost": 0.0,
                                 "requests": 0,
                                 "inputTokens": 0,
@@ -232,7 +232,8 @@ class LocalFileStorage(MetadataStorage):
         timestamp: str,
         model_id: Optional[str] = None,
         model_name: Optional[str] = None,
-        cache_savings_delta: float = 0.0
+        cache_savings_delta: float = 0.0,
+        provider: Optional[str] = None
     ) -> None:
         """
         Update pre-aggregated cost summary
@@ -308,16 +309,17 @@ class LocalFileStorage(MetadataStorage):
                             msg_timestamp = datetime.fromisoformat(timestamp_str.replace('Z', '+00:00'))
                             if start_date <= msg_timestamp <= end_date:
                                 # Add flattened metadata for aggregation
+                                model_info = metadata.get("modelInfo", {})
                                 messages.append({
                                     "cost": metadata.get("cost", 0.0),
                                     "inputTokens": metadata.get("tokenUsage", {}).get("inputTokens", 0),
                                     "outputTokens": metadata.get("tokenUsage", {}).get("outputTokens", 0),
                                     "cacheReadTokens": metadata.get("tokenUsage", {}).get("cacheReadInputTokens", 0),
                                     "cacheWriteTokens": metadata.get("tokenUsage", {}).get("cacheWriteInputTokens", 0),
-                                    "modelId": metadata.get("modelInfo", {}).get("modelId", "unknown"),
-                                    "modelName": metadata.get("modelInfo", {}).get("modelName", "Unknown"),
-                                    "provider": "bedrock",  # TODO: Extract from model_id
-                                    "pricingSnapshot": metadata.get("modelInfo", {}).get("pricingSnapshot", {}),
+                                    "modelId": model_info.get("modelId", "unknown"),
+                                    "modelName": model_info.get("modelName", "Unknown"),
+                                    "provider": model_info.get("provider", "unknown"),
+                                    "pricingSnapshot": model_info.get("pricingSnapshot", {}),
                                     "timestamp": timestamp_str
                                 })
                         except (ValueError, TypeError):

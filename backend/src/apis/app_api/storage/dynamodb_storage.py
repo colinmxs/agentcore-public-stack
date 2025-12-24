@@ -236,7 +236,8 @@ class DynamoDBStorage(MetadataStorage):
         timestamp: str,
         model_id: Optional[str] = None,
         model_name: Optional[str] = None,
-        cache_savings_delta: float = 0.0
+        cache_savings_delta: float = 0.0,
+        provider: Optional[str] = None
     ) -> None:
         """
         Update pre-aggregated cost summary (atomic increment)
@@ -290,7 +291,8 @@ class DynamoDBStorage(MetadataStorage):
                     model_id=model_id,
                     model_name=model_name or model_id,
                     cost_delta=cost_delta,
-                    usage_delta=usage_delta
+                    usage_delta=usage_delta,
+                    provider=provider or "unknown"
                 )
 
         except ClientError as e:
@@ -303,7 +305,8 @@ class DynamoDBStorage(MetadataStorage):
         model_id: str,
         model_name: str,
         cost_delta: float,
-        usage_delta: Dict[str, int]
+        usage_delta: Dict[str, int],
+        provider: str = "unknown"
     ) -> None:
         """
         Update per-model breakdown in cost summary
@@ -352,7 +355,7 @@ class DynamoDBStorage(MetadataStorage):
                     ExpressionAttributeValues={
                         ":init_model": {
                             "modelName": model_name,
-                            "provider": "bedrock",
+                            "provider": provider,
                             "cost": Decimal("0"),
                             "requests": 0,
                             "inputTokens": 0,

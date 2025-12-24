@@ -276,9 +276,11 @@ async def _update_cost_summary_async(
         # Extract model info for per-model breakdown
         model_id = None
         model_name = None
+        provider = None
         if message_metadata.model_info:
             model_id = message_metadata.model_info.model_id
             model_name = message_metadata.model_info.model_name
+            provider = message_metadata.model_info.provider
 
         # Calculate cache savings from pricing snapshot
         # Savings = (cache_read_tokens * input_price) - (cache_read_tokens * cache_read_price)
@@ -336,7 +338,8 @@ async def _update_cost_summary_async(
             timestamp=timestamp,
             model_id=model_id,
             model_name=model_name,
-            cache_savings_delta=cache_savings
+            cache_savings_delta=cache_savings,
+            provider=provider
         )
 
         model_info_str = f", model={model_id}" if model_id else ""

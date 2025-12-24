@@ -113,7 +113,8 @@ class MetadataStorage(ABC):
         timestamp: str,
         model_id: Optional[str] = None,
         model_name: Optional[str] = None,
-        cache_savings_delta: float = 0.0
+        cache_savings_delta: float = 0.0,
+        provider: Optional[str] = None
     ) -> None:
         """
         Update pre-aggregated cost summary (atomic increment)
@@ -129,6 +130,7 @@ class MetadataStorage(ABC):
             model_id: Model identifier for per-model breakdown (optional)
             model_name: Human-readable model name (optional)
             cache_savings_delta: Cache savings to add to total (optional)
+            provider: LLM provider (bedrock, openai, gemini) (optional)
         """
         pass
 
