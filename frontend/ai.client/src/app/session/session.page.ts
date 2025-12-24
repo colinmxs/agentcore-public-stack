@@ -9,10 +9,11 @@ import { ChatInputComponent } from './components/chat-input/chat-input.component
 import { SessionService } from './services/session/session.service';
 import { ChatStateService } from './services/chat/chat-state.service';
 import { AnimatedTextComponent } from '../components/animated-text';
+import { Topnav } from '../components/topnav/topnav';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent],
+  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })

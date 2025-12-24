@@ -23,7 +23,11 @@
     </div>
   </div>
 } @else {
-  <div class="relative pb-30 max-w-[720px] mx-auto px-4 py-6 min-w-0">
+  <!-- Header (fixed, content scrolls underneath) -->
+  <div class="fixed top-0 left-0 right-0 lg:left-72 z-40">
+    <app-topnav />
+  </div>
+  <div class="relative pb-30 pt-16 max-w-[720px] mx-auto px-4 py-6 min-w-0">
     <div class="min-w-0">
       <app-message-list [messages]="messages()" [isChatLoading]="isChatLoading()" />
     </div>
