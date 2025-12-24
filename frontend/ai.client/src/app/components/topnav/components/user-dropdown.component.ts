@@ -1,16 +1,20 @@
 // user-dropdown.component.ts
-import { Component, input, output, ChangeDetectionStrategy } from '@angular/core';
+import { Component, input, output, ChangeDetectionStrategy, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { CdkMenuTrigger, CdkMenu, CdkMenuItem } from '@angular/cdk/menu';
 import { ConnectedPosition } from '@angular/cdk/overlay';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
-  heroChevronDown,
+  heroChevronUpDown,
   heroCurrencyDollar,
   heroArrowRightOnRectangle,
   heroCommandLine,
-  heroSparkles
+  heroSparkles,
+  heroSun,
+  heroMoon,
+  heroComputerDesktop
 } from '@ng-icons/heroicons/outline';
+import { ThemeService, ThemePreference } from './theme-toggle/theme.service';
 
 export interface User {
   name: string;
@@ -24,11 +28,14 @@ export interface User {
   imports: [RouterLink, CdkMenuTrigger, CdkMenu, CdkMenuItem, NgIcon],
   providers: [
     provideIcons({
-      heroChevronDown,
+      heroChevronUpDown,
       heroCurrencyDollar,
       heroArrowRightOnRectangle,
       heroCommandLine,
-      heroSparkles
+      heroSparkles,
+      heroSun,
+      heroMoon,
+      heroComputerDesktop
     })
   ],
   template: `
@@ -36,35 +43,33 @@ export interface User {
       <button
         type="button"
         [cdkMenuTriggerFor]="userMenu"
-        [cdkMenuPosition]="menuPositions"
-        class="relative flex items-center rounded-sm focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
+        [cdkMenuPosition]="menuPositionsComputed()"
+        class="relative flex w-full items-center gap-3 rounded-lg px-2 py-2 hover:bg-gray-200 focus-visible:outline focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)] dark:hover:bg-white/10"
         aria-label="User menu"
       >
-        <span class="absolute -inset-1.5"></span>
         <span class="sr-only">Open user menu</span>
-        
+
         @if (user().picture) {
-          <img 
-            [src]="user().picture" 
-            [alt]="user().name" 
-            class="size-8 rounded-full bg-gray-50 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10" 
+          <img
+            [src]="user().picture"
+            [alt]="user().name"
+            class="size-8 shrink-0 rounded-full bg-gray-50 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
           />
         } @else {
-          <div class="size-8 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center outline -outline-offset-1 outline-black/5 dark:outline-white/10">
+          <div class="size-8 shrink-0 rounded-full bg-gray-200 dark:bg-gray-700 flex items-center justify-center outline -outline-offset-1 outline-black/5 dark:outline-white/10">
             <span class="text-xs font-semibold text-gray-600 dark:text-gray-300">
               {{ getUserInitial() }}
             </span>
           </div>
         }
-        
-        <span class="hidden lg:flex lg:items-center">
-          <span aria-hidden="true" class="ml-4 text-sm/6 font-semibold text-gray-900 dark:text-white">
+
+        <span class="flex min-w-0 flex-1 items-center justify-between">
+          <span class="truncate text-sm/6 font-semibold text-gray-900 dark:text-white">
             {{ user().name }}
           </span>
           <ng-icon
-            name="heroChevronDown"
-            class="ml-2 size-5 text-gray-400 transition-transform"
-            [class.rotate-180]="isMenuOpen()"
+            name="heroChevronUpDown"
+            class="size-5 shrink-0 text-gray-400"
           />
         </span>
       </button>
@@ -136,7 +141,59 @@ export interface User {
                 />
                 <span>Memories</span>
               </a>
+            </div>
 
+            <!-- Theme section -->
+            <div class="border-t border-gray-200 py-1 dark:border-gray-700">
+              <div class="px-3 py-1.5">
+                <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Theme</span>
+              </div>
+              <button
+                cdkMenuItem
+                type="button"
+                (click)="selectTheme('light')"
+                [class]="'flex w-full items-center gap-3 px-3 py-2 text-sm/6 hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden ' +
+                  (currentPreference() === 'light' ? 'text-[var(--color-primary)] font-medium' : 'text-gray-700 dark:text-gray-300')"
+                role="menuitem"
+              >
+                <ng-icon
+                  name="heroSun"
+                  [class]="'size-5 ' + (currentPreference() === 'light' ? 'text-[var(--color-primary)]' : 'text-gray-400 dark:text-gray-500')"
+                />
+                <span>Light</span>
+              </button>
+              <button
+                cdkMenuItem
+                type="button"
+                (click)="selectTheme('dark')"
+                [class]="'flex w-full items-center gap-3 px-3 py-2 text-sm/6 hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden ' +
+                  (currentPreference() === 'dark' ? 'text-[var(--color-primary)] font-medium' : 'text-gray-700 dark:text-gray-300')"
+                role="menuitem"
+              >
+                <ng-icon
+                  name="heroMoon"
+                  [class]="'size-5 ' + (currentPreference() === 'dark' ? 'text-[var(--color-primary)]' : 'text-gray-400 dark:text-gray-500')"
+                />
+                <span>Dark</span>
+              </button>
+              <button
+                cdkMenuItem
+                type="button"
+                (click)="selectTheme('system')"
+                [class]="'flex w-full items-center gap-3 px-3 py-2 text-sm/6 hover:bg-gray-50 focus:bg-gray-50 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden ' +
+                  (currentPreference() === 'system' ? 'text-[var(--color-primary)] font-medium' : 'text-gray-700 dark:text-gray-300')"
+                role="menuitem"
+              >
+                <ng-icon
+                  name="heroComputerDesktop"
+                  [class]="'size-5 ' + (currentPreference() === 'system' ? 'text-[var(--color-primary)]' : 'text-gray-400 dark:text-gray-500')"
+                />
+                <span>System</span>
+              </button>
+            </div>
+
+            <!-- Logout section -->
+            <div class="border-t border-gray-200 py-1 dark:border-gray-700">
               <button
                 cdkMenuItem
                 type="button"
@@ -190,50 +247,63 @@ export interface User {
   `
 })
 export class UserDropdownComponent {
+  private readonly themeService = inject(ThemeService);
+
   // Inputs
   user = input.required<User>();
   isAdmin = input.required<boolean>();
 
   // Outputs
   logout = output<void>();
-  
+
   // Internal state
   protected menuOpen = false;
-  
-  // Menu positioning - align to bottom-right of trigger
-  protected menuPositions: ConnectedPosition[] = [
+
+  // Theme state
+  protected readonly currentPreference = this.themeService.preference;
+  protected readonly currentTheme = this.themeService.theme;
+
+  // Menu positioning - opens upward (for sidenav bottom placement)
+  private readonly sidenavPositions: ConnectedPosition[] = [
     {
-      originX: 'end',
-      originY: 'bottom',
-      overlayX: 'end',
-      overlayY: 'top',
-      offsetY: 8
-    },
-    {
-      originX: 'end',
+      originX: 'start',
       originY: 'top',
-      overlayX: 'end',
+      overlayX: 'start',
       overlayY: 'bottom',
       offsetY: -8
+    },
+    {
+      originX: 'start',
+      originY: 'bottom',
+      overlayX: 'start',
+      overlayY: 'top',
+      offsetY: 8
     }
   ];
-  
+
+  // Computed signal for menu positions
+  protected menuPositionsComputed = computed(() => this.sidenavPositions);
+
   protected isMenuOpen(): boolean {
     return this.menuOpen;
   }
-  
+
   protected getUserInitial(): string {
     return this.user().name.charAt(0).toUpperCase();
   }
-  
+
   protected onMenuOpened(): void {
     this.menuOpen = true;
   }
-  
+
   protected onMenuClosed(): void {
     this.menuOpen = false;
   }
-  
+
+  protected selectTheme(preference: ThemePreference): void {
+    this.themeService.setPreference(preference);
+  }
+
   protected handleLogout(): void {
     console.log('Logout clicked for user:', this.user().name);
     this.logout.emit();
