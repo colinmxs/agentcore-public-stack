@@ -4,21 +4,27 @@ import { SessionList } from './components/session-list/session-list';
 import { SessionService } from '../../session/services/session/session.service';
 import { UserService } from '../../auth/user.service';
 import { UserDropdownComponent } from '../topnav/components/user-dropdown.component';
+import { SidenavService } from '../../services/sidenav/sidenav.service';
+import { TooltipDirective } from '../tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-sidenav',
-  imports: [SessionList, UserDropdownComponent],
+  imports: [SessionList, UserDropdownComponent, TooltipDirective],
   templateUrl: './sidenav.html',
   styleUrl: './sidenav.css',
 })
 export class Sidenav {
   private router = inject(Router);
   private sessionService = inject(SessionService);
+  protected sidenavService = inject(SidenavService);
   protected userService = inject(UserService);
 
   // Access to current session signals - available for use in template or component logic
   readonly currentSession = this.sessionService.currentSession;
   readonly hasCurrentSession = this.sessionService.hasCurrentSession;
+
+  // Expose collapsed state for template
+  readonly isCollapsed = this.sidenavService.isCollapsed;
 
   // Example: Computed signal for display purposes
   readonly currentSessionTitle = computed(() => {
@@ -33,6 +39,11 @@ export class Sidenav {
   });
 
   newSession() {
+    this.sidenavService.close();
     this.router.navigate(['']);
+  }
+
+  toggleCollapse() {
+    this.sidenavService.toggleCollapsed();
   }
 }

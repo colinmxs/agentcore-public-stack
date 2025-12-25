@@ -1,5 +1,8 @@
 @if (!hasMessages()) {
-  <div class="empty-state-background fixed inset-0 lg:left-72 flex items-center justify-center">
+  <div
+    class="empty-state-background fixed inset-0 flex items-center justify-center transition-[left] duration-300"
+    [class.lg:left-72]="!sidenavService.isCollapsed()"
+    [class.lg:left-0]="sidenavService.isCollapsed()">
     <div class="w-full max-w-[720px] animate-fade-in px-4 -mt-20 relative">
       <div class="mb-8 flex items-center justify-center gap-4 relative">
         <img
@@ -24,7 +27,10 @@
   </div>
 } @else {
   <!-- Header (fixed, content scrolls underneath) -->
-  <div class="fixed top-0 left-0 right-0 lg:left-72 z-40">
+  <div
+    class="fixed top-0 left-0 right-0 z-40 transition-[left] duration-300"
+    [class.lg:left-72]="!sidenavService.isCollapsed()"
+    [class.lg:left-0]="sidenavService.isCollapsed()">
     <app-topnav />
   </div>
   <div class="relative pb-30 pt-16 max-w-[720px] mx-auto px-4 py-6 min-w-0">
@@ -34,7 +40,10 @@
   </div>
 
   <!-- Footer (fixed, content scrolls underneath) -->
-  <div class="pb-4 fixed bottom-0 left-0 right-0 lg:left-72 animate-fade-in">
+  <div
+    class="pb-4 fixed bottom-0 left-0 right-0 animate-fade-in transition-[left] duration-300"
+    [class.lg:left-72]="!sidenavService.isCollapsed()"
+    [class.lg:left-0]="sidenavService.isCollapsed()">
     <div class="max-w-[720px] mx-auto px-4">
       <app-chat-input (messageSubmitted)="onMessageSubmitted($event)" (fileAttached)="onFileAttached($event)"></app-chat-input>
     </div>

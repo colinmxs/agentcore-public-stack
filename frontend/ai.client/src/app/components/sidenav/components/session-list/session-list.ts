@@ -4,6 +4,7 @@ import { NgIcon, provideIcons } from '@ng-icons/core';
 import { heroChatBubbleLeftRight } from '@ng-icons/heroicons/outline';
 import { SessionService } from '../../../../session/services/session/session.service';
 import { SessionMetadata } from '../../../../session/services/models/session-metadata.model';
+import { SidenavService } from '../../../../services/sidenav/sidenav.service';
 
 @Component({
   selector: 'app-session-list',
@@ -15,6 +16,7 @@ import { SessionMetadata } from '../../../../session/services/models/session-met
 })
 export class SessionList {
   private sessionService = inject(SessionService);
+  private sidenavService = inject(SidenavService);
 
   /**
    * Reactive resource for fetching sessions (base API data).
@@ -101,5 +103,12 @@ export class SessionList {
    */
   protected getSessionTitle(session: SessionMetadata): string {
     return session.title || 'Untitled Session';
+  }
+
+  /**
+   * Handles session selection, closing the sidenav on mobile.
+   */
+  protected onSessionClick(): void {
+    this.sidenavService.close();
   }
 }

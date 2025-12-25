@@ -10,6 +10,8 @@ import { SessionService } from './services/session/session.service';
 import { ChatStateService } from './services/chat/chat-state.service';
 import { AnimatedTextComponent } from '../components/animated-text';
 import { Topnav } from '../components/topnav/topnav';
+import { SidenavService } from '../services/sidenav/sidenav.service';
+import { HeaderService } from '../services/header/header.service';
 
 @Component({
   selector: 'app-session-page',
@@ -38,6 +40,8 @@ export class ConversationPage implements OnDestroy {
   private chatRequestService = inject(ChatRequestService);
   private messageMapService = inject(MessageMapService);
   private chatStateService = inject(ChatStateService);
+  protected sidenavService = inject(SidenavService);
+  private headerService = inject(HeaderService);
   private routeSubscription?: Subscription;
   readonly sessionConversation = this.sessionService.currentSession;
   readonly isChatLoading = this.chatStateService.isChatLoading;
@@ -49,6 +53,14 @@ export class ConversationPage implements OnDestroy {
   readonly hasMessages = computed(() => this.messages().length > 0);
 
   constructor() {
+    // Control header visibility based on whether there are messages
+    effect(() => {
+      if (this.hasMessages()) {
+        this.headerService.showHeaderContent();
+      } else {
+        this.headerService.hideHeaderContent();
+      }
+    });
     // Subscribe to route parameter changes
     this.routeSubscription = this.route.paramMap.subscribe(async params => {
       const id = params.get('sessionId');

@@ -1,15 +1,24 @@
-import { Component, signal } from '@angular/core';
-import { RouterOutlet } from '@angular/router';
+import { Component, inject, signal } from '@angular/core';
+import { Router, RouterOutlet } from '@angular/router';
 import { Sidenav } from './components/sidenav/sidenav';
-import { Topnav } from './components/topnav/topnav';
 import { ErrorToastComponent } from './components/error-toast/error-toast.component';
+import { SidenavService } from './services/sidenav/sidenav.service';
+import { HeaderService } from './services/header/header.service';
+import { TooltipDirective } from './components/tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, Sidenav, Topnav, ErrorToastComponent],
+  imports: [RouterOutlet, Sidenav, ErrorToastComponent, TooltipDirective],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })
 export class App {
   protected readonly title = signal('boisestate.ai');
+  protected sidenavService = inject(SidenavService);
+  protected headerService = inject(HeaderService);
+  private router = inject(Router);
+
+  newChat() {
+    this.router.navigate(['']);
+  }
 }
