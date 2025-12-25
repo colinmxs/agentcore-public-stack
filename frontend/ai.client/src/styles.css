@@ -2,6 +2,9 @@
 
 @import "tailwindcss";
 
+/* CDK Overlay styles - required for proper overlay positioning */
+@import "@angular/cdk/overlay-prebuilt.css";
+
 .message-block {
 
     ul, ol {
