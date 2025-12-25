@@ -108,19 +108,62 @@ export class ErrorService {
 
     if (this.isHttpErrorResponse(error)) {
       const status = error.status;
-      const detail = error.error;
+      const errorBody = error.error;
 
-      // Check if backend sent structured error
-      if (detail && typeof detail === 'object' && 'error' in detail) {
-        const structuredError = detail.error as ErrorDetail;
-        errorMessage = this.createErrorMessage(
-          structuredError.message,
-          structuredError.detail,
-          structuredError.code
-        );
+      // Check if error body has a detail field (e.g., { detail: "..." })
+      let userMessage: string | undefined;
+      let technicalDetails: string | undefined;
+
+      if (errorBody && typeof errorBody === 'object') {
+        const errorObj = errorBody as Record<string, unknown>;
+        
+        // Priority 1: Check for error.detail (direct detail field) - most common case
+        if ('detail' in errorObj && typeof errorObj['detail'] === 'string') {
+          userMessage = errorObj['detail'] as string;
+          technicalDetails = this.buildTechnicalDetails(error);
+        }
+        // Priority 2: Check for error.error.detail (structured error from backend)
+        else if ('error' in errorObj && errorObj['error'] && typeof errorObj['error'] === 'object') {
+          const nestedError = errorObj['error'] as Record<string, unknown>;
+          if ('detail' in nestedError && typeof nestedError['detail'] === 'string') {
+            userMessage = nestedError['detail'] as string;
+            // Create ErrorDetail object if we have the necessary fields
+            const structuredError: ErrorDetail | undefined = 
+              ('code' in nestedError || 'message' in nestedError)
+                ? (nestedError as unknown as ErrorDetail)
+                : undefined;
+            technicalDetails = this.buildTechnicalDetails(error, structuredError);
+          } else if ('message' in nestedError && typeof nestedError['message'] === 'string') {
+            userMessage = nestedError['message'] as string;
+            technicalDetails = this.buildTechnicalDetails(error);
+          }
+        }
+        // Priority 3: Check for error.message (alternative field)
+        else if ('message' in errorObj && typeof errorObj['message'] === 'string') {
+          userMessage = errorObj['message'] as string;
+          technicalDetails = this.buildTechnicalDetails(error);
+        }
+      }
+
+      // If we found a user message, use it; otherwise fallback to status-based message
+      if (userMessage) {
+        const statusInfo = this.getStatusInfo(status);
+        errorMessage = {
+          id: this.generateErrorId(),
+          title: statusInfo.title,
+          message: userMessage,
+          detail: technicalDetails,
+          code: statusInfo.code,
+          timestamp: new Date(),
+          dismissible: true,
+        };
       } else {
         // Fallback to status-based message
         errorMessage = this.createErrorMessageFromStatus(status, error.message);
+        // Add technical details to the detail field
+        if (!errorMessage.detail) {
+          errorMessage.detail = this.buildTechnicalDetails(error);
+        }
       }
     } else if (error instanceof Error) {
       errorMessage = this.createErrorMessage(
@@ -264,71 +307,25 @@ export class ErrorService {
 
   /**
    * Create error message from HTTP status code
+   * Used as fallback when no detail is found in the error response
    */
   private createErrorMessageFromStatus(status: number, defaultMessage: string): ErrorMessage {
-    const statusMessages: Record<number, { title: string; message: string; code: ErrorCode }> = {
-      400: {
-        title: 'Invalid Request',
-        message: 'The request was invalid. Please check your input and try again.',
-        code: ErrorCode.BAD_REQUEST
-      },
-      401: {
-        title: 'Authentication Required',
-        message: 'Please log in to continue.',
-        code: ErrorCode.UNAUTHORIZED
-      },
-      403: {
-        title: 'Access Denied',
-        message: 'You do not have permission to perform this action.',
-        code: ErrorCode.FORBIDDEN
-      },
-      404: {
-        title: 'Not Found',
-        message: 'The requested resource was not found.',
-        code: ErrorCode.NOT_FOUND
-      },
-      409: {
-        title: 'Conflict',
-        message: 'The request conflicts with the current state.',
-        code: ErrorCode.CONFLICT
-      },
-      422: {
-        title: 'Validation Error',
-        message: 'The submitted data is invalid.',
-        code: ErrorCode.VALIDATION_ERROR
-      },
-      429: {
-        title: 'Rate Limit Exceeded',
-        message: 'Too many requests. Please slow down and try again later.',
-        code: ErrorCode.RATE_LIMIT_EXCEEDED
-      },
-      500: {
-        title: 'Server Error',
-        message: 'An internal server error occurred. Please try again later.',
-        code: ErrorCode.INTERNAL_ERROR
-      },
-      503: {
-        title: 'Service Unavailable',
-        message: 'The service is temporarily unavailable. Please try again later.',
-        code: ErrorCode.SERVICE_UNAVAILABLE
-      },
-      504: {
-        title: 'Request Timeout',
-        message: 'The request took too long to complete. Please try again.',
-        code: ErrorCode.TIMEOUT
-      },
+    const statusInfo = this.getStatusInfo(status);
+    const fallbackMessages: Record<number, string> = {
+      400: 'The request was invalid. Please check your input and try again.',
+      401: 'Please log in to continue.',
+      403: 'You do not have permission to perform this action.',
+      404: 'The requested resource was not found.',
+      409: 'The request conflicts with the current state.',
+      422: 'The submitted data is invalid.',
+      429: 'Too many requests. Please slow down and try again later.',
+      500: 'An internal server error occurred. Please try again later.',
+      503: 'The service is temporarily unavailable. Please try again later.',
+      504: 'The request took too long to complete. Please try again.',
     };
 
-    const statusInfo = statusMessages[status];
-    if (statusInfo) {
-      return this.createErrorMessage(statusInfo.message, defaultMessage, statusInfo.code);
-    }
-
-    return this.createErrorMessage(
-      'An error occurred',
-      defaultMessage || `Request failed with status ${status}`,
-      ErrorCode.UNKNOWN_ERROR
-    );
+    const message = fallbackMessages[status] || 'An error occurred. Please try again.';
+    return this.createErrorMessage(message, defaultMessage, statusInfo.code);
   }
 
   /**
@@ -369,9 +366,98 @@ export class ErrorService {
   }
 
   /**
+   * Build technical details string from HTTP error response
+   * This includes technical information that should be hidden in the details section
+   */
+  private buildTechnicalDetails(
+    error: { status: number; error: unknown; message: string; url?: string },
+    structuredError?: ErrorDetail
+  ): string {
+    const details: string[] = [];
+
+    // Add status information
+    details.push(`Status: ${error.status} ${this.getStatusText(error.status)}`);
+
+    // Add URL if available
+    if (error.url) {
+      details.push(`URL: ${error.url}`);
+    }
+
+    // Add HTTP error message (technical, not user-facing)
+    if (error.message) {
+      details.push(`HTTP Message: ${error.message}`);
+    }
+
+    // Add structured error details if available
+    if (structuredError) {
+      if (structuredError.code) {
+        details.push(`Error Code: ${structuredError.code}`);
+      }
+      if (structuredError.field) {
+        details.push(`Field: ${structuredError.field}`);
+      }
+      if (structuredError.metadata) {
+        details.push(`Metadata: ${JSON.stringify(structuredError.metadata, null, 2)}`);
+      }
+    }
+
+    // Add raw error body for debugging (excluding the detail we're already showing)
+    if (error.error && typeof error.error === 'object') {
+      const errorObj = error.error as Record<string, unknown>;
+      // Create a copy without the detail field to avoid duplication
+      const errorCopy = { ...errorObj };
+      delete errorCopy['detail'];
+      if (Object.keys(errorCopy).length > 0) {
+        details.push(`\nFull Response:\n${JSON.stringify(error.error, null, 2)}`);
+      }
+    }
+
+    return details.join('\n');
+  }
+
+  /**
+   * Get status text for HTTP status code
+   */
+  private getStatusText(status: number): string {
+    const statusTexts: Record<number, string> = {
+      400: 'Bad Request',
+      401: 'Unauthorized',
+      403: 'Forbidden',
+      404: 'Not Found',
+      409: 'Conflict',
+      422: 'Unprocessable Entity',
+      429: 'Too Many Requests',
+      500: 'Internal Server Error',
+      503: 'Service Unavailable',
+      504: 'Gateway Timeout',
+    };
+    return statusTexts[status] || 'Unknown';
+  }
+
+  /**
+   * Get status info (title and code) for HTTP status code
+   */
+  private getStatusInfo(status: number): { title: string; code: ErrorCode } {
+    const statusMessages: Record<number, { title: string; code: ErrorCode }> = {
+      400: { title: 'Invalid Request', code: ErrorCode.BAD_REQUEST },
+      401: { title: 'Authentication Required', code: ErrorCode.UNAUTHORIZED },
+      403: { title: 'Access Denied', code: ErrorCode.FORBIDDEN },
+      404: { title: 'Not Found', code: ErrorCode.NOT_FOUND },
+      409: { title: 'Conflict', code: ErrorCode.CONFLICT },
+      422: { title: 'Validation Error', code: ErrorCode.VALIDATION_ERROR },
+      429: { title: 'Rate Limit Exceeded', code: ErrorCode.RATE_LIMIT_EXCEEDED },
+      500: { title: 'Server Error', code: ErrorCode.INTERNAL_ERROR },
+      503: { title: 'Service Unavailable', code: ErrorCode.SERVICE_UNAVAILABLE },
+      504: { title: 'Request Timeout', code: ErrorCode.TIMEOUT },
+    };
+
+    return statusMessages[status] || { title: 'Error', code: ErrorCode.UNKNOWN_ERROR };
+  }
+
+  /**
    * Type guard for HTTP error response
    */
-  private isHttpErrorResponse(error: unknown): error is { status: number; error: unknown; message: string } {
+  private isHttpErrorResponse(error: unknown): error is { status: number; error: unknown; message: string; url?: string } {
     return (
       typeof error === 'object' &&
       error !== null &&
