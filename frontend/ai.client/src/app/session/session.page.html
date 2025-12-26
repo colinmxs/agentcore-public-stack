@@ -1,4 +1,17 @@
-@if (!hasMessages()) {
+@if (showSkeleton()) {
+  <!-- Skeleton loading state when navigating to a session -->
+  <div
+    class="fixed top-0 left-0 right-0 z-40 transition-[left] duration-300"
+    [class.lg:left-72]="!sidenavService.isCollapsed()"
+    [class.lg:left-0]="sidenavService.isCollapsed()">
+    <app-topnav />
+  </div>
+  <div class="relative pb-30 pt-16 max-w-[720px] mx-auto px-4 py-6 min-w-0">
+    <div class="min-w-0 animate-fade-in">
+      <app-paragraph-skeleton />
+    </div>
+  </div>
+} @else if (!hasMessages()) {
   <div
     class="empty-state-background fixed inset-0 flex items-center justify-center transition-[left] duration-300"
     [class.lg:left-72]="!sidenavService.isCollapsed()"

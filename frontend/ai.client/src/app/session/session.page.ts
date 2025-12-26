@@ -12,16 +12,30 @@ import { AnimatedTextComponent } from '../components/animated-text';
 import { Topnav } from '../components/topnav/topnav';
 import { SidenavService } from '../services/sidenav/sidenav.service';
 import { HeaderService } from '../services/header/header.service';
+import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav],
+  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav, ParagraphSkeletonComponent],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })
 export class ConversationPage implements OnDestroy {
-  messages: Signal<Message[]> = signal([]);
+  private route = inject(ActivatedRoute);
+  private sessionService = inject(SessionService);
+  private chatRequestService = inject(ChatRequestService);
+  private messageMapService = inject(MessageMapService);
+  private chatStateService = inject(ChatStateService);
+  protected sidenavService = inject(SidenavService);
+  private headerService = inject(HeaderService);
+
   sessionId = signal<string | null>(null);
+
+  // Writable signal that holds the current messages signal reference
+  private messagesSignal = signal<Signal<Message[]>>(signal([]));
+
+  // Computed that unwraps the current messages signal
+  readonly messages = computed(() => this.messagesSignal()());
 
   // Greeting messages to randomly display
   private greetingMessages = [
@@ -35,22 +49,23 @@ export class ConversationPage implements OnDestroy {
   // Select a random greeting message on component initialization
   greetingMessage = signal(this.getRandomGreeting());
 
-  private route = inject(ActivatedRoute);
-  private sessionService = inject(SessionService);
-  private chatRequestService = inject(ChatRequestService);
-  private messageMapService = inject(MessageMapService);
-  private chatStateService = inject(ChatStateService);
-  protected sidenavService = inject(SidenavService);
-  private headerService = inject(HeaderService);
   private routeSubscription?: Subscription;
   readonly sessionConversation = this.sessionService.currentSession;
   readonly isChatLoading = this.chatStateService.isChatLoading;
+  readonly isLoadingSession = this.messageMapService.isLoadingSession;
 
   // Get reference to MessageListComponent
   private messageListComponent = viewChild(MessageListComponent);
 
   // Computed signal to check if session has messages
   readonly hasMessages = computed(() => this.messages().length > 0);
+
+  // Show skeleton when loading a session that matches current route and has no messages yet
+  readonly showSkeleton = computed(() => {
+    const loadingSessionId = this.isLoadingSession();
+    const currentSessionId = this.sessionId();
+    return loadingSessionId !== null && loadingSessionId === currentSessionId && !this.hasMessages();
+  });
 
   constructor() {
     // Control header visibility based on whether there are messages
@@ -66,7 +81,11 @@ export class ConversationPage implements OnDestroy {
       const id = params.get('sessionId');
       this.sessionId.set(id);
       if (id) {
-        this.messages = this.messageMapService.getMessagesForSession(id);
+        // Update the messages signal reference (this triggers reactivity)
+        this.messagesSignal.set(this.messageMapService.getMessagesForSession(id));
+
+        // Set loading state immediately before async call to show skeleton
+        this.messageMapService.setLoadingSession(id);
 
         // Trigger fetching session metadata to populate currentSession
         this.sessionService.setSessionMetadataId(id);
