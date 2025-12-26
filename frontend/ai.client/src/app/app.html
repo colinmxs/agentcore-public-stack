@@ -68,8 +68,8 @@
   </div>
 }
 
-<!-- Mobile controls (when header content hidden) -->
-@if (!headerService.showContent()) {
+<!-- Mobile controls (when header content hidden and sidenav not visible) -->
+@if (!headerService.showContent() && !sidenavService.isVisible()) {
   <div class="flex lg:hidden fixed top-4 left-4 z-50 gap-2">
     <!-- Open sidenav button -->
     <button
