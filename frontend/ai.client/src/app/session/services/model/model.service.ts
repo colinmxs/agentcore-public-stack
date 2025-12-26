@@ -162,4 +162,25 @@ export class ModelService {
   getDefaultModel(): ManagedModel {
     return this.DEFAULT_MODEL;
   }
+
+  /**
+   * Sets the selected model by its modelId string.
+   * Useful when loading session preferences where only the modelId is stored.
+   * If the modelId is not found in available models, the selection is not changed.
+   *
+   * @param modelId - The modelId string to find and select
+   * @returns true if the model was found and selected, false otherwise
+   */
+  setSelectedModelById(modelId: string): boolean {
+    const models = this.models();
+    const model = models.find(m => m.modelId === modelId);
+
+    if (model) {
+      this._selectedModel.set(model);
+      this.usingDefaultModel.set(false);
+      return true;
+    }
+
+    return false;
+  }
 }

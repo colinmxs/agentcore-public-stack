@@ -13,6 +13,7 @@ import { Topnav } from '../components/topnav/topnav';
 import { SidenavService } from '../services/sidenav/sidenav.service';
 import { HeaderService } from '../services/header/header.service';
 import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
+import { ModelService } from './services/model/model.service';
 
 @Component({
   selector: 'app-session-page',
@@ -28,6 +29,7 @@ export class ConversationPage implements OnDestroy {
   private chatStateService = inject(ChatStateService);
   protected sidenavService = inject(SidenavService);
   private headerService = inject(HeaderService);
+  private modelService = inject(ModelService);
 
   sessionId = signal<string | null>(null);
 
@@ -76,6 +78,15 @@ export class ConversationPage implements OnDestroy {
         this.headerService.hideHeaderContent();
       }
     });
+
+    // Apply model from session preferences when session metadata loads
+    effect(() => {
+      const session = this.sessionConversation();
+      if (session?.preferences?.lastModel) {
+        this.modelService.setSelectedModelById(session.preferences.lastModel);
+      }
+    });
+
     // Subscribe to route parameter changes
     this.routeSubscription = this.route.paramMap.subscribe(async params => {
       const id = params.get('sessionId');
