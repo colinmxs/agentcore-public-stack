@@ -11,6 +11,7 @@ import { heroPaperAirplaneSolid } from '@ng-icons/heroicons/solid';
 import { ChatStateService } from '../../services/chat/chat-state.service';
 import { ModelDropdownComponent } from '../../../components/model-dropdown/model-dropdown.component';
 import { QuotaWarningBannerComponent } from '../../../components/quota-warning-banner/quota-warning-banner.component';
+import { TooltipDirective } from '../../../components/tooltip';
 
 interface Message {
   content: string;
@@ -19,7 +20,7 @@ interface Message {
 
 @Component({
   selector: 'app-chat-input',
-  imports: [FormsModule, ModelDropdownComponent, NgIcon, QuotaWarningBannerComponent],
+  imports: [FormsModule, ModelDropdownComponent, NgIcon, QuotaWarningBannerComponent, TooltipDirective],
   providers: [
     provideIcons({
       heroPlus,
@@ -45,6 +46,7 @@ export class ChatInputComponent {
   fileAttached = output<File>();
   messageSubmitted = output<Message>();
   messageCancelled = output<void>();
+  settingsToggled = output<void>();
 
   onSubmit() {
     if(this.chatState.isChatLoading()) {
@@ -69,6 +71,10 @@ export class ChatInputComponent {
 
   cancelChatRequest() {
     this.messageCancelled.emit();
+  }
+
+  toggleSettings() {
+    this.settingsToggled.emit();
   }
 
   onFileSelect(event: Event) {

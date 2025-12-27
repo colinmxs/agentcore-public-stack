@@ -14,10 +14,11 @@ import { SidenavService } from '../services/sidenav/sidenav.service';
 import { HeaderService } from '../services/header/header.service';
 import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
 import { ModelService } from './services/model/model.service';
+import { ModelSettings } from '../components/model-settings/model-settings';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav, ParagraphSkeletonComponent],
+  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav, ParagraphSkeletonComponent, ModelSettings],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })
@@ -32,6 +33,7 @@ export class ConversationPage implements OnDestroy {
   private modelService = inject(ModelService);
 
   sessionId = signal<string | null>(null);
+  isSettingsOpen = signal(false);
 
   // Writable signal that holds the current messages signal reference
   private messagesSignal = signal<Signal<Message[]>>(signal([]));
@@ -132,6 +134,14 @@ export class ConversationPage implements OnDestroy {
   onFileAttached(file: File) {
     console.log('File attached:', file);
     // Handle file attachment logic here
+  }
+
+  toggleSettings() {
+    this.isSettingsOpen.update(open => !open);
+  }
+
+  closeSettings() {
+    this.isSettingsOpen.set(false);
   }
 
   private getRandomGreeting(): string {

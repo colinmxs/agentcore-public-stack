@@ -27,45 +27,51 @@
       <!-- Bottom Controls Bar -->
       <div class="flex items-center justify-between px-4 pb-3">
         <!-- Left Controls -->
-        <div class="flex items-center gap-2">
+        <div class="flex items-center gap-2" role="group" aria-label="Message options">
           <!-- Add Attachment Button -->
-          <button
-            type="button"
-            class="flex size-10 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-            aria-label="Attach a file"
+          <div
+            class="flex size-10 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-300 focus-within:outline-2 focus-within:outline-offset-2 focus-within:outline-[var(--color-primary)]"
+            appTooltip="Attach file"
+            appTooltipPosition="top"
           >
             <input
               type="file"
               class="sr-only"
               (change)="onFileSelect($event)"
               id="file-upload"
+              aria-label="Attach a file"
             />
             <label for="file-upload" class="flex size-full cursor-pointer items-center justify-center">
-              <ng-icon name="heroPlus" class="size-5" />
+              <ng-icon name="heroPlus" class="size-5" aria-hidden="true" />
             </label>
-          </button>
+          </div>
 
           <!-- Settings Button -->
           <button
             type="button"
+            (click)="toggleSettings()"
             class="flex size-10 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-            aria-label="Settings"
+            aria-label="Open settings"
+            appTooltip="Settings"
+            appTooltipPosition="top"
           >
-            <ng-icon name="heroAdjustmentsHorizontal" class="size-5" />
+            <ng-icon name="heroAdjustmentsHorizontal" class="size-5" aria-hidden="true" />
           </button>
 
           <!-- History Button -->
           <button
             type="button"
             class="flex size-10 items-center justify-center rounded-lg text-gray-500 dark:text-gray-400 transition-colors hover:bg-gray-100 hover:text-gray-700 dark:hover:bg-white/5 dark:hover:text-gray-300 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-[var(--color-primary)]"
-            aria-label="History"
+            aria-label="View history"
+            appTooltip="History"
+            appTooltipPosition="top"
           >
-            <ng-icon name="heroClock" class="size-5" />
+            <ng-icon name="heroClock" class="size-5" aria-hidden="true" />
           </button>
         </div>
 
         <!-- Right Controls -->
-        <div class="flex items-center gap-3">
+        <div class="flex items-center gap-3" role="group" aria-label="Model selection and send">
           <!-- Model Selector -->
           <app-model-dropdown />
 
@@ -80,10 +86,10 @@
           >
             @if (chatState.isChatLoading()) {
               <!-- Stop Icon -->
-              <ng-icon name="heroStop" class="size-5" />
+              <ng-icon name="heroStop" class="size-5" aria-hidden="true" />
             } @else {
               <!-- Send Icon -->
-              <ng-icon name="heroPaperAirplaneSolid" class="size-5" />
+              <ng-icon name="heroPaperAirplaneSolid" class="size-5" aria-hidden="true" />
             }
           </button>
         </div>

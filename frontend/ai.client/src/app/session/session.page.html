@@ -33,7 +33,8 @@
       <div class="relative">
         <app-chat-input
           (messageSubmitted)="onMessageSubmitted($event)"
-          (fileAttached)="onFileAttached($event)">
+          (fileAttached)="onFileAttached($event)"
+          (settingsToggled)="toggleSettings()">
         </app-chat-input>
       </div>
     </div>
@@ -58,7 +59,16 @@
     [class.lg:left-72]="!sidenavService.isCollapsed()"
     [class.lg:left-0]="sidenavService.isCollapsed()">
     <div class="max-w-[720px] mx-auto px-4">
-      <app-chat-input (messageSubmitted)="onMessageSubmitted($event)" (fileAttached)="onFileAttached($event)"></app-chat-input>
+      <app-chat-input
+        (messageSubmitted)="onMessageSubmitted($event)"
+        (fileAttached)="onFileAttached($event)"
+        (settingsToggled)="toggleSettings()">
+      </app-chat-input>
     </div>
   </div>
 }
+
+<!-- Model Settings Panel -->
+<app-model-settings
+  [isOpen]="isSettingsOpen()"
+  (closed)="closeSettings()" />

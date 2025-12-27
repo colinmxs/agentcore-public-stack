@@ -7,8 +7,7 @@ import { MessageMapService } from '../session/message-map.service';
 import { SessionService } from '../session/session.service';
 import { UserService } from '../../../auth/user.service';
 import { ModelService } from '../model/model.service';
-// import { ConversationService, Conversation } from '../conversation/conversation.service';
-// import { createMessage, createTextContent } from '../models';
+import { ToolSettingsService } from '../tool/tool-settings.service';
 
 export interface ContentFile {
   fileName: string;
@@ -28,6 +27,7 @@ export class ChatRequestService {
   private sessionService = inject(SessionService);
   private userService = inject(UserService);
   private modelService = inject(ModelService);
+  private toolSettingsService = inject(ToolSettingsService);
   private router = inject(Router);
   // TODO: Inject proper logging service
   
@@ -87,12 +87,15 @@ export class ChatRequestService {
 
     // If using the system default model, send null for model_id to let backend use its default
     const isDefaultModel = this.modelService.isUsingDefaultModel();
-    
+
+    // Get enabled tools from settings service
+    const enabledTools = this.toolSettingsService.getEnabledToolIds();
+
     return {
       message,
       session_id,
       model_id: isDefaultModel ? null : selectedModel.modelId,
-      enabled_tools: ['calculator', 'fetch_url_content', 'generate_diagram_and_validate', 'search_boise_state'],
+      enabled_tools: enabledTools,
       provider: isDefaultModel ? null : selectedModel.provider
     };
   }
