@@ -615,3 +615,8 @@ async def delete_managed_model_endpoint(
 from .quota.routes import router as quota_router
 
 router.include_router(quota_router)
+
+# ========== Include Cost Dashboard Subrouter ==========
+from .costs.routes import router as costs_router
+
+router.include_router(costs_router)

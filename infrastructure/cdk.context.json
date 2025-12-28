@@ -2,7 +2,7 @@
   "@aws-cdk/core:defaultStackSynthesizer": "VersionedStackSynthesizerCloudAssemblyContext",
   "@aws-cdk/core:enableAssetManifest": true,
   "@aws-cdk/core:checksumAssetForResourceTags": true,
-  "projectPrefix": "agentcore",
+  "projectPrefix": "bsu-agentcore",
   "awsAccount": "",
   "awsRegion": "us-west-2",
   "vpcCidr": "10.0.0.0/16",
