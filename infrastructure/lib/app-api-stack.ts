@@ -351,6 +351,41 @@ export class AppApiStack extends cdk.Stack {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
+    // GSI2: PeriodCostIndex - Query top users by cost for admin dashboard
+    // Enables efficient "top N users by cost" queries without table scans
+    userCostSummaryTable.addGlobalSecondaryIndex({
+      indexName: 'PeriodCostIndex',
+      partitionKey: {
+        name: 'GSI2PK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'GSI2SK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ['userId', 'totalCost', 'totalRequests', 'lastUpdated'],
+    });
+
+    // SystemCostRollup Table - Pre-aggregated system-wide metrics for admin dashboard
+    const systemCostRollupTable = new dynamodb.Table(this, 'SystemCostRollupTable', {
+      tableName: getResourceName(config, 'system-cost-rollup'),
+      partitionKey: {
+        name: 'PK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'SK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: config.environment === 'prod'
+        ? cdk.RemovalPolicy.RETAIN
+        : cdk.RemovalPolicy.DESTROY,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
     // Store cost tracking table names in SSM
     new ssm.StringParameter(this, 'SessionsMetadataTableNameParameter', {
       parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`,
@@ -377,6 +412,20 @@ export class AppApiStack extends cdk.Stack {
       parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`,
       stringValue: userCostSummaryTable.tableArn,
       description: 'UserCostSummary table ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'SystemCostRollupTableNameParameter', {
+      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`,
+      stringValue: systemCostRollupTable.tableName,
+      description: 'SystemCostRollup table name for admin dashboard aggregates',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'SystemCostRollupTableArnParameter', {
+      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`,
+      stringValue: systemCostRollupTable.tableArn,
+      description: 'SystemCostRollup table ARN',
       tier: ssm.ParameterTier.STANDARD,
     });
 
@@ -512,6 +561,7 @@ export class AppApiStack extends cdk.Stack {
         DYNAMODB_MANAGED_MODELS_TABLE_NAME: managedModelsTable.tableName,
         DYNAMODB_SESSIONS_METADATA_TABLE_NAME: sessionsMetadataTable.tableName,
         DYNAMODB_COST_SUMMARY_TABLE_NAME: userCostSummaryTable.tableName,
+        DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME: systemCostRollupTable.tableName,
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -549,6 +599,7 @@ export class AppApiStack extends cdk.Stack {
     // Grant permissions for cost tracking tables
     sessionsMetadataTable.grantReadWriteData(taskDefinition.taskRole);
     userCostSummaryTable.grantReadWriteData(taskDefinition.taskRole);
+    systemCostRollupTable.grantReadWriteData(taskDefinition.taskRole);
 
     // ============================================================
     // Target Group
@@ -672,6 +723,12 @@ export class AppApiStack extends cdk.Stack {
       value: userCostSummaryTable.tableName,
       description: 'UserCostSummary table name for cost aggregation',
       exportName: `${config.projectPrefix}-UserCostSummaryTableName`,
+    });
+
+    new cdk.CfnOutput(this, 'SystemCostRollupTableName', {
+      value: systemCostRollupTable.tableName,
+      description: 'SystemCostRollup table name for admin dashboard',
+      exportName: `${config.projectPrefix}-SystemCostRollupTableName`,
     });
   }
 }

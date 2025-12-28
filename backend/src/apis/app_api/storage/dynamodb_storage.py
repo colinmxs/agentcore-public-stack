@@ -54,10 +54,15 @@ class DynamoDBStorage(MetadataStorage):
             "DYNAMODB_COST_SUMMARY_TABLE_NAME",
             "UserCostSummary"
         )
+        self.system_rollup_table_name = os.environ.get(
+            "DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME",
+            "SystemCostRollup"
+        )
 
         # Initialize table references
         self.sessions_metadata_table = self.dynamodb.Table(self.sessions_metadata_table_name)
         self.cost_summary_table = self.dynamodb.Table(self.cost_summary_table_name)
+        self.system_rollup_table = self.dynamodb.Table(self.system_rollup_table_name)
 
     def _convert_floats_to_decimal(self, obj: Any) -> Any:
         """
@@ -219,7 +224,7 @@ class DynamoDBStorage(MetadataStorage):
             item = self._convert_decimal_to_float(response["Item"])
 
             # Remove DynamoDB-specific keys
-            for key in ["PK", "SK"]:
+            for key in ["PK", "SK", "GSI2PK", "GSI2SK"]:
                 item.pop(key, None)
 
             return item
@@ -244,9 +249,20 @@ class DynamoDBStorage(MetadataStorage):
 
         Uses DynamoDB's atomic ADD operation for concurrent safety.
         Also updates per-model breakdown and cache savings for detailed cost analysis.
+
+        Additionally maintains GSI2 attributes for the PeriodCostIndex GSI:
+        - GSI2PK: PERIOD#{YYYY-MM} - enables querying all users in a period
+        - GSI2SK: COST#{15-digit-zero-padded-cents} - enables sorting by cost
         """
         try:
+            key = {
+                "PK": f"USER#{user_id}",
+                "SK": f"PERIOD#{period}"
+            }
+
             # Base update expression for aggregate totals
+            # GSI2PK is set immediately (static per period)
+            # GSI2SK will be updated after we know the new total
             update_expression = """
                 ADD totalCost :cost,
                     totalRequests :one,
@@ -257,7 +273,9 @@ class DynamoDBStorage(MetadataStorage):
                     cacheSavings :savings
                 SET lastUpdated = :now,
                     periodStart = if_not_exists(periodStart, :periodStart),
-                    periodEnd = if_not_exists(periodEnd, :periodEnd)
+                    periodEnd = if_not_exists(periodEnd, :periodEnd),
+                    userId = :userId,
+                    GSI2PK = :gsi2pk
             """
 
             expression_values = {
@@ -270,17 +288,23 @@ class DynamoDBStorage(MetadataStorage):
                 ":savings": Decimal(str(cache_savings_delta)),
                 ":now": timestamp,
                 ":periodStart": f"{period}-01T00:00:00Z",
-                ":periodEnd": f"{period}-31T23:59:59Z"
+                ":periodEnd": f"{period}-31T23:59:59Z",
+                ":userId": user_id,
+                ":gsi2pk": f"PERIOD#{period}"
             }
 
-            self.cost_summary_table.update_item(
-                Key={
-                    "PK": f"USER#{user_id}",
-                    "SK": f"PERIOD#{period}"
-                },
+            # Perform atomic increment and get new values
+            response = self.cost_summary_table.update_item(
+                Key=key,
                 UpdateExpression=update_expression,
-                ExpressionAttributeValues=expression_values
+                ExpressionAttributeValues=expression_values,
+                ReturnValues="UPDATED_NEW"
             )
+
+            # Update GSI2SK with the new total cost for proper sorting
+            # This is a separate update to get the accurate post-increment value
+            new_total_cost = float(response.get("Attributes", {}).get("totalCost", 0))
+            await self._update_cost_sort_key(user_id, period, new_total_cost)
 
             # Update per-model breakdown if model info is provided
             # This is a separate update to handle the nested map structure
@@ -408,6 +432,47 @@ class DynamoDBStorage(MetadataStorage):
                 f"Failed to update model breakdown for {model_id}: {e}"
             )
 
+    async def _update_cost_sort_key(
+        self,
+        user_id: str,
+        period: str,
+        total_cost: float
+    ) -> None:
+        """
+        Update GSI2SK (cost sort key) for PeriodCostIndex GSI
+
+        The sort key is formatted as COST#{15-digit-zero-padded-cents} to enable
+        proper string-based sorting. Higher costs sort later alphabetically,
+        so we use ScanIndexForward=False to get descending order.
+
+        Example: $125.50 → COST#000000000012550
+        Max supported: $999,999,999,999.99 (15 digits in cents)
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Convert to cents and pad to 15 digits
+            cost_cents = int(total_cost * 100)
+            gsi2_sk = f"COST#{cost_cents:015d}"
+
+            self.cost_summary_table.update_item(
+                Key={
+                    "PK": f"USER#{user_id}",
+                    "SK": f"PERIOD#{period}"
+                },
+                UpdateExpression="SET GSI2SK = :gsi2sk",
+                ExpressionAttributeValues={
+                    ":gsi2sk": gsi2_sk
+                }
+            )
+
+            logger.debug(f"Updated cost sort key for user {user_id}: {gsi2_sk}")
+
+        except ClientError as e:
+            # Log but don't raise - GSI update is supplementary
+            logger.error(f"Failed to update cost sort key for {user_id}: {e}")
+
     async def get_user_messages_in_range(
         self,
         user_id: str,
@@ -462,3 +527,406 @@ class DynamoDBStorage(MetadataStorage):
 
         except ClientError as e:
             raise Exception(f"Failed to get user messages in range: {e}")
+
+    async def get_top_users_by_cost(
+        self,
+        period: str,
+        limit: int = 100,
+        min_cost: Optional[float] = None
+    ) -> List[Dict[str, Any]]:
+        """
+        Get top users by cost for a period using PeriodCostIndex GSI
+
+        Uses GSI2 (PeriodCostIndex) for efficient sorted queries:
+        - GSI2PK: PERIOD#{YYYY-MM}
+        - GSI2SK: COST#{15-digit-zero-padded-cents}
+
+        Args:
+            period: The billing period (YYYY-MM format)
+            limit: Maximum number of users to return (default 100, max 1000)
+            min_cost: Optional minimum cost threshold in dollars
+
+        Returns:
+            List of user cost summaries sorted by cost descending
+        """
+        try:
+            query_params = {
+                "IndexName": "PeriodCostIndex",
+                "KeyConditionExpression": "GSI2PK = :period",
+                "ExpressionAttributeValues": {
+                    ":period": f"PERIOD#{period}"
+                },
+                "ScanIndexForward": False,  # Descending order (highest cost first)
+                "Limit": min(limit, 1000)
+            }
+
+            # Add minimum cost filter if specified
+            if min_cost is not None:
+                min_cost_cents = int(min_cost * 100)
+                min_cost_key = f"COST#{min_cost_cents:015d}"
+                query_params["KeyConditionExpression"] += " AND GSI2SK >= :min_cost"
+                query_params["ExpressionAttributeValues"][":min_cost"] = min_cost_key
+
+            response = self.cost_summary_table.query(**query_params)
+            items = response.get("Items", [])
+
+            # Convert Decimal to float and clean up response
+            results = []
+            for item in items:
+                item_float = self._convert_decimal_to_float(item)
+                # Remove DynamoDB-specific keys but keep userId
+                for key in ["PK", "SK", "GSI2PK", "GSI2SK"]:
+                    item_float.pop(key, None)
+                results.append(item_float)
+
+            return results
+
+        except ClientError as e:
+            raise Exception(f"Failed to get top users by cost: {e}")
+
+    # ============================================================
+    # SystemCostRollup Table Methods
+    # ============================================================
+
+    async def update_daily_rollup(
+        self,
+        date: str,
+        cost_delta: float,
+        usage_delta: Dict[str, int],
+        is_new_user: bool = False,
+        model_id: Optional[str] = None
+    ) -> None:
+        """
+        Update daily system-wide cost rollup (atomic increment)
+
+        Schema:
+            PK: ROLLUP#DAILY
+            SK: <YYYY-MM-DD>
+
+        Args:
+            date: The date (YYYY-MM-DD format)
+            cost_delta: Cost to add to daily total
+            usage_delta: Token counts to add
+            is_new_user: Whether this is the user's first request today
+            model_id: Model identifier for tracking active users per model
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Atomic increment of daily totals
+            update_expression = """
+                ADD totalCost :cost,
+                    totalRequests :one,
+                    totalInputTokens :input,
+                    totalOutputTokens :output,
+                    totalCacheReadTokens :cacheRead,
+                    totalCacheWriteTokens :cacheWrite
+                SET lastUpdated = :now,
+                    #type = :type
+            """
+
+            expression_values = {
+                ":cost": Decimal(str(cost_delta)),
+                ":one": 1,
+                ":input": usage_delta.get("inputTokens", 0),
+                ":output": usage_delta.get("outputTokens", 0),
+                ":cacheRead": usage_delta.get("cacheReadInputTokens", 0),
+                ":cacheWrite": usage_delta.get("cacheWriteInputTokens", 0),
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":type": "daily"
+            }
+
+            # Track active users (increment only if new user today)
+            if is_new_user:
+                update_expression = update_expression.replace(
+                    "ADD totalCost :cost",
+                    "ADD totalCost :cost, activeUsers :one"
+                )
+
+            self.system_rollup_table.update_item(
+                Key={
+                    "PK": "ROLLUP#DAILY",
+                    "SK": date
+                },
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#type": "type"},
+                ExpressionAttributeValues=expression_values
+            )
+
+            logger.debug(f"Updated daily rollup for {date}")
+
+        except ClientError as e:
+            logger.error(f"Failed to update daily rollup: {e}")
+            # Don't raise - rollup updates are supplementary
+
+    async def update_monthly_rollup(
+        self,
+        period: str,
+        cost_delta: float,
+        usage_delta: Dict[str, int],
+        cache_savings_delta: float = 0.0,
+        is_new_user: bool = False,
+        model_id: Optional[str] = None
+    ) -> None:
+        """
+        Update monthly system-wide cost rollup (atomic increment)
+
+        Schema:
+            PK: ROLLUP#MONTHLY
+            SK: <YYYY-MM>
+
+        Args:
+            period: The month (YYYY-MM format)
+            cost_delta: Cost to add to monthly total
+            usage_delta: Token counts to add
+            cache_savings_delta: Cache savings to add
+            is_new_user: Whether this is the user's first request this month
+            model_id: Model identifier for model breakdown
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            update_expression = """
+                ADD totalCost :cost,
+                    totalRequests :one,
+                    totalInputTokens :input,
+                    totalOutputTokens :output,
+                    totalCacheReadTokens :cacheRead,
+                    totalCacheWriteTokens :cacheWrite,
+                    totalCacheSavings :savings
+                SET lastUpdated = :now,
+                    #type = :type
+            """
+
+            expression_values = {
+                ":cost": Decimal(str(cost_delta)),
+                ":one": 1,
+                ":input": usage_delta.get("inputTokens", 0),
+                ":output": usage_delta.get("outputTokens", 0),
+                ":cacheRead": usage_delta.get("cacheReadInputTokens", 0),
+                ":cacheWrite": usage_delta.get("cacheWriteInputTokens", 0),
+                ":savings": Decimal(str(cache_savings_delta)),
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":type": "monthly"
+            }
+
+            # Track active users (increment only if new user this month)
+            if is_new_user:
+                update_expression = update_expression.replace(
+                    "ADD totalCost :cost",
+                    "ADD totalCost :cost, activeUsers :one"
+                )
+
+            self.system_rollup_table.update_item(
+                Key={
+                    "PK": "ROLLUP#MONTHLY",
+                    "SK": period
+                },
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#type": "type"},
+                ExpressionAttributeValues=expression_values
+            )
+
+            logger.debug(f"Updated monthly rollup for {period}")
+
+        except ClientError as e:
+            logger.error(f"Failed to update monthly rollup: {e}")
+
+    async def update_model_rollup(
+        self,
+        period: str,
+        model_id: str,
+        model_name: str,
+        provider: str,
+        cost_delta: float,
+        usage_delta: Dict[str, int],
+        is_new_user_for_model: bool = False
+    ) -> None:
+        """
+        Update per-model cost rollup (atomic increment)
+
+        Schema:
+            PK: ROLLUP#MODEL
+            SK: <YYYY-MM>#<model_id>
+
+        Args:
+            period: The month (YYYY-MM format)
+            model_id: Model identifier
+            model_name: Human-readable model name
+            provider: LLM provider
+            cost_delta: Cost to add
+            usage_delta: Token counts to add
+            is_new_user_for_model: Whether this is the user's first request for this model
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        try:
+            # Sanitize model_id for sort key
+            safe_model_id = model_id.replace(".", "_").replace(":", "_").replace("-", "_")
+
+            update_expression = """
+                ADD totalCost :cost,
+                    totalRequests :one,
+                    totalInputTokens :input,
+                    totalOutputTokens :output
+                SET lastUpdated = :now,
+                    modelId = :modelId,
+                    modelName = :modelName,
+                    provider = :provider,
+                    #type = :type
+            """
+
+            expression_values = {
+                ":cost": Decimal(str(cost_delta)),
+                ":one": 1,
+                ":input": usage_delta.get("inputTokens", 0),
+                ":output": usage_delta.get("outputTokens", 0),
+                ":now": datetime.now(timezone.utc).isoformat(),
+                ":modelId": model_id,
+                ":modelName": model_name,
+                ":provider": provider,
+                ":type": "model"
+            }
+
+            if is_new_user_for_model:
+                update_expression = update_expression.replace(
+                    "ADD totalCost :cost",
+                    "ADD totalCost :cost, uniqueUsers :one"
+                )
+
+            self.system_rollup_table.update_item(
+                Key={
+                    "PK": "ROLLUP#MODEL",
+                    "SK": f"{period}#{safe_model_id}"
+                },
+                UpdateExpression=update_expression,
+                ExpressionAttributeNames={"#type": "type"},
+                ExpressionAttributeValues=expression_values
+            )
+
+            logger.debug(f"Updated model rollup for {model_id} in {period}")
+
+        except ClientError as e:
+            logger.error(f"Failed to update model rollup: {e}")
+
+    async def get_system_summary(
+        self,
+        period: str,
+        period_type: str = "monthly"
+    ) -> Optional[Dict[str, Any]]:
+        """
+        Get system-wide cost summary for a period
+
+        Args:
+            period: The period (YYYY-MM for monthly, YYYY-MM-DD for daily)
+            period_type: Either "daily" or "monthly"
+
+        Returns:
+            System cost summary or None if not found
+        """
+        try:
+            pk = f"ROLLUP#{period_type.upper()}"
+
+            response = self.system_rollup_table.get_item(
+                Key={
+                    "PK": pk,
+                    "SK": period
+                }
+            )
+
+            if "Item" not in response:
+                return None
+
+            item = self._convert_decimal_to_float(response["Item"])
+
+            # Remove DynamoDB keys
+            for key in ["PK", "SK"]:
+                item.pop(key, None)
+
+            return item
+
+        except ClientError as e:
+            raise Exception(f"Failed to get system summary: {e}")
+
+    async def get_daily_trends(
+        self,
+        start_date: str,
+        end_date: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get daily cost trends for a date range
+
+        Args:
+            start_date: Start date (YYYY-MM-DD)
+            end_date: End date (YYYY-MM-DD)
+
+        Returns:
+            List of daily rollups sorted by date
+        """
+        try:
+            response = self.system_rollup_table.query(
+                KeyConditionExpression="PK = :pk AND SK BETWEEN :start AND :end",
+                ExpressionAttributeValues={
+                    ":pk": "ROLLUP#DAILY",
+                    ":start": start_date,
+                    ":end": end_date
+                },
+                ScanIndexForward=True  # Ascending order (earliest first)
+            )
+
+            items = response.get("Items", [])
+
+            results = []
+            for item in items:
+                item_float = self._convert_decimal_to_float(item)
+                # Add date field from SK
+                item_float["date"] = item_float.pop("SK", "")
+                item_float.pop("PK", None)
+                results.append(item_float)
+
+            return results
+
+        except ClientError as e:
+            raise Exception(f"Failed to get daily trends: {e}")
+
+    async def get_model_usage(
+        self,
+        period: str
+    ) -> List[Dict[str, Any]]:
+        """
+        Get per-model usage for a period
+
+        Args:
+            period: The month (YYYY-MM format)
+
+        Returns:
+            List of model usage summaries sorted by cost descending
+        """
+        try:
+            response = self.system_rollup_table.query(
+                KeyConditionExpression="PK = :pk AND begins_with(SK, :period)",
+                ExpressionAttributeValues={
+                    ":pk": "ROLLUP#MODEL",
+                    ":period": f"{period}#"
+                }
+            )
+
+            items = response.get("Items", [])
+
+            results = []
+            for item in items:
+                item_float = self._convert_decimal_to_float(item)
+                item_float.pop("PK", None)
+                item_float.pop("SK", None)
+                results.append(item_float)
+
+            # Sort by cost descending
+            results.sort(key=lambda x: x.get("totalCost", 0), reverse=True)
+
+            return results
+
+        except ClientError as e:
+            raise Exception(f"Failed to get model usage: {e}")

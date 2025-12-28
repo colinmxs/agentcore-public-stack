@@ -250,12 +250,18 @@ async def _update_cost_summary_async(
     Uses atomic ADD operations for concurrent safety.
     Also updates per-model breakdown and calculates cache savings.
 
+    Additionally triggers system-wide rollup updates (async, fire-and-forget) for:
+    - Daily rollups (ROLLUP#DAILY)
+    - Monthly rollups (ROLLUP#MONTHLY)
+    - Per-model rollups (ROLLUP#MODEL)
+
     Args:
         user_id: User identifier
         timestamp: ISO timestamp of the message
         message_metadata: MessageMetadata containing cost, usage, and model info
     """
     try:
+        import asyncio
         from datetime import datetime
 
         # Extract cost and usage from metadata
@@ -317,14 +323,17 @@ async def _update_cost_summary_async(
             else:
                 logger.warning(f"⚠️ No model_info available for cache savings calculation")
 
-        # Determine period key from timestamp (YYYY-MM format)
+        # Determine period key from timestamp (YYYY-MM format) and date (YYYY-MM-DD)
         try:
             dt = datetime.fromisoformat(timestamp.replace('Z', '+00:00'))
             period = dt.strftime('%Y-%m')
+            date = dt.strftime('%Y-%m-%d')
         except (ValueError, AttributeError):
-            # Fallback to current month if timestamp parsing fails
+            # Fallback to current month/day if timestamp parsing fails
             from datetime import timezone
-            period = datetime.now(timezone.utc).strftime('%Y-%m')
+            now = datetime.now(timezone.utc)
+            period = now.strftime('%Y-%m')
+            date = now.strftime('%Y-%m-%d')
 
         # Use storage abstraction for the atomic update
         from apis.app_api.storage.metadata_storage import get_metadata_storage
@@ -346,9 +355,111 @@ async def _update_cost_summary_async(
         savings_str = f", savings=${cache_savings:.6f}" if cache_savings > 0 else ""
         logger.info(f"📊 Updated cost summary: user={user_id}, period={period}, cost=${cost:.6f}{model_info_str}{savings_str}")
 
+        # Fire-and-forget: Update system-wide rollups asynchronously
+        # These updates don't block the main request flow
+        asyncio.create_task(
+            _update_system_rollups_async(
+                user_id=user_id,
+                period=period,
+                date=date,
+                cost=cost,
+                usage_delta=usage_delta,
+                cache_savings=cache_savings,
+                model_id=model_id,
+                model_name=model_name,
+                provider=provider
+            )
+        )
+
     except Exception as e:
         # Log but don't raise - cost summary updates shouldn't break the app
         logger.error(f"Failed to update cost summary: {e}", exc_info=True)
+
+
+async def _update_system_rollups_async(
+    user_id: str,
+    period: str,
+    date: str,
+    cost: float,
+    usage_delta: dict,
+    cache_savings: float,
+    model_id: str | None,
+    model_name: str | None,
+    provider: str | None
+) -> None:
+    """
+    Update system-wide rollups for admin dashboard (async, fire-and-forget)
+
+    This updates:
+    - Daily rollup (ROLLUP#DAILY, SK: YYYY-MM-DD)
+    - Monthly rollup (ROLLUP#MONTHLY, SK: YYYY-MM)
+    - Per-model rollup (ROLLUP#MODEL, SK: YYYY-MM#model_id)
+
+    These updates are non-blocking and failures don't affect the main request flow.
+    The rollups support the admin cost dashboard with pre-aggregated system-wide metrics.
+
+    Args:
+        user_id: User identifier (for tracking unique active users)
+        period: Monthly period (YYYY-MM)
+        date: Daily date (YYYY-MM-DD)
+        cost: Cost delta to add
+        usage_delta: Token usage delta
+        cache_savings: Cache savings delta
+        model_id: Model identifier
+        model_name: Human-readable model name
+        provider: LLM provider
+    """
+    try:
+        # Check if we're using DynamoDB storage (rollups only make sense in cloud mode)
+        system_rollup_table = os.environ.get("DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME")
+        if not system_rollup_table:
+            logger.debug("System rollup table not configured, skipping rollup updates")
+            return
+
+        from apis.app_api.storage.dynamodb_storage import DynamoDBStorage
+        storage = DynamoDBStorage()
+
+        # For tracking active users, we'd need to check if this user has already
+        # been counted today/this month. For simplicity in Phase 1, we'll skip
+        # the is_new_user check (it would require an additional read).
+        # This can be enhanced in Phase 2 with DynamoDB Streams.
+
+        # Update daily rollup
+        await storage.update_daily_rollup(
+            date=date,
+            cost_delta=cost,
+            usage_delta=usage_delta,
+            is_new_user=False,  # Phase 2: implement proper tracking
+            model_id=model_id
+        )
+
+        # Update monthly rollup
+        await storage.update_monthly_rollup(
+            period=period,
+            cost_delta=cost,
+            usage_delta=usage_delta,
+            cache_savings_delta=cache_savings,
+            is_new_user=False,  # Phase 2: implement proper tracking
+            model_id=model_id
+        )
+
+        # Update per-model rollup if model info is available
+        if model_id and model_name and provider:
+            await storage.update_model_rollup(
+                period=period,
+                model_id=model_id,
+                model_name=model_name,
+                provider=provider,
+                cost_delta=cost,
+                usage_delta=usage_delta,
+                is_new_user_for_model=False  # Phase 2: implement proper tracking
+            )
+
+        logger.debug(f"📈 Updated system rollups: date={date}, period={period}")
+
+    except Exception as e:
+        # Log but don't raise - rollup updates are supplementary
+        logger.error(f"Failed to update system rollups: {e}", exc_info=True)
 
 
 async def store_session_metadata(
