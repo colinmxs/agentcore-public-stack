@@ -25,7 +25,17 @@ class SessionPreferences(BaseModel):
 
 
 class SessionMetadata(BaseModel):
-    """Complete session metadata"""
+    """Complete session metadata
+
+    DynamoDB Schema:
+        PK: USER#{user_id}
+        SK: S#ACTIVE#{last_message_at}#{session_id} (active sessions)
+            S#DELETED#{deleted_at}#{session_id} (deleted sessions)
+
+        GSI: SessionLookupIndex
+            GSI_PK: SESSION#{session_id}
+            GSI_SK: META
+    """
     model_config = ConfigDict(populate_by_name=True, extra='allow')
 
     session_id: str = Field(..., alias="sessionId", description="Session identifier")
@@ -38,6 +48,10 @@ class SessionMetadata(BaseModel):
     starred: Optional[bool] = Field(False, description="Whether session is starred/favorited")
     tags: Optional[List[str]] = Field(default_factory=list, description="Custom tags for organization")
     preferences: Optional[SessionPreferences] = Field(None, description="User preferences for this session")
+
+    # Soft delete fields
+    deleted: Optional[bool] = Field(False, description="Whether session is soft-deleted")
+    deleted_at: Optional[str] = Field(None, alias="deletedAt", description="ISO 8601 timestamp of deletion")
 
 
 class UpdateSessionMetadataRequest(BaseModel):
@@ -69,6 +83,8 @@ class SessionMetadataResponse(BaseModel):
     starred: Optional[bool] = Field(False, description="Whether starred")
     tags: Optional[List[str]] = Field(default_factory=list, description="Custom tags")
     preferences: Optional[SessionPreferences] = Field(None, description="Session preferences")
+    deleted: Optional[bool] = Field(False, description="Whether session is soft-deleted")
+    deleted_at: Optional[str] = Field(None, alias="deletedAt", description="ISO 8601 timestamp of deletion")
 
 
 class SessionsListResponse(BaseModel):

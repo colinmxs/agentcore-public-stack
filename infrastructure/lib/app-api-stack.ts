@@ -332,6 +332,23 @@ export class AppApiStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // SessionLookupIndex - Direct session lookup by ID and per-session cost queries
+    // Enables:
+    //   - O(1) session lookup: GSI_PK=SESSION#{session_id}, GSI_SK=META
+    //   - Per-session costs: GSI_PK=SESSION#{session_id}, GSI_SK begins_with C#
+    sessionsMetadataTable.addGlobalSecondaryIndex({
+      indexName: 'SessionLookupIndex',
+      partitionKey: {
+        name: 'GSI_PK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'GSI_SK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // UserCostSummary Table - Pre-aggregated cost summaries for fast quota checks
     const userCostSummaryTable = new dynamodb.Table(this, 'UserCostSummaryTable', {
       tableName: getResourceName(config, 'user-cost-summary'),

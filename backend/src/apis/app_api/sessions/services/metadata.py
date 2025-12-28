@@ -168,24 +168,37 @@ async def _store_message_metadata_cloud(
     table_name: str
 ) -> None:
     """
-    Store message metadata in DynamoDB and update cost summary
+    Store message metadata (cost record) in DynamoDB and update cost summary
 
-    This updates the message record in DynamoDB with metadata and atomically
-    increments the user's cost summary for fast quota checks.
+    This stores cost/usage data as a separate record with C# prefix SK pattern.
+    Cost records are independent of session records and persist even when sessions
+    are deleted (for audit trail and billing accuracy).
 
     Args:
         session_id: Session identifier
         user_id: User identifier
-        message_id: Message number
+        message_id: Message number (stored as attribute, not in SK)
         message_metadata: MessageMetadata to store
         table_name: DynamoDB table name from DYNAMODB_SESSIONS_METADATA_TABLE_NAME env var
 
     Schema:
         PK: USER#{user_id}
-        SK: SESSION#{session_id}#MSG#{message_id:05d}
+        SK: C#{timestamp}#{uuid}
+
+        GSI: SessionLookupIndex
+            GSI_PK: SESSION#{session_id}
+            GSI_SK: C#{timestamp}
+
+    Benefits:
+        - Clean separation from session records (S# prefix)
+        - Time-ordered by default
+        - Unique SK via UUID prevents collisions
+        - Per-session cost queries via GSI
+        - TTL only affects cost records (sessions don't have ttl)
     """
     try:
         import boto3
+        import uuid as uuid_lib
         from datetime import datetime, timezone, timedelta
 
         dynamodb = boto3.resource('dynamodb')
@@ -197,33 +210,46 @@ async def _store_message_metadata_cloud(
         # Convert floats to Decimal for DynamoDB compatibility
         metadata_decimal = _convert_floats_to_decimal(metadata_dict)
 
-        # Extract timestamp for GSI
+        # Extract timestamp for SK and GSI
         timestamp = metadata_dict.get("attribution", {}).get("timestamp", datetime.now(timezone.utc).isoformat())
 
+        # Generate unique ID for SK to prevent collisions
+        unique_id = str(uuid_lib.uuid4())
+
         # Calculate TTL (365 days from now, matching AgentCore Memory retention)
+        # Only cost records have TTL - sessions persist until soft-deleted
         ttl = int((datetime.now(timezone.utc) + timedelta(days=365)).timestamp())
 
-        # Build item
+        # Build item with new SK pattern
         item = {
+            # Primary key with C# prefix for cost records
             "PK": f"USER#{user_id}",
-            "SK": f"SESSION#{session_id}#MSG#{message_id:05d}",
-            "userId": user_id,
+            "SK": f"C#{timestamp}#{unique_id}",
+
+            # GSI keys for per-session cost queries
+            "GSI_PK": f"SESSION#{session_id}",
+            "GSI_SK": f"C#{timestamp}",
+
+            # Session reference (for linking back to session)
             "sessionId": session_id,
             "messageId": message_id,
+
+            # Attribution
+            "userId": user_id,
             "timestamp": timestamp,
+
+            # TTL - only cost records have this attribute
             "ttl": ttl,
+
+            # Cost and usage metadata
             **metadata_decimal
         }
-
-        # Add GSI attributes for time-range queries
-        item["GSI1PK"] = f"USER#{user_id}"
-        item["GSI1SK"] = timestamp
 
         # Store in DynamoDB
         table.put_item(Item=item)
 
-        logger.info(f"💾 Stored message metadata in DynamoDB table {table_name}")
-        logger.info(f"   Session: {session_id}, Message: {message_id}")
+        logger.info(f"💾 Stored cost record in DynamoDB table {table_name}")
+        logger.info(f"   Session: {session_id}, Message: {message_id}, SK: C#{timestamp}#{unique_id[:8]}...")
 
         # Update pre-aggregated cost summary for fast quota checks
         # This is done asynchronously and non-blocking - failures don't affect the main flow
@@ -569,11 +595,11 @@ async def _store_session_metadata_cloud(
     table_name: str
 ) -> None:
     """
-    Store session metadata in DynamoDB
+    Store session metadata in DynamoDB with new SK pattern
 
     This creates or updates the session record in DynamoDB.
-    - If item exists: Uses update_item for partial updates (deep merge behavior)
-    - If item doesn't exist: Uses put_item to create new item
+    For updates where last_message_at changes, the record is moved (delete old, put new)
+    because the SK contains the timestamp.
 
     Args:
         session_id: Session identifier
@@ -583,17 +609,28 @@ async def _store_session_metadata_cloud(
 
     Schema:
         PK: USER#{user_id}
-        SK: SESSION#{session_id}
+        SK: S#ACTIVE#{last_message_at}#{session_id} (active sessions)
+            S#DELETED#{deleted_at}#{session_id} (deleted sessions)
 
-        This allows querying all sessions for a user and supports activity-based sorting
-        via last_message_at attribute.
+        GSI: SessionLookupIndex
+            GSI_PK: SESSION#{session_id}
+            GSI_SK: META
+
+    This allows:
+    - Querying all active sessions: begins_with(SK, 'S#ACTIVE#')
+    - Sessions sorted by timestamp in SK (no in-memory sorting needed)
+    - Direct session lookup via GSI
     """
     try:
         import boto3
         from botocore.exceptions import ClientError
+        from datetime import datetime, timezone
 
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table(table_name)
+
+        # First, check if session exists via GSI to get current SK
+        existing_session = await _get_session_by_gsi(session_id, user_id, table)
 
         # Prepare item for DynamoDB
         item = session_metadata.model_dump(by_alias=True, exclude_none=True)
@@ -601,60 +638,186 @@ async def _store_session_metadata_cloud(
         # Convert floats to Decimal for DynamoDB compatibility
         item = _convert_floats_to_decimal(item)
 
-        # Build update expression for partial update (deep merge)
-        update_expression_parts = []
-        expression_attribute_names = {}
-        expression_attribute_values = {}
+        # Determine SK based on session status
+        last_message_at = session_metadata.last_message_at or datetime.now(timezone.utc).isoformat()
 
-        for key_name, value in item.items():
-            # Skip keys that are part of the primary key
-            if key_name in ['sessionId', 'userId']:
-                continue
+        if session_metadata.deleted:
+            deleted_at = session_metadata.deleted_at or datetime.now(timezone.utc).isoformat()
+            new_sk = f"S#DELETED#{deleted_at}#{session_id}"
+        else:
+            new_sk = f"S#ACTIVE#{last_message_at}#{session_id}"
 
-            # Use placeholder names to handle reserved words and special characters
-            placeholder_name = f"#{key_name}"
-            placeholder_value = f":{key_name}"
+        # Build primary key
+        pk = f'USER#{user_id}'
 
-            update_expression_parts.append(f"{placeholder_name} = {placeholder_value}")
-            expression_attribute_names[placeholder_name] = key_name
-            expression_attribute_values[placeholder_value] = value
+        # Add GSI keys for direct lookup
+        item['GSI_PK'] = f'SESSION#{session_id}'
+        item['GSI_SK'] = 'META'
 
-        update_expression = "SET " + ", ".join(update_expression_parts)
+        if existing_session:
+            # Session exists - check if SK needs to change
+            old_sk = existing_session.get('SK')
 
-        key = {
-            'PK': f'USER#{user_id}',
-            'SK': f'SESSION#{session_id}'
-        }
+            if old_sk and old_sk != new_sk:
+                # SK changed (timestamp updated) - need transactional move
+                # Deep merge existing with new data
+                merged_item = _deep_merge(
+                    {k: v for k, v in existing_session.items() if k not in ['PK', 'SK']},
+                    item
+                )
+                merged_item['PK'] = pk
+                merged_item['SK'] = new_sk
 
-        try:
-            # Try update_item first (most common case - item already exists)
-            # This preserves existing fields (deep merge behavior)
-            table.update_item(
-                Key=key,
-                UpdateExpression=update_expression,
-                ExpressionAttributeNames=expression_attribute_names,
-                ExpressionAttributeValues=expression_attribute_values,
-                # This condition ensures the item exists
-                ConditionExpression='attribute_exists(PK)'
-            )
-            logger.info(f"💾 Updated session metadata in DynamoDB table {table_name}")
-
-        except ClientError as e:
-            if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-                # Item doesn't exist - create it with put_item
-                item['PK'] = key['PK']
-                item['SK'] = key['SK']
-                table.put_item(Item=item)
-                logger.info(f"💾 Created session metadata in DynamoDB table {table_name}")
+                # Transactional delete + put
+                dynamodb.meta.client.transact_write_items(
+                    TransactItems=[
+                        {
+                            'Delete': {
+                                'TableName': table_name,
+                                'Key': {
+                                    'PK': {'S': pk},
+                                    'SK': {'S': old_sk}
+                                }
+                            }
+                        },
+                        {
+                            'Put': {
+                                'TableName': table_name,
+                                'Item': _convert_to_dynamodb_format(merged_item)
+                            }
+                        }
+                    ]
+                )
+                logger.info(f"💾 Moved session metadata in DynamoDB (SK changed)")
             else:
-                # Re-raise other errors
-                raise
+                # SK unchanged - simple update with deep merge
+                # Build update expression for partial update
+                update_expression_parts = []
+                expression_attribute_names = {}
+                expression_attribute_values = {}
+
+                for key_name, value in item.items():
+                    # Skip keys that are part of the primary key or GSI
+                    if key_name in ['sessionId', 'userId', 'PK', 'SK']:
+                        continue
+
+                    placeholder_name = f"#{key_name}"
+                    placeholder_value = f":{key_name}"
+
+                    update_expression_parts.append(f"{placeholder_name} = {placeholder_value}")
+                    expression_attribute_names[placeholder_name] = key_name
+                    expression_attribute_values[placeholder_value] = value
+
+                if update_expression_parts:
+                    update_expression = "SET " + ", ".join(update_expression_parts)
+                    table.update_item(
+                        Key={'PK': pk, 'SK': old_sk},
+                        UpdateExpression=update_expression,
+                        ExpressionAttributeNames=expression_attribute_names,
+                        ExpressionAttributeValues=expression_attribute_values
+                    )
+                logger.info(f"💾 Updated session metadata in DynamoDB table {table_name}")
+        else:
+            # New session - create with put_item
+            item['PK'] = pk
+            item['SK'] = new_sk
+            table.put_item(Item=item)
+            logger.info(f"💾 Created session metadata in DynamoDB table {table_name}")
 
         logger.info(f"   Session: {session_id}, User: {user_id}")
 
     except Exception as e:
         logger.error(f"Failed to store session metadata in DynamoDB: {e}", exc_info=True)
         # Don't raise - metadata storage failures shouldn't break the app
+
+
+async def _get_session_by_gsi(session_id: str, user_id: str, table) -> Optional[dict]:
+    """
+    Get session record using GSI (SessionLookupIndex)
+
+    This allows looking up a session by ID without knowing its SK (which contains timestamp).
+
+    Args:
+        session_id: Session identifier
+        user_id: User identifier (for ownership verification)
+        table: DynamoDB table resource
+
+    Returns:
+        Raw DynamoDB item dict if found, None otherwise
+    """
+    try:
+        from boto3.dynamodb.conditions import Key
+
+        response = table.query(
+            IndexName='SessionLookupIndex',
+            KeyConditionExpression=Key('GSI_PK').eq(f'SESSION#{session_id}') & Key('GSI_SK').eq('META')
+        )
+
+        items = response.get('Items', [])
+        if not items:
+            return None
+
+        item = items[0]
+
+        # Verify user ownership
+        if item.get('userId') != user_id:
+            logger.warning(f"Session {session_id} belongs to different user")
+            return None
+
+        return _convert_decimal_to_float(item)
+
+    except Exception as e:
+        # GSI might not exist yet - fall back to None
+        logger.debug(f"GSI lookup failed (may not exist yet): {e}")
+        return None
+
+
+def _convert_to_dynamodb_format(item: dict) -> dict:
+    """
+    Convert a Python dict to DynamoDB low-level format for transact_write_items
+
+    Args:
+        item: Python dict with native types
+
+    Returns:
+        Dict with DynamoDB type descriptors (e.g., {'S': 'value'}, {'N': '123'})
+    """
+    result = {}
+    for key, value in item.items():
+        if value is None:
+            continue
+        elif isinstance(value, str):
+            result[key] = {'S': value}
+        elif isinstance(value, bool):
+            result[key] = {'BOOL': value}
+        elif isinstance(value, (int, float, Decimal)):
+            result[key] = {'N': str(value)}
+        elif isinstance(value, list):
+            if all(isinstance(v, str) for v in value):
+                result[key] = {'SS': value} if value else {'L': []}
+            else:
+                result[key] = {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
+        elif isinstance(value, dict):
+            result[key] = {'M': _convert_to_dynamodb_format(value)}
+    return result
+
+
+def _convert_single_value_to_dynamodb(value) -> dict:
+    """Convert a single value to DynamoDB format"""
+    if value is None:
+        return {'NULL': True}
+    elif isinstance(value, str):
+        return {'S': value}
+    elif isinstance(value, bool):
+        return {'BOOL': value}
+    elif isinstance(value, (int, float, Decimal)):
+        return {'N': str(value)}
+    elif isinstance(value, list):
+        return {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
+    elif isinstance(value, dict):
+        return {'M': _convert_to_dynamodb_format(value)}
+    else:
+        return {'S': str(value)}
 
 
 async def get_session_metadata(session_id: str, user_id: str) -> Optional[SessionMetadata]:
@@ -715,53 +878,71 @@ async def _get_all_message_metadata_local(session_id: str) -> Dict[str, Any]:
 
 
 async def _get_all_message_metadata_cloud(session_id: str, user_id: str, table_name: str) -> Dict[str, Any]:
-    """Retrieve all message metadata from DynamoDB"""
+    """
+    Retrieve all message metadata (cost records) for a session from DynamoDB
+
+    Uses the SessionLookupIndex GSI to query cost records by session ID.
+    Cost records have SK pattern: C#{timestamp}#{uuid}
+    GSI pattern: GSI_PK=SESSION#{session_id}, GSI_SK=C#{timestamp}
+
+    Args:
+        session_id: Session identifier
+        user_id: User identifier
+        table_name: DynamoDB table name
+
+    Returns:
+        Dictionary mapping message_id (str) to metadata dict
+    """
     try:
         import boto3
+        from boto3.dynamodb.conditions import Key
+
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table(table_name)
-        
-        logger.info(f"🔍 Querying metadata table {table_name} for session {session_id}")
-        
-        # Query all message metadata for this session
-        # PK: USER#{user_id}
-        # SK starts with SESSION#{session_id}#MSG#
+
+        logger.info(f"🔍 Querying cost records via GSI for session {session_id}")
+
+        # Query cost records for this session using GSI
+        # GSI_PK: SESSION#{session_id}
+        # GSI_SK: begins_with C# for cost records
         response = table.query(
-            KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
-            ExpressionAttributeValues={
-                ":pk": f"USER#{user_id}",
-                ":sk_prefix": f"SESSION#{session_id}#MSG#"
-            }
+            IndexName='SessionLookupIndex',
+            KeyConditionExpression=Key('GSI_PK').eq(f'SESSION#{session_id}') & Key('GSI_SK').begins_with('C#')
         )
-        
+
         items = response.get("Items", [])
         metadata_index = {}
-        
-        logger.info(f"📦 DynamoDB returned {len(items)} metadata items")
-        
+
+        logger.info(f"📦 DynamoDB returned {len(items)} cost record items")
+
         for item in items:
+            # Verify user ownership
+            if item.get('userId') != user_id:
+                logger.warning(f"Cost record belongs to different user, skipping")
+                continue
+
             # Convert Decimal to float
             item_float = _convert_decimal_to_float(item)
-            
+
             # Extract message_id as integer (DynamoDB returns Decimal, convert to int then str)
             # Must convert to int first to avoid "0.0" -> "0" mismatch
             message_id_raw = item_float.get("messageId")
             message_id = str(int(message_id_raw)) if isinstance(message_id_raw, (int, float)) else str(message_id_raw)
-            
-            logger.debug(f"Processing metadata for message_id={message_id}, SK={item_float.get('SK')}")
-            
+
+            logger.debug(f"Processing cost record for message_id={message_id}, SK={item_float.get('SK')}")
+
             # Remove DynamoDB-specific keys and top-level fields not needed in metadata dict
-            for key in ["PK", "SK", "GSI1PK", "GSI1SK", "ttl", "userId", "sessionId", "messageId", "timestamp"]:
+            for key in ["PK", "SK", "GSI_PK", "GSI_SK", "ttl", "userId", "sessionId", "messageId", "timestamp"]:
                 item_float.pop(key, None)
-                
+
             metadata_index[message_id] = item_float
-            
-        logger.info(f"📂 Retrieved {len(metadata_index)} message metadata items from DynamoDB")
+
+        logger.info(f"📂 Retrieved {len(metadata_index)} cost records from DynamoDB")
         logger.info(f"📋 Metadata keys: {sorted(metadata_index.keys())}")
         return metadata_index
-        
+
     except Exception as e:
-        logger.error(f"Failed to query all message metadata from DynamoDB: {e}", exc_info=True)
+        logger.error(f"Failed to query message metadata from DynamoDB: {e}", exc_info=True)
         return {}
 
 
@@ -797,7 +978,11 @@ async def _get_session_metadata_cloud(
     table_name: str
 ) -> Optional[SessionMetadata]:
     """
-    Retrieve session metadata from DynamoDB
+    Retrieve session metadata from DynamoDB using GSI
+
+    With the new SK pattern (S#ACTIVE#{last_message_at}#{session_id}), we can't
+    use get_item directly because we don't know the last_message_at timestamp.
+    Instead, we use the SessionLookupIndex GSI for direct session lookup by ID.
 
     Args:
         session_id: Session identifier
@@ -808,35 +993,43 @@ async def _get_session_metadata_cloud(
         SessionMetadata object if found, None otherwise
 
     Schema:
-        PK: USER#{user_id}
-        SK: SESSION#{session_id}
+        GSI: SessionLookupIndex
+            GSI_PK: SESSION#{session_id}
+            GSI_SK: META
 
-        Direct get_item lookup using composite key.
+    This allows looking up sessions by ID without knowing the timestamp.
     """
     try:
         import boto3
+        from boto3.dynamodb.conditions import Key
 
         dynamodb = boto3.resource('dynamodb')
         table = dynamodb.Table(table_name)
 
-        # Direct get_item lookup using PK and SK
-        response = table.get_item(
-            Key={
-                'PK': f'USER#{user_id}',
-                'SK': f'SESSION#{session_id}'
-            }
+        # Use GSI for session lookup by ID
+        response = table.query(
+            IndexName='SessionLookupIndex',
+            KeyConditionExpression=Key('GSI_PK').eq(f'SESSION#{session_id}') & Key('GSI_SK').eq('META')
         )
 
-        if 'Item' not in response:
+        items = response.get('Items', [])
+        if not items:
             logger.info(f"Session metadata not found in DynamoDB: {session_id}")
             return None
 
+        item = items[0]
+
+        # Verify user ownership
+        if item.get('userId') != user_id:
+            logger.warning(f"Session {session_id} belongs to different user")
+            return None
+
         # Convert Decimal to float for JSON serialization
-        item = _convert_decimal_to_float(response['Item'])
+        item = _convert_decimal_to_float(item)
 
         # Remove DynamoDB keys before validation
-        item.pop('PK', None)
-        item.pop('SK', None)
+        for key in ['PK', 'SK', 'GSI_PK', 'GSI_SK']:
+            item.pop(key, None)
 
         return SessionMetadata.model_validate(item)
 
@@ -1010,7 +1203,7 @@ async def _list_user_sessions_cloud(
     next_token: Optional[str] = None
 ) -> Tuple[list[SessionMetadata], Optional[str]]:
     """
-    List sessions for a user from DynamoDB with pagination
+    List active sessions for a user from DynamoDB with efficient pagination
 
     Args:
         user_id: User identifier
@@ -1024,9 +1217,14 @@ async def _list_user_sessions_cloud(
 
     Schema:
         PK: USER#{user_id}
-        SK: SESSION#{session_id}
+        SK: S#ACTIVE#{last_message_at}#{session_id}
 
-        Query all sessions for a user, then sort by last_message_at in memory.
+    Performance improvements over old schema:
+        - Query only returns session records (no cost records with C# prefix)
+        - No in-memory filtering needed
+        - Sessions sorted by timestamp in SK (no in-memory sorting)
+        - True server-side pagination via DynamoDB's native mechanism
+        - O(page_size) instead of O(sessions + messages)
     """
     try:
         import boto3
@@ -1044,39 +1242,35 @@ async def _list_user_sessions_cloud(
             except Exception as e:
                 logger.warning(f"Invalid next_token: {e}")
 
-        # Build query parameters
+        # Build query parameters with new S#ACTIVE# prefix
+        # This cleanly separates from:
+        # - S#DELETED# (soft-deleted sessions)
+        # - C# (cost records)
         query_params = {
-            'KeyConditionExpression': Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('SESSION#'),
+            'KeyConditionExpression': Key('PK').eq(f'USER#{user_id}') & Key('SK').begins_with('S#ACTIVE#'),
+            'ScanIndexForward': False  # Descending order (most recent first) - timestamp is in SK!
         }
 
         if exclusive_start_key:
             query_params['ExclusiveStartKey'] = exclusive_start_key
 
         if limit:
-            # Request more items than limit because we'll sort in memory
-            # This isn't perfect but works for reasonable page sizes
-            query_params['Limit'] = limit * 2
+            # With new schema, we can use exact limit - no over-fetching needed
+            query_params['Limit'] = limit
 
         # Execute query
         response = table.query(**query_params)
 
-        # Parse items
+        # Parse items - no filtering needed, all items are active sessions
         sessions = []
         for item in response['Items']:
             try:
-                # Skip message records - they have #MSG# in the SK
-                # Session records: SESSION#{session_id}
-                # Message records: SESSION#{session_id}#MSG#{message_id}
-                sk = item.get('SK', '')
-                if '#MSG#' in sk:
-                    continue
-
                 # Convert Decimal to float
                 item = _convert_decimal_to_float(item)
 
                 # Remove DynamoDB keys
-                item.pop('PK', None)
-                item.pop('SK', None)
+                for key in ['PK', 'SK', 'GSI_PK', 'GSI_SK']:
+                    item.pop(key, None)
 
                 metadata = SessionMetadata.model_validate(item)
                 sessions.append(metadata)
@@ -1084,12 +1278,10 @@ async def _list_user_sessions_cloud(
                 logger.warning(f"Failed to parse session item: {e}")
                 continue
 
-        # Sort by last_message_at descending (most recent first)
-        sessions.sort(key=lambda x: x.last_message_at, reverse=True)
+        # No in-memory sorting needed! With new SK pattern S#ACTIVE#{last_message_at}#{session_id},
+        # DynamoDB returns items already sorted by timestamp (via ScanIndexForward=False)
 
-        # Apply limit after sorting
-        if limit and len(sessions) > limit:
-            sessions = sessions[:limit]
+        # No limit trimming needed either - we use exact Limit in query params
 
         # Generate next_token from LastEvaluatedKey if present
         next_page_token = None

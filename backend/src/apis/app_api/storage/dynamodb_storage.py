@@ -5,10 +5,20 @@ It's designed for production deployments with high scalability and performance.
 
 Schema:
     SessionsMetadata Table:
-        PK: USER#<user_id>
-        SK: SESSION#<session_id>#MSG#<message_id>
-        Attributes: cost, tokens, latency, modelInfo, pricingSnapshot, etc.
-        GSI1: UserTimestampIndex (PK: USER#<user_id>, SK: <timestamp>)
+        Session Records:
+            PK: USER#<user_id>
+            SK: S#ACTIVE#<last_message_at>#<session_id> (active sessions)
+                S#DELETED#<deleted_at>#<session_id> (deleted sessions)
+            Attributes: sessionId, title, status, createdAt, lastMessageAt, messageCount, etc.
+
+        Cost Records:
+            PK: USER#<user_id>
+            SK: C#<timestamp>#<uuid>
+            Attributes: cost, tokenUsage, latency, modelInfo, pricingSnapshot, etc.
+
+        GSI: SessionLookupIndex
+            GSI_PK: SESSION#<session_id>
+            GSI_SK: META (for session records) or C#<timestamp> (for cost records)
 
     UserCostSummary Table:
         PK: USER#<user_id>
@@ -102,36 +112,52 @@ class DynamoDBStorage(MetadataStorage):
         metadata: Dict[str, Any]
     ) -> None:
         """
-        Store message metadata in DynamoDB
+        Store message metadata (cost record) in DynamoDB
 
         Schema:
             PK: USER#<user_id>
-            SK: SESSION#<session_id>#MSG#<message_id>
+            SK: C#<timestamp>#<uuid>
+
+            GSI: SessionLookupIndex
+                GSI_PK: SESSION#<session_id>
+                GSI_SK: C#<timestamp>
         """
+        import uuid as uuid_lib
+
         # Convert floats to Decimal for DynamoDB
         metadata_decimal = self._convert_floats_to_decimal(metadata)
 
-        # Extract timestamp for GSI
+        # Extract timestamp for SK and GSI
         timestamp = metadata.get("attribution", {}).get("timestamp", datetime.now(timezone.utc).isoformat())
 
-        # Calculate TTL (365 days from now)
+        # Generate unique ID for SK to prevent collisions
+        unique_id = str(uuid_lib.uuid4())
+
+        # Calculate TTL (365 days from now) - only cost records have TTL
         ttl = int((datetime.now(timezone.utc) + timedelta(days=365)).timestamp())
 
-        # Build item
+        # Build item with new C# prefix SK pattern
         item = {
+            # Primary key with C# prefix for cost records
             "PK": f"USER#{user_id}",
-            "SK": f"SESSION#{session_id}#MSG#{message_id:05d}",
+            "SK": f"C#{timestamp}#{unique_id}",
+
+            # GSI keys for per-session cost queries
+            "GSI_PK": f"SESSION#{session_id}",
+            "GSI_SK": f"C#{timestamp}",
+
+            # Session reference
             "userId": user_id,
             "sessionId": session_id,
             "messageId": message_id,
             "timestamp": timestamp,
+
+            # TTL - only cost records have this attribute
             "ttl": ttl,
+
+            # Cost and usage metadata
             **metadata_decimal
         }
-
-        # Add GSI attributes
-        item["GSI1PK"] = f"USER#{user_id}"
-        item["GSI1SK"] = timestamp
 
         # Store in DynamoDB
         try:
@@ -145,23 +171,40 @@ class DynamoDBStorage(MetadataStorage):
         session_id: str,
         message_id: int
     ) -> Optional[Dict[str, Any]]:
-        """Get metadata for a specific message"""
+        """
+        Get metadata for a specific message by querying cost records via GSI
+
+        With the new C# SK pattern, we can't use get_item directly.
+        Instead, we query the GSI and filter by messageId.
+
+        Schema:
+            GSI: SessionLookupIndex
+                GSI_PK: SESSION#<session_id>
+                GSI_SK: begins_with C#
+        """
+        from boto3.dynamodb.conditions import Key
+
         try:
-            response = self.sessions_metadata_table.get_item(
-                Key={
-                    "PK": f"USER#{user_id}",
-                    "SK": f"SESSION#{session_id}#MSG#{message_id:05d}"
+            # Query cost records for this session via GSI
+            response = self.sessions_metadata_table.query(
+                IndexName='SessionLookupIndex',
+                KeyConditionExpression=Key('GSI_PK').eq(f'SESSION#{session_id}') & Key('GSI_SK').begins_with('C#'),
+                FilterExpression='messageId = :mid AND userId = :uid',
+                ExpressionAttributeValues={
+                    ':mid': message_id,
+                    ':uid': user_id
                 }
             )
 
-            if "Item" not in response:
+            items = response.get("Items", [])
+            if not items:
                 return None
 
             # Convert Decimal back to float
-            item = self._convert_decimal_to_float(response["Item"])
+            item = self._convert_decimal_to_float(items[0])
 
             # Remove DynamoDB-specific keys
-            for key in ["PK", "SK", "GSI1PK", "GSI1SK", "ttl"]:
+            for key in ["PK", "SK", "GSI_PK", "GSI_SK", "ttl"]:
                 item.pop(key, None)
 
             return item
@@ -174,13 +217,23 @@ class DynamoDBStorage(MetadataStorage):
         user_id: str,
         session_id: str
     ) -> List[Dict[str, Any]]:
-        """Get all message metadata for a session"""
+        """
+        Get all message metadata (cost records) for a session via GSI
+
+        Schema:
+            GSI: SessionLookupIndex
+                GSI_PK: SESSION#<session_id>
+                GSI_SK: begins_with C#
+        """
+        from boto3.dynamodb.conditions import Key
+
         try:
             response = self.sessions_metadata_table.query(
-                KeyConditionExpression="PK = :pk AND begins_with(SK, :sk_prefix)",
+                IndexName='SessionLookupIndex',
+                KeyConditionExpression=Key('GSI_PK').eq(f'SESSION#{session_id}') & Key('GSI_SK').begins_with('C#'),
+                FilterExpression='userId = :uid',
                 ExpressionAttributeValues={
-                    ":pk": f"USER#{user_id}",
-                    ":sk_prefix": f"SESSION#{session_id}#MSG#"
+                    ':uid': user_id
                 }
             )
 
@@ -190,7 +243,7 @@ class DynamoDBStorage(MetadataStorage):
             results = []
             for item in items:
                 item_float = self._convert_decimal_to_float(item)
-                for key in ["PK", "SK", "GSI1PK", "GSI1SK", "ttl"]:
+                for key in ["PK", "SK", "GSI_PK", "GSI_SK", "ttl"]:
                     item_float.pop(key, None)
                 results.append(item_float)
 
