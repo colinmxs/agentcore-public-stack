@@ -3,7 +3,7 @@
 Provides endpoints for managing session metadata.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, Query
+from fastapi import APIRouter, HTTPException, Depends, Query, Response
 from typing import Optional
 import logging
 from datetime import datetime
@@ -11,6 +11,7 @@ from .models import UpdateSessionMetadataRequest, SessionMetadataResponse, Sessi
 from apis.app_api.messages.models import MessagesListResponse
 from .services.messages import get_messages
 from .services.metadata import store_session_metadata, get_session_metadata, list_user_sessions
+from .services.session_service import SessionService
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 
@@ -269,6 +270,66 @@ async def update_session_metadata_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to update session metadata: {str(e)}"
+        )
+
+
+@router.delete("/{session_id}", status_code=204)
+async def delete_session_endpoint(
+    session_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Delete a conversation.
+
+    This soft-deletes the session metadata (moves from S#ACTIVE# to S#DELETED#
+    prefix) and schedules deletion of conversation content from AgentCore Memory.
+
+    Cost records are preserved for billing and audit purposes - they are stored
+    separately with C# SK prefix and are not affected by session deletion.
+
+    Requires JWT authentication. Users can only delete their own sessions.
+
+    Args:
+        session_id: Session identifier from URL path
+        current_user: Authenticated user from JWT token (injected by dependency)
+
+    Returns:
+        204 No Content on success
+
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 404 if session not found
+            - 500 if server error
+    """
+    user_id = current_user.user_id
+
+    logger.info(f"DELETE /sessions/{session_id} - User: {user_id}")
+
+    try:
+        service = SessionService()
+        deleted = await service.delete_session(
+            user_id=user_id,
+            session_id=session_id
+        )
+
+        if not deleted:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Session not found: {session_id}"
+            )
+
+        logger.info(f"Successfully deleted session {session_id} for user {user_id}")
+
+        return Response(status_code=204)
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error deleting session: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to delete session: {str(e)}"
         )
 
 
