@@ -71,5 +71,10 @@ export const routes: Routes = [
         path: 'admin/quota',
         loadChildren: () => import('./admin/quota-tiers/quota-routing.module').then(m => m.quotaRoutes),
         canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/costs',
+        loadComponent: () => import('./admin/costs/admin-costs.page').then(m => m.AdminCostsPage),
+        canActivate: [adminGuard],
     }
 ];

@@ -1,0 +1,309 @@
+import {
+  ChangeDetectionStrategy,
+  Component,
+  computed,
+  inject,
+  OnInit,
+  signal,
+} from '@angular/core';
+import { RouterLink } from '@angular/router';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  heroArrowLeft,
+  heroArrowDownTray,
+} from '@ng-icons/heroicons/outline';
+import { AdminCostStateService } from './services';
+import { PeriodSelectorComponent } from './components/period-selector.component';
+import {
+  SystemSummaryCardComponent,
+  SummaryCardIcon,
+} from './components/system-summary-card.component';
+import { TopUsersTableComponent } from './components/top-users-table.component';
+
+/**
+ * Admin cost dashboard page.
+ * Displays system-wide usage metrics, top users, and cost trends.
+ */
+@Component({
+  selector: 'app-admin-costs',
+  imports: [
+    RouterLink,
+    NgIcon,
+    PeriodSelectorComponent,
+    SystemSummaryCardComponent,
+    TopUsersTableComponent,
+  ],
+  providers: [provideIcons({ heroArrowLeft, heroArrowDownTray })],
+  changeDetection: ChangeDetectionStrategy.OnPush,
+  template: `
+    <div class="min-h-dvh bg-gray-50 dark:bg-gray-900">
+      <!-- Header -->
+      <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
+        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+          <div class="flex items-center justify-between">
+            <div class="flex items-center gap-4">
+              <a
+                routerLink="/admin"
+                class="flex items-center justify-center size-10 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
+              >
+                <ng-icon name="heroArrowLeft" class="size-5" />
+              </a>
+              <div>
+                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
+                  Cost Analytics Dashboard
+                </h1>
+                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
+                  Monitor system-wide usage, costs, and trends
+                </p>
+              </div>
+            </div>
+
+            <div class="flex items-center gap-4">
+              <app-period-selector
+                [selectedPeriod]="selectedPeriod()"
+                (periodChange)="onPeriodChange($event)"
+              />
+              <button
+                type="button"
+                (click)="onExport()"
+                [disabled]="loading()"
+                class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+              >
+                <ng-icon name="heroArrowDownTray" class="size-4" />
+                Export
+              </button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Content -->
+      <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        @if (loading()) {
+          <!-- Loading State -->
+          <div class="flex items-center justify-center h-64">
+            <div class="flex flex-col items-center gap-4">
+              <div
+                class="animate-spin rounded-full size-12 border-4 border-gray-300 dark:border-gray-600 border-t-blue-600"
+              ></div>
+              <p class="text-sm text-gray-500 dark:text-gray-400">
+                Loading dashboard data...
+              </p>
+            </div>
+          </div>
+        } @else if (error()) {
+          <!-- Error State -->
+          <div
+            class="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-6"
+          >
+            <div class="flex items-start gap-3">
+              <div class="shrink-0">
+                <svg
+                  class="size-5 text-red-400"
+                  viewBox="0 0 20 20"
+                  fill="currentColor"
+                >
+                  <path
+                    fill-rule="evenodd"
+                    d="M10 18a8 8 0 100-16 8 8 0 000 16zM8.28 7.22a.75.75 0 00-1.06 1.06L8.94 10l-1.72 1.72a.75.75 0 101.06 1.06L10 11.06l1.72 1.72a.75.75 0 101.06-1.06L11.06 10l1.72-1.72a.75.75 0 00-1.06-1.06L10 8.94 8.28 7.22z"
+                    clip-rule="evenodd"
+                  />
+                </svg>
+              </div>
+              <div>
+                <h3 class="text-sm font-medium text-red-800 dark:text-red-200">
+                  Failed to load dashboard
+                </h3>
+                <p class="mt-1 text-sm text-red-700 dark:text-red-300">
+                  {{ error() }}
+                </p>
+                <button
+                  type="button"
+                  (click)="loadDashboard()"
+                  class="mt-3 text-sm font-medium text-red-600 dark:text-red-400 hover:text-red-500 dark:hover:text-red-300"
+                >
+                  Try again
+                </button>
+              </div>
+            </div>
+          </div>
+        } @else {
+          <!-- Summary Cards -->
+          <div class="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+            <app-system-summary-card
+              title="Total Cost"
+              [value]="formattedTotalCost()"
+              [trend]="null"
+              icon="heroCurrencyDollar"
+            />
+            <app-system-summary-card
+              title="Total Requests"
+              [value]="formattedTotalRequests()"
+              [trend]="null"
+              icon="heroChartBar"
+            />
+            <app-system-summary-card
+              title="Active Users"
+              [value]="formattedActiveUsers()"
+              [trend]="null"
+              icon="heroUsers"
+            />
+            <app-system-summary-card
+              title="Cache Savings"
+              [value]="formattedCacheSavings()"
+              [trend]="null"
+              icon="heroBolt"
+            />
+          </div>
+
+          <!-- Placeholder for future charts and tables (Milestones 4 & 5) -->
+          <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
+            <!-- Cost Trends Chart Placeholder -->
+            <div
+              class="bg-white dark:bg-gray-800 rounded-lg shadow-xs border border-gray-200 dark:border-gray-700 p-6"
+            >
+              <h3
+                class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
+              >
+                Cost Trends
+              </h3>
+              <div
+                class="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700"
+              >
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  Chart visualization coming in Milestone 5
+                </p>
+              </div>
+            </div>
+
+            <!-- Model Breakdown Placeholder -->
+            <div
+              class="bg-white dark:bg-gray-800 rounded-lg shadow-xs border border-gray-200 dark:border-gray-700 p-6"
+            >
+              <h3
+                class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
+              >
+                Model Usage Breakdown
+              </h3>
+              <div
+                class="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700"
+              >
+                <p class="text-sm text-gray-500 dark:text-gray-400">
+                  Chart visualization coming in Milestone 5
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Top Users Table -->
+          <div class="mt-8">
+            <app-top-users-table
+              [users]="topUsers()"
+              [loading]="loadingTopUsers()"
+              [hasMore]="hasMoreUsers()"
+              (userClick)="onUserClick($event)"
+              (loadMore)="onLoadMoreUsers()"
+            />
+          </div>
+        }
+      </div>
+    </div>
+  `,
+})
+export class AdminCostsPage implements OnInit {
+  private stateService = inject(AdminCostStateService);
+
+  // State from service
+  loading = this.stateService.loading;
+  loadingTopUsers = this.stateService.loadingTopUsers;
+  error = this.stateService.error;
+  selectedPeriod = this.stateService.selectedPeriod;
+  topUsers = this.stateService.topUsers;
+  topUsersCount = this.stateService.topUsersCount;
+
+  // Track pagination state for top users
+  private topUsersLimit = signal(20);
+  hasMoreUsers = computed(
+    () => this.topUsers().length >= this.topUsersLimit()
+  );
+
+  // Formatted values for display
+  formattedTotalCost = computed(() => {
+    const cost = this.stateService.totalCost();
+    return this.formatCurrency(cost);
+  });
+
+  formattedTotalRequests = computed(() => {
+    const requests = this.stateService.totalRequests();
+    return this.formatNumber(requests);
+  });
+
+  formattedActiveUsers = computed(() => {
+    const users = this.stateService.activeUsers();
+    return this.formatNumber(users);
+  });
+
+  formattedCacheSavings = computed(() => {
+    const savings = this.stateService.cacheSavings();
+    return this.formatCurrency(savings);
+  });
+
+  ngOnInit(): void {
+    this.loadDashboard();
+  }
+
+  async loadDashboard(): Promise<void> {
+    try {
+      await this.stateService.loadDashboard({
+        topUsersLimit: this.topUsersLimit(),
+        includeTrends: true,
+      });
+    } catch {
+      // Error is handled by state service
+    }
+  }
+
+  onPeriodChange(period: string): void {
+    this.stateService.setPeriod(period);
+    this.loadDashboard();
+  }
+
+  async onExport(): Promise<void> {
+    try {
+      await this.stateService.exportData('csv');
+    } catch {
+      // Error is handled by state service
+    }
+  }
+
+  onUserClick(userId: string): void {
+    // TODO: Navigate to user detail page when implemented
+    console.log('User clicked:', userId);
+  }
+
+  async onLoadMoreUsers(): Promise<void> {
+    const newLimit = this.topUsersLimit() + 20;
+    this.topUsersLimit.set(newLimit);
+
+    try {
+      await this.stateService.loadTopUsers({
+        limit: newLimit,
+      });
+    } catch {
+      // Error is handled by state service
+    }
+  }
+
+  private formatCurrency(value: number): string {
+    return new Intl.NumberFormat('en-US', {
+      style: 'currency',
+      currency: 'USD',
+      minimumFractionDigits: 2,
+      maximumFractionDigits: 2,
+    }).format(value);
+  }
+
+  private formatNumber(value: number): string {
+    return new Intl.NumberFormat('en-US').format(value);
+  }
+}

@@ -9,7 +9,8 @@ import {
   heroClipboardDocumentList,
   heroMagnifyingGlass,
   heroCalendar,
-  heroSparkles
+  heroSparkles,
+  heroCurrencyDollar
 } from '@ng-icons/heroicons/outline';
 
 interface AdminFeature {
@@ -31,7 +32,8 @@ interface AdminFeature {
       heroClipboardDocumentList,
       heroMagnifyingGlass,
       heroCalendar,
-      heroSparkles
+      heroSparkles,
+      heroCurrencyDollar
     })
   ],
   templateUrl: './admin.page.html',
@@ -93,6 +95,12 @@ export class AdminPage {
       description: 'Monitor quota enforcement events including warnings, blocks, resets, and override applications. Export event data to CSV.',
       icon: 'heroChartBar',
       route: '/admin/quota/events',
+    },
+    {
+      title: 'Cost Analytics',
+      description: 'View system-wide usage metrics, top users by cost, model breakdowns, and cost trends. Export reports for analysis.',
+      icon: 'heroCurrencyDollar',
+      route: '/admin/costs',
     },
   ];
 
