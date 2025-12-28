@@ -19,6 +19,8 @@ import {
   SummaryCardIcon,
 } from './components/system-summary-card.component';
 import { TopUsersTableComponent } from './components/top-users-table.component';
+import { CostTrendsChartComponent } from './components/cost-trends-chart.component';
+import { ModelBreakdownComponent } from './components/model-breakdown.component';
 
 /**
  * Admin cost dashboard page.
@@ -32,6 +34,8 @@ import { TopUsersTableComponent } from './components/top-users-table.component';
     PeriodSelectorComponent,
     SystemSummaryCardComponent,
     TopUsersTableComponent,
+    CostTrendsChartComponent,
+    ModelBreakdownComponent,
   ],
   providers: [provideIcons({ heroArrowLeft, heroArrowDownTray })],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -156,43 +160,10 @@ import { TopUsersTableComponent } from './components/top-users-table.component';
             />
           </div>
 
-          <!-- Placeholder for future charts and tables (Milestones 4 & 5) -->
+          <!-- Charts Row -->
           <div class="mt-8 grid grid-cols-1 gap-6 lg:grid-cols-2">
-            <!-- Cost Trends Chart Placeholder -->
-            <div
-              class="bg-white dark:bg-gray-800 rounded-lg shadow-xs border border-gray-200 dark:border-gray-700 p-6"
-            >
-              <h3
-                class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
-              >
-                Cost Trends
-              </h3>
-              <div
-                class="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700"
-              >
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  Chart visualization coming in Milestone 5
-                </p>
-              </div>
-            </div>
-
-            <!-- Model Breakdown Placeholder -->
-            <div
-              class="bg-white dark:bg-gray-800 rounded-lg shadow-xs border border-gray-200 dark:border-gray-700 p-6"
-            >
-              <h3
-                class="text-lg font-semibold text-gray-900 dark:text-white mb-4"
-              >
-                Model Usage Breakdown
-              </h3>
-              <div
-                class="h-64 flex items-center justify-center bg-gray-50 dark:bg-gray-900/50 rounded-lg border-2 border-dashed border-gray-200 dark:border-gray-700"
-              >
-                <p class="text-sm text-gray-500 dark:text-gray-400">
-                  Chart visualization coming in Milestone 5
-                </p>
-              </div>
-            </div>
+            <app-cost-trends-chart [data]="trends()" />
+            <app-model-breakdown [data]="modelUsage()" />
           </div>
 
           <!-- Top Users Table -->
@@ -220,6 +191,8 @@ export class AdminCostsPage implements OnInit {
   selectedPeriod = this.stateService.selectedPeriod;
   topUsers = this.stateService.topUsers;
   topUsersCount = this.stateService.topUsersCount;
+  trends = this.stateService.trends;
+  modelUsage = this.stateService.modelUsage;
 
   // Track pagination state for top users
   private topUsersLimit = signal(20);
