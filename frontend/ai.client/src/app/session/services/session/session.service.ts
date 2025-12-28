@@ -539,7 +539,7 @@ export class SessionService {
 
   /**
    * Updates session preferences.
-   * 
+   *
    * @param sessionId - UUID of the session
    * @param preferences - Session preferences to update
    * @returns Promise resolving to updated SessionMetadata object
@@ -556,6 +556,61 @@ export class SessionService {
     }
   ): Promise<SessionMetadata> {
     return this.updateSessionMetadata(sessionId, preferences);
+  }
+
+  /**
+   * Deletes a session (soft delete).
+   * The session metadata is marked as deleted but cost records are preserved for billing/audit.
+   *
+   * @param sessionId - UUID of the session to delete
+   * @returns Promise that resolves when deletion is complete
+   * @throws Error if the API request fails (404 if not found, 500 for server errors)
+   *
+   * @example
+   * ```typescript
+   * try {
+   *   await sessionService.deleteSession('8e70ae89-93af-4db7-ba60-f13ea201f4cd');
+   *   console.log('Session deleted successfully');
+   * } catch (error) {
+   *   console.error('Failed to delete session:', error);
+   * }
+   * ```
+   */
+  async deleteSession(sessionId: string): Promise<void> {
+    // Ensure user is authenticated before making the request
+    await this.authService.ensureAuthenticated();
+
+    try {
+      await firstValueFrom(
+        this.http.delete(`${environment.appApiUrl}/sessions/${sessionId}`)
+      );
+
+      // Remove from new session IDs set if present
+      this.newSessionIds.delete(sessionId);
+
+      // Optimistically remove from local cache
+      this.localSessionsCache.update(sessions =>
+        sessions.filter(s => s.sessionId !== sessionId)
+      );
+
+      // Clear current session if we just deleted it
+      if (this.currentSession().sessionId === sessionId) {
+        this.currentSession.set({
+          sessionId: '',
+          userId: '',
+          title: '',
+          status: 'active',
+          createdAt: '',
+          lastMessageAt: '',
+          messageCount: 0
+        });
+      }
+
+      // Trigger sessions resource reload to ensure UI is in sync with backend
+      this.sessionsResource.reload();
+    } catch (error) {
+      throw error;
+    }
   }
 
   /**

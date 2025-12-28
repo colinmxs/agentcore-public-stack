@@ -30,6 +30,22 @@ def _convert_decimal_to_float(obj):
         return obj
 
 
+def _convert_float_to_decimal(obj):
+    """Recursively convert float to Decimal for DynamoDB storage.
+
+    DynamoDB's high-level API (table.put_item) requires Decimal types
+    for numeric values, not Python floats.
+    """
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: _convert_float_to_decimal(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [_convert_float_to_decimal(item) for item in obj]
+    else:
+        return obj
+
+
 def _convert_to_dynamodb_format(item: dict) -> dict:
     """
     Convert a Python dict to DynamoDB low-level format for transact_write_items
@@ -44,17 +60,18 @@ def _convert_to_dynamodb_format(item: dict) -> dict:
     for key, value in item.items():
         if value is None:
             continue
-        elif isinstance(value, str):
-            result[key] = {'S': value}
+        # IMPORTANT: Check bool BEFORE int, since bool is a subclass of int in Python
         elif isinstance(value, bool):
             result[key] = {'BOOL': value}
-        elif isinstance(value, (int, float, Decimal)):
+        elif isinstance(value, str):
+            result[key] = {'S': value}
+        elif isinstance(value, Decimal):
+            result[key] = {'N': str(value)}
+        elif isinstance(value, (int, float)):
             result[key] = {'N': str(value)}
         elif isinstance(value, list):
             if not value:
                 result[key] = {'L': []}
-            elif all(isinstance(v, str) for v in value):
-                result[key] = {'SS': value} if value else {'L': []}
             else:
                 result[key] = {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
         elif isinstance(value, dict):
@@ -66,11 +83,14 @@ def _convert_single_value_to_dynamodb(value) -> dict:
     """Convert a single value to DynamoDB format"""
     if value is None:
         return {'NULL': True}
-    elif isinstance(value, str):
-        return {'S': value}
+    # IMPORTANT: Check bool BEFORE int, since bool is a subclass of int in Python
     elif isinstance(value, bool):
         return {'BOOL': value}
-    elif isinstance(value, (int, float, Decimal)):
+    elif isinstance(value, str):
+        return {'S': value}
+    elif isinstance(value, Decimal):
+        return {'N': str(value)}
+    elif isinstance(value, (int, float)):
         return {'N': str(value)}
     elif isinstance(value, list):
         return {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
@@ -237,39 +257,24 @@ class SessionService:
             }
 
             # Include preferences if present
+            # Convert floats to Decimals since DynamoDB high-level API requires Decimal for numbers
             if session.preferences:
-                deleted_item['preferences'] = session.preferences.model_dump(by_alias=True)
+                prefs = session.preferences.model_dump(by_alias=True)
+                deleted_item['preferences'] = _convert_float_to_decimal(prefs)
 
-            # Convert to DynamoDB format for transact_write_items
-            dynamodb_item = _convert_to_dynamodb_format(deleted_item)
-
-            # Transactional move: delete old + create new
-            self.dynamodb.meta.client.transact_write_items(
-                TransactItems=[
-                    {
-                        'Delete': {
-                            'TableName': self.table_name,
-                            'Key': {
-                                'PK': {'S': pk},
-                                'SK': {'S': old_sk}
-                            },
-                            'ConditionExpression': 'attribute_exists(PK)'
-                        }
-                    },
-                    {
-                        'Put': {
-                            'TableName': self.table_name,
-                            'Item': dynamodb_item
-                        }
-                    }
-                ]
+            # Use high-level API: put_item + delete_item
+            # Put new item first, then delete old - if put fails, nothing is lost
+            # This is simpler and more reliable than transact_write_items
+            self.table.put_item(Item=deleted_item)
+            self.table.delete_item(
+                Key={'PK': pk, 'SK': old_sk}
             )
 
             logger.info(f"Soft-deleted session {session_id} for user {user_id}")
 
             # Delete conversation content from AgentCore Memory (async, non-blocking)
             # This removes actual messages but NOT the cost records
-            await self._delete_agentcore_memory(session_id)
+            await self._delete_agentcore_memory(session_id, user_id)
 
             return True
 
@@ -281,7 +286,7 @@ class SessionService:
             logger.error(f"Failed to delete session {session_id}: {e}", exc_info=True)
             return False
 
-    async def _delete_agentcore_memory(self, session_id: str) -> None:
+    async def _delete_agentcore_memory(self, session_id: str, user_id: str) -> None:
         """
         Delete conversation content from AgentCore Memory.
 
@@ -289,14 +294,21 @@ class SessionService:
         but does NOT affect cost records (which are stored separately
         with C# SK prefix in SessionsMetadata table).
 
+        Uses boto3 bedrock-agentcore client to:
+        1. List all events for the session
+        2. Delete events in parallel using ThreadPoolExecutor
+
+        Note: AgentCore Memory doesn't have a bulk delete_session API.
+        The bedrock-agent-runtime delete_session API is for a different service.
+
         Args:
             session_id: Session identifier
+            user_id: User identifier (actorId in AgentCore Memory)
 
         Note:
             - This is a non-blocking, fire-and-forget operation
             - Failures are logged but don't affect the session deletion
-            - Implementation requires AgentCore Memory SDK or boto3 direct calls
-            - Currently a placeholder - full implementation pending SDK support
+            - Uses parallel deletion for performance (10 concurrent workers)
         """
         try:
             # Check if AgentCore Memory is available
@@ -307,23 +319,68 @@ class SessionService:
                 logger.debug("AgentCore Memory not in cloud mode, skipping content deletion")
                 return
 
-            # TODO: Implement actual AgentCore Memory deletion
-            # The AgentCore Memory SDK doesn't currently expose session deletion.
-            # Options for implementation:
-            #
-            # 1. Use boto3 directly with bedrock-agentcore client:
-            #    client = boto3.client('bedrock-agentcore', region_name=config.region)
-            #    client.delete_session(sessionId=session_id, memoryId=config.memory_id)
-            #
-            # 2. Wait for SDK support:
-            #    from bedrock_agentcore.memory import MemoryClient
-            #    client = MemoryClient(region_name=config.region)
-            #    client.delete_session(memory_id=config.memory_id, session_id=session_id)
-            #
-            # For now, log that content deletion is pending
+            if not config.memory_id:
+                logger.debug("No memory_id configured, skipping content deletion")
+                return
+
+            import boto3
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+
+            client = boto3.client('bedrock-agentcore', region_name=config.region)
+
+            # List all events for this session
+            try:
+                events_response = client.list_events(
+                    memoryId=config.memory_id,
+                    actorId=user_id,
+                    sessionId=session_id,
+                    maxResults=1000  # Get all events
+                )
+                events = events_response.get('events', [])
+            except client.exceptions.ResourceNotFoundException:
+                # Session doesn't exist in AgentCore Memory - nothing to delete
+                logger.debug(f"Session {session_id} not found in AgentCore Memory")
+                return
+            except Exception as e:
+                logger.warning(f"Failed to list events for session {session_id}: {e}")
+                return
+
+            if not events:
+                logger.debug(f"No events found for session {session_id} in AgentCore Memory")
+                return
+
+            # Extract event IDs
+            event_ids = [e.get('eventId') for e in events if e.get('eventId')]
+
+            if not event_ids:
+                return
+
+            def delete_single_event(event_id: str) -> bool:
+                """Delete a single event, returns True on success"""
+                try:
+                    client.delete_event(
+                        memoryId=config.memory_id,
+                        actorId=user_id,
+                        sessionId=session_id,
+                        eventId=event_id
+                    )
+                    return True
+                except Exception as e:
+                    logger.warning(f"Failed to delete event {event_id}: {e}")
+                    return False
+
+            # Delete events in parallel for performance
+            # 10 workers balances speed vs API rate limits
+            deleted_count = 0
+            with ThreadPoolExecutor(max_workers=10) as executor:
+                futures = {executor.submit(delete_single_event, eid): eid for eid in event_ids}
+                for future in as_completed(futures):
+                    if future.result():
+                        deleted_count += 1
+
             logger.info(
-                f"AgentCore Memory content deletion for session {session_id} - "
-                "pending SDK support. Session metadata soft-deleted successfully."
+                f"Deleted {deleted_count}/{len(event_ids)} events from AgentCore Memory "
+                f"for session {session_id}"
             )
 
         except ImportError:

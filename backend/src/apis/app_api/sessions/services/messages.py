@@ -187,6 +187,29 @@ def _convert_message_to_response(
     )
 
 
+def _get_message_role(msg: Any) -> str:
+    """
+    Extract the role from a message for logging purposes.
+
+    Args:
+        msg: Message data (dict or SessionMessage object)
+
+    Returns:
+        Role string ("user" or "assistant")
+    """
+    if isinstance(msg, dict):
+        return msg.get("role", "assistant")
+
+    # Handle SessionMessage object (from AgentCore Memory)
+    inner_message = getattr(msg, "message", None)
+    if inner_message:
+        if isinstance(inner_message, dict):
+            return inner_message.get("role", "assistant")
+        return getattr(inner_message, "role", "assistant")
+
+    return getattr(msg, "role", "assistant")
+
+
 def _convert_message(msg: Any, metadata: Any = None) -> Message:
     """
     Convert a session message to Message model
@@ -372,10 +395,19 @@ async def get_messages_from_cloud(
                 try:
                     # Metadata join: use index as message_id (0-based sequence)
                     metadata = metadata_index.get(str(idx))
+
+                    # Determine message role for logging
+                    # Cost metadata only exists for assistant messages (LLM API calls)
+                    msg_role = _get_message_role(msg)
+
                     if metadata:
-                        logger.info(f"🔗 Joined metadata for message {idx}")
+                        logger.debug(f"🔗 Joined metadata for message {idx} ({msg_role})")
+                    elif msg_role == "user":
+                        # User messages don't have cost metadata - this is expected
+                        logger.debug(f"📝 User message {idx} - no cost metadata (expected)")
                     else:
-                        logger.warning(f"⚠️ No metadata found for message {idx}")
+                        # Assistant message without metadata is unexpected
+                        logger.warning(f"⚠️ No metadata found for assistant message {idx}")
 
                     messages.append(_convert_message(msg, metadata=metadata))
                 except Exception as e:
