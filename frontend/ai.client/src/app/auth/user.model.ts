@@ -5,7 +5,9 @@
 export interface User {
   email: string;
   empl_id: string;
-  name: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   roles: string[];
   picture?: string;
 }

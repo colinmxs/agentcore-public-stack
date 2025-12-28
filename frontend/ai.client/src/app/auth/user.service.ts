@@ -25,7 +25,9 @@ export class UserService {
   private readonly anonymousUser: User = {
     email: 'anonymous@local.dev',
     empl_id: 'anonymous',
-    name: 'Anonymous User',
+    firstName: 'Anonymous',
+    lastName: 'User',
+    fullName: 'Anonymous User',
     roles: [],
     picture: undefined
   };
@@ -85,6 +87,16 @@ export class UserService {
       const payload = this.base64UrlDecode(parts[1]);
       const jwtPayload: JWTPayload = JSON.parse(payload);
 
+      // Debug: Log the JWT payload to see available claims
+      console.log('[UserService] JWT Payload:', {
+        given_name: jwtPayload.given_name,
+        family_name: jwtPayload.family_name,
+        name: jwtPayload.name,
+        email: jwtPayload.email,
+        preferred_username: jwtPayload.preferred_username,
+        allClaims: Object.keys(jwtPayload)
+      });
+
       // Extract user information matching backend User model
       const email = jwtPayload.email || jwtPayload.preferred_username;
       if (!email) {
@@ -96,19 +108,42 @@ export class UserService {
         throw new Error('Token missing valid empl_id (9-digit employee number)');
       }
 
-      const name = jwtPayload.name || 
+      // Build full name from available claims
+      const fullName = jwtPayload.name ||
         `${jwtPayload.given_name || ''} ${jwtPayload.family_name || ''}`.trim() ||
         email;
 
+      // Extract first and last name - prefer JWT claims, fall back to parsing fullName
+      let firstName = jwtPayload.given_name || '';
+      let lastName = jwtPayload.family_name || '';
+
+      // If given_name/family_name not available, parse from fullName
+      if (!firstName && fullName) {
+        const nameParts = fullName.split(' ');
+        firstName = nameParts[0] || '';
+        lastName = nameParts.slice(1).join(' ') || '';
+      }
+
       const roles = jwtPayload.roles || [];
 
-      return {
+      const user: User = {
         email,
         empl_id: emplId.toString(),
-        name,
+        firstName,
+        lastName,
+        fullName,
         roles,
         picture: jwtPayload.picture
       };
+
+      // Debug: Log the mapped user object
+      console.log('[UserService] Mapped User:', {
+        firstName: user.firstName,
+        lastName: user.lastName,
+        fullName: user.fullName
+      });
+
+      return user;
     } catch (error) {
       if (error instanceof Error) {
         throw new Error(`Failed to decode token: ${error.message}`);

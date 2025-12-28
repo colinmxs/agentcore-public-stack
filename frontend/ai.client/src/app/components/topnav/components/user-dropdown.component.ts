@@ -17,7 +17,9 @@ import {
 import { ThemeService, ThemePreference } from './theme-toggle/theme.service';
 
 export interface User {
-  name: string;
+  firstName: string;
+  lastName: string;
+  fullName: string;
   email?: string;
   picture?: string;
 }
@@ -52,7 +54,7 @@ export interface User {
         @if (user().picture) {
           <img
             [src]="user().picture"
-            [alt]="user().name"
+            [alt]="user().fullName"
             class="size-8 shrink-0 rounded-full bg-gray-50 outline -outline-offset-1 outline-black/5 dark:bg-gray-800 dark:outline-white/10"
           />
         } @else {
@@ -65,7 +67,7 @@ export interface User {
 
         <span class="flex min-w-0 flex-1 items-center justify-between">
           <span class="truncate text-sm/6 font-semibold text-gray-900 dark:text-white">
-            {{ user().name }}
+            {{ user().fullName }}
           </span>
           <ng-icon
             name="heroChevronUpDown"
@@ -87,7 +89,7 @@ export interface User {
             <!-- User info section -->
             <!-- <div class="px-3 py-2 border-b border-gray-200 dark:border-gray-700">
               <p class="text-sm/5 font-semibold text-gray-900 dark:text-white">
-                {{ user().name }}
+                {{ user().fullName }}
               </p>
               @if (user().email) {
                 <p class="text-xs/5 text-gray-500 dark:text-gray-400">
@@ -289,7 +291,7 @@ export class UserDropdownComponent {
   }
 
   protected getUserInitial(): string {
-    return this.user().name.charAt(0).toUpperCase();
+    return this.user().fullName.charAt(0).toUpperCase();
   }
 
   protected onMenuOpened(): void {
@@ -305,7 +307,7 @@ export class UserDropdownComponent {
   }
 
   protected handleLogout(): void {
-    console.log('Logout clicked for user:', this.user().name);
+    console.log('Logout clicked for user:', this.user().fullName);
     this.logout.emit();
   }
 }

@@ -15,6 +15,7 @@ import { HeaderService } from '../services/header/header.service';
 import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
 import { ModelService } from './services/model/model.service';
 import { ModelSettings } from '../components/model-settings/model-settings';
+import { UserService } from '../auth/user.service';
 
 @Component({
   selector: 'app-session-page',
@@ -31,6 +32,7 @@ export class ConversationPage implements OnDestroy {
   protected sidenavService = inject(SidenavService);
   private headerService = inject(HeaderService);
   private modelService = inject(ModelService);
+  private userService = inject(UserService);
 
   sessionId = signal<string | null>(null);
   isSettingsOpen = signal(false);
@@ -41,17 +43,41 @@ export class ConversationPage implements OnDestroy {
   // Computed that unwraps the current messages signal
   readonly messages = computed(() => this.messagesSignal()());
 
-  // Greeting messages to randomly display
-  private greetingMessages = [
+  // Get user's first name from the user service
+  private firstName = computed(() => {
+    const user = this.userService.currentUser();
+    return user?.firstName || null;
+  });
+
+  // Greeting message templates (use {name} as placeholder for first name)
+  private greetingTemplates = [
+    'How can I help you today, {name}?',
+    'What would you like to know, {name}?',
+    'Ready to assist you, {name}!',
+    'What can I do for you, {name}?',
+    "Let's get started, {name}!",
+  ];
+
+  // Fallback greetings when user name is not available
+  private fallbackGreetings = [
     'How can I help you today?',
     'What would you like to know?',
     'Ready to assist you!',
     'What can I do for you?',
-    'Let\'s get started!',
+    "Let's get started!",
   ];
 
-  // Select a random greeting message on component initialization
-  greetingMessage = signal(this.getRandomGreeting());
+  // Store the selected template index for consistency
+  private selectedGreetingIndex = Math.floor(Math.random() * this.greetingTemplates.length);
+
+  // Computed greeting message that reacts to user changes
+  greetingMessage = computed(() => {
+    const name = this.firstName();
+    if (name) {
+      return this.greetingTemplates[this.selectedGreetingIndex].replace('{name}', name);
+    }
+    return this.fallbackGreetings[this.selectedGreetingIndex];
+  });
 
   private routeSubscription?: Subscription;
   readonly sessionConversation = this.sessionService.currentSession;
@@ -142,10 +168,5 @@ export class ConversationPage implements OnDestroy {
 
   closeSettings() {
     this.isSettingsOpen.set(false);
-  }
-
-  private getRandomGreeting(): string {
-    const randomIndex = Math.floor(Math.random() * this.greetingMessages.length);
-    return this.greetingMessages[randomIndex];
   }
 }
