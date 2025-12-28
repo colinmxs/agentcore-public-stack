@@ -289,15 +289,16 @@ class UserRepository:
 
     def _item_to_profile(self, item: dict) -> UserProfile:
         """Convert DynamoDB item to UserProfile."""
+        created_at = item.get("createdAt", "")
         return UserProfile(
             user_id=item["userId"],
             email=item["email"],
             name=item.get("name", ""),
             roles=item.get("roles", []),
             picture=item.get("picture"),
-            email_domain=item["emailDomain"],
-            created_at=item["createdAt"],
-            last_login_at=item["lastLoginAt"],
+            email_domain=item.get("emailDomain", ""),
+            created_at=created_at,
+            last_login_at=item.get("lastLoginAt", created_at),
             status=item.get("status", "active")
         )
 
@@ -308,6 +309,6 @@ class UserRepository:
             email=item["email"],
             name=item.get("name", ""),
             status=item.get("status", "active"),
-            last_login_at=item["lastLoginAt"],
+            last_login_at=item.get("lastLoginAt", item.get("createdAt", "")),
             email_domain=item.get("emailDomain")
         )

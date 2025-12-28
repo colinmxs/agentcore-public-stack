@@ -10,7 +10,8 @@ import {
   heroMagnifyingGlass,
   heroCalendar,
   heroSparkles,
-  heroCurrencyDollar
+  heroCurrencyDollar,
+  heroUsers
 } from '@ng-icons/heroicons/outline';
 
 interface AdminFeature {
@@ -33,7 +34,8 @@ interface AdminFeature {
       heroMagnifyingGlass,
       heroCalendar,
       heroSparkles,
-      heroCurrencyDollar
+      heroCurrencyDollar,
+      heroUsers
     })
   ],
   templateUrl: './admin.page.html',
@@ -101,6 +103,12 @@ export class AdminPage {
       description: 'View system-wide usage metrics, top users by cost, model breakdowns, and cost trends. Export reports for analysis.',
       icon: 'heroCurrencyDollar',
       route: '/admin/costs',
+    },
+    {
+      title: 'User Lookup',
+      description: 'Search and browse users to view their profile, costs, and quota status. Manage user-specific overrides and assignments.',
+      icon: 'heroUsers',
+      route: '/admin/users',
     },
   ];
 

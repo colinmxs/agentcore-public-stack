@@ -121,3 +121,21 @@ class UserSyncService:
             "picture": picture
         }
         return await self.sync_from_jwt(jwt_claims)
+
+    async def sync_user_from_jwt(self, user) -> Tuple[Optional[UserProfile], bool]:
+        """
+        Convenience method to sync from a User auth model.
+
+        Args:
+            user: User object from auth module (has user_id, email, name, roles, picture)
+
+        Returns:
+            Tuple of (UserProfile, is_new_user)
+        """
+        return await self.sync_from_user(
+            user_id=user.user_id,
+            email=user.email,
+            name=user.name,
+            roles=user.roles,
+            picture=user.picture
+        )

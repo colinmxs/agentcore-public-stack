@@ -76,5 +76,15 @@ export const routes: Routes = [
         path: 'admin/costs',
         loadComponent: () => import('./admin/costs/admin-costs.page').then(m => m.AdminCostsPage),
         canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/users',
+        loadComponent: () => import('./admin/users/pages/user-list/user-list.page').then(m => m.UserListPage),
+        canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/users/:userId',
+        loadComponent: () => import('./admin/users/pages/user-detail/user-detail.page').then(m => m.UserDetailPage),
+        canActivate: [adminGuard],
     }
 ];
