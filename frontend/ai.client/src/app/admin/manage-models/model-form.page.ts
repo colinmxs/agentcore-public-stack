@@ -1,6 +1,8 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } from '@angular/core';
-import { Router, ActivatedRoute } from '@angular/router';
+import { Router, ActivatedRoute, RouterLink } from '@angular/router';
 import { FormBuilder, FormGroup, FormControl, Validators, ReactiveFormsModule } from '@angular/forms';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 import { AVAILABLE_PROVIDERS, ManagedModelFormData, ModelProvider } from './models/managed-model.model';
 import { ManagedModelsService } from './services/managed-models.service';
 import { AppRolesService } from '../roles/services/app-roles.service';
@@ -28,7 +30,8 @@ interface ModelFormGroup {
 
 @Component({
   selector: 'app-model-form-page',
-  imports: [ReactiveFormsModule],
+  imports: [ReactiveFormsModule, RouterLink, NgIcon],
+  providers: [provideIcons({ heroArrowLeft })],
   templateUrl: './model-form.page.html',
   styleUrl: './model-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

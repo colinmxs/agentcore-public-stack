@@ -17,6 +17,7 @@ import {
   heroXMark,
   heroArrowPath,
   heroChevronRight,
+  heroArrowLeft,
 } from '@ng-icons/heroicons/outline';
 import { AppRolesService } from '../services/app-roles.service';
 import { AppRole } from '../models/app-role.model';
@@ -36,15 +37,25 @@ import { ToolsService } from '../../tools/services/tools.service';
       heroXMark,
       heroArrowPath,
       heroChevronRight,
+      heroArrowLeft,
     }),
   ],
   host: {
     class: 'block p-6',
   },
   template: `
+    <!-- Back Button -->
+    <a
+      routerLink="/admin"
+      class="mb-6 inline-flex items-center gap-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+    >
+      <ng-icon name="heroArrowLeft" class="size-4" />
+      Back to Admin
+    </a>
+
     <div class="mb-6 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl/9 font-bold">Role Management</h1>
+        <h1 class="text-3xl/9 font-bold">Role Management</h1>
         <p class="text-gray-600 dark:text-gray-400">
           Manage application roles, permissions, and JWT mappings.
         </p>
@@ -69,7 +80,7 @@ import { ToolsService } from '../../tools/services/tools.service';
           type="text"
           [(ngModel)]="searchQuery"
           placeholder="Search by name or ID..."
-          class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+          class="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-500 dark:text-white dark:placeholder-gray-400"
         />
         @if (searchQuery()) {
           <button
@@ -84,7 +95,7 @@ import { ToolsService } from '../../tools/services/tools.service';
       <select
         [ngModel]="enabledFilter()"
         (ngModelChange)="enabledFilter.set($event)"
-        class="px-3 py-2 border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
+        class="px-3 py-2 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-500 dark:text-white"
       >
         <option value="">All Roles</option>
         <option value="enabled">Enabled Only</option>

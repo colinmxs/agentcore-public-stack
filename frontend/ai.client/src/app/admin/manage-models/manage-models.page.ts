@@ -1,12 +1,15 @@
 import { Component, ChangeDetectionStrategy, signal, computed, inject } from '@angular/core';
 import { RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 import { ManagedModelsService } from './services/managed-models.service';
 import { AppRolesService } from '../roles/services/app-roles.service';
 
 @Component({
   selector: 'app-manage-models-page',
-  imports: [RouterLink, FormsModule],
+  imports: [RouterLink, FormsModule, NgIcon],
+  providers: [provideIcons({ heroArrowLeft })],
   templateUrl: './manage-models.page.html',
   styleUrl: './manage-models.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

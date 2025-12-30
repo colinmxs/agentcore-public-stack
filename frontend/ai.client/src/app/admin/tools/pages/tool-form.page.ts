@@ -41,7 +41,7 @@ import {
           <ng-icon name="heroArrowLeft" class="size-4" />
           Back to Tools
         </a>
-        <h1 class="text-2xl/9 font-bold">
+        <h1 class="text-3xl/9 font-bold">
           {{ isEditMode() ? 'Edit Tool' : 'Create Tool' }}
         </h1>
         <p class="text-gray-600 dark:text-gray-400">

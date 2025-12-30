@@ -1,6 +1,8 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 import { BedrockModelsService } from './services/bedrock-models.service';
 import { FoundationModelSummary } from './models/bedrock-model.model';
 import { ManagedModelsService } from '../manage-models/services/managed-models.service';
@@ -8,7 +10,8 @@ import { ThinkingDotsComponent } from '../../components/thinking-dots.component'
 
 @Component({
   selector: 'app-bedrock-models-page',
-  imports: [FormsModule, ThinkingDotsComponent],
+  imports: [FormsModule, ThinkingDotsComponent, RouterLink, NgIcon],
+  providers: [provideIcons({ heroArrowLeft })],
   templateUrl: './bedrock-models.page.html',
   styleUrl: './bedrock-models.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

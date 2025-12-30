@@ -41,48 +41,44 @@ import { ModelBreakdownComponent } from './components/model-breakdown.component'
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="min-h-dvh bg-gray-50 dark:bg-gray-900">
-      <!-- Header -->
-      <div class="bg-white dark:bg-gray-800 border-b border-gray-200 dark:border-gray-700">
-        <div class="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
-          <div class="flex items-center justify-between">
-            <div class="flex items-center gap-4">
-              <a
-                routerLink="/admin"
-                class="flex items-center justify-center size-10 rounded-lg bg-gray-100 dark:bg-gray-700 text-gray-600 dark:text-gray-300 hover:bg-gray-200 dark:hover:bg-gray-600 transition-colors"
-              >
-                <ng-icon name="heroArrowLeft" class="size-5" />
-              </a>
-              <div>
-                <h1 class="text-2xl font-bold text-gray-900 dark:text-white">
-                  Cost Analytics Dashboard
-                </h1>
-                <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-                  Monitor system-wide usage, costs, and trends
-                </p>
-              </div>
-            </div>
-
-            <div class="flex items-center gap-4">
-              <app-period-selector
-                [selectedPeriod]="selectedPeriod()"
-                (periodChange)="onPeriodChange($event)"
-              />
-              <button
-                type="button"
-                (click)="onExport()"
-                [disabled]="loading()"
-                class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white dark:bg-gray-700 border border-gray-300 dark:border-gray-600 text-sm font-medium text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-gray-600 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
-              >
-                <ng-icon name="heroArrowDownTray" class="size-4" />
-                Export
-              </button>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- Content -->
       <div class="mx-auto max-w-7xl px-4 py-8 sm:px-6 lg:px-8">
+        <!-- Back Button -->
+        <a
+          routerLink="/admin"
+          class="mb-6 inline-flex items-center gap-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+        >
+          <ng-icon name="heroArrowLeft" class="size-4" />
+          Back to Admin
+        </a>
+
+        <!-- Page Header -->
+        <div class="mb-6 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <h1 class="text-3xl/9 font-bold text-gray-900 dark:text-white">
+              Cost Analytics
+            </h1>
+            <p class="mt-1 text-gray-600 dark:text-gray-400">
+              Monitor system-wide usage, costs, and trends.
+            </p>
+          </div>
+
+          <div class="flex items-center gap-4">
+            <app-period-selector
+              [selectedPeriod]="selectedPeriod()"
+              (periodChange)="onPeriodChange($event)"
+            />
+            <button
+              type="button"
+              (click)="onExport()"
+              [disabled]="loading()"
+              class="inline-flex items-center gap-2 px-4 py-2 bg-white border border-gray-300 rounded-sm text-sm font-medium text-gray-700 hover:bg-gray-100 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-gray-800 dark:border-gray-600 dark:text-gray-200 dark:hover:bg-gray-700 transition-colors"
+            >
+              <ng-icon name="heroArrowDownTray" class="size-4" />
+              Export
+            </button>
+          </div>
+        </div>
         @if (loading()) {
           <!-- Loading State -->
           <div class="flex items-center justify-center h-64">

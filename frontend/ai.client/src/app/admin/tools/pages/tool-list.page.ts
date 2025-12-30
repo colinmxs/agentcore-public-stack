@@ -19,6 +19,7 @@ import {
   heroGlobeAlt,
   heroCheck,
   heroXCircle,
+  heroArrowLeft,
 } from '@ng-icons/heroicons/outline';
 import { AdminToolService } from '../services/admin-tool.service';
 import { AdminTool, TOOL_CATEGORIES, TOOL_STATUSES } from '../models/admin-tool.model';
@@ -40,15 +41,25 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
       heroGlobeAlt,
       heroCheck,
       heroXCircle,
+      heroArrowLeft,
     }),
   ],
   host: {
     class: 'block p-6',
   },
   template: `
+    <!-- Back Button -->
+    <a
+      routerLink="/admin"
+      class="mb-6 inline-flex items-center gap-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+    >
+      <ng-icon name="heroArrowLeft" class="size-4" />
+      Back to Admin
+    </a>
+
     <div class="mb-6 flex items-center justify-between">
       <div>
-        <h1 class="text-2xl/9 font-bold">Tool Catalog</h1>
+        <h1 class="text-3xl/9 font-bold">Tool Catalog</h1>
         <p class="text-gray-600 dark:text-gray-400">
           Manage tool metadata and role assignments.
         </p>
@@ -87,7 +98,7 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
           type="text"
           [(ngModel)]="searchQuery"
           placeholder="Search by name or ID..."
-          class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+          class="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-500 dark:text-white dark:placeholder-gray-400"
         />
         @if (searchQuery()) {
           <button
@@ -102,7 +113,7 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
       <select
         [ngModel]="statusFilter()"
         (ngModelChange)="statusFilter.set($event)"
-        class="px-3 py-2 border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
+        class="px-3 py-2 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-500 dark:text-white"
       >
         <option value="">All Statuses</option>
         @for (status of statuses; track status.value) {
@@ -113,7 +124,7 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
       <select
         [ngModel]="categoryFilter()"
         (ngModelChange)="categoryFilter.set($event)"
-        class="px-3 py-2 border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
+        class="px-3 py-2 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-500 dark:text-white"
       >
         <option value="">All Categories</option>
         @for (cat of categories; track cat.value) {

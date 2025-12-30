@@ -84,7 +84,7 @@ interface RoleFormGroup {
           <!-- Form -->
           <form [formGroup]="roleForm" (ngSubmit)="onSubmit()" class="space-y-8">
             <!-- Basic Information Section -->
-            <div class="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <div class="rounded-sm border border-gray-300 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
               <h2 class="mb-6 text-xl/8 font-semibold text-gray-900 dark:text-white">
                 Basic Information
               </h2>
@@ -191,7 +191,7 @@ interface RoleFormGroup {
             </div>
 
             <!-- JWT Mappings Section -->
-            <div class="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <div class="rounded-sm border border-gray-300 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
               <h2 class="mb-2 text-xl/8 font-semibold text-gray-900 dark:text-white">
                 JWT Role Mappings
               </h2>
@@ -217,7 +217,7 @@ interface RoleFormGroup {
             </div>
 
             <!-- Inheritance Section -->
-            <div class="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <div class="rounded-sm border border-gray-300 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
               <h2 class="mb-2 text-xl/8 font-semibold text-gray-900 dark:text-white">
                 Role Inheritance
               </h2>
@@ -261,7 +261,7 @@ interface RoleFormGroup {
             </div>
 
             <!-- Tool Permissions Section -->
-            <div class="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <div class="rounded-sm border border-gray-300 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
               <h2 class="mb-2 text-xl/8 font-semibold text-gray-900 dark:text-white">
                 Tool Permissions
               </h2>
@@ -317,7 +317,7 @@ interface RoleFormGroup {
             </div>
 
             <!-- Model Permissions Section -->
-            <div class="rounded-sm border border-gray-200 bg-white p-6 dark:border-gray-700 dark:bg-gray-800">
+            <div class="rounded-sm border border-gray-300 bg-white p-6 dark:border-gray-600 dark:bg-gray-800">
               <h2 class="mb-2 text-xl/8 font-semibold text-gray-900 dark:text-white">
                 Model Permissions
               </h2>

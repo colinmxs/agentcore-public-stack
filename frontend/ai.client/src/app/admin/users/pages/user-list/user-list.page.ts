@@ -4,7 +4,7 @@ import {
   inject,
   OnInit,
 } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -12,6 +12,7 @@ import {
   heroUser,
   heroChevronRight,
   heroXMark,
+  heroArrowLeft,
 } from '@ng-icons/heroicons/outline';
 import { UserStateService } from '../../services/user-state.service';
 import { UserListItem, UserStatus } from '../../models';
@@ -19,16 +20,25 @@ import { UserListItem, UserStatus } from '../../models';
 @Component({
   selector: 'app-user-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [FormsModule, NgIcon],
+  imports: [FormsModule, NgIcon, RouterLink],
   providers: [
-    provideIcons({ heroMagnifyingGlass, heroUser, heroChevronRight, heroXMark }),
+    provideIcons({ heroMagnifyingGlass, heroUser, heroChevronRight, heroXMark, heroArrowLeft }),
   ],
   host: {
     class: 'block p-6',
   },
   template: `
+    <!-- Back Button -->
+    <a
+      routerLink="/admin"
+      class="mb-6 inline-flex items-center gap-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white"
+    >
+      <ng-icon name="heroArrowLeft" class="size-4" />
+      Back to Admin
+    </a>
+
     <div class="mb-6">
-      <h1 class="text-2xl/9 font-bold mb-2">User Lookup</h1>
+      <h1 class="text-3xl/9 font-bold mb-2">User Lookup</h1>
       <p class="text-gray-600 dark:text-gray-400">
         Search and browse users to view their profile, costs, and quota status.
       </p>
@@ -46,7 +56,7 @@ import { UserListItem, UserStatus } from '../../models';
           [(ngModel)]="searchEmail"
           (keyup.enter)="search()"
           placeholder="Search by email address..."
-          class="w-full pl-10 pr-10 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+          class="w-full pl-10 pr-10 py-2 bg-white border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-500 dark:text-white dark:placeholder-gray-400"
         />
         @if (searchEmail) {
           <button
@@ -64,7 +74,7 @@ import { UserListItem, UserStatus } from '../../models';
       <select
         [ngModel]="state.statusFilter()"
         (ngModelChange)="onStatusChange($event)"
-        class="px-3 py-2 border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
+        class="px-3 py-2 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-500 dark:text-white"
       >
         <option value="active">Active Users</option>
         <option value="inactive">Inactive Users</option>
@@ -107,7 +117,7 @@ import { UserListItem, UserStatus } from '../../models';
           (keydown.enter)="viewUser(user)"
           tabindex="0"
           role="button"
-          class="flex items-center gap-4 p-4 border border-gray-200 rounded-sm cursor-pointer hover:bg-gray-50 dark:border-gray-700 dark:hover:bg-gray-800 transition-colors"
+          class="flex items-center gap-4 p-4 bg-white border border-gray-300 rounded-sm cursor-pointer hover:bg-gray-100 dark:bg-gray-800 dark:border-gray-600 dark:hover:bg-gray-700 transition-colors"
         >
           <!-- Avatar -->
           <div

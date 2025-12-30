@@ -1,6 +1,8 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 import { OpenAIModelsService } from './services/openai-models.service';
 import { OpenAIModelSummary } from './models/openai-model.model';
 import { ManagedModelsService } from '../manage-models/services/managed-models.service';
@@ -8,7 +10,8 @@ import { ThinkingDotsComponent } from '../../components/thinking-dots.component'
 
 @Component({
   selector: 'app-openai-models-page',
-  imports: [FormsModule, ThinkingDotsComponent],
+  imports: [FormsModule, ThinkingDotsComponent, RouterLink, NgIcon],
+  providers: [provideIcons({ heroArrowLeft })],
   templateUrl: './openai-models.page.html',
   styleUrl: './openai-models.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,

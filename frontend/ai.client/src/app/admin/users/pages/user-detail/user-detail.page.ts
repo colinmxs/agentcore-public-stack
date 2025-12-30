@@ -76,7 +76,7 @@ import { QuotaEventSummary } from '../../models';
     @if (user(); as detail) {
       <!-- Profile Header -->
       <div
-        class="flex items-start gap-6 p-6 bg-white border border-gray-200 rounded-sm mb-6 dark:bg-gray-800 dark:border-gray-700"
+        class="flex items-start gap-6 p-6 bg-white border border-gray-300 rounded-sm mb-6 dark:bg-gray-800 dark:border-gray-600"
       >
         <!-- Avatar -->
         @if (detail.profile.picture) {
@@ -127,7 +127,7 @@ import { QuotaEventSummary } from '../../models';
       <div class="grid gap-6 md:grid-cols-2 lg:grid-cols-3 mb-6">
         <!-- Cost Summary -->
         <div
-          class="p-6 bg-white border border-gray-200 rounded-sm dark:bg-gray-800 dark:border-gray-700"
+          class="p-6 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
         >
           <div class="flex items-center gap-2 mb-4">
             <ng-icon name="heroCurrencyDollar" class="size-5 text-green-600" />
@@ -152,7 +152,7 @@ import { QuotaEventSummary } from '../../models';
 
         <!-- Quota Status -->
         <div
-          class="p-6 bg-white border border-gray-200 rounded-sm dark:bg-gray-800 dark:border-gray-700"
+          class="p-6 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
         >
           <div class="flex items-center gap-2 mb-4">
             <ng-icon name="heroChartBar" class="size-5 text-blue-600" />
@@ -202,7 +202,7 @@ import { QuotaEventSummary } from '../../models';
 
         <!-- Activity -->
         <div
-          class="p-6 bg-white border border-gray-200 rounded-sm dark:bg-gray-800 dark:border-gray-700"
+          class="p-6 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
         >
           <div class="flex items-center gap-2 mb-4">
             <ng-icon name="heroClock" class="size-5 text-purple-600" />
@@ -229,7 +229,7 @@ import { QuotaEventSummary } from '../../models';
 
       <!-- Recent Events -->
       <div
-        class="p-6 bg-white border border-gray-200 rounded-sm dark:bg-gray-800 dark:border-gray-700"
+        class="p-6 bg-white border border-gray-300 rounded-sm dark:bg-gray-800 dark:border-gray-600"
       >
         <div class="flex items-center justify-between mb-4">
           <h3 class="font-semibold">Recent Quota Events</h3>
