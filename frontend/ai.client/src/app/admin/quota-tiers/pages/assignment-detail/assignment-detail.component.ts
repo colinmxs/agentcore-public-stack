@@ -4,11 +4,13 @@ import { FormBuilder, FormGroup, FormControl, Validators, ReactiveFormsModule } 
 import { CurrencyPipe } from '@angular/common';
 import { QuotaStateService } from '../../services/quota-state.service';
 import { QuotaAssignmentCreate, QuotaAssignmentType } from '../../models/quota.models';
+import { AppRolesService } from '../../../roles/services/app-roles.service';
 
 interface AssignmentFormGroup {
   tierId: FormControl<string>;
   assignmentType: FormControl<QuotaAssignmentType>;
   userId: FormControl<string>;
+  appRoleId: FormControl<string>;
   jwtRole: FormControl<string>;
   emailDomain: FormControl<string>;
   priority: FormControl<number>;
@@ -27,6 +29,7 @@ export class AssignmentDetailComponent implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private quotaStateService = inject(QuotaStateService);
+  private appRolesService = inject(AppRolesService);
 
   // Form state
   readonly isEditMode = signal<boolean>(false);
@@ -37,10 +40,15 @@ export class AssignmentDetailComponent implements OnInit {
   // Available tiers
   readonly tiers = this.quotaStateService.tiers;
 
+  // Available app roles (for app_role assignment type)
+  readonly appRolesResource = this.appRolesService.rolesResource;
+  readonly appRoles = computed(() => this.appRolesService.getEnabledRoles());
+
   // Assignment types
   readonly assignmentTypes = [
     { value: QuotaAssignmentType.DIRECT_USER, label: 'Direct User', description: 'Assign to a specific user by ID' },
-    { value: QuotaAssignmentType.JWT_ROLE, label: 'JWT Role', description: 'Assign to all users with a specific role' },
+    { value: QuotaAssignmentType.APP_ROLE, label: 'App Role', description: 'Assign to users with a specific application role' },
+    { value: QuotaAssignmentType.JWT_ROLE, label: 'JWT Role', description: 'Assign to all users with a specific JWT role' },
     { value: QuotaAssignmentType.EMAIL_DOMAIN, label: 'Email Domain', description: 'Assign to users by email domain pattern' },
     { value: QuotaAssignmentType.DEFAULT_TIER, label: 'Default Tier', description: 'Set as the default tier for all users' },
   ];
@@ -50,6 +58,7 @@ export class AssignmentDetailComponent implements OnInit {
     tierId: this.fb.control('', { nonNullable: true, validators: [Validators.required] }),
     assignmentType: this.fb.control<QuotaAssignmentType>(QuotaAssignmentType.DIRECT_USER, { nonNullable: true, validators: [Validators.required] }),
     userId: this.fb.control('', { nonNullable: true }),
+    appRoleId: this.fb.control('', { nonNullable: true }),
     jwtRole: this.fb.control('', { nonNullable: true }),
     emailDomain: this.fb.control('', { nonNullable: true }),
     priority: this.fb.control(100, { nonNullable: true, validators: [Validators.required, Validators.min(0)] }),
@@ -58,8 +67,8 @@ export class AssignmentDetailComponent implements OnInit {
 
   readonly pageTitle = computed(() => this.isEditMode() ? 'Edit Assignment' : 'Create Assignment');
 
-  // Computed signal for showing which field
-  readonly selectedType = computed(() => this.assignmentForm.controls.assignmentType.value);
+  // Signal for tracking selected assignment type (for conditional UI)
+  readonly selectedType = signal<QuotaAssignmentType>(QuotaAssignmentType.DIRECT_USER);
 
   async ngOnInit() {
     await this.quotaStateService.loadTiers();
@@ -87,11 +96,36 @@ export class AssignmentDetailComponent implements OnInit {
       }
     }
 
-    // Setup type change listener to update validators
-    this.assignmentForm.controls.assignmentType.valueChanges.subscribe(() => {
+    // Setup type change listener to update validators and selectedType signal
+    this.assignmentForm.controls.assignmentType.valueChanges.subscribe((value) => {
+      this.selectedType.set(value);
       this.updateConditionalValidators();
     });
+    // Initialize selectedType from form
+    this.selectedType.set(this.assignmentForm.controls.assignmentType.value);
     this.updateConditionalValidators();
+
+    // Disable immutable fields in edit mode
+    this.updateEditModeControls();
+  }
+
+  /**
+   * Disable form controls that cannot be changed in edit mode
+   */
+  private updateEditModeControls(): void {
+    if (this.isEditMode()) {
+      this.assignmentForm.controls.assignmentType.disable();
+      this.assignmentForm.controls.userId.disable();
+      this.assignmentForm.controls.appRoleId.disable();
+      this.assignmentForm.controls.jwtRole.disable();
+      this.assignmentForm.controls.emailDomain.disable();
+    } else {
+      this.assignmentForm.controls.assignmentType.enable();
+      this.assignmentForm.controls.userId.enable();
+      this.assignmentForm.controls.appRoleId.enable();
+      this.assignmentForm.controls.jwtRole.enable();
+      this.assignmentForm.controls.emailDomain.enable();
+    }
   }
 
   /**
@@ -102,6 +136,7 @@ export class AssignmentDetailComponent implements OnInit {
 
     // Reset all conditional validators
     this.assignmentForm.controls.userId.clearValidators();
+    this.assignmentForm.controls.appRoleId.clearValidators();
     this.assignmentForm.controls.jwtRole.clearValidators();
     this.assignmentForm.controls.emailDomain.clearValidators();
 
@@ -109,6 +144,9 @@ export class AssignmentDetailComponent implements OnInit {
     switch (type) {
       case QuotaAssignmentType.DIRECT_USER:
         this.assignmentForm.controls.userId.setValidators([Validators.required]);
+        break;
+      case QuotaAssignmentType.APP_ROLE:
+        this.assignmentForm.controls.appRoleId.setValidators([Validators.required]);
         break;
       case QuotaAssignmentType.JWT_ROLE:
         this.assignmentForm.controls.jwtRole.setValidators([Validators.required]);
@@ -120,6 +158,7 @@ export class AssignmentDetailComponent implements OnInit {
 
     // Update validity
     this.assignmentForm.controls.userId.updateValueAndValidity();
+    this.assignmentForm.controls.appRoleId.updateValueAndValidity();
     this.assignmentForm.controls.jwtRole.updateValueAndValidity();
     this.assignmentForm.controls.emailDomain.updateValueAndValidity();
   }
@@ -143,6 +182,7 @@ export class AssignmentDetailComponent implements OnInit {
         tierId: assignment.tierId,
         assignmentType: assignment.assignmentType,
         userId: assignment.userId || '',
+        appRoleId: assignment.appRoleId || '',
         jwtRole: assignment.jwtRole || '',
         emailDomain: assignment.emailDomain || '',
         priority: assignment.priority,
@@ -180,6 +220,8 @@ export class AssignmentDetailComponent implements OnInit {
       // Add conditional fields based on type
       if (type === QuotaAssignmentType.DIRECT_USER) {
         assignmentData.userId = formData.userId!;
+      } else if (type === QuotaAssignmentType.APP_ROLE) {
+        assignmentData.appRoleId = formData.appRoleId!;
       } else if (type === QuotaAssignmentType.JWT_ROLE) {
         assignmentData.jwtRole = formData.jwtRole!;
       } else if (type === QuotaAssignmentType.EMAIL_DOMAIN) {

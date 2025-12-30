@@ -174,7 +174,7 @@ class QuotaRepository:
 
             item = response['Item']
             # Clean all GSI keys
-            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK']:
+            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
                 item.pop(key, None)
 
             return QuotaAssignment(**item)
@@ -203,13 +203,40 @@ class QuotaRepository:
 
             item = items[0]
             # Clean GSI keys
-            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK']:
+            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
                 item.pop(key, None)
 
             return QuotaAssignment(**item)
         except ClientError as e:
             logger.error(f"Error querying user assignment for {user_id}: {e}")
             return None
+
+    async def query_app_role_assignments(self, app_role_id: str) -> List[QuotaAssignment]:
+        """
+        Query AppRole-based assignments using GSI6 (AppRoleAssignmentIndex).
+        Returns assignments sorted by priority (descending).
+        O(log n) lookup - no scan.
+        """
+        try:
+            response = self.table.query(
+                IndexName="AppRoleAssignmentIndex",
+                KeyConditionExpression="GSI6PK = :pk",
+                ExpressionAttributeValues={
+                    ":pk": f"APP_ROLE#{app_role_id}"
+                },
+                ScanIndexForward=False  # Descending order (highest priority first)
+            )
+
+            assignments = []
+            for item in response.get('Items', []):
+                for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
+                    item.pop(key, None)
+                assignments.append(QuotaAssignment(**item))
+
+            return assignments
+        except ClientError as e:
+            logger.error(f"Error querying app role assignments for {app_role_id}: {e}")
+            return []
 
     async def query_role_assignments(self, role: str) -> List[QuotaAssignment]:
         """
@@ -229,7 +256,7 @@ class QuotaRepository:
 
             assignments = []
             for item in response.get('Items', []):
-                for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK']:
+                for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
                     item.pop(key, None)
                 assignments.append(QuotaAssignment(**item))
 
@@ -259,7 +286,7 @@ class QuotaRepository:
 
             assignments = []
             for item in response.get('Items', []):
-                for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK']:
+                for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
                     item.pop(key, None)
 
                 assignment = QuotaAssignment(**item)
@@ -356,7 +383,7 @@ class QuotaRepository:
             )
 
             item = response['Attributes']
-            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK']:
+            for key in ['PK', 'SK', 'GSI1PK', 'GSI1SK', 'GSI2PK', 'GSI2SK', 'GSI3PK', 'GSI3SK', 'GSI6PK', 'GSI6SK']:
                 item.pop(key, None)
 
             return QuotaAssignment(**item)
@@ -390,10 +417,15 @@ class QuotaRepository:
             gsi_keys["GSI2PK"] = f"USER#{assignment.user_id}"
             gsi_keys["GSI2SK"] = f"ASSIGNMENT#{assignment.assignment_id}"
 
-        # GSI3: Role-specific index
+        # GSI3: JWT Role-specific index
         if assignment.assignment_type == QuotaAssignmentType.JWT_ROLE and assignment.jwt_role:
             gsi_keys["GSI3PK"] = f"ROLE#{assignment.jwt_role}"
             gsi_keys["GSI3SK"] = f"PRIORITY#{assignment.priority}"
+
+        # GSI6: AppRole-specific index
+        if assignment.assignment_type == QuotaAssignmentType.APP_ROLE and assignment.app_role_id:
+            gsi_keys["GSI6PK"] = f"APP_ROLE#{assignment.app_role_id}"
+            gsi_keys["GSI6SK"] = f"PRIORITY#{assignment.priority}"
 
         return gsi_keys
 

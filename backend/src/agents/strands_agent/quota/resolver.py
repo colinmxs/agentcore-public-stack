@@ -1,6 +1,6 @@
 """Quota resolver with intelligent caching."""
 
-from typing import Optional, Dict, Tuple
+from typing import Optional, Dict, Tuple, List
 from datetime import datetime, timedelta
 import logging
 from apis.shared.auth.models import User
@@ -9,12 +9,28 @@ from .repository import QuotaRepository
 
 logger = logging.getLogger(__name__)
 
+# Import AppRoleService lazily to avoid circular imports
+_app_role_service = None
+
+
+def _get_app_role_service():
+    """Lazy import of AppRoleService to avoid circular imports."""
+    global _app_role_service
+    if _app_role_service is None:
+        try:
+            from apis.shared.rbac.service import get_app_role_service
+            _app_role_service = get_app_role_service()
+        except ImportError:
+            logger.warning("AppRoleService not available, AppRole quota assignments disabled")
+            _app_role_service = False  # Mark as unavailable
+    return _app_role_service if _app_role_service else None
+
 
 class QuotaResolver:
     """
     Resolves user quota tier with intelligent caching.
 
-    Supports overrides, direct user, JWT role, email domain, and default tier assignments.
+    Supports overrides, direct user, AppRole, JWT role, email domain, and default tier assignments.
     Cache TTL: 5 minutes (reduces DynamoDB calls by ~90%)
     """
 
@@ -35,9 +51,10 @@ class QuotaResolver:
         Priority order (highest to lowest):
         1. Active override (highest priority)
         2. Direct user assignment (priority ~300)
-        3. JWT role assignment (priority ~200)
-        4. Email domain assignment (priority ~150)
-        5. Default tier (priority ~100)
+        3. AppRole assignment (priority ~250)
+        4. JWT role assignment (priority ~200)
+        5. Email domain assignment (priority ~150)
+        6. Default tier (priority ~100)
         """
         cache_key = self._get_cache_key(user)
 
@@ -87,7 +104,35 @@ class QuotaResolver:
                     assignment=user_assignment
                 )
 
-        # 3. Check JWT role assignments (GSI3: RoleAssignmentIndex)
+        # 3. Check AppRole assignments (GSI6: AppRoleAssignmentIndex)
+        app_role_service = _get_app_role_service()
+        if app_role_service:
+            try:
+                user_permissions = await app_role_service.resolve_user_permissions(user)
+                if user_permissions and user_permissions.app_roles:
+                    app_role_assignments: List[QuotaAssignment] = []
+                    for app_role_id in user_permissions.app_roles:
+                        # Targeted query per app role (O(log n) per role)
+                        assignments = await self.repository.query_app_role_assignments(app_role_id)
+                        app_role_assignments.extend(assignments)
+
+                    if app_role_assignments:
+                        # Sort by priority (descending) and take highest enabled
+                        app_role_assignments.sort(key=lambda a: a.priority, reverse=True)
+                        for assignment in app_role_assignments:
+                            if assignment.enabled:
+                                tier = await self.repository.get_tier(assignment.tier_id)
+                                if tier and tier.enabled:
+                                    return ResolvedQuota(
+                                        user_id=user.user_id,
+                                        tier=tier,
+                                        matched_by=f"app_role:{assignment.app_role_id}",
+                                        assignment=assignment
+                                    )
+            except Exception as e:
+                logger.warning(f"Error resolving AppRole quota for user {user.user_id}: {e}")
+
+        # 4. Check JWT role assignments (GSI3: RoleAssignmentIndex)
         if user.roles:
             role_assignments = []
             for role in user.roles:
@@ -109,7 +154,7 @@ class QuotaResolver:
                                 assignment=assignment
                             )
 
-        # 4. Check email domain assignments
+        # 5. Check email domain assignments
         if user.email and '@' in user.email:
             domain_assignments = await self._get_cached_domain_assignments()
             user_domain = user.email.split('@')[1]
@@ -126,7 +171,7 @@ class QuotaResolver:
                             assignment=assignment
                         )
 
-        # 5. Fall back to default tier (GSI1: AssignmentTypeIndex)
+        # 6. Fall back to default tier (GSI1: AssignmentTypeIndex)
         default_assignments = await self.repository.list_assignments_by_type(
             assignment_type="default_tier",
             enabled_only=True

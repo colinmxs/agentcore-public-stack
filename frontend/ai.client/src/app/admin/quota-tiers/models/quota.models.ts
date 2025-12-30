@@ -7,6 +7,7 @@
 
 export enum QuotaAssignmentType {
   DIRECT_USER = 'direct_user',
+  APP_ROLE = 'app_role',
   JWT_ROLE = 'jwt_role',
   EMAIL_DOMAIN = 'email_domain',
   DEFAULT_TIER = 'default_tier',
@@ -79,6 +80,7 @@ export interface QuotaAssignment {
 
   // Conditional fields
   userId?: string;
+  appRoleId?: string;
   jwtRole?: string;
   emailDomain?: string;
 
@@ -93,6 +95,7 @@ export interface QuotaAssignmentCreate {
   tierId: string;
   assignmentType: QuotaAssignmentType;
   userId?: string;
+  appRoleId?: string;
   jwtRole?: string;
   emailDomain?: string;
   priority?: number;

@@ -159,6 +159,8 @@ class QuotaAdminService:
         # Validate assignment criteria
         if assignment_data.assignment_type.value == "direct_user" and not assignment_data.user_id:
             raise ValueError("user_id required for direct_user assignment")
+        elif assignment_data.assignment_type.value == "app_role" and not assignment_data.app_role_id:
+            raise ValueError("app_role_id required for app_role assignment")
         elif assignment_data.assignment_type.value == "jwt_role" and not assignment_data.jwt_role:
             raise ValueError("jwt_role required for jwt_role assignment")
 
@@ -171,6 +173,15 @@ class QuotaAdminService:
                     f"Update or delete the existing assignment first."
                 )
 
+        # Check for duplicate app_role assignment
+        if assignment_data.assignment_type.value == "app_role" and assignment_data.app_role_id:
+            existing_assignments = await self.repository.query_app_role_assignments(assignment_data.app_role_id)
+            if existing_assignments:
+                raise ValueError(
+                    f"AppRole '{assignment_data.app_role_id}' already has a quota assignment (ID: {existing_assignments[0].assignment_id}). "
+                    f"Update or delete the existing assignment first."
+                )
+
         now = datetime.utcnow().isoformat() + 'Z'
         assignment_id = str(uuid.uuid4())
 
@@ -179,7 +190,9 @@ class QuotaAdminService:
             tier_id=assignment_data.tier_id,
             assignment_type=assignment_data.assignment_type,
             user_id=assignment_data.user_id,
+            app_role_id=assignment_data.app_role_id,
             jwt_role=assignment_data.jwt_role,
+            email_domain=assignment_data.email_domain,
             priority=assignment_data.priority,
             enabled=assignment_data.enabled,
             created_at=now,
@@ -197,7 +210,7 @@ class QuotaAdminService:
         if assignment_data.assignment_type.value == "direct_user" and assignment_data.user_id:
             self.resolver.invalidate_cache(assignment_data.user_id)
         else:
-            # For role/default assignments, invalidate all cache
+            # For role/app_role/default assignments, invalidate all cache
             self.resolver.invalidate_cache()
 
         return created

@@ -7,8 +7,17 @@ from decimal import Decimal
 
 
 class QuotaAssignmentType(str, Enum):
-    """How a quota is assigned to users"""
+    """How a quota is assigned to users.
+
+    Priority order (highest to lowest):
+    1. DIRECT_USER - Direct assignment to a specific user
+    2. APP_ROLE - Assignment via application role (AppRole system)
+    3. JWT_ROLE - Assignment via JWT role from identity provider
+    4. EMAIL_DOMAIN - Assignment via email domain pattern
+    5. DEFAULT_TIER - Fallback for unmatched users
+    """
     DIRECT_USER = "direct_user"
+    APP_ROLE = "app_role"
     JWT_ROLE = "jwt_role"
     EMAIL_DOMAIN = "email_domain"
     DEFAULT_TIER = "default_tier"
@@ -71,10 +80,17 @@ class QuotaAssignment(BaseModel):
 
     # Assignment criteria (one populated based on type)
     user_id: Optional[str] = Field(None, alias="userId")
+    app_role_id: Optional[str] = Field(None, alias="appRoleId")
     jwt_role: Optional[str] = Field(None, alias="jwtRole")
     email_domain: Optional[str] = Field(None, alias="emailDomain")
 
     # Priority (higher = more specific, evaluated first)
+    # Default priorities by type:
+    # - DIRECT_USER: 300
+    # - APP_ROLE: 250
+    # - JWT_ROLE: 200
+    # - EMAIL_DOMAIN: 150
+    # - DEFAULT_TIER: 100
     priority: int = Field(
         default=100,
         description="Higher priority overrides lower",
@@ -87,7 +103,7 @@ class QuotaAssignment(BaseModel):
     updated_at: str = Field(..., alias="updatedAt")
     created_by: str = Field(..., alias="createdBy")
 
-    @field_validator('user_id', 'jwt_role', 'email_domain')
+    @field_validator('user_id', 'app_role_id', 'jwt_role', 'email_domain')
     @classmethod
     def validate_criteria_match(cls, v, info):
         """Ensure criteria matches assignment type"""
@@ -97,6 +113,9 @@ class QuotaAssignment(BaseModel):
         if assignment_type == QuotaAssignmentType.DIRECT_USER and field_name == 'user_id':
             if not v:
                 raise ValueError("user_id required for direct_user assignment")
+        elif assignment_type == QuotaAssignmentType.APP_ROLE and field_name == 'app_role_id':
+            if not v:
+                raise ValueError("app_role_id required for app_role assignment")
         elif assignment_type == QuotaAssignmentType.JWT_ROLE and field_name == 'jwt_role':
             if not v:
                 raise ValueError("jwt_role required for jwt_role assignment")

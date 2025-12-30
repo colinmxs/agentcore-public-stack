@@ -4,6 +4,7 @@ import { FormsModule } from '@angular/forms';
 import { DatePipe } from '@angular/common';
 import { QuotaStateService } from '../../services/quota-state.service';
 import { QuotaAssignment, QuotaAssignmentType } from '../../models/quota.models';
+import { AppRolesService } from '../../../roles/services/app-roles.service';
 
 @Component({
   selector: 'app-assignment-list',
@@ -14,6 +15,7 @@ import { QuotaAssignment, QuotaAssignmentType } from '../../models/quota.models'
 })
 export class AssignmentListComponent implements OnInit {
   private quotaStateService = inject(QuotaStateService);
+  private appRolesService = inject(AppRolesService);
 
   // Filter signals
   searchQuery = signal<string>('');
@@ -40,6 +42,7 @@ export class AssignmentListComponent implements OnInit {
         a =>
           a.assignmentId.toLowerCase().includes(query) ||
           (a.userId && a.userId.toLowerCase().includes(query)) ||
+          (a.appRoleId && a.appRoleId.toLowerCase().includes(query)) ||
           (a.jwtRole && a.jwtRole.toLowerCase().includes(query)) ||
           (a.emailDomain && a.emailDomain.toLowerCase().includes(query))
       );
@@ -65,6 +68,7 @@ export class AssignmentListComponent implements OnInit {
   // Available assignment types for filter
   readonly assignmentTypes = [
     { value: QuotaAssignmentType.DIRECT_USER, label: 'Direct User' },
+    { value: QuotaAssignmentType.APP_ROLE, label: 'App Role' },
     { value: QuotaAssignmentType.JWT_ROLE, label: 'JWT Role' },
     { value: QuotaAssignmentType.EMAIL_DOMAIN, label: 'Email Domain' },
     { value: QuotaAssignmentType.DEFAULT_TIER, label: 'Default Tier' },
@@ -129,6 +133,12 @@ export class AssignmentListComponent implements OnInit {
     switch (assignment.assignmentType) {
       case QuotaAssignmentType.DIRECT_USER:
         return assignment.userId || 'N/A';
+      case QuotaAssignmentType.APP_ROLE:
+        if (assignment.appRoleId) {
+          const role = this.appRolesService.getRoleById(assignment.appRoleId);
+          return role ? `${role.displayName} (${assignment.appRoleId})` : assignment.appRoleId;
+        }
+        return 'N/A';
       case QuotaAssignmentType.JWT_ROLE:
         return assignment.jwtRole || 'N/A';
       case QuotaAssignmentType.EMAIL_DOMAIN:

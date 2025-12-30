@@ -52,6 +52,7 @@ class QuotaAssignmentCreate(BaseModel):
 
     # Conditional fields based on assignment type
     user_id: Optional[str] = Field(None, alias="userId")
+    app_role_id: Optional[str] = Field(None, alias="appRoleId")
     jwt_role: Optional[str] = Field(None, alias="jwtRole")
     email_domain: Optional[str] = Field(None, alias="emailDomain")
 
