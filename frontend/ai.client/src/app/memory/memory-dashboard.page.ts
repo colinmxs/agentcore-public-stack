@@ -106,7 +106,7 @@ export class ParsePreferencePipe implements PipeTransform {
     })
   ],
   template: `
-    <div class="min-h-dvh bg-gray-100 dark:bg-gray-900">
+    <div class="min-h-dvh">
       <div class="mx-auto max-w-3xl px-4 py-8">
         <!-- Header -->
         <div class="mb-8">
