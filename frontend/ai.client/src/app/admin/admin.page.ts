@@ -12,7 +12,8 @@ import {
   heroSparkles,
   heroCurrencyDollar,
   heroUsers,
-  heroShieldCheck
+  heroShieldCheck,
+  heroWrenchScrewdriver
 } from '@ng-icons/heroicons/outline';
 
 interface AdminFeature {
@@ -37,7 +38,8 @@ interface AdminFeature {
       heroSparkles,
       heroCurrencyDollar,
       heroUsers,
-      heroShieldCheck
+      heroShieldCheck,
+      heroWrenchScrewdriver
     })
   ],
   templateUrl: './admin.page.html',
@@ -117,6 +119,12 @@ export class AdminPage {
       description: 'Create and manage application roles with tool and model permissions. Configure JWT mappings and role inheritance.',
       icon: 'heroShieldCheck',
       route: '/admin/roles',
+    },
+    {
+      title: 'Tool Catalog',
+      description: 'Manage the tool catalog, configure role-based access, and sync tools from the registry. Control which tools are available to users.',
+      icon: 'heroWrenchScrewdriver',
+      route: '/admin/tools',
     },
   ];
 

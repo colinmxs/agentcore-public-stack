@@ -106,5 +106,20 @@ export const routes: Routes = [
         path: 'admin/roles/edit/:id',
         loadComponent: () => import('./admin/roles/pages/role-form.page').then(m => m.RoleFormPage),
         canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/tools',
+        loadComponent: () => import('./admin/tools/pages/tool-list.page').then(m => m.ToolListPage),
+        canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/tools/new',
+        loadComponent: () => import('./admin/tools/pages/tool-form.page').then(m => m.ToolFormPage),
+        canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/tools/edit/:toolId',
+        loadComponent: () => import('./admin/tools/pages/tool-form.page').then(m => m.ToolFormPage),
+        canActivate: [adminGuard],
     }
 ];
