@@ -258,6 +258,38 @@ Frontend StreamParser
 - `/admin/roles/*` - Role management
 - `/admin/tools/*` - Tool management
 
+## Backend API Route Conventions
+
+**IMPORTANT:** All admin endpoints MUST be under the `/admin/` prefix. Do NOT create admin routes nested under resource routes.
+
+| Pattern | Example | Use For |
+|---------|---------|---------|
+| `/resource/` | `/tools/`, `/models/` | User-facing resource endpoints |
+| `/admin/resource/` | `/admin/tools/`, `/admin/roles/` | Admin CRUD for resources |
+
+**Correct:**
+- `GET /tools/` - User's accessible tools
+- `GET /admin/tools/` - Admin tool catalog management
+- `PUT /admin/tools/{id}` - Admin update tool
+
+**Incorrect:**
+- ~~`GET /tools/admin/`~~ - Don't nest admin under resource
+- ~~`PUT /tools/admin/{id}`~~ - Admin routes go under `/admin/`
+
+**Backend Route Files:**
+| Route Prefix | File Location |
+|--------------|---------------|
+| `/auth/*` | `apis/app_api/auth/routes.py` |
+| `/chat/*` | `apis/app_api/chat/routes.py` |
+| `/tools/*` | `apis/app_api/tools/routes.py` |
+| `/models/*` | `apis/app_api/models/routes.py` |
+| `/admin/*` | `apis/app_api/admin/routes.py` (includes subrouters) |
+| `/admin/tools/*` | `apis/app_api/admin/tools/routes.py` |
+| `/admin/roles/*` | `apis/app_api/admin/roles/routes.py` |
+| `/admin/users/*` | `apis/app_api/admin/users/routes.py` |
+| `/admin/quota/*` | `apis/app_api/admin/quota/routes.py` |
+| `/admin/costs/*` | `apis/app_api/admin/costs/routes.py` |
+
 ## Common Debugging Scenarios
 
 **"Tool not appearing in UI"**
