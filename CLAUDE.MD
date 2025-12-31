@@ -346,6 +346,34 @@ python -m pytest tests/test_agent.py -v
 
 This project uses Angular v21+ with Tailwind CSS v4.1+. For detailed framework guidelines, use the Angular and Tailwind skills.
 
+**Icon-Only Buttons (Accessibility Required):**
+
+Buttons with only icons (no visible text) MUST include:
+1. **Tooltip**: Use `[appTooltip]` directive for styled tooltips
+2. **Accessible name**: The tooltip directive auto-generates `aria-describedby`
+
+```html
+<!-- Correct: Icon button with tooltip -->
+<button
+  (click)="editItem()"
+  class="p-2 text-gray-500 hover:text-blue-600"
+  [appTooltip]="'Edit Item'"
+  appTooltipPosition="top"
+>
+  <ng-icon name="heroPencilSquare" class="size-5" />
+</button>
+
+<!-- Incorrect: Icon button without tooltip -->
+<button (click)="editItem()" class="p-2">
+  <ng-icon name="heroPencilSquare" class="size-5" />
+</button>
+```
+
+**Tooltip Directive:** `frontend/ai.client/src/app/components/tooltip/`
+- Import: `import { TooltipDirective } from '../../../components/tooltip';`
+- Add to component imports: `imports: [..., TooltipDirective]`
+- Positions: `'top'` | `'bottom'` | `'left'` | `'right'`
+
 **Key Files:**
 - `frontend/ai.client/src/app/session/session.page.ts` - Main chat interface
 - `frontend/ai.client/src/app/session/services/chat/` - Chat state & HTTP services
