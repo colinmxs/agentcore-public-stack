@@ -5,7 +5,7 @@
 This is a production-ready multi-agent conversational AI system built with AWS Bedrock AgentCore and Strands Agents. The application combines agent orchestration with MCP-based tool integration, multimodal I/O, financial analysis tools, and deep research capabilities.
 
 **Tech Stack:**
-- **Frontend**: Angular v21, TypeScript, Tailwind v4.1 CSS
+- **Frontend**: Angular v21, TypeScript, Tailwind v4.1 CSS (see skills for detailed guidelines)
 - **Backend**: Python 3.13+, FastAPI
 - **Agent Framework**: Strands Agents (AWS Bedrock)
 - **Cloud Services**: AWS Bedrock AgentCore (Runtime, Memory, Gateway, Code Interpreter, Browser)
@@ -16,24 +16,38 @@ This is a production-ready multi-agent conversational AI system built with AWS B
 /
 ├── backend/
 │   └── src/
-│       ├── agentcore/              # Core agent implementation
-│       │   ├── agent/              # Agent orchestration & session management
-│       │   ├── builtin_tools/      # AWS SDK tools (Code Interpreter, Browser)
-│       │   ├── local_tools/        # Direct function call tools
-│       │   └── config.py           # Environment configuration
-│       └── api/                    # FastAPI routes
-│           ├── chat/               # Chat endpoints & SSE streaming
-│           ├── health/             # Health check endpoints
-│           └── utils/              # Event processing utilities
+│       ├── agents/strands_agent/       # Core agent implementation
+│       │   ├── core/                   # Agent factory, model config, system prompt
+│       │   ├── session/                # Turn-based session management
+│       │   ├── streaming/              # SSE event processing & formatting
+│       │   └── tools/                  # Tool registry & local tools
+│       └── apis/
+│           ├── app_api/                # Main application API
+│           │   ├── chat/               # Chat endpoints & SSE streaming
+│           │   └── auth/               # Authentication endpoints
+│           ├── inference_api/          # Bedrock inference endpoint
+│           └── shared/                 # Shared utilities & error handling
 │
-└── frontend/
-    └── ai.client/
-        └── src/
-            ├── app/
-            │   ├── components/     # Shared UI components
-            │   ├── conversations/  # Chat UI & services
-            │   └── services/       # State management, HTTP services
-            └── environments/       # Environment configuration
+├── frontend/
+│   └── ai.client/
+│       └── src/
+│           ├── app/
+│           │   ├── auth/               # OIDC/Entra ID authentication
+│           │   ├── session/            # Chat UI & services
+│           │   ├── admin/              # Admin dashboard pages
+│           │   └── services/           # State management, HTTP services
+│           └── environments/           # Environment configuration
+│
+└── infrastructure/                     # AWS CDK infrastructure
+    ├── bin/infrastructure.ts           # CDK app entry point
+    ├── lib/
+    │   ├── config.ts                   # Configuration & validation
+    │   ├── infrastructure-stack.ts     # VPC, ALB, ECS Cluster
+    │   ├── frontend-stack.ts           # S3, CloudFront
+    │   ├── app-api-stack.ts            # App API Fargate + DynamoDB
+    │   ├── inference-api-stack.ts      # Inference API Fargate
+    │   └── gateway-stack.ts            # AgentCore Gateway + Lambdas
+    └── cdk.context.json                # Stack configuration
 ```
 
 ## Key Architecture Patterns
@@ -44,40 +58,231 @@ Tools communicate via different protocols:
 
 | Protocol | Location | Examples | Auth |
 |----------|----------|----------|------|
-| Direct call | `backend/src/agentcore/local_tools/` | Weather, Calculator, Visualization | N/A |
-| AWS SDK | `backend/src/agentcore/builtin_tools/` | Code Interpreter, Browser | IAM |
+| Direct call | `backend/src/agents/strands_agent/tools/` | Weather, Calculator, Visualization | N/A |
+| AWS SDK | `backend/src/agents/strands_agent/tools/` | Code Interpreter, Browser | IAM |
 | MCP + SigV4 | Cloud Lambda (Gateway) | Wikipedia, ArXiv, Finance | AWS SigV4 |
 | A2A | Cloud Runtime (WIP) | Report Writer | AgentCore auth |
 
 ### 2. Turn-based Session Management
 
-**File:** `backend/src/agentcore/agent/turn_based_session_manager.py`
+**File:** `backend/src/agents/strands_agent/session/turn_based_session_manager.py`
 
-Buffers messages within a turn to reduce AgentCore Memory API calls (75% reduction):
-- Buffers: User → Assistant → Tool → Result
-- Flushes: Single merged API call per turn
-- Detects turn completion automatically
+- Pass-through mode: Messages sent individually to AgentCore Memory
+- Message count initialized once at startup (avoids eventual consistency issues)
+- Supports session cancellation via `cancelled` flag
+- Hooks for MessageAddedEvent tracking
 
 ### 3. Dynamic Tool Filtering
 
-**File:** `backend/src/agentcore/agent/agent.py:277-318`
+**File:** `backend/src/apis/app_api/chat/routes.py`
 
-Users can enable/disable tools via UI. The agent filters tool definitions before each invocation to reduce token usage.
+- RBAC checks filter tools before agent creation
+- Users can enable/disable tools via UI
+- Denied tools removed from enabled_tools list
+- Fail-open: RBAC errors don't block requests
 
 ### 4. Prompt Caching Strategy
 
-**File:** `backend/src/agentcore/agent/agent.py:67-142`
+**File:** `backend/src/agents/strands_agent/core/agent_factory.py`
 
-Two-level caching:
+Two-level caching (Bedrock only):
 - System prompt caching (static)
 - Conversation history caching (dynamic, last 2 messages)
 - Max 4 cache points with rotation
+- Enabled via `ConversationCachingHook`
 
 ### 5. Multimodal I/O
 
 **Input:** Images (PNG, JPEG, GIF, WebP), Documents (PDF, CSV, DOCX)
 **Output:** Charts from Code Interpreter, screenshots from Browser
-**Implementation:** `backend/src/agentcore/agent/agent.py:483-549`
+
+## SSE Event Types
+
+The backend emits these Server-Sent Events:
+
+**Message Structure Events:**
+| Event | Purpose |
+|-------|---------|
+| `message_start` | Start of assistant response (contains `role`) |
+| `content_block_start` | Begin text/tool_use/reasoning block |
+| `content_block_delta` | Streaming content chunks |
+| `content_block_stop` | End of content block |
+| `message_stop` | End of message (stopReason: end_turn, tool_use, max_tokens) |
+
+**Tool Events:**
+| Event | Purpose |
+|-------|---------|
+| `tool_use` | Tool invocation with toolUseId, name, input |
+| `tool_result` | Tool execution result (supports images/JSON) |
+| `tool_progress` | Progress during tool execution (%) |
+| `tool_error` | Tool execution error |
+
+**Status Events:**
+| Event | Purpose |
+|-------|---------|
+| `reasoning` | Chain-of-thought thinking blocks |
+| `metadata` | Usage metrics, latency info |
+| `quota_warning` | Approaching quota limit |
+| `quota_exceeded` | Quota limit reached |
+| `stream_error` | Conversational error (displayed as chat message) |
+| `error` | Legacy error event |
+| `done` | Stream complete |
+
+**SSE Format:** `event: <type>\ndata: <json>\n\n`
+
+## Model Configuration
+
+**File:** `backend/src/agents/strands_agent/core/model_config.py`
+
+**Default Model:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` (cost-conscious for high-volume)
+
+**Supported Providers:**
+| Provider | Model Patterns | Config |
+|----------|---------------|--------|
+| Bedrock (default) | `us.anthropic.claude-*`, `claude-*` | IAM auth, prompt caching |
+| OpenAI | `gpt-*`, `o1-*` | `OPENAI_API_KEY` env var |
+| Gemini | `gemini-*` | `GOOGLE_GEMINI_API_KEY` env var |
+
+**ModelConfig Fields:**
+```python
+model_id: str = "us.anthropic.claude-haiku-4-5-20251001-v1:0"
+temperature: float = 0.7
+caching_enabled: bool = True
+provider: ModelProvider = ModelProvider.BEDROCK
+max_tokens: Optional[int] = None
+```
+
+## System Prompt
+
+**File:** `backend/src/agents/strands_agent/core/system_prompt_builder.py`
+
+The agent uses a Boise State University-specific system prompt with:
+- Academic integrity guidelines
+- Institutional knowledge context
+- Cost awareness principles
+- Markdown/KaTeX/Mermaid output support
+- Dynamic tool availability awareness
+
+Date is injected dynamically in Pacific timezone.
+
+## Authentication Flow
+
+**Frontend:** OIDC with Entra ID + PKCE
+
+**Key Files:**
+- `frontend/ai.client/src/app/auth/services/auth.service.ts` - Token management
+- `frontend/ai.client/src/app/auth/services/callback.service.ts` - OAuth callback
+- `frontend/ai.client/src/app/auth/guards/` - Route protection
+
+**Flow:**
+1. `login()` → Backend `/auth/login` → Entra ID authorization
+2. Callback → `/auth/token` exchange → Store tokens in localStorage
+3. `authInterceptor` adds Bearer token, auto-refreshes on expiry
+4. `authGuard` protects routes, redirects with returnUrl
+
+**Token Storage:**
+- `localStorage['access_token']` - JWT access token
+- `localStorage['refresh_token']` - Refresh token
+- `localStorage['token_expiry']` - Expiry timestamp
+- `sessionStorage['auth_state']` - CSRF state token
+
+**Configuration:** `environment.enableAuthentication` toggles auth (default: true)
+
+## Error Handling
+
+**Backend:** `backend/src/apis/shared/errors.py`
+
+**Error Codes:**
+- Client: `bad_request`, `unauthorized`, `forbidden`, `not_found`, `validation_error`, `rate_limit_exceeded`, `quota_exceeded`
+- Server: `internal_error`, `service_unavailable`, `timeout`
+- Agent: `agent_error`, `tool_error`, `model_error`, `stream_error`
+
+**Strategy:**
+- Errors stream as assistant messages (better UX than HTTP errors)
+- `ConversationalErrorEvent` for user-friendly markdown errors
+- Errors persisted to session history
+- Fail-open approach for RBAC/quota errors
+
+**Frontend:** `frontend/ai.client/src/app/services/error/`
+- `ErrorService` - Centralized error handling
+- `ErrorToastComponent` - Bottom-right toast notifications
+- Supports retry actions for recoverable errors
+
+## Data Flow
+
+```
+User Input (Frontend)
+    ↓
+POST /chat/stream
+    ├─ Authenticate (JWT from Bearer token)
+    ├─ Authorize (RBAC tool filtering)
+    ├─ Check Quota (warn/exceed events)
+    └─ Get/Create Agent
+        ↓
+Agent.stream_async()
+    ├─ SystemPromptBuilder (inject date)
+    ├─ Model invocation (Bedrock/OpenAI/Gemini)
+    ├─ Tool execution (SequentialToolExecutor)
+    └─ Stream events
+        ↓
+StreamProcessor → EventFormatter
+    ├─ Transform to SSE format
+    ├─ Track usage metrics
+    └─ Persist to session
+        ↓
+Frontend StreamParser
+    ├─ Parse SSE events
+    ├─ Build message content blocks
+    ├─ Handle tool results (images/JSON)
+    └─ Update UI signals
+```
+
+## Route Structure
+
+**Public Routes:**
+- `/auth/login` - OIDC login
+- `/auth/callback` - OAuth callback
+
+**Authenticated Routes (authGuard):**
+- `/` - Main chat interface
+- `/s/:sessionId` - Load specific session
+- `/costs` - User cost dashboard
+- `/memories` - Memory dashboard
+- `/manage-sessions` - Session management
+
+**Admin Routes (adminGuard - requires Admin/SuperAdmin/DotNetDevelopers role):**
+- `/admin` - Admin dashboard
+- `/admin/bedrock/models`, `/admin/gemini/models`, `/admin/openai/models` - Model config
+- `/admin/quota/*` - Quota tier management
+- `/admin/users/*` - User management
+- `/admin/roles/*` - Role management
+- `/admin/tools/*` - Tool management
+
+## Common Debugging Scenarios
+
+**"Tool not appearing in UI"**
+1. Check tool is exported in `__init__.py`
+2. Verify RBAC permissions for user's role
+3. Check tool is in `enabled_tools` list
+4. Verify tool registration in ToolRegistry
+
+**"Session not persisting"**
+1. Check AgentCore Memory configuration
+2. Verify session_id is being passed correctly
+3. Check TurnBasedSessionManager flush on completion
+4. Look for errors in session persistence logs
+
+**"SSE stream disconnecting"**
+1. Check 600-second timeout in routes.py
+2. Verify client isn't closing connection
+3. Look for `asyncio.CancelledError` in logs
+4. Check for quota exceeded events
+
+**"Authentication failing"**
+1. Verify `enableAuthentication` in environment.ts
+2. Check token expiry and refresh logic
+3. Verify Entra ID configuration
+4. Check CORS settings for auth endpoints
 
 ## Development Guidelines
 
@@ -90,402 +295,45 @@ Two-level caching:
 - Async/await for I/O operations
 
 **Key Files:**
-- `backend/src/agentcore/agent/agent.py` - Main ChatbotAgent implementation
-- `backend/src/api/chat/routes.py` - SSE streaming endpoints
-- `backend/src/api/chat/service.py` - Business logic layer
+- `backend/src/agents/strands_agent/strands_agent.py` - Main agent implementation
+- `backend/src/apis/app_api/chat/routes.py` - SSE streaming endpoints
+- `backend/src/agents/strands_agent/core/agent_factory.py` - Agent creation
 
 **Tool Development:**
-- Local tools: Add to `backend/src/agentcore/local_tools/`
+- Local tools: Add to `backend/src/agents/strands_agent/tools/local/`
 - Use `@tool` decorator from Strands framework
 - Return `ToolResult` with multimodal content support
-- Follow existing tool patterns (see `weather.py`, `visualization.py`)
 
-**Testing Tools:**
+**Testing:**
 ```bash
-# From backend/src
-python -m pytest
+cd backend/src && python -m pytest
 python -m pytest tests/test_agent.py -v
 ```
 
 ### Angular Frontend
 
-This project uses Angular v21+ with modern best practices.
+This project uses Angular v21+ with Tailwind CSS v4.1+. For detailed framework guidelines, use the Angular and Tailwind skills.
 
-#### TypeScript Best Practices
+**Key Files:**
+- `frontend/ai.client/src/app/session/session.page.ts` - Main chat interface
+- `frontend/ai.client/src/app/session/services/chat/` - Chat state & HTTP services
+- `frontend/ai.client/src/app/services/error/` - Error handling
 
-- **Use strict type checking** - Enable TypeScript strict mode
-- **Prefer type inference** when the type is obvious
-- **Avoid `any` type** - Use `unknown` when type is uncertain
+**State Management:**
+- Signal-based state throughout (`signal()`, `computed()`)
+- `stream-parser.service.ts` - SSE parsing with content block builders
+- `chat-http.service.ts` - `@microsoft/fetch-event-source` for SSE
 
-#### Angular Component Guidelines
-
-**CRITICAL - Standalone Components:**
-- Always use standalone components (Angular v21+)
-- **Do NOT set `standalone: true`** - It's the default in Angular v20+
-- Components are standalone by default
-
-**Component Structure:**
-- Keep components small and focused on a single responsibility
-- Use `input()` and `output()` functions instead of `@Input()`/`@Output()` decorators
-- Use `computed()` for derived state
-- Set `changeDetection: ChangeDetectionStrategy.OnPush` in `@Component` decorator
-- Prefer inline templates for small components
-- When using external templates/styles, use paths relative to the component TS file
-
-**Host Bindings:**
-- **Do NOT use `@HostBinding` and `@HostListener` decorators**
-- Put host bindings inside the `host` object of the `@Component` or `@Directive` decorator instead
-
-Example:
-```typescript
-import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
-
-@Component({
-  selector: 'app-my-component',
-  // standalone: true,  ❌ DO NOT include this
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  host: {
-    '(click)': 'handleClick()',
-    '[class.active]': 'isActive()'
-  },
-  template: `<div>{{ displayText() }}</div>`,
-})
-export class MyComponent {
-  // Use input/output functions
-  value = input<string>();
-  changed = output<string>();
-
-  // Use computed for derived state
-  displayText = computed(() => this.value()?.toUpperCase() ?? '');
-
-  handleClick() {
-    this.changed.emit(this.value());
-  }
-}
-```
-
-#### Template Best Practices
-
-- Keep templates simple and avoid complex logic
-- **Use native control flow** instead of structural directives:
-  - Use `@if` instead of `*ngIf`
-  - Use `@for` instead of `*ngFor`
-  - Use `@switch` instead of `*ngSwitch`
-- Use the async pipe to handle observables
-- **Do NOT use `ngClass`** - Use `class` bindings instead
-- **Do NOT use `ngStyle`** - Use `style` bindings instead
-- **Do NOT assume globals** like `new Date()` are available in templates
-- **Do NOT write arrow functions in templates** - They are not supported
-
-Example:
-```typescript
-template: `
-  <!-- ✅ Use native control flow -->
-  @if (user()) {
-    <div>{{ user().name }}</div>
-  }
-
-  @for (item of items(); track item.id) {
-    <div>{{ item.name }}</div>
-  }
-
-  <!-- ✅ Use class bindings -->
-  <div [class.active]="isActive()"></div>
-
-  <!-- ✅ Use style bindings -->
-  <div [style.color]="textColor()"></div>
-`
-```
-
-#### Forms
-
-- **Prefer Reactive forms** instead of Template-driven forms
-- Use FormBuilder with typed forms
-- Validate forms using Validators
-
-#### Images
-
-- **Use `NgOptimizedImage`** for all static images
-- Note: `NgOptimizedImage` does not work for inline base64 images
-
-#### Icons
-
-This project uses **ng-icons** (v18.0.0+) with **Heroicons** for icon management. Ng Icons supports standalone components and provides optimal tree-shaking.
-
-**Setup:**
-
-As of version 18.0.0, Ng Icons supports standalone components. Import icons using the `provideIcons` function, which can be placed anywhere you can register providers. The optimal location is in the `@Component` providers array.
-
-You can also import the component directly by importing `NgIcon` or the `NG_ICON_DIRECTIVES` constant.
-
-**Example:**
-
-```typescript
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { featherAirplay } from '@ng-icons/feather-icons';
-import { heroUsers } from '@ng-icons/heroicons/outline';
-
-@Component({
-  selector: 'app-my-component',
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [NgIcon],
-  providers: [provideIcons({ featherAirplay, heroUsers })],
-  template: `
-    <ng-icon name="featherAirplay" class="size-6" />
-    <ng-icon name="heroUsers" class="size-6" />
-  `
-})
-export class MyComponent {}
-```
-
-**Best Practices:**
-
-- **Register icons at component level** - Use `provideIcons()` in the component's `providers` array for optimal tree-shaking
-- **Import only needed icons** - Import specific icons rather than entire icon sets
-- **Use Heroicons outline variant** - Prefer `@ng-icons/heroicons/outline` for consistent styling
-- **Apply Tailwind sizing** - Use Tailwind size utilities like `size-6` instead of inline styles
-
-#### State Management
-
-- **Use signals** for local component state
-- **Use `computed()`** for derived state
-- Keep state transformations pure and predictable
-- **Do NOT use `mutate()` on signals** - Use `update()` or `set()` instead
-
-Example:
-```typescript
-import { signal, computed } from '@angular/core';
-
-export class MyComponent {
-  count = signal(0);
-  doubleCount = computed(() => this.count() * 2);
-
-  increment() {
-    this.count.update(value => value + 1);  // ✅
-    // this.count.mutate(value => value++);  // ❌
-  }
-}
-```
-
-#### Services
-
-- Design services around a single responsibility
-- **Use `providedIn: 'root'`** for singleton services
-- **Use `inject()` function** instead of constructor injection
-
-Example:
-```typescript
-import { Injectable, inject } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
-
-@Injectable({
-  providedIn: 'root'
-})
-export class DataService {
-  private http = inject(HttpClient);  // ✅ Use inject()
-
-  // constructor(private http: HttpClient) {}  // ❌ Avoid constructor injection
-}
-```
-
-#### Accessibility Requirements
-
-- **MUST pass all AXE checks**
-- **MUST follow WCAG AA minimums**:
-  - Focus management
-  - Color contrast
-  - ARIA attributes
-
-#### Key Files
-
-- `frontend/ai.client/src/app/conversations/conversation.page.ts` - Main chat interface
-- `frontend/ai.client/src/app/conversations/services/chat/` - Chat state & HTTP services
-- `frontend/ai.client/src/app/components/` - Shared components
-
-#### State Management Architecture
-
-- `chat-state.service.ts` - Message state using signals and RxJS BehaviorSubject
-- `chat-http.service.ts` - API communication
-- `stream-parser.service.ts` - SSE event parsing
-
-#### Testing
-
+**Testing:**
 ```bash
-# From frontend/ai.client
-npm test
+cd frontend/ai.client && npm test
 ng test --watch=false
 ```
-
-#### Tailwind CSS Best Practices
-
-This project uses **Tailwind CSS v4.1+** for styling. Follow these critical guidelines:
-
-**Core Principles:**
-- **Always use Tailwind CSS v4.1+** utilities
-- **Never use `@apply`** - Use CSS variables, the `--spacing()` function, or framework components instead
-- **Always use predefined scale values** - Avoid arbitrary values like `ml-[16px]`, use `ml-4` instead
-- **Always use `min-h-dvh`** instead of `min-h-screen` (Safari mobile bug fix)
-
-**Removed/Renamed Utilities (v4):**
-
-| ❌ Never Use (v3) | ✅ Always Use (v4) |
-|-------------------|-------------------|
-| `bg-opacity-*` | `bg-black/50` (opacity modifier) |
-| `text-opacity-*` | `text-black/50` |
-| `flex-shrink-*` | `shrink-*` |
-| `flex-grow-*` | `grow-*` |
-| `overflow-ellipsis` | `text-ellipsis` |
-| `bg-gradient-*` | `bg-linear-*` |
-| `shadow-sm` | `shadow-xs` |
-| `shadow` | `shadow-sm` |
-| `rounded-sm` | `rounded-xs` |
-| `rounded` | `rounded-sm` |
-| `outline-none` | `outline-hidden` |
-| `ring` | `ring-3` |
-
-**Layout & Spacing:**
-
-```html
-<!-- ✅ ALWAYS use gap for flex/grid spacing -->
-<div class="flex gap-4">
-  <div>Item 1</div>
-  <div>Item 2</div>
-</div>
-
-<!-- ❌ NEVER use space-x/space-y in flex/grid -->
-<div class="flex space-x-4">...</div>
-
-<!-- ✅ Use size-* for equal width/height -->
-<div class="size-8">Icon</div>
-
-<!-- ❌ Don't use separate w-* and h-* when equal -->
-<div class="w-8 h-8">Icon</div>
-```
-
-**Typography:**
-
-```html
-<!-- ✅ ALWAYS use line height modifiers with text size -->
-<p class="text-base/7">Text with line height</p>
-<h1 class="text-2xl/9">Heading</h1>
-
-<!-- ❌ NEVER use separate leading-* classes -->
-<p class="text-base leading-7">Wrong pattern</p>
-```
-
-**Colors & Opacity:**
-
-```html
-<!-- ✅ Use opacity modifier syntax -->
-<div class="bg-red-500/60 text-white/90">Content</div>
-
-<!-- ❌ Don't use old opacity utilities -->
-<div class="bg-red-500 bg-opacity-60 text-white text-opacity-90">Wrong</div>
-```
-
-**Gradients:**
-
-```html
-<!-- ✅ Use bg-linear-* (v4) -->
-<div class="bg-linear-to-br from-violet-500 to-fuchsia-500"></div>
-
-<!-- ❌ Don't use bg-gradient-* (deprecated) -->
-<div class="bg-gradient-to-br from-violet-500 to-fuchsia-500"></div>
-```
-
-**Responsive Design:**
-
-```html
-<!-- ✅ Only specify breakpoint when value changes -->
-<div class="px-4 lg:px-8">Content</div>
-
-<!-- ❌ Don't repeat unchanged values across breakpoints -->
-<div class="px-4 md:px-4 lg:px-4">Content</div>
-```
-
-**Dark Mode:**
-
-```html
-<!-- ✅ Light mode first, then dark mode -->
-<div class="bg-white text-black dark:bg-black dark:text-white">
-  <button class="hover:bg-gray-100 dark:hover:bg-gray-800">Click</button>
-</div>
-```
-
-**New v4 Features:**
-
-```html
-<!-- Container Queries -->
-<article class="@container">
-  <div class="flex flex-col @md:flex-row @lg:gap-8">
-    <img class="w-full @md:w-48" />
-  </div>
-</article>
-
-<!-- Text Shadows (v4.1) -->
-<h1 class="text-shadow-lg">Large shadow</h1>
-
-<!-- Masking (v4.1) -->
-<div class="mask-t-from-50%">Top fade</div>
-<div class="mask-linear-from-white mask-linear-to-black/60">Gradient mask</div>
-```
-
-**CSS Variables & Theme Extension:**
-
-```css
-/* Access theme values */
-.custom-element {
-  background: var(--color-red-500);
-  border-radius: var(--radius-lg);
-  margin-top: calc(100vh - --spacing(16));
-}
-
-/* Extend theme */
-@theme {
-  --color-mint-500: oklch(0.72 0.11 178);
-}
-```
-
-## Running the Project
-
-### Local Development
-
-```bash
-# Initial setup
-./setup.sh
-
-# Configure environment
-cd backend/src
-cp .env.example .env
-# Edit .env with AWS credentials
-
-# Start all services
-cd ../..
-./start.sh
-```
-
-**Access:**
-- Frontend: http://localhost:4200
-- Backend API: http://localhost:8000
-- Health check: http://localhost:8000/health
-
-### Docker Services
-
-**Frontend Container:**
-- Port: 4200
-- Hot reload enabled
-- Node v18+
-
-**Backend Container:**
-- Port: 8000
-- Python 3.13
-- Auto-reload with uvicorn
 
 ## Environment Configuration
 
 ### Backend (.env)
 
-Required variables:
 ```bash
 AWS_REGION=us-east-1
 AWS_ACCESS_KEY_ID=<your-key>
@@ -495,9 +343,10 @@ AWS_SECRET_ACCESS_KEY=<your-secret>
 AGENTCORE_MEMORY_ID=<memory-id>
 AGENTCORE_RUNTIME_ID=<runtime-id>
 
-# Optional API keys
+# Optional
+OPENAI_API_KEY=<key>
+GOOGLE_GEMINI_API_KEY=<key>
 TAVILY_API_KEY=<key>
-GOOGLE_SEARCH_API_KEY=<key>
 ```
 
 ### Frontend (environment.ts)
@@ -505,143 +354,11 @@ GOOGLE_SEARCH_API_KEY=<key>
 ```typescript
 export const environment = {
   production: false,
-  apiUrl: 'http://localhost:8000',
+  appApiUrl: 'http://localhost:8000',
+  inferenceApiUrl: 'http://localhost:8001',
+  enableAuthentication: true
 };
 ```
-
-## Common Tasks
-
-### Adding a New Local Tool
-
-1. Create tool file in `backend/src/agentcore/local_tools/`
-2. Implement with `@tool` decorator
-3. Add to `__init__.py` exports
-4. Register in `agent.py` tool list
-5. Update frontend tool configuration
-
-Example:
-```python
-from strands_agents import tool, ToolResult
-
-@tool
-async def my_new_tool(param: str) -> ToolResult:
-    """Tool description for the model."""
-    result = perform_operation(param)
-    return {
-        "content": [{"text": result}],
-        "status": "success"
-    }
-```
-
-### Adding a UI Component
-
-1. Create component in `frontend/ai.client/src/app/components/`
-2. Use modern Angular patterns (signals, native control flow, OnPush)
-3. Export from `index.ts`
-4. Import in parent component
-
-Example:
-```typescript
-import { Component, ChangeDetectionStrategy, input, output, computed, inject, signal } from '@angular/core';
-import { CommonModule } from '@angular/common';
-
-@Component({
-  selector: 'app-my-component',
-  // Do NOT set standalone: true (it's the default in Angular 20+)
-  changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [CommonModule],
-  template: `
-    @if (isVisible()) {
-      <div [class.active]="isActive()">
-        {{ displayText() }}
-      </div>
-    }
-
-    @for (item of items(); track item.id) {
-      <div>{{ item.name }}</div>
-    }
-  `,
-  styles: [`
-    .active {
-      color: blue;
-    }
-  `]
-})
-export class MyComponent {
-  // Use input/output functions
-  title = input.required<string>();
-  items = input<Item[]>([]);
-  clicked = output<void>();
-
-  // Use signals for local state
-  isActive = signal(false);
-
-  // Use computed for derived state
-  displayText = computed(() => this.title().toUpperCase());
-  isVisible = computed(() => this.items().length > 0);
-
-  // Use inject() for dependencies
-  private dataService = inject(DataService);
-
-  handleClick() {
-    this.isActive.update(value => !value);
-    this.clicked.emit();
-  }
-}
-```
-
-**What NOT to do:**
-```typescript
-// ❌ WRONG - Old patterns
-import { Component, Input, Output, EventEmitter, HostBinding, HostListener } from '@angular/core';
-
-@Component({
-  selector: 'app-old-component',
-  standalone: true,  // ❌ Don't set this
-  template: `
-    <!-- ❌ Don't use old structural directives -->
-    <div *ngIf="isVisible">
-      <div *ngFor="let item of items">{{ item }}</div>
-    </div>
-
-    <!-- ❌ Don't use ngClass or ngStyle -->
-    <div [ngClass]="{'active': isActive}"></div>
-    <div [ngStyle]="{'color': textColor}"></div>
-  `
-})
-export class OldComponent {
-  @Input() title!: string;  // ❌ Don't use @Input decorator
-  @Output() clicked = new EventEmitter<void>();  // ❌ Don't use @Output decorator
-
-  @HostBinding('class.active') isActive = true;  // ❌ Don't use @HostBinding
-
-  @HostListener('click')  // ❌ Don't use @HostListener
-  onClick() {
-    this.clicked.emit();
-  }
-
-  constructor(private dataService: DataService) {}  // ❌ Don't use constructor injection
-}
-```
-
-### Debugging SSE Streaming
-
-**Backend:**
-- Check logs in `agentcore.log`
-- Add logging in `backend/src/api/utils/event_processor.py`
-- Monitor FastAPI console output
-
-**Frontend:**
-- Check Network tab for SSE events
-- Add logging in `stream-parser.service.ts`
-- Monitor service state in Angular DevTools
-
-## Code Reference Patterns
-
-When discussing code, use this format for references:
-- `filename:line` - e.g., `agent.py:277`
-- `directory/filename` - e.g., `local_tools/weather.py`
-- `class.method` - e.g., `ChatbotAgent.create_agent`
 
 ## Important Constraints
 
@@ -651,6 +368,7 @@ When discussing code, use this format for references:
 4. **Multimodal Support**: Maintain compatibility with image/document handling
 5. **Session Management**: Respect turn-based buffering patterns
 6. **Tool Protocols**: Use correct protocol for tool type (Direct/AWS SDK/MCP/A2A)
+7. **Error Streaming**: Errors should be conversational (displayed as chat messages)
 
 ## Known Limitations
 
@@ -658,33 +376,124 @@ When discussing code, use this format for references:
 - AgentCore Memory uses local file storage in development
 - A2A Report Writer tools are work in progress
 - Browser automation requires Nova Act model access
+- Stream timeout: 600 seconds (10 minutes)
 
-## Testing Guidelines
+## CDK Infrastructure
 
-### Backend Tests
-- Unit tests for tools in `backend/tests/`
-- Integration tests for agent orchestration
-- Mock AWS services in tests
+**Location:** `infrastructure/`
 
-### Frontend Tests
-- Component tests with TestBed
-- Service tests with RxJS marble testing
-- E2E tests for critical flows
+### Stack Overview
 
-## Documentation References
+| Stack | Purpose | Key Resources |
+|-------|---------|---------------|
+| `InfrastructureStack` | Shared network resources (deploy first) | VPC, ALB, ECS Cluster, Route53 |
+| `FrontendStack` | Static website hosting | S3, CloudFront, OAC |
+| `AppApiStack` | Core backend API | ECS Fargate, DynamoDB tables, Target Groups |
+| `InferenceApiStack` | AI inference workloads | ECS Fargate (higher CPU/memory) |
+| `GatewayStack` | MCP tool gateway | AgentCore Gateway, Lambda functions |
 
-- Main README: `README.md` - Full project documentation
-- Tool Specifications: `docs/TOOLS.md` - Detailed tool list
-- Architecture Diagrams: `docs/images/` - Visual references
+### Configuration
 
-## When Making Changes
+**File:** `infrastructure/lib/config.ts`
 
-1. Read existing code first before suggesting modifications
-2. Maintain consistency with existing patterns
-3. Update tests if changing functionality
-4. Consider impact on token usage (prompt caching)
-5. Preserve multimodal content handling
-6. Test locally before suggesting cloud deployment changes
+Configuration loaded from `cdk.context.json` with env var overrides:
+
+```typescript
+// Core settings
+projectPrefix: string     // e.g., "bsu-agentcore"
+awsRegion: string         // e.g., "us-west-2"
+vpcCidr: string          // e.g., "10.0.0.0/16"
+
+// Stack toggles
+frontend.enabled: boolean
+appApi.enabled: boolean
+inferenceApi.enabled: boolean
+gateway.enabled: boolean
+```
+
+### DynamoDB Tables (AppApiStack)
+
+| Table | Purpose | Key Schema |
+|-------|---------|------------|
+| `user-quotas` | Quota tier assignments | PK/SK + 4 GSIs for lookups |
+| `quota-events` | Quota usage events | PK/SK + TierEventIndex GSI |
+| `sessions-metadata` | Message-level cost tracking | PK/SK + UserTimestampIndex, SessionLookupIndex |
+| `user-cost-summary` | Aggregated user costs | PK/SK + PeriodCostIndex GSI |
+| `system-cost-rollup` | Admin dashboard metrics | PK/SK |
+| `oidc-state` | OIDC auth state (TTL-enabled) | PK/SK |
+| `managed-models` | Model pricing/config | PK/SK + ModelIdIndex GSI |
+| `users` | User profiles from JWT | PK/SK + UserIdIndex, EmailIndex, EmailDomainIndex |
+| `app-roles` | RBAC role definitions | PK/SK + JwtRoleMappingIndex, ToolRoleMappingIndex |
+
+### Gateway Stack (MCP Tools)
+
+**Lambda Functions:**
+- `mcp-google-search` - Google Custom Search (web + images)
+- `mcp-brave-search` - Brave Search (web, local, video, image, news, summarizer)
+
+**Gateway Targets:** 8 total (2 Google + 6 Brave)
+
+**Secrets Required:**
+```bash
+# Google credentials
+aws secretsmanager put-secret-value \
+  --secret-id <google-secret-name> \
+  --secret-string '{"api_key":"...","search_engine_id":"..."}'
+
+# Brave credentials
+aws secretsmanager put-secret-value \
+  --secret-id <brave-secret-name> \
+  --secret-string '{"api_key":"..."}'
+```
+
+### Cross-Stack References (SSM Parameters)
+
+Resources exported to SSM under `/{projectPrefix}/`:
+- `/network/vpc-id`, `/network/alb-arn`, `/network/ecs-cluster-name`
+- `/quota/user-quotas-table-name`, `/quota/quota-events-table-name`
+- `/cost-tracking/sessions-metadata-table-name`
+- `/gateway/url`, `/gateway/id`
+- `/frontend/distribution-id`, `/frontend/bucket-name`
+
+### Deployment Order
+
+1. `InfrastructureStack` (VPC, ALB, ECS Cluster) - **must be first**
+2. `AppApiStack` (depends on network resources)
+3. `InferenceApiStack` (depends on network resources)
+4. `FrontendStack` (independent)
+5. `GatewayStack` (independent)
+
+### CDK Commands
+
+```bash
+cd infrastructure
+
+# Install dependencies
+npm install
+
+# Synthesize CloudFormation
+npx cdk synth
+
+# Deploy all stacks
+npx cdk deploy --all
+
+# Deploy specific stack
+npx cdk deploy InfrastructureStack
+
+# Diff changes
+npx cdk diff
+
+# Destroy (careful!)
+npx cdk destroy --all
+```
+
+### Environment Overrides
+
+CDK context can be overridden via environment variables:
+- `CDK_FRONTEND_ENABLED=true/false`
+- `CDK_APP_API_CPU=512`
+- `CDK_GATEWAY_LOG_LEVEL=DEBUG`
+- `ENV_INFERENCE_API_TAVILY_API_KEY=...`
 
 ## Quick Reference Commands
 
@@ -697,6 +506,9 @@ cd frontend/ai.client && ng serve
 
 # Docker
 docker-compose up --build
+
+# CDK Infrastructure
+cd infrastructure && npx cdk deploy --all
 
 # Testing
 cd backend/src && pytest
@@ -711,7 +523,6 @@ docker-compose logs -f backend
 
 - Main branch: `main`
 - Feature branches: `feature/description`
-- Current worktree: `wonderful-wiles`
 - Always check status before commits
 
 ## Contact & Support
