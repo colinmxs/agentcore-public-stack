@@ -7,6 +7,8 @@ import {
 } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { Dialog } from '@angular/cdk/dialog';
+import { firstValueFrom } from 'rxjs';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroPlus,
@@ -23,12 +25,13 @@ import {
 } from '@ng-icons/heroicons/outline';
 import { AdminToolService } from '../services/admin-tool.service';
 import { AdminTool, TOOL_CATEGORIES, TOOL_STATUSES } from '../models/admin-tool.model';
-import { ToolRoleDialogComponent } from '../components/tool-role-dialog.component';
+import { ToolRoleDialogComponent, ToolRoleDialogData, ToolRoleDialogResult } from '../components/tool-role-dialog.component';
+import { TooltipDirective } from '../../../components/tooltip';
 
 @Component({
   selector: 'app-tool-list',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [RouterLink, FormsModule, NgIcon, ToolRoleDialogComponent],
+  imports: [RouterLink, FormsModule, NgIcon, TooltipDirective],
   providers: [
     provideIcons({
       heroPlus,
@@ -245,21 +248,24 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
                     <button
                       (click)="openRoleDialog(tool)"
                       class="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-sm dark:hover:bg-gray-600"
-                      title="Manage Role Access"
+                      [appTooltip]="'Manage Role Access'"
+                      appTooltipPosition="top"
                     >
                       <ng-icon name="heroUserGroup" class="size-5" />
                     </button>
                     <a
                       [routerLink]="['/admin/tools/edit', tool.toolId]"
                       class="p-2 text-gray-500 hover:text-blue-600 hover:bg-gray-100 rounded-sm dark:hover:bg-gray-600"
-                      title="Edit Tool"
+                      [appTooltip]="'Edit Tool'"
+                      appTooltipPosition="top"
                     >
                       <ng-icon name="heroPencilSquare" class="size-5" />
                     </a>
                     <button
                       (click)="deleteTool(tool)"
                       class="p-2 text-gray-500 hover:text-red-600 hover:bg-gray-100 rounded-sm dark:hover:bg-gray-600"
-                      title="Delete Tool"
+                      [appTooltip]="'Delete Tool'"
+                      appTooltipPosition="top"
                     >
                       <ng-icon name="heroTrash" class="size-5" />
                     </button>
@@ -291,15 +297,6 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
           }
         </div>
       }
-    }
-
-    <!-- Role Assignment Dialog -->
-    @if (selectedToolForRoles()) {
-      <app-tool-role-dialog
-        [tool]="selectedToolForRoles()!"
-        (closed)="selectedToolForRoles.set(null)"
-        (saved)="onRolesSaved($event)"
-      />
     }
 
     <!-- Sync Result Dialog -->
@@ -386,6 +383,7 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
 export class ToolListPage {
   adminToolService = inject(AdminToolService);
   private router = inject(Router);
+  private dialog = inject(Dialog);
 
   readonly toolsResource = this.adminToolService.toolsResource;
   readonly categories = TOOL_CATEGORIES;
@@ -396,7 +394,6 @@ export class ToolListPage {
   statusFilter = signal('');
   categoryFilter = signal('');
   syncing = signal(false);
-  selectedToolForRoles = signal<AdminTool | null>(null);
   syncResult = signal<{
     discovered: { tool_id: string; display_name: string; action: string }[];
     orphaned: { tool_id: string; action: string }[];
@@ -463,16 +460,15 @@ export class ToolListPage {
     }
   }
 
-  openRoleDialog(tool: AdminTool): void {
-    this.selectedToolForRoles.set(tool);
-  }
+  async openRoleDialog(tool: AdminTool): Promise<void> {
+    const dialogRef = this.dialog.open<ToolRoleDialogResult>(ToolRoleDialogComponent, {
+      data: { tool } as ToolRoleDialogData,
+    });
 
-  async onRolesSaved(roleIds: string[]): Promise<void> {
-    const tool = this.selectedToolForRoles();
-    if (tool) {
+    const result = await firstValueFrom(dialogRef.closed);
+    if (result !== undefined) {
       try {
-        await this.adminToolService.setToolRoles(tool.toolId, roleIds);
-        this.selectedToolForRoles.set(null);
+        await this.adminToolService.setToolRoles(tool.toolId, result);
       } catch (error: unknown) {
         console.error('Error saving roles:', error);
         const message = error instanceof Error ? error.message : 'Failed to save roles.';
