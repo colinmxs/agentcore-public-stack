@@ -26,6 +26,8 @@ import {
 import { AdminToolService } from '../services/admin-tool.service';
 import { AdminTool, TOOL_CATEGORIES, TOOL_STATUSES } from '../models/admin-tool.model';
 import { ToolRoleDialogComponent, ToolRoleDialogData, ToolRoleDialogResult } from '../components/tool-role-dialog.component';
+import { SyncResultDialogComponent, SyncResultDialogData, SyncResultDialogResult } from '../components/sync-result-dialog.component';
+import { DeleteToolDialogComponent, DeleteToolDialogData, DeleteToolDialogResult } from '../components/delete-tool-dialog.component';
 import { TooltipDirective } from '../../../components/tooltip';
 
 @Component({
@@ -298,86 +300,6 @@ import { TooltipDirective } from '../../../components/tooltip';
         </div>
       }
     }
-
-    <!-- Sync Result Dialog -->
-    @if (syncResult()) {
-      <div class="fixed inset-0 bg-black/50 flex items-center justify-center z-50">
-        <div class="bg-white dark:bg-gray-800 rounded-sm shadow-lg w-full max-w-lg max-h-[80vh] overflow-hidden">
-          <div class="flex items-center justify-between px-6 py-4 border-b dark:border-gray-700">
-            <h2 class="text-lg font-semibold">Sync Result</h2>
-            <button
-              (click)="syncResult.set(null)"
-              class="p-2 hover:bg-gray-100 dark:hover:bg-gray-700 rounded-sm"
-            >
-              <ng-icon name="heroXMark" class="size-5" />
-            </button>
-          </div>
-          <div class="p-6 overflow-y-auto max-h-96">
-            @if (syncResult()!.dryRun) {
-              <p class="text-amber-600 dark:text-amber-400 mb-4">
-                Dry run - no changes were made.
-              </p>
-            }
-
-            @if (syncResult()!.discovered.length > 0) {
-              <div class="mb-4">
-                <h3 class="font-medium mb-2 text-green-600 dark:text-green-400">
-                  Discovered ({{ syncResult()!.discovered.length }})
-                </h3>
-                <ul class="text-sm space-y-1">
-                  @for (item of syncResult()!.discovered; track item.tool_id) {
-                    <li class="text-gray-600 dark:text-gray-400">
-                      {{ item.display_name }} ({{ item.tool_id }})
-                    </li>
-                  }
-                </ul>
-              </div>
-            }
-
-            @if (syncResult()!.orphaned.length > 0) {
-              <div class="mb-4">
-                <h3 class="font-medium mb-2 text-amber-600 dark:text-amber-400">
-                  Orphaned ({{ syncResult()!.orphaned.length }})
-                </h3>
-                <ul class="text-sm space-y-1">
-                  @for (item of syncResult()!.orphaned; track item.tool_id) {
-                    <li class="text-gray-600 dark:text-gray-400">
-                      {{ item.tool_id }}
-                    </li>
-                  }
-                </ul>
-              </div>
-            }
-
-            @if (syncResult()!.unchanged.length > 0) {
-              <div>
-                <h3 class="font-medium mb-2 text-gray-600 dark:text-gray-400">
-                  Unchanged ({{ syncResult()!.unchanged.length }})
-                </h3>
-              </div>
-            }
-          </div>
-          <div class="flex justify-end px-6 py-4 border-t dark:border-gray-700 bg-gray-50 dark:bg-gray-700">
-            @if (syncResult()!.dryRun && (syncResult()!.discovered.length > 0 || syncResult()!.orphaned.length > 0)) {
-              <button
-                (click)="applySync()"
-                [disabled]="syncing()"
-                class="px-4 py-2 bg-blue-600 text-white rounded-sm hover:bg-blue-700 disabled:opacity-50"
-              >
-                Apply Changes
-              </button>
-            } @else {
-              <button
-                (click)="syncResult.set(null)"
-                class="px-4 py-2 border rounded-sm hover:bg-gray-100 dark:hover:bg-gray-600"
-              >
-                Close
-              </button>
-            }
-          </div>
-        </div>
-      </div>
-    }
   `,
 })
 export class ToolListPage {
@@ -394,12 +316,6 @@ export class ToolListPage {
   statusFilter = signal('');
   categoryFilter = signal('');
   syncing = signal(false);
-  syncResult = signal<{
-    discovered: { tool_id: string; display_name: string; action: string }[];
-    orphaned: { tool_id: string; action: string }[];
-    unchanged: string[];
-    dryRun: boolean;
-  } | null>(null);
 
   // Computed
   readonly tools = computed(() => this.adminToolService.getTools());
@@ -478,16 +394,22 @@ export class ToolListPage {
   }
 
   async deleteTool(tool: AdminTool): Promise<void> {
-    if (!confirm(`Are you sure you want to disable the tool "${tool.displayName}"?`)) {
-      return;
-    }
+    const dialogRef = this.dialog.open<DeleteToolDialogResult>(DeleteToolDialogComponent, {
+      data: {
+        toolId: tool.toolId,
+        displayName: tool.displayName,
+      } as DeleteToolDialogData,
+    });
 
-    try {
-      await this.adminToolService.deleteTool(tool.toolId);
-    } catch (error: unknown) {
-      console.error('Error deleting tool:', error);
-      const message = error instanceof Error ? error.message : 'Failed to delete tool.';
-      alert(message);
+    const confirmed = await firstValueFrom(dialogRef.closed);
+    if (confirmed) {
+      try {
+        await this.adminToolService.deleteTool(tool.toolId);
+      } catch (error: unknown) {
+        console.error('Error deleting tool:', error);
+        const message = error instanceof Error ? error.message : 'Failed to delete tool.';
+        alert(message);
+      }
     }
   }
 
@@ -495,7 +417,7 @@ export class ToolListPage {
     this.syncing.set(true);
     try {
       const result = await this.adminToolService.syncFromRegistry(true);
-      this.syncResult.set(result);
+      await this.openSyncResultDialog(result);
     } catch (error: unknown) {
       console.error('Error syncing:', error);
       const message = error instanceof Error ? error.message : 'Failed to sync catalog.';
@@ -505,17 +427,25 @@ export class ToolListPage {
     }
   }
 
-  async applySync(): Promise<void> {
-    this.syncing.set(true);
-    try {
-      const result = await this.adminToolService.syncFromRegistry(false);
-      this.syncResult.set(result);
-    } catch (error: unknown) {
-      console.error('Error applying sync:', error);
-      const message = error instanceof Error ? error.message : 'Failed to apply sync.';
-      alert(message);
-    } finally {
-      this.syncing.set(false);
+  private async openSyncResultDialog(result: SyncResultDialogData): Promise<void> {
+    const dialogRef = this.dialog.open<SyncResultDialogResult>(SyncResultDialogComponent, {
+      data: result,
+    });
+
+    const shouldApply = await firstValueFrom(dialogRef.closed);
+    if (shouldApply) {
+      this.syncing.set(true);
+      try {
+        const applyResult = await this.adminToolService.syncFromRegistry(false);
+        // Show the result of applying changes
+        await this.openSyncResultDialog(applyResult);
+      } catch (error: unknown) {
+        console.error('Error applying sync:', error);
+        const message = error instanceof Error ? error.message : 'Failed to apply sync.';
+        alert(message);
+      } finally {
+        this.syncing.set(false);
+      }
     }
   }
 }
