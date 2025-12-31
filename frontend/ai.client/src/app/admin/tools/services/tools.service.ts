@@ -71,11 +71,12 @@ export class ToolsService {
 
   /**
    * Fetch admin tool catalog (full list).
+   * @deprecated Use AdminToolService.fetchTools() instead
    */
   async fetchAdminCatalog(): Promise<ToolListResponse> {
     const response = await firstValueFrom(
       this.http.get<ToolListResponse>(
-        `${environment.appApiUrl}/tools/admin/catalog`
+        `${environment.appApiUrl}/admin/tools/`
       )
     );
     return response;

@@ -91,6 +91,13 @@ export class ToolService {
   readonly appRolesApplied = this._appRolesApplied.asReadonly();
   readonly initialized = this._initialized.asReadonly();
 
+  constructor() {
+    // Load tools on initialization (similar to ModelService pattern)
+    this.loadTools().catch(err => {
+      console.error('Failed to load tools on initialization:', err);
+    });
+  }
+
   // Computed signals
   readonly enabledTools = computed(() =>
     this._tools().filter(t => t.isEnabled)

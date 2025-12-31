@@ -26,7 +26,7 @@ export class AdminToolService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/tools/admin`;
+  private readonly baseUrl = `${environment.appApiUrl}/admin/tools`;
 
   // Signals for local state
   private _loading = signal(false);

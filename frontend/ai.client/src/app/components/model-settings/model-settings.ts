@@ -2,7 +2,7 @@ import { Component, ChangeDetectionStrategy, inject, input, output, signal, effe
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { heroXMark, heroCheck, heroChevronDown } from '@ng-icons/heroicons/outline';
 import { ModelService } from '../../session/services/model/model.service';
-import { ToolSettingsService } from '../../session/services/tool/tool-settings.service';
+import { ToolService } from '../../services/tool/tool.service';
 import { ManagedModel } from '../../admin/manage-models/models/managed-model.model';
 
 @Component({
@@ -16,7 +16,7 @@ import { ManagedModel } from '../../admin/manage-models/models/managed-model.mod
 export class ModelSettings {
   private elementRef = inject(ElementRef);
   protected modelService = inject(ModelService);
-  protected toolSettingsService = inject(ToolSettingsService);
+  protected toolService = inject(ToolService);
 
   // Input to control visibility
   isOpen = input<boolean>(false);
@@ -121,6 +121,6 @@ export class ModelSettings {
   }
 
   toggleTool(toolId: string): void {
-    this.toolSettingsService.toggleTool(toolId);
+    this.toolService.toggleTool(toolId);
   }
 }

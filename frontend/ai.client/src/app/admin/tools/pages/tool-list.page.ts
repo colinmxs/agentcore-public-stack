@@ -199,8 +199,17 @@ import { ToolRoleDialogComponent } from '../components/tool-role-dialog.componen
             @for (tool of filteredTools(); track tool.toolId) {
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-6 py-4">
-                  <div class="font-medium">{{ tool.displayName }}</div>
-                  <div class="text-sm text-gray-500 dark:text-gray-400">{{ tool.toolId }}</div>
+                  <div class="flex items-center gap-3">
+                    @if (tool.icon) {
+                      <ng-icon [name]="tool.icon" class="size-6 shrink-0 text-gray-500 dark:text-gray-400" />
+                    } @else {
+                      <div class="size-6 shrink-0 rounded bg-gray-100 dark:bg-gray-700"></div>
+                    }
+                    <div>
+                      <div class="font-medium">{{ tool.displayName }}</div>
+                      <div class="text-sm text-gray-500 dark:text-gray-400">{{ tool.toolId }}</div>
+                    </div>
+                  </div>
                 </td>
                 <td class="px-6 py-4">
                   <span class="px-2 py-1 text-xs rounded-xs bg-gray-100 dark:bg-gray-600 capitalize">

@@ -718,3 +718,8 @@ router.include_router(users_router)
 from .roles.routes import router as roles_router
 
 router.include_router(roles_router)
+
+# ========== Include Tools Admin Subrouter ==========
+from .tools.routes import router as tools_router
+
+router.include_router(tools_router)
