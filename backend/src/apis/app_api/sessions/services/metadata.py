@@ -445,17 +445,20 @@ async def _update_system_rollups_async(
         from apis.app_api.storage.dynamodb_storage import DynamoDBStorage
         storage = DynamoDBStorage()
 
-        # For tracking active users, we'd need to check if this user has already
-        # been counted today/this month. For simplicity in Phase 1, we'll skip
-        # the is_new_user check (it would require an additional read).
-        # This can be enhanced in Phase 2 with DynamoDB Streams.
+        # Track active users using conditional writes
+        # Returns (is_new_today, is_new_this_month) - True if first request for that period
+        is_new_today, is_new_this_month = await storage.track_active_user(
+            user_id=user_id,
+            period=period,
+            date=date
+        )
 
         # Update daily rollup
         await storage.update_daily_rollup(
             date=date,
             cost_delta=cost,
             usage_delta=usage_delta,
-            is_new_user=False,  # Phase 2: implement proper tracking
+            is_new_user=is_new_today,
             model_id=model_id
         )
 
@@ -465,12 +468,19 @@ async def _update_system_rollups_async(
             cost_delta=cost,
             usage_delta=usage_delta,
             cache_savings_delta=cache_savings,
-            is_new_user=False,  # Phase 2: implement proper tracking
+            is_new_user=is_new_this_month,
             model_id=model_id
         )
 
         # Update per-model rollup if model info is available
         if model_id and model_name and provider:
+            # Track active users per model separately (user may use multiple models)
+            is_new_user_for_model = await storage.track_active_user_for_model(
+                user_id=user_id,
+                period=period,
+                model_id=model_id
+            )
+
             await storage.update_model_rollup(
                 period=period,
                 model_id=model_id,
@@ -478,10 +488,10 @@ async def _update_system_rollups_async(
                 provider=provider,
                 cost_delta=cost,
                 usage_delta=usage_delta,
-                is_new_user_for_model=False  # Phase 2: implement proper tracking
+                is_new_user_for_model=is_new_user_for_model
             )
 
-        logger.debug(f"📈 Updated system rollups: date={date}, period={period}")
+        logger.debug(f"📈 Updated system rollups: date={date}, period={period}, new_today={is_new_today}, new_month={is_new_this_month}")
 
     except Exception as e:
         # Log but don't raise - rollup updates are supplementary

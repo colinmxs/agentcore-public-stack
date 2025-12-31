@@ -296,19 +296,20 @@ class AdminDashboardBackfill:
             now = datetime.utcnow().isoformat() + "Z"
 
             # Update monthly rollup
+            # Ensure proper types for DynamoDB (Decimal for numbers, int for counts)
             self.system_rollup_table.put_item(
                 Item={
                     "PK": "ROLLUP#MONTHLY",
                     "SK": period,
                     "type": "monthly",
-                    "totalCost": totals["totalCost"],
-                    "totalRequests": totals["totalRequests"],
-                    "totalInputTokens": totals["totalInputTokens"],
-                    "totalOutputTokens": totals["totalOutputTokens"],
-                    "totalCacheReadTokens": totals["totalCacheReadTokens"],
-                    "totalCacheWriteTokens": totals["totalCacheWriteTokens"],
-                    "totalCacheSavings": totals["totalCacheSavings"],
-                    "activeUsers": totals["activeUsers"],
+                    "totalCost": Decimal(str(totals["totalCost"])),
+                    "totalRequests": int(totals["totalRequests"]),
+                    "totalInputTokens": int(totals["totalInputTokens"]),
+                    "totalOutputTokens": int(totals["totalOutputTokens"]),
+                    "totalCacheReadTokens": int(totals["totalCacheReadTokens"]),
+                    "totalCacheWriteTokens": int(totals["totalCacheWriteTokens"]),
+                    "totalCacheSavings": Decimal(str(totals["totalCacheSavings"])),
+                    "activeUsers": int(totals["activeUsers"]),
                     "lastUpdated": now
                 }
             )
@@ -323,11 +324,11 @@ class AdminDashboardBackfill:
                         "modelId": model_key,
                         "modelName": model_data["modelName"],
                         "provider": model_data["provider"],
-                        "totalCost": model_data["totalCost"],
-                        "totalRequests": model_data["totalRequests"],
-                        "totalInputTokens": model_data["totalInputTokens"],
-                        "totalOutputTokens": model_data["totalOutputTokens"],
-                        "uniqueUsers": model_data["uniqueUsers"],
+                        "totalCost": Decimal(str(model_data["totalCost"])),
+                        "totalRequests": int(model_data["totalRequests"]),
+                        "totalInputTokens": int(model_data["totalInputTokens"]),
+                        "totalOutputTokens": int(model_data["totalOutputTokens"]),
+                        "uniqueUsers": int(model_data["uniqueUsers"]),
                         "lastUpdated": now
                     }
                 )

@@ -641,6 +641,146 @@ class DynamoDBStorage(MetadataStorage):
     # SystemCostRollup Table Methods
     # ============================================================
 
+    async def track_active_user(
+        self,
+        user_id: str,
+        period: str,
+        date: str
+    ) -> tuple[bool, bool]:
+        """
+        Track a user as active for a period using conditional writes.
+
+        Uses separate tracking items to avoid set size limits and enable
+        scalability to millions of users. Items use conditional writes
+        to ensure each user is only counted once per period.
+
+        Schema:
+            Daily tracking:
+                PK: ACTIVE#DAILY#<YYYY-MM-DD>
+                SK: <user_id>
+                TTL: 90 days from creation
+
+            Monthly tracking:
+                PK: ACTIVE#MONTHLY#<YYYY-MM>
+                SK: <user_id>
+                TTL: 400 days from creation (keep ~13 months)
+
+        Args:
+            user_id: The user identifier
+            period: Monthly period (YYYY-MM format)
+            date: Daily date (YYYY-MM-DD format)
+
+        Returns:
+            Tuple of (is_new_user_today, is_new_user_this_month)
+            True means this is the user's first request for that period.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        is_new_today = False
+        is_new_this_month = False
+
+        now = datetime.now(timezone.utc)
+
+        # Try to mark user as active today
+        try:
+            daily_ttl = int((now + timedelta(days=90)).timestamp())
+            self.system_rollup_table.put_item(
+                Item={
+                    "PK": f"ACTIVE#DAILY#{date}",
+                    "SK": user_id,
+                    "trackedAt": now.isoformat(),
+                    "TTL": daily_ttl
+                },
+                ConditionExpression="attribute_not_exists(PK)"
+            )
+            is_new_today = True
+            logger.debug(f"Tracked new active user {user_id} for date {date}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # User already tracked today - this is expected
+                logger.debug(f"User {user_id} already tracked for date {date}")
+            else:
+                logger.error(f"Failed to track daily active user: {e}")
+
+        # Try to mark user as active this month
+        try:
+            monthly_ttl = int((now + timedelta(days=400)).timestamp())
+            self.system_rollup_table.put_item(
+                Item={
+                    "PK": f"ACTIVE#MONTHLY#{period}",
+                    "SK": user_id,
+                    "trackedAt": now.isoformat(),
+                    "TTL": monthly_ttl
+                },
+                ConditionExpression="attribute_not_exists(PK)"
+            )
+            is_new_this_month = True
+            logger.debug(f"Tracked new active user {user_id} for period {period}")
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # User already tracked this month - this is expected
+                logger.debug(f"User {user_id} already tracked for period {period}")
+            else:
+                logger.error(f"Failed to track monthly active user: {e}")
+
+        return is_new_today, is_new_this_month
+
+    async def track_active_user_for_model(
+        self,
+        user_id: str,
+        period: str,
+        model_id: str
+    ) -> bool:
+        """
+        Track a user as active for a specific model in a period.
+
+        Uses conditional writes to ensure each user is only counted once
+        per model per period.
+
+        Schema:
+            PK: ACTIVE#MODEL#<YYYY-MM>#<sanitized_model_id>
+            SK: <user_id>
+            TTL: 400 days from creation
+
+        Args:
+            user_id: The user identifier
+            period: Monthly period (YYYY-MM format)
+            model_id: The model identifier
+
+        Returns:
+            True if this is the user's first request for this model this period.
+        """
+        import logging
+        logger = logging.getLogger(__name__)
+
+        # Sanitize model_id for partition key (same logic as update_model_rollup)
+        safe_model_id = model_id.replace(".", "_").replace(":", "_").replace("-", "_")
+
+        now = datetime.now(timezone.utc)
+
+        try:
+            monthly_ttl = int((now + timedelta(days=400)).timestamp())
+            self.system_rollup_table.put_item(
+                Item={
+                    "PK": f"ACTIVE#MODEL#{period}#{safe_model_id}",
+                    "SK": user_id,
+                    "trackedAt": now.isoformat(),
+                    "TTL": monthly_ttl
+                },
+                ConditionExpression="attribute_not_exists(PK)"
+            )
+            logger.debug(f"Tracked new active user {user_id} for model {model_id} in {period}")
+            return True
+        except ClientError as e:
+            if e.response["Error"]["Code"] == "ConditionalCheckFailedException":
+                # User already tracked for this model this month
+                logger.debug(f"User {user_id} already tracked for model {model_id} in {period}")
+                return False
+            else:
+                logger.error(f"Failed to track model active user: {e}")
+                return False
+
     async def update_daily_rollup(
         self,
         date: str,
