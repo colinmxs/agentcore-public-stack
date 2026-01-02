@@ -32,6 +32,7 @@
       </div>
       <div class="relative">
         <app-chat-input
+          [sessionId]="effectiveSessionId()"
           (messageSubmitted)="onMessageSubmitted($event)"
           (fileAttached)="onFileAttached($event)"
           (settingsToggled)="toggleSettings()">
@@ -60,6 +61,7 @@
     [class.lg:left-0]="sidenavService.isCollapsed()">
     <div class="max-w-[720px] mx-auto px-4">
       <app-chat-input
+        [sessionId]="effectiveSessionId()"
         (messageSubmitted)="onMessageSubmitted($event)"
         (fileAttached)="onFileAttached($event)"
         (settingsToggled)="toggleSettings()">

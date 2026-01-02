@@ -741,9 +741,9 @@ export class AppApiStack extends cdk.Stack {
       // CORS for browser-based pre-signed URL uploads
       cors: [{
         allowedOrigins: fileUploadCorsOrigins,
-        allowedMethods: [s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
+        allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
         allowedHeaders: ['Content-Type', 'Content-Length', 'x-amz-*'],
-        exposedHeaders: ['ETag'],
+        exposedHeaders: ['ETag', 'Content-Length', 'Content-Type'],
         maxAge: 3600,
       }],
 

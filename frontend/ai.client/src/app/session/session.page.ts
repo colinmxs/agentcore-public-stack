@@ -1,6 +1,7 @@
 import { Component, inject, effect, Signal, signal, computed, OnDestroy, viewChild } from '@angular/core';
 import { ActivatedRoute } from '@angular/router';
 import { Subscription } from 'rxjs';
+import { v4 as uuidv4 } from 'uuid';
 import { MessageListComponent } from './components/message-list/message-list.component';
 import { ChatRequestService } from './services/chat/chat-request.service';
 import { MessageMapService } from './services/session/message-map.service';
@@ -16,6 +17,7 @@ import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
 import { ModelService } from './services/model/model.service';
 import { ModelSettings } from '../components/model-settings/model-settings';
 import { UserService } from '../auth/user.service';
+import { FileUploadService } from '../services/file-upload';
 
 @Component({
   selector: 'app-session-page',
@@ -33,9 +35,27 @@ export class ConversationPage implements OnDestroy {
   private headerService = inject(HeaderService);
   private modelService = inject(ModelService);
   private userService = inject(UserService);
+  private fileUploadService = inject(FileUploadService);
 
   sessionId = signal<string | null>(null);
   isSettingsOpen = signal(false);
+
+  /**
+   * Staged session ID for file uploads before the first message is sent.
+   * This allows users to attach files before typing their first message.
+   * The staged session ID is used for file uploads and then consumed when
+   * the first message is submitted.
+   */
+  private stagedSessionId = signal<string | null>(null);
+
+  /**
+   * Effective session ID to pass to chat-input for file uploads.
+   * Returns the route sessionId if navigating to an existing session,
+   * or creates/returns a staged session ID for new conversations.
+   */
+  readonly effectiveSessionId = computed(() => {
+    return this.sessionId() ?? this.stagedSessionId();
+  });
 
   // Writable signal that holds the current messages signal reference
   private messagesSignal = signal<Signal<Message[]>>(signal([]));
@@ -146,10 +166,23 @@ export class ConversationPage implements OnDestroy {
     this.routeSubscription?.unsubscribe();
   }
 
-  onMessageSubmitted(message: { content: string, timestamp: Date }) {
-    this.chatRequestService.submitChatRequest(message.content, this.sessionId()).catch((error) => {
+  onMessageSubmitted(message: { content: string, timestamp: Date, fileUploadIds?: string[] }) {
+    // Use the effective session ID (route sessionId or staged sessionId)
+    const sessionIdToUse = this.effectiveSessionId();
+
+    // Submit the chat request with file upload IDs if present
+    this.chatRequestService.submitChatRequest(
+      message.content,
+      sessionIdToUse,
+      message.fileUploadIds
+    ).catch((error) => {
       console.error('Error sending chat request:', error);
     });
+
+    // Clear the staged session ID after submission (it's now a real session)
+    if (this.stagedSessionId()) {
+      this.stagedSessionId.set(null);
+    }
 
     // Wait for DOM to update (user message to be added) then scroll to it
     setTimeout(() => {
@@ -157,9 +190,22 @@ export class ConversationPage implements OnDestroy {
     }, 100);
   }
 
+  /**
+   * Called when user selects a file to attach.
+   * Creates a staged session if one doesn't exist yet.
+   */
   onFileAttached(file: File) {
-    console.log('File attached:', file);
-    // Handle file attachment logic here
+    // If no session exists (not navigated to /s/:id and no staged session),
+    // create a staged session for file uploads
+    if (!this.sessionId() && !this.stagedSessionId()) {
+      const newSessionId = uuidv4();
+      this.stagedSessionId.set(newSessionId);
+
+      // Add the session to cache so sidenav can show it
+      const user = this.userService.currentUser();
+      const userId = user?.empl_id || 'anonymous';
+      this.sessionService.addSessionToCache(newSessionId, userId);
+    }
   }
 
   toggleSettings() {

@@ -31,7 +31,11 @@ export class ChatRequestService {
   private router = inject(Router);
   // TODO: Inject proper logging service
   
-  async submitChatRequest(userInput: string, sessionId: string | null): Promise<void> {
+  async submitChatRequest(
+    userInput: string,
+    sessionId: string | null,
+    fileUploadIds?: string[]
+  ): Promise<void> {
     // Ensure conversation exists and get its ID
     // Update URL to reflect current conversation
     const isNewSession = !sessionId;
@@ -51,12 +55,12 @@ export class ChatRequestService {
 
     // Create and add user message
     this.messageMapService.addUserMessage(sessionId, userInput);
-    
+
     // Start streaming for this conversation
     this.messageMapService.startStreaming(sessionId);
-    
-    // Build and send request
-    const requestObject = this.buildChatRequestObject(userInput, sessionId);
+
+    // Build and send request with file upload IDs
+    const requestObject = this.buildChatRequestObject(userInput, sessionId, fileUploadIds);
 
     try {
       await this.chatHttpService.sendChatRequest(requestObject);
@@ -78,7 +82,11 @@ export class ChatRequestService {
     this.router.navigate(['s', sessionId], { replaceUrl: true });
   }
 
-  private buildChatRequestObject(message: string, session_id: string) {
+  private buildChatRequestObject(
+    message: string,
+    session_id: string,
+    fileUploadIds?: string[]
+  ) {
     const selectedModel = this.modelService.getSelectedModel();
 
     if (!selectedModel) {
@@ -91,12 +99,19 @@ export class ChatRequestService {
     // Get enabled tools from tool service (RBAC-based)
     const enabledTools = this.toolService.getEnabledToolIds();
 
-    return {
+    const requestObject: Record<string, unknown> = {
       message,
       session_id,
       model_id: isDefaultModel ? null : selectedModel.modelId,
       enabled_tools: enabledTools,
       provider: isDefaultModel ? null : selectedModel.provider
     };
+
+    // Add file upload IDs if present
+    if (fileUploadIds && fileUploadIds.length > 0) {
+      requestObject['file_upload_ids'] = fileUploadIds;
+    }
+
+    return requestObject;
   }
 }

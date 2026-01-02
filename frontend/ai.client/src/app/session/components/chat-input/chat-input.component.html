@@ -7,6 +7,21 @@
       ? 'bg-white dark:bg-slate-800 outline-2 outline-primary-500 dark:outline-gray-400 ring-2 ring-primary-500/20 dark:ring-gray-400/30 shadow-lg'
       : 'bg-white dark:bg-slate-800 outline-1 outline-gray-300 dark:outline-white/10'"
   >
+    <!-- File Attachments Area -->
+    @if (showFileAttachments()) {
+      <div class="border-b border-gray-200 px-4 py-3 dark:border-gray-700">
+        <div class="flex flex-wrap gap-2">
+          @for (upload of pendingUploads(); track upload.uploadId) {
+            <app-file-card
+              [pendingUpload]="upload"
+              (remove)="onFileRemove($event)"
+              (retry)="onFileRetry($event)"
+            />
+          }
+        </div>
+      </div>
+    }
+
     <!-- Main Input Area -->
     <div class="relative">
       <label for="user-message" class="sr-only">How can I help you today?</label>
@@ -39,6 +54,8 @@
               class="sr-only"
               (change)="onFileSelect($event)"
               id="file-upload"
+              [accept]="acceptedFileTypes"
+              multiple
               aria-label="Attach a file"
             />
             <label for="file-upload" class="flex size-full cursor-pointer items-center justify-center">
@@ -79,10 +96,11 @@
           <button
             type="button"
             (click)="onSubmit()"
+            [disabled]="!chatState.isChatLoading() && hasActivePendingUploads()"
             [class]="chatState.isChatLoading()
               ? 'flex size-10 items-center justify-center rounded-full bg-red-500 text-white shadow-sm transition-all hover:bg-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500'
               : 'flex size-10 items-center justify-center rounded-full bg-secondary-500 text-white shadow-sm transition-all hover:bg-secondary-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-secondary-500 disabled:opacity-40 disabled:cursor-not-allowed disabled:hover:bg-secondary-500'"
-            [attr.aria-label]="chatState.isChatLoading() ? 'Stop generation' : 'Submit message'"
+            [attr.aria-label]="chatState.isChatLoading() ? 'Stop generation' : (hasActivePendingUploads() ? 'Upload in progress' : 'Submit message')"
           >
             @if (chatState.isChatLoading()) {
               <!-- Stop Icon -->
