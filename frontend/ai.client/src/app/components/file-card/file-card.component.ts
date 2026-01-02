@@ -40,76 +40,79 @@ const FILE_TYPE_ICONS: Record<string, string> = {
 };
 
 /**
- * File type to color mapping
+ * File type to color mapping for icon container
+ * - bg: Brighter background color for visibility
+ * - text: Icon color
+ * - border: Darker border around icon container
  */
 const FILE_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   'application/pdf': {
-    bg: 'bg-rose-50 dark:bg-rose-950/30',
-    text: 'text-rose-700 dark:text-rose-400',
-    border: 'border-rose-300 dark:border-rose-800'
+    bg: 'bg-rose-100 dark:bg-rose-900/60',
+    text: 'text-rose-600 dark:text-rose-300',
+    border: 'border-rose-300 dark:border-rose-700'
   },
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
-    bg: 'bg-blue-50 dark:bg-blue-950/30',
-    text: 'text-blue-600 dark:text-blue-400',
-    border: 'border-blue-200 dark:border-blue-800'
+    bg: 'bg-blue-100 dark:bg-blue-900/60',
+    text: 'text-blue-600 dark:text-blue-300',
+    border: 'border-blue-300 dark:border-blue-700'
   },
   'text/plain': {
-    bg: 'bg-gray-50 dark:bg-gray-800',
-    text: 'text-gray-600 dark:text-gray-400',
-    border: 'border-gray-200 dark:border-gray-700'
+    bg: 'bg-gray-100 dark:bg-gray-600',
+    text: 'text-gray-600 dark:text-gray-200',
+    border: 'border-gray-300 dark:border-gray-500'
   },
   'text/html': {
-    bg: 'bg-orange-50 dark:bg-orange-950/30',
-    text: 'text-orange-600 dark:text-orange-400',
-    border: 'border-orange-200 dark:border-orange-800'
+    bg: 'bg-orange-100 dark:bg-orange-900/60',
+    text: 'text-orange-600 dark:text-orange-300',
+    border: 'border-orange-300 dark:border-orange-700'
   },
   'text/csv': {
-    bg: 'bg-green-50 dark:bg-green-950/30',
-    text: 'text-green-600 dark:text-green-400',
-    border: 'border-green-200 dark:border-green-800'
+    bg: 'bg-green-100 dark:bg-green-900/60',
+    text: 'text-green-600 dark:text-green-300',
+    border: 'border-green-300 dark:border-green-700'
   },
   'application/vnd.ms-excel': {
-    bg: 'bg-green-50 dark:bg-green-950/30',
-    text: 'text-green-600 dark:text-green-400',
-    border: 'border-green-200 dark:border-green-800'
+    bg: 'bg-green-100 dark:bg-green-900/60',
+    text: 'text-green-600 dark:text-green-300',
+    border: 'border-green-300 dark:border-green-700'
   },
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {
-    bg: 'bg-green-50 dark:bg-green-950/30',
-    text: 'text-green-600 dark:text-green-400',
-    border: 'border-green-200 dark:border-green-800'
+    bg: 'bg-green-100 dark:bg-green-900/60',
+    text: 'text-green-600 dark:text-green-300',
+    border: 'border-green-300 dark:border-green-700'
   },
   'text/markdown': {
-    bg: 'bg-purple-50 dark:bg-purple-950/30',
-    text: 'text-purple-600 dark:text-purple-400',
-    border: 'border-purple-200 dark:border-purple-800'
+    bg: 'bg-purple-100 dark:bg-purple-900/60',
+    text: 'text-purple-600 dark:text-purple-300',
+    border: 'border-purple-300 dark:border-purple-700'
   },
   // Image types
   'image/png': {
-    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    border: 'border-indigo-200 dark:border-indigo-800'
+    bg: 'bg-indigo-100 dark:bg-indigo-900/60',
+    text: 'text-indigo-600 dark:text-indigo-300',
+    border: 'border-indigo-300 dark:border-indigo-700'
   },
   'image/jpeg': {
-    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    border: 'border-indigo-200 dark:border-indigo-800'
+    bg: 'bg-indigo-100 dark:bg-indigo-900/60',
+    text: 'text-indigo-600 dark:text-indigo-300',
+    border: 'border-indigo-300 dark:border-indigo-700'
   },
   'image/gif': {
-    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    border: 'border-indigo-200 dark:border-indigo-800'
+    bg: 'bg-indigo-100 dark:bg-indigo-900/60',
+    text: 'text-indigo-600 dark:text-indigo-300',
+    border: 'border-indigo-300 dark:border-indigo-700'
   },
   'image/webp': {
-    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
-    text: 'text-indigo-600 dark:text-indigo-400',
-    border: 'border-indigo-200 dark:border-indigo-800'
+    bg: 'bg-indigo-100 dark:bg-indigo-900/60',
+    text: 'text-indigo-600 dark:text-indigo-300',
+    border: 'border-indigo-300 dark:border-indigo-700'
   },
 };
 
 const DEFAULT_COLORS = {
-  bg: 'bg-gray-50 dark:bg-gray-800',
-  text: 'text-gray-600 dark:text-gray-400',
-  border: 'border-gray-200 dark:border-gray-700'
+  bg: 'bg-gray-100 dark:bg-gray-600',
+  text: 'text-gray-600 dark:text-gray-200',
+  border: 'border-gray-300 dark:border-gray-500'
 };
 
 /**
@@ -161,7 +164,7 @@ const DEFAULT_COLORS = {
     >
       <!-- File icon or image preview -->
       <div
-        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md"
+        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md border"
         [class]="iconContainerClass()"
       >
         @if (isError()) {
@@ -364,15 +367,15 @@ export class FileCardComponent {
     if (this.isError()) {
       return 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30';
     }
-    return 'border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-700';
+    return 'border-gray-200 bg-gray-50 dark:border-gray-600 dark:bg-gray-800';
   });
 
   protected readonly iconContainerClass = computed(() => {
     const colors = this.colors();
     if (this.isError()) {
-      return 'bg-red-100 dark:bg-red-900/50';
+      return 'bg-red-100 border-red-300 dark:bg-red-900/50 dark:border-red-700';
     }
-    return colors.bg;
+    return `${colors.bg} ${colors.border}`;
   });
 
   protected readonly iconClass = computed(() => {
