@@ -11,6 +11,7 @@ from datetime import datetime, timedelta
 from typing import List, Optional, Tuple
 
 import boto3
+from botocore.config import Config
 from botocore.exceptions import ClientError
 
 from .models import (
@@ -102,7 +103,14 @@ class FileUploadService:
         self.repository = repository or get_file_upload_repository()
 
         # S3 configuration
-        self._s3_client = s3_client or boto3.client("s3")
+        # Use region from AWS_REGION env var to ensure presigned URLs use regional endpoint
+        # This is critical for CORS - global endpoint redirects break CORS preflight
+        # Force SigV4 signing to ensure regional URLs are generated
+        region = os.environ.get("AWS_REGION", "us-west-2")
+        s3_config = Config(signature_version='s3v4')
+        self._s3_client = s3_client or boto3.client(
+            "s3", region_name=region, config=s3_config
+        )
         self.bucket_name = bucket_name or os.environ.get(
             "S3_USER_FILES_BUCKET_NAME", "user-files"
         )
