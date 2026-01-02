@@ -16,6 +16,7 @@ from .models import (
 )
 from .repository import FileUploadRepository, get_file_upload_repository
 from .service import FileUploadService, get_file_upload_service
+from .file_resolver import FileResolver, FileResolverError, ResolvedFileContent, get_file_resolver
 
 __all__ = [
     # Models
@@ -33,4 +34,9 @@ __all__ = [
     # Service
     "FileUploadService",
     "get_file_upload_service",
+    # File Resolver
+    "FileResolver",
+    "FileResolverError",
+    "ResolvedFileContent",
+    "get_file_resolver",
 ]

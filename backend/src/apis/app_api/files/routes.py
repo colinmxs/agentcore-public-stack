@@ -155,7 +155,7 @@ class SortOrder(str, Enum):
     DESC = "desc"
 
 
-@router.get("/", response_model=FileListResponse)
+@router.get("", response_model=FileListResponse)
 async def list_files(
     session_id: Optional[str] = Query(
         None, alias="sessionId", description="Filter by session/conversation"

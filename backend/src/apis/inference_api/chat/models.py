@@ -23,7 +23,8 @@ class InvocationRequest(BaseModel):
     system_prompt: Optional[str] = None
     caching_enabled: Optional[bool] = None
     enabled_tools: Optional[List[str]] = None  # User-specific tool preferences
-    files: Optional[List[FileContent]] = None  # Multimodal file attachments
+    files: Optional[List[FileContent]] = None  # Direct file content (base64-encoded)
+    file_upload_ids: Optional[List[str]] = None  # Upload IDs to resolve from S3
     provider: Optional[str] = None  # LLM provider: "bedrock", "openai", or "gemini"
     max_tokens: Optional[int] = None  # Maximum tokens to generate
 
@@ -41,7 +42,8 @@ class ChatRequest(BaseModel):
     """Chat request from client"""
     session_id: str
     message: str
-    files: Optional[List[FileContent]] = None
+    files: Optional[List[FileContent]] = None  # Direct file content (base64-encoded)
+    file_upload_ids: Optional[List[str]] = None  # Upload IDs to resolve from S3
     enabled_tools: Optional[List[str]] = None  # User-specific tool preferences (tool IDs)
 
 class ChatEvent(BaseModel):

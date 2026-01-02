@@ -14,11 +14,12 @@ import json
 from typing import AsyncGenerator, Union
 from datetime import datetime, timezone
 
-from .models import InvocationRequest
+from .models import InvocationRequest, FileContent
 from .service import get_agent
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 from apis.app_api.admin.services.managed_models import list_managed_models
+from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
 from apis.shared.errors import (
     ErrorCode,
     create_error_response,
@@ -206,6 +207,32 @@ async def invocations(
         for file in input_data.files:
             logger.info(f"  - {file.filename} ({file.content_type})")
 
+    if input_data.file_upload_ids:
+        logger.info(f"File upload IDs: {len(input_data.file_upload_ids)} IDs to resolve")
+
+    # Resolve file upload IDs to FileContent objects
+    files_to_send = list(input_data.files) if input_data.files else []
+
+    if input_data.file_upload_ids:
+        try:
+            file_resolver = get_file_resolver()
+            resolved_files = await file_resolver.resolve_files(
+                user_id=user_id,
+                upload_ids=input_data.file_upload_ids,
+                max_files=5  # Bedrock document limit
+            )
+            # Convert ResolvedFileContent to FileContent
+            for rf in resolved_files:
+                files_to_send.append(FileContent(
+                    filename=rf.filename,
+                    content_type=rf.content_type,
+                    bytes=rf.bytes
+                ))
+            logger.info(f"Resolved {len(resolved_files)} files from upload IDs")
+        except Exception as e:
+            logger.warning(f"Failed to resolve file upload IDs: {e}")
+            # Continue without files rather than failing the request
+
     # Check quota if enforcement is enabled
     quota_warning_event = None
     quota_exceeded_event = None
@@ -284,10 +311,11 @@ async def invocations(
                 yield quota_warning_event.to_sse_format()
 
             # Then yield all agent stream events
+            # Use resolved files (from S3) merged with any direct file content
             async for event in agent.stream_async(
                 input_data.message,
                 session_id=input_data.session_id,
-                files=input_data.files
+                files=files_to_send if files_to_send else None
             ):
                 yield event
 

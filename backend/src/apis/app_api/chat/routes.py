@@ -18,6 +18,7 @@ from typing import AsyncGenerator
 from apis.inference_api.chat.models import (
     ChatRequest,
     ChatEvent,
+    FileContent,
     GenerateTitleRequest,
     GenerateTitleResponse
 )
@@ -38,6 +39,7 @@ from apis.shared.quota import (
     build_quota_warning_event,
 )
 from apis.app_api.admin.services import get_tool_access_service
+from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
 from agents.strands_agent.session.session_factory import SessionFactory
 
 logger = logging.getLogger(__name__)
@@ -182,6 +184,30 @@ async def chat_stream(
             }
         )
 
+    # Resolve file upload IDs to FileContent objects
+    files_to_send = list(request.files) if request.files else []
+
+    if request.file_upload_ids:
+        logger.info(f"Resolving {len(request.file_upload_ids)} file upload IDs")
+        try:
+            file_resolver = get_file_resolver()
+            resolved_files = await file_resolver.resolve_files(
+                user_id=user_id,
+                upload_ids=request.file_upload_ids,
+                max_files=5  # Bedrock document limit
+            )
+            # Convert ResolvedFileContent to FileContent
+            for rf in resolved_files:
+                files_to_send.append(FileContent(
+                    filename=rf.filename,
+                    content_type=rf.content_type,
+                    bytes=rf.bytes
+                ))
+            logger.info(f"Resolved {len(resolved_files)} files from upload IDs")
+        except Exception as e:
+            logger.warning(f"Failed to resolve file upload IDs: {e}")
+            # Continue without files rather than failing the request
+
     try:
         # Get agent instance (with or without tool filtering)
         agent = get_agent(
@@ -195,7 +221,12 @@ async def chat_stream(
             # Yield quota warning event first if applicable
             if quota_warning_event:
                 yield quota_warning_event.to_sse_format()
-            stream_iterator = agent.stream_async(request.message, session_id=request.session_id)
+            # Pass resolved files (from S3) merged with any direct file content
+            stream_iterator = agent.stream_async(
+                request.message,
+                session_id=request.session_id,
+                files=files_to_send if files_to_send else None
+            )
 
             try:
                 # Add timeout to prevent hanging streams

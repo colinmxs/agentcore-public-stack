@@ -42,8 +42,14 @@ class PromptBuilder:
         # Build ContentBlock list for multimodal input
         content_blocks = []
 
-        # Add text first
-        content_blocks.append({"text": message})
+        # Add text first (with file reference marker for session history reconstruction)
+        file_names = [f.filename for f in files if hasattr(f, 'filename')]
+        if file_names:
+            # Add file reference marker after user message for session history
+            text_with_marker = f"{message}\n\n[Attached files: {', '.join(file_names)}]"
+            content_blocks.append({"text": text_with_marker})
+        else:
+            content_blocks.append({"text": message})
 
         # Add each file as appropriate ContentBlock
         for file in files:

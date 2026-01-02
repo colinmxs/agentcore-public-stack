@@ -32,6 +32,17 @@ export interface ReasoningContentData {
 }
 
 /**
+ * File attachment metadata for user messages.
+ * Used to display file badges in the UI and to restore file metadata on session load.
+ */
+export interface FileAttachmentData {
+  uploadId: string;
+  filename: string;
+  mimeType: string;
+  sizeBytes: number;
+}
+
+/**
  * Tool use data structure
  */
 export interface ToolUseData {
@@ -52,7 +63,7 @@ export interface ToolUseData {
  * Matches the backend MessageContent model.
  */
 export interface ContentBlock {
-  /** Content type (text, toolUse, toolResult, image, document, reasoningContent, etc.) */
+  /** Content type (text, toolUse, toolResult, image, document, reasoningContent, fileAttachment, etc.) */
   type: string;
   /** Text content (if type is text) */
   text?: string | null;
@@ -66,6 +77,8 @@ export interface ContentBlock {
   document?: Record<string, unknown> | null;
   /** Reasoning content (if type is reasoningContent) - extended thinking from Claude 3.7+, GPT, etc. */
   reasoningContent?: ReasoningContentData | null;
+  /** File attachment metadata (if type is fileAttachment) - for displaying file badges in user messages */
+  fileAttachment?: FileAttachmentData | null;
 }
 
 /**

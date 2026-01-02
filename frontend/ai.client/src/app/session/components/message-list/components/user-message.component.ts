@@ -8,19 +8,31 @@ import {
   viewChild,
   AfterViewInit,
 } from '@angular/core';
-import { ContentBlock, Message } from '../../../services/models/message.model';
+import { ContentBlock, Message, FileAttachmentData } from '../../../services/models/message.model';
+import { FileAttachmentBadgeComponent } from './file-attachment';
 
 const MAX_HEIGHT_PX = 200;
 
 @Component({
   selector: 'app-user-message',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [FileAttachmentBadgeComponent],
   template: `
-    @if (hasTextContent()) {
+    @if (hasTextContent() || hasFileAttachments()) {
       <div class="flex w-full justify-end">
         <div
           class="max-w-[80%] rounded-2xl bg-primary-500 px-4 py-3 text-base/6 text-white/90"
         >
+          <!-- File attachments -->
+          @if (hasFileAttachments()) {
+            <div class="mb-2 flex flex-wrap gap-1.5">
+              @for (attachment of fileAttachments(); track attachment.uploadId) {
+                <app-file-attachment-badge [attachment]="attachment" />
+              }
+            </div>
+          }
+
+          <!-- Text content -->
           <div class="relative">
             <div
               #contentWrapper
@@ -72,6 +84,18 @@ export class UserMessageComponent implements AfterViewInit {
     return this.message().content.some(
       (block: ContentBlock) => block.type === 'text' && block.text
     );
+  });
+
+  hasFileAttachments = computed(() => {
+    return this.message().content.some(
+      (block: ContentBlock) => block.type === 'fileAttachment' && block.fileAttachment
+    );
+  });
+
+  fileAttachments = computed((): FileAttachmentData[] => {
+    return this.message().content
+      .filter((block: ContentBlock) => block.type === 'fileAttachment' && block.fileAttachment)
+      .map((block: ContentBlock) => block.fileAttachment as FileAttachmentData);
   });
 
   ngAfterViewInit(): void {

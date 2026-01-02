@@ -25,6 +25,7 @@ class FileStatus(str, Enum):
 # =============================================================================
 
 ALLOWED_MIME_TYPES = {
+    # Documents
     "application/pdf": "pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document": "docx",
     "text/plain": "txt",
@@ -33,9 +34,15 @@ ALLOWED_MIME_TYPES = {
     "application/vnd.ms-excel": "xls",
     "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet": "xlsx",
     "text/markdown": "md",
+    # Images (Bedrock-supported)
+    "image/png": "png",
+    "image/jpeg": "jpeg",
+    "image/gif": "gif",
+    "image/webp": "webp",
 }
 
 ALLOWED_EXTENSIONS = {
+    # Documents
     ".pdf": "application/pdf",
     ".docx": "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
     ".txt": "text/plain",
@@ -44,6 +51,12 @@ ALLOWED_EXTENSIONS = {
     ".xls": "application/vnd.ms-excel",
     ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
     ".md": "text/markdown",
+    # Images
+    ".png": "image/png",
+    ".jpg": "image/jpeg",
+    ".jpeg": "image/jpeg",
+    ".gif": "image/gif",
+    ".webp": "image/webp",
 }
 
 
@@ -203,10 +216,10 @@ class UserFileQuota(BaseModel):
 class PresignRequest(BaseModel):
     """Request body for POST /api/files/presign."""
 
-    session_id: str = Field(..., alias="sessionId", description="Conversation session ID")
+    session_id: str = Field(..., validation_alias="sessionId", description="Conversation session ID")
     filename: str = Field(..., min_length=1, max_length=255, description="Original filename")
-    mime_type: str = Field(..., alias="mimeType", description="File MIME type")
-    size_bytes: int = Field(..., alias="sizeBytes", gt=0, description="File size in bytes")
+    mime_type: str = Field(..., validation_alias="mimeType", description="File MIME type")
+    size_bytes: int = Field(..., validation_alias="sizeBytes", gt=0, description="File size in bytes")
 
     model_config = ConfigDict(populate_by_name=True)
 

@@ -105,11 +105,17 @@ class FileUploadService:
         # S3 configuration
         # Use region from AWS_REGION env var to ensure presigned URLs use regional endpoint
         # This is critical for CORS - global endpoint redirects break CORS preflight
-        # Force SigV4 signing to ensure regional URLs are generated
+        # Force SigV4 signing and regional endpoint to avoid CORS issues with global endpoint
         region = os.environ.get("AWS_REGION", "us-west-2")
-        s3_config = Config(signature_version='s3v4')
+        s3_config = Config(
+            signature_version='s3v4',
+            s3={'addressing_style': 'virtual'},
+        )
         self._s3_client = s3_client or boto3.client(
-            "s3", region_name=region, config=s3_config
+            "s3",
+            region_name=region,
+            config=s3_config,
+            endpoint_url=f"https://s3.{region}.amazonaws.com",
         )
         self.bucket_name = bucket_name or os.environ.get(
             "S3_USER_FILES_BUCKET_NAME", "user-files"

@@ -8,6 +8,8 @@ import { SessionService } from '../session/session.service';
 import { UserService } from '../../../auth/user.service';
 import { ModelService } from '../model/model.service';
 import { ToolService } from '../../../services/tool/tool.service';
+import { FileUploadService } from '../../../services/file-upload';
+import { FileAttachmentData } from '../models/message.model';
 
 export interface ContentFile {
   fileName: string;
@@ -28,6 +30,7 @@ export class ChatRequestService {
   private userService = inject(UserService);
   private modelService = inject(ModelService);
   private toolService = inject(ToolService);
+  private fileUploadService = inject(FileUploadService);
   private router = inject(Router);
   // TODO: Inject proper logging service
   
@@ -53,8 +56,11 @@ export class ChatRequestService {
       this.sessionService.addSessionToCache(sessionId, userId);
     }
 
-    // Create and add user message
-    this.messageMapService.addUserMessage(sessionId, userInput);
+    // Get file attachment metadata for display in user message
+    const fileAttachments = this.getFileAttachments(fileUploadIds);
+
+    // Create and add user message with file attachments
+    this.messageMapService.addUserMessage(sessionId, userInput, fileAttachments);
 
     // Start streaming for this conversation
     this.messageMapService.startStreaming(sessionId);
@@ -113,5 +119,32 @@ export class ChatRequestService {
     }
 
     return requestObject;
+  }
+
+  /**
+   * Get file attachment metadata for display in user messages.
+   * Retrieves file metadata from FileUploadService for given upload IDs.
+   */
+  private getFileAttachments(fileUploadIds?: string[]): FileAttachmentData[] | undefined {
+    if (!fileUploadIds || fileUploadIds.length === 0) {
+      return undefined;
+    }
+
+    const attachments: FileAttachmentData[] = [];
+
+    for (const uploadId of fileUploadIds) {
+      // Get file metadata from the upload service
+      const fileMeta = this.fileUploadService.getReadyFileById(uploadId);
+      if (fileMeta) {
+        attachments.push({
+          uploadId: fileMeta.uploadId,
+          filename: fileMeta.filename,
+          mimeType: fileMeta.mimeType,
+          sizeBytes: fileMeta.sizeBytes
+        });
+      }
+    }
+
+    return attachments.length > 0 ? attachments : undefined;
   }
 }

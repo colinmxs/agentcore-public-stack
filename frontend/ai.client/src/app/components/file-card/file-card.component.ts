@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, input, output, computed } from '@angular/core';
+import { Component, ChangeDetectionStrategy, input, output, computed, signal, effect } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroDocument,
@@ -7,10 +7,18 @@ import {
   heroCodeBracket,
   heroXMark,
   heroArrowPath,
-  heroExclamationTriangle
+  heroExclamationTriangle,
+  heroPhoto
 } from '@ng-icons/heroicons/outline';
 import { TooltipDirective } from '../tooltip';
 import { formatBytes, type PendingUpload, type FileMetadata } from '../../services/file-upload';
+
+/**
+ * Check if MIME type is an image
+ */
+function isImageMimeType(mimeType: string): boolean {
+  return mimeType.startsWith('image/');
+}
 
 /**
  * File type to icon mapping
@@ -24,6 +32,11 @@ const FILE_TYPE_ICONS: Record<string, string> = {
   'application/vnd.ms-excel': 'heroTableCells',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'heroTableCells',
   'text/markdown': 'heroDocumentText',
+  // Images use heroPhoto as fallback when preview is not available
+  'image/png': 'heroPhoto',
+  'image/jpeg': 'heroPhoto',
+  'image/gif': 'heroPhoto',
+  'image/webp': 'heroPhoto',
 };
 
 /**
@@ -70,6 +83,27 @@ const FILE_TYPE_COLORS: Record<string, { bg: string; text: string; border: strin
     text: 'text-purple-600 dark:text-purple-400',
     border: 'border-purple-200 dark:border-purple-800'
   },
+  // Image types
+  'image/png': {
+    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    border: 'border-indigo-200 dark:border-indigo-800'
+  },
+  'image/jpeg': {
+    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    border: 'border-indigo-200 dark:border-indigo-800'
+  },
+  'image/gif': {
+    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    border: 'border-indigo-200 dark:border-indigo-800'
+  },
+  'image/webp': {
+    bg: 'bg-indigo-50 dark:bg-indigo-950/30',
+    text: 'text-indigo-600 dark:text-indigo-400',
+    border: 'border-indigo-200 dark:border-indigo-800'
+  },
 };
 
 const DEFAULT_COLORS = {
@@ -113,7 +147,8 @@ const DEFAULT_COLORS = {
       heroCodeBracket,
       heroXMark,
       heroArrowPath,
-      heroExclamationTriangle
+      heroExclamationTriangle,
+      heroPhoto
     })
   ],
   host: {
@@ -124,15 +159,22 @@ const DEFAULT_COLORS = {
       class="group relative flex w-56 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 transition-colors"
       [class]="containerClass()"
     >
-      <!-- File icon -->
+      <!-- File icon or image preview -->
       <div
-        class="flex size-8 shrink-0 items-center justify-center rounded-md"
+        class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md"
         [class]="iconContainerClass()"
       >
         @if (isError()) {
           <ng-icon name="heroExclamationTriangle" class="size-4 text-red-500" aria-hidden="true" />
         } @else if (isUploading()) {
           <ng-icon name="heroArrowPath" class="size-4 animate-spin" [class]="iconClass()" aria-hidden="true" />
+        } @else if (isImage() && imagePreviewUrl()) {
+          <!-- Image thumbnail preview -->
+          <img
+            [src]="imagePreviewUrl()"
+            [alt]="fileName()"
+            class="size-8 object-cover"
+          />
         } @else {
           <ng-icon [name]="iconName()" class="size-4" [class]="iconClass()" aria-hidden="true" />
         }
@@ -210,6 +252,35 @@ export class FileCardComponent {
   /** Emitted when retry is clicked (pending uploads only) */
   readonly retry = output<PendingUpload>();
 
+  /** Image preview URL (data URL for images) */
+  readonly imagePreviewUrl = signal<string | null>(null);
+
+  constructor() {
+    // Effect to load image preview when pendingUpload changes
+    effect(() => {
+      const pending = this.pendingUpload();
+      if (pending && isImageMimeType(pending.file.type)) {
+        this.loadImagePreview(pending.file);
+      } else {
+        this.imagePreviewUrl.set(null);
+      }
+    });
+  }
+
+  /**
+   * Load image preview from file using FileReader
+   */
+  private loadImagePreview(file: File): void {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      this.imagePreviewUrl.set(e.target?.result as string);
+    };
+    reader.onerror = () => {
+      this.imagePreviewUrl.set(null);
+    };
+    reader.readAsDataURL(file);
+  }
+
   // Computed values
   protected readonly fileName = computed(() => {
     const pending = this.pendingUpload();
@@ -277,6 +348,7 @@ export class FileCardComponent {
   protected readonly isCompleting = computed(() => this.status() === 'completing');
   protected readonly isError = computed(() => this.status() === 'error');
   protected readonly isReady = computed(() => this.status() === 'ready');
+  protected readonly isImage = computed(() => isImageMimeType(this.mimeType()));
 
   protected readonly iconName = computed(() => {
     const mime = this.mimeType();

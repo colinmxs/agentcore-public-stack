@@ -13,6 +13,7 @@ export type FileStatus = 'pending' | 'ready' | 'failed';
  * Allowed MIME types for file uploads (Bedrock-compliant)
  */
 export const ALLOWED_MIME_TYPES: Record<string, string> = {
+  // Documents
   'application/pdf': 'pdf',
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': 'docx',
   'text/plain': 'txt',
@@ -21,12 +22,22 @@ export const ALLOWED_MIME_TYPES: Record<string, string> = {
   'application/vnd.ms-excel': 'xls',
   'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
   'text/markdown': 'md',
+  // Images (Bedrock-supported)
+  'image/png': 'png',
+  'image/jpeg': 'jpeg',
+  'image/gif': 'gif',
+  'image/webp': 'webp',
 };
 
 /**
  * Allowed file extensions
  */
-export const ALLOWED_EXTENSIONS = ['.pdf', '.docx', '.txt', '.html', '.csv', '.xls', '.xlsx', '.md'];
+export const ALLOWED_EXTENSIONS = [
+  // Documents
+  '.pdf', '.docx', '.txt', '.html', '.csv', '.xls', '.xlsx', '.md',
+  // Images
+  '.png', '.jpg', '.jpeg', '.gif', '.webp'
+];
 
 /**
  * Maximum file size in bytes (4MB)
@@ -233,6 +244,30 @@ export class FileUploadService {
     if (!q || q.maxBytes === 0) return 0;
     return Math.min(100, (q.usedBytes / q.maxBytes) * 100);
   });
+
+  /**
+   * Get a ready file by its upload ID.
+   * Returns null if the file is not found or not ready.
+   *
+   * @param uploadId - The upload ID to look up
+   * @returns FileMetadata if found and ready, null otherwise
+   */
+  getReadyFileById(uploadId: string): FileMetadata | null {
+    const pending = this._pendingUploads().get(uploadId);
+    if (pending && pending.status === 'ready') {
+      return {
+        uploadId: pending.uploadId,
+        sessionId: '', // Session ID not tracked in PendingUpload
+        filename: pending.file.name,
+        mimeType: pending.file.type || 'application/octet-stream',
+        sizeBytes: pending.file.size,
+        s3Uri: '', // S3 URI not available in client-side pending upload
+        status: 'ready',
+        createdAt: new Date().toISOString(),
+      };
+    }
+    return null;
+  }
 
   /**
    * Validate a file before upload.

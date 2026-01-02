@@ -1,8 +1,12 @@
 // services/message-map.service.ts (updated integration)
 import { Injectable, Signal, WritableSignal, signal, effect, inject } from '@angular/core';
-import { Message } from '../models/message.model';
+import { ContentBlock, FileAttachmentData, Message } from '../models/message.model';
 import { StreamParserService } from '../chat/stream-parser.service';
 import { SessionService } from './session.service';
+import { FileUploadService, FileMetadata } from '../../../services/file-upload';
+
+/** Regex to match file attachment marker in message text: [Attached files: file1.pdf, file2.png] */
+const ATTACHED_FILES_PATTERN = /\n\n\[Attached files: ([^\]]+)\]$/;
 
 interface MessageMap {
   [sessionId: string]: WritableSignal<Message[]>;
@@ -37,6 +41,7 @@ export class MessageMapService {
 
   private streamParser = inject(StreamParserService);
   private sessionService = inject(SessionService);
+  private fileUploadService = inject(FileUploadService);
 
   constructor() {
     // Reactive effect: automatically sync streaming messages to the message map
@@ -111,8 +116,12 @@ export class MessageMapService {
   /**
    * Add a user message to a session (before streaming begins).
    * Generates a predictable message ID based on session ID and message count.
+   *
+   * @param sessionId - The session ID to add the message to
+   * @param content - The text content of the message
+   * @param fileAttachments - Optional array of file attachment metadata
    */
-  addUserMessage(sessionId: string, content: string): Message {
+  addUserMessage(sessionId: string, content: string, fileAttachments?: FileAttachmentData[]): Message {
     // Get current message count for this session to compute ID
     const currentMessages = this.messageMap()[sessionId]?.() ?? [];
     const messageIndex = currentMessages.length;
@@ -120,10 +129,26 @@ export class MessageMapService {
     // Compute predictable message ID: msg-{sessionId}-{index}
     const messageId = `msg-${sessionId}-${messageIndex}`;
 
+    // Build content blocks - file attachments first, then text
+    const contentBlocks: ContentBlock[] = [];
+
+    // Add file attachment blocks
+    if (fileAttachments && fileAttachments.length > 0) {
+      for (const attachment of fileAttachments) {
+        contentBlocks.push({
+          type: 'fileAttachment',
+          fileAttachment: attachment
+        });
+      }
+    }
+
+    // Add text content block
+    contentBlocks.push({ type: 'text', text: content });
+
     const message: Message = {
       id: messageId,
       role: 'user',
-      content: [{ type: 'text', text: content }]
+      content: contentBlocks
     };
 
     this.messageMap.update(map => {
@@ -191,11 +216,21 @@ export class MessageMapService {
     this._isLoadingSession.set(sessionId);
 
     try {
-      // Fetch messages from the API
-      const response = await this.sessionService.getMessages(sessionId);
+      // Fetch messages and file metadata in parallel
+      const [messagesResponse, sessionFiles] = await Promise.all([
+        this.sessionService.getMessages(sessionId),
+        this.fetchSessionFiles(sessionId)
+      ]);
 
-      // Process messages to match tool results to tool uses
-      const processedMessages = this.matchToolResultsToToolUses(response.messages);
+      // Create a lookup map for files by filename
+      const filesByName = new Map<string, FileMetadata>();
+      for (const file of sessionFiles) {
+        filesByName.set(file.filename, file);
+      }
+
+      // Process messages to match tool results and restore file attachments
+      let processedMessages = this.matchToolResultsToToolUses(messagesResponse.messages);
+      processedMessages = this.restoreFileAttachments(processedMessages, filesByName);
 
       // Update the message map with loaded messages
       this.messageMap.update(map => {
@@ -216,6 +251,83 @@ export class MessageMapService {
       // Clear loading state
       this._isLoadingSession.set(null);
     }
+  }
+
+  /**
+   * Fetch file metadata for a session from the backend.
+   * Returns empty array on error to allow graceful degradation.
+   */
+  private async fetchSessionFiles(sessionId: string): Promise<FileMetadata[]> {
+    try {
+      return await this.fileUploadService.listSessionFiles(sessionId);
+    } catch (error) {
+      console.warn('Failed to fetch session files, file attachments will not be displayed:', error);
+      return [];
+    }
+  }
+
+  /**
+   * Restore file attachment blocks in user messages.
+   * Parses the [Attached files: ...] marker in text and creates fileAttachment blocks.
+   */
+  private restoreFileAttachments(
+    messages: Message[],
+    filesByName: Map<string, FileMetadata>
+  ): Message[] {
+    return messages.map(message => {
+      if (message.role !== 'user') {
+        return message;
+      }
+
+      // Process each content block
+      const newContent: ContentBlock[] = [];
+      const fileAttachmentBlocks: ContentBlock[] = [];
+
+      for (const block of message.content) {
+        if (block.type === 'text' && block.text) {
+          // Check for attached files marker
+          const match = block.text.match(ATTACHED_FILES_PATTERN);
+          if (match) {
+            // Extract filenames and create file attachment blocks
+            const fileNames = match[1].split(', ').map(name => name.trim());
+            for (const filename of fileNames) {
+              const fileMeta = filesByName.get(filename);
+              if (fileMeta) {
+                fileAttachmentBlocks.push({
+                  type: 'fileAttachment',
+                  fileAttachment: {
+                    uploadId: fileMeta.uploadId,
+                    filename: fileMeta.filename,
+                    mimeType: fileMeta.mimeType,
+                    sizeBytes: fileMeta.sizeBytes
+                  }
+                });
+              }
+            }
+
+            // Remove the marker from the text
+            const cleanText = block.text.replace(ATTACHED_FILES_PATTERN, '');
+            if (cleanText.trim()) {
+              newContent.push({ type: 'text', text: cleanText });
+            }
+          } else {
+            newContent.push(block);
+          }
+        } else {
+          newContent.push(block);
+        }
+      }
+
+      // Return message with file attachments first, then other content
+      if (fileAttachmentBlocks.length > 0) {
+        return {
+          ...message,
+          content: [...fileAttachmentBlocks, ...newContent]
+        };
+      }
+
+      return message;
+    });
   }
 
   /**
