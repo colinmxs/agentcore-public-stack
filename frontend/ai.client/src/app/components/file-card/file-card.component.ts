@@ -161,22 +161,22 @@ const DEFAULT_COLORS = {
     >
       <!-- File icon or image preview -->
       <div
-        class="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-md"
+        class="flex size-10 shrink-0 items-center justify-center overflow-hidden rounded-md"
         [class]="iconContainerClass()"
       >
         @if (isError()) {
-          <ng-icon name="heroExclamationTriangle" class="size-4 text-red-500" aria-hidden="true" />
+          <ng-icon name="heroExclamationTriangle" class="size-6 text-red-500" aria-hidden="true" />
         } @else if (isUploading()) {
-          <ng-icon name="heroArrowPath" class="size-4 animate-spin" [class]="iconClass()" aria-hidden="true" />
+          <ng-icon name="heroArrowPath" class="size-6 animate-spin" [class]="iconClass()" aria-hidden="true" />
         } @else if (isImage() && imagePreviewUrl()) {
           <!-- Image thumbnail preview -->
           <img
             [src]="imagePreviewUrl()"
             [alt]="fileName()"
-            class="size-8 object-cover"
+            class="size-10 object-cover"
           />
         } @else {
-          <ng-icon [name]="iconName()" class="size-4" [class]="iconClass()" aria-hidden="true" />
+          <ng-icon [name]="iconName()" class="size-6" [class]="iconClass()" aria-hidden="true" />
         }
       </div>
 
@@ -361,11 +361,10 @@ export class FileCardComponent {
   });
 
   protected readonly containerClass = computed(() => {
-    const colors = this.colors();
     if (this.isError()) {
       return 'border-red-200 bg-red-50 dark:border-red-800 dark:bg-red-950/30';
     }
-    return `${colors.border} ${colors.bg}`;
+    return 'border-gray-200 bg-white dark:border-gray-600 dark:bg-gray-700';
   });
 
   protected readonly iconContainerClass = computed(() => {

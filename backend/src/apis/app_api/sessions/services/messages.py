@@ -59,10 +59,62 @@ def _ensure_image_base64(image_data: Dict[str, Any]) -> Dict[str, Any]:
     return image_data
 
 
-def _process_tool_result_content(tool_result: Dict[str, Any]) -> Dict[str, Any]:
-    """Process tool result content to ensure images are base64 encoded
+def _ensure_document_base64(document_data: Dict[str, Any]) -> Dict[str, Any]:
+    """Ensure document data has base64 encoding instead of raw bytes
 
-    Tool results can contain nested image content that needs conversion.
+    Handles document content where bytes may be raw (from multimodal input).
+    Converts to base64 string for JSON serialization.
+
+    Document structure from PromptBuilder:
+    {
+        "format": "pdf",
+        "name": "filename.pdf",
+        "source": {
+            "bytes": <raw bytes>
+        }
+    }
+
+    Converted to frontend format:
+    {
+        "format": "pdf",
+        "name": "filename.pdf",
+        "data": "<base64 string>"
+    }
+    """
+    if not document_data:
+        return document_data
+
+    # Check for source.bytes pattern (from multimodal document input)
+    source = document_data.get("source", {})
+    if isinstance(source, dict) and "bytes" in source:
+        raw_bytes = source["bytes"]
+        if isinstance(raw_bytes, bytes):
+            # Convert raw bytes to base64 string
+            encoded = base64.b64encode(raw_bytes).decode('utf-8')
+            return {
+                "format": document_data.get("format", "txt"),
+                "name": document_data.get("name", "document"),
+                "data": encoded
+            }
+        elif isinstance(raw_bytes, str):
+            # Already a string (possibly base64), use as-is
+            return {
+                "format": document_data.get("format", "txt"),
+                "name": document_data.get("name", "document"),
+                "data": raw_bytes
+            }
+
+    # Check if already in frontend format (format + name + data)
+    if "data" in document_data and "format" in document_data:
+        return document_data
+
+    return document_data
+
+
+def _process_tool_result_content(tool_result: Dict[str, Any]) -> Dict[str, Any]:
+    """Process tool result content to ensure binary data is base64 encoded
+
+    Tool results can contain nested image or document content that needs conversion.
     """
     if not tool_result:
         return tool_result
@@ -73,10 +125,14 @@ def _process_tool_result_content(tool_result: Dict[str, Any]) -> Dict[str, Any]:
 
     processed_content = []
     for item in content:
-        if isinstance(item, dict) and "image" in item:
-            # Process nested image in tool result
+        if isinstance(item, dict):
             processed_item = dict(item)
-            processed_item["image"] = _ensure_image_base64(item["image"])
+            # Process nested image in tool result
+            if "image" in item:
+                processed_item["image"] = _ensure_image_base64(item["image"])
+            # Process nested document in tool result
+            if "document" in item:
+                processed_item["document"] = _ensure_document_base64(item["document"])
             processed_content.append(processed_item)
         else:
             processed_content.append(item)
@@ -124,7 +180,8 @@ def _convert_content_block(content_item: Any) -> MessageContent:
             image = _ensure_image_base64(content_item["image"])
         elif "document" in content_item:
             content_type = "document"
-            document = content_item["document"]
+            # Ensure document is base64 encoded (raw bytes from multimodal input)
+            document = _ensure_document_base64(content_item["document"])
         elif "reasoningContent" in content_item:
             # Handle reasoning content (extended thinking from Claude 3.7+, GPT, etc.)
             # Preserve the full structure including reasoningText and signature
