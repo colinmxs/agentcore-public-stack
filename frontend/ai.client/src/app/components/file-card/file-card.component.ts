@@ -31,9 +31,9 @@ const FILE_TYPE_ICONS: Record<string, string> = {
  */
 const FILE_TYPE_COLORS: Record<string, { bg: string; text: string; border: string }> = {
   'application/pdf': {
-    bg: 'bg-red-50 dark:bg-red-950/30',
-    text: 'text-red-600 dark:text-red-400',
-    border: 'border-red-200 dark:border-red-800'
+    bg: 'bg-rose-50 dark:bg-rose-950/30',
+    text: 'text-rose-700 dark:text-rose-400',
+    border: 'border-rose-300 dark:border-rose-800'
   },
   'application/vnd.openxmlformats-officedocument.wordprocessingml.document': {
     bg: 'bg-blue-50 dark:bg-blue-950/30',
@@ -121,7 +121,7 @@ const DEFAULT_COLORS = {
   },
   template: `
     <div
-      class="group relative flex items-center gap-2 rounded-lg border px-3 py-2 transition-colors"
+      class="group relative flex w-56 shrink-0 items-center gap-2 rounded-lg border px-3 py-2 transition-colors"
       [class]="containerClass()"
     >
       <!-- File icon -->
@@ -140,11 +140,7 @@ const DEFAULT_COLORS = {
 
       <!-- File info -->
       <div class="min-w-0 flex-1">
-        <p
-          class="truncate text-sm font-medium text-gray-900 dark:text-white"
-          [appTooltip]="fileName()"
-          appTooltipPosition="top"
-        >
+        <p class="truncate text-sm font-medium text-gray-900 dark:text-white">
           {{ fileName() }}
         </p>
         <p class="text-xs text-gray-500 dark:text-gray-400">

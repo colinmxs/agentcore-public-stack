@@ -191,6 +191,9 @@ class FileUploadService:
         await self.repository.create_file(file_meta)
 
         # Generate pre-signed URL
+        # Note: Don't include ContentLength in signed params - browsers set this
+        # automatically and can't be overridden via XHR. Including it causes
+        # SignatureDoesNotMatch errors if there's any size discrepancy.
         try:
             presigned_url = self._s3_client.generate_presigned_url(
                 "put_object",
@@ -198,7 +201,6 @@ class FileUploadService:
                     "Bucket": self.bucket_name,
                     "Key": s3_key,
                     "ContentType": request.mime_type,
-                    "ContentLength": request.size_bytes,
                 },
                 ExpiresIn=self.presign_expiration,
             )
