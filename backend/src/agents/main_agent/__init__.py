@@ -1,5 +1,5 @@
 """
-Strands Agent - Modular multi-agent orchestration system
+Main Agent - Modular multi-agent orchestration system
 
 This package provides a well-architected agent implementation with clear
 separation of concerns across specialized modules:
@@ -13,9 +13,9 @@ separation of concerns across specialized modules:
 - utils: Shared utilities (timezone, global state)
 
 Main entry point:
-    from agents.strands_agent import StrandsAgent
+    from agents.main_agent import MainAgent
 
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id="session-123",
         user_id="user-456",
         enabled_tools=["calculator", "weather", "gateway_wikipedia"],
@@ -27,7 +27,7 @@ Main entry point:
     async for event in agent.stream_async("What's the weather in Seattle?"):
         print(event)
 """
-from .strands_agent import StrandsAgent
+from .main_agent import MainAgent
 from .core import ModelConfig, SystemPromptBuilder
 from .session import SessionFactory
 from .tools import ToolRegistry, ToolFilter, GatewayIntegration, create_default_registry
@@ -51,7 +51,7 @@ __version__ = "1.0.0"
 
 __all__ = [
     # Main agent
-    "StrandsAgent",
+    "MainAgent",
 
     # Core components
     "ModelConfig",

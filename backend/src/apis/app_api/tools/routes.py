@@ -13,7 +13,7 @@ from apis.shared.auth import User, get_current_user
 from apis.shared.rbac.service import get_app_role_service
 
 # Import legacy service for backward compatibility
-from agents.strands_agent.tools import (
+from agents.main_agent.tools import (
     get_tool_catalog_service as get_legacy_catalog_service,
     ToolCategory as LegacyToolCategory,
 )

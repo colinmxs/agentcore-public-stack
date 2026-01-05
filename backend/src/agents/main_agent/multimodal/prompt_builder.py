@@ -4,9 +4,9 @@ Prompt builder for multimodal content (text, images, documents)
 import logging
 import base64
 from typing import List, Optional, Union, Dict, Any
-from agents.strands_agent.multimodal.image_handler import ImageHandler
-from agents.strands_agent.multimodal.document_handler import DocumentHandler
-from agents.strands_agent.multimodal.file_sanitizer import FileSanitizer
+from agents.main_agent.multimodal.image_handler import ImageHandler
+from agents.main_agent.multimodal.document_handler import DocumentHandler
+from agents.main_agent.multimodal.file_sanitizer import FileSanitizer
 
 logger = logging.getLogger(__name__)
 

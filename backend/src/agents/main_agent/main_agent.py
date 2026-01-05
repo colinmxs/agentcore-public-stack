@@ -1,5 +1,5 @@
 """
-Strands Agent Orchestrator - Slim coordination layer for multi-agent system
+Main Agent Orchestrator - Slim coordination layer for multi-agent system
 
 This module provides a clean, maintainable agent implementation with clear separation
 of concerns across specialized modules.
@@ -8,31 +8,31 @@ import logging
 from typing import AsyncGenerator, List, Optional
 
 # Core orchestration
-from agents.strands_agent.core import ModelConfig, SystemPromptBuilder, AgentFactory
+from agents.main_agent.core import ModelConfig, SystemPromptBuilder, AgentFactory
 
 # Session management
-from agents.strands_agent.session import SessionFactory
-from agents.strands_agent.session.hooks import StopHook, ConversationCachingHook
+from agents.main_agent.session import SessionFactory
+from agents.main_agent.session.hooks import StopHook, ConversationCachingHook
 
 # Tool management
-from agents.strands_agent.tools import (
+from agents.main_agent.tools import (
     create_default_registry,
     ToolFilter,
     GatewayIntegration
 )
 
 # Multimodal content
-from agents.strands_agent.multimodal import PromptBuilder
+from agents.main_agent.multimodal import PromptBuilder
 
 # Streaming coordination
-from agents.strands_agent.streaming import StreamCoordinator
+from agents.main_agent.streaming import StreamCoordinator
 
 logger = logging.getLogger(__name__)
 
 
-class StrandsAgent:
+class MainAgent:
     """
-    Main Strands Agent orchestrator with modular architecture
+    Main Agent orchestrator with modular architecture
 
     Responsibilities:
     - Initialize and coordinate specialized modules
@@ -53,7 +53,7 @@ class StrandsAgent:
         max_tokens: Optional[int] = None
     ):
         """
-        Initialize Strands Agent with modular architecture and multi-provider support
+        Initialize Main Agent with modular architecture and multi-provider support
 
         Args:
             session_id: Session identifier for message persistence
@@ -119,7 +119,7 @@ class StrandsAgent:
         self._create_agent()
 
     def _create_agent(self) -> None:
-        """Create Strands Agent with filtered tools and session management"""
+        """Create agent with filtered tools and session management"""
         try:
             # Get filtered tools
             local_tools, gateway_tool_ids = self.tool_filter.filter_tools(self.enabled_tools)
@@ -160,7 +160,7 @@ class StrandsAgent:
         hooks.append(stop_hook)
 
         # Add conversation caching hook if enabled (Bedrock only - other providers don't support cachePoint)
-        from agents.strands_agent.core import ModelProvider
+        from agents.main_agent.core import ModelProvider
         if self.model_config.caching_enabled and self.model_config.get_provider() == ModelProvider.BEDROCK:
             conversation_hook = ConversationCachingHook(enabled=True)
             hooks.append(conversation_hook)
@@ -191,14 +191,14 @@ class StrandsAgent:
         prompt = self.multimodal_builder.build_prompt(message, files)
 
         # Stream using coordinator
-        # Pass self (StrandsAgent) as strands_agent_wrapper so coordinator can access model_config
+        # Pass self (MainAgent) as main_agent_wrapper so coordinator can access model_config
         async for event in self.stream_coordinator.stream_response(
             agent=self.agent,
             prompt=prompt,
             session_manager=self.session_manager,
             session_id=session_id or self.session_id,
             user_id=self.user_id,
-            strands_agent_wrapper=self  # Pass wrapper for metadata extraction
+            main_agent_wrapper=self  # Pass wrapper for metadata extraction
         ):
             yield event
 

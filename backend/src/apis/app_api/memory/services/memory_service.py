@@ -8,7 +8,7 @@ import logging
 from typing import List, Optional, Dict, Any, Tuple
 from functools import lru_cache
 
-from agents.strands_agent.session.memory_config import load_memory_config
+from agents.main_agent.session.memory_config import load_memory_config
 
 logger = logging.getLogger(__name__)
 

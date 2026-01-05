@@ -8,11 +8,11 @@ Practical examples for using the refactored Strands Agent.
 
 ```python
 import asyncio
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 async def simple_chat():
     # Create agent with default settings
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id="demo-session-001",
         enabled_tools=["calculator", "weather"]
     )
@@ -28,9 +28,9 @@ asyncio.run(simple_chat())
 ### Custom Model Configuration
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-001",
     user_id="user-123",
     enabled_tools=["calculator", "weather", "visualization"],
@@ -46,13 +46,13 @@ async for event in agent.stream_async("Analyze Q4 sales trends"):
 ### Custom System Prompt
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 custom_prompt = """You are a financial analyst AI assistant.
 Focus on providing data-driven insights with citations.
 Current date: 2024-01-15"""
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="finance-session",
     system_prompt=custom_prompt,
     enabled_tools=["calculator", "gateway_finance"]
@@ -66,7 +66,7 @@ agent = StrandsAgent(
 ```python
 import base64
 from dataclasses import dataclass
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 @dataclass
 class FileContent:
@@ -75,7 +75,7 @@ class FileContent:
     bytes: str  # base64 encoded
 
 async def analyze_image():
-    agent = StrandsAgent(session_id="image-session")
+    agent = MainAgent(session_id="image-session")
 
     # Load and encode image
     with open("chart.png", "rb") as f:
@@ -102,10 +102,10 @@ asyncio.run(analyze_image())
 
 ```python
 import base64
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 async def process_pdf():
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id="doc-session",
         enabled_tools=["calculator"]
     )
@@ -135,7 +135,7 @@ asyncio.run(process_pdf())
 
 ```python
 async def multi_file_analysis():
-    agent = StrandsAgent(session_id="multi-file")
+    agent = MainAgent(session_id="multi-file")
 
     files = [
         FileContent(
@@ -169,7 +169,7 @@ async def multi_file_analysis():
 #### Custom Tool Registry
 
 ```python
-from agents.strands_agent import ToolRegistry, ToolFilter
+from agents.main_agent import ToolRegistry, ToolFilter
 from strands_tools.calculator import calculator
 
 # Create custom registry
@@ -192,7 +192,7 @@ print(f"Statistics: {filter.get_statistics(['calculator', 'custom_search'])}")
 #### Custom System Prompt Builder
 
 ```python
-from agents.strands_agent import SystemPromptBuilder
+from agents.main_agent import SystemPromptBuilder
 
 # Custom base prompt
 builder = SystemPromptBuilder(
@@ -210,7 +210,7 @@ prompt_no_date = builder.build(include_date=False)
 #### Model Configuration
 
 ```python
-from agents.strands_agent import ModelConfig
+from agents.main_agent import ModelConfig
 
 # Create configuration
 config = ModelConfig.from_params(
@@ -233,10 +233,10 @@ print(full_config)
 ### Gateway MCP Tools
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # Enable Gateway MCP tools (Wikipedia, ArXiv, Finance)
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="research-session",
     enabled_tools=[
         "calculator",
@@ -258,14 +258,14 @@ async for event in agent.stream_async(
 
 ```python
 import os
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # Set environment for cloud mode
 os.environ['AGENTCORE_MEMORY_ID'] = 'your-memory-id'
 os.environ['AWS_REGION'] = 'us-west-2'
 
 # Agent will automatically use AgentCore Memory
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="cloud-session",
     user_id="user-123",  # For cross-session preferences
     enabled_tools=["calculator", "weather"]
@@ -279,10 +279,10 @@ async for event in agent.stream_async("What were we discussing last time?"):
 #### Local Mode (File-based)
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # No AGENTCORE_MEMORY_ID set - automatically uses file-based storage
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="local-session",
     enabled_tools=["calculator"]
 )
@@ -295,9 +295,9 @@ async for event in agent.stream_async("Calculate 100 * 200"):
 ### Tool Statistics
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="stats-session",
     enabled_tools=["calculator", "weather", "gateway_wikipedia", "unknown_tool"]
 )
@@ -316,9 +316,9 @@ print(stats)
 ### Model Configuration Inspection
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="config-session",
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     temperature=0.5,
@@ -343,13 +343,13 @@ print(config)
 ```python
 from fastapi import FastAPI
 from fastapi.responses import StreamingResponse
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 app = FastAPI()
 
 @app.post("/chat/stream")
 async def chat_stream(session_id: str, message: str, enabled_tools: list[str]):
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id=session_id,
         enabled_tools=enabled_tools
     )
@@ -364,10 +364,10 @@ async def chat_stream(session_id: str, message: str, enabled_tools: list[str]):
 
 ```python
 import asyncio
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 async def safe_stream():
-    agent = StrandsAgent(session_id="safe-session")
+    agent = MainAgent(session_id="safe-session")
 
     try:
         async for event in agent.stream_async("What's the weather?"):
@@ -383,7 +383,7 @@ asyncio.run(safe_stream())
 
 ```python
 import logging
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # Configure logging
 logging.basicConfig(
@@ -391,7 +391,7 @@ logging.basicConfig(
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
 )
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="monitored-session",
     enabled_tools=["calculator", "weather"]
 )
@@ -412,7 +412,7 @@ async for event in agent.stream_async("Calculate 5 + 5"):
 
 ```python
 import pytest
-from agents.strands_agent import ModelConfig, ToolRegistry
+from agents.main_agent import ModelConfig, ToolRegistry
 
 def test_model_config():
     config = ModelConfig.from_params(temperature=0.9)
@@ -435,11 +435,11 @@ def test_tool_registry():
 ```python
 import asyncio
 import pytest
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 @pytest.mark.asyncio
 async def test_agent_streaming():
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id="test-session",
         enabled_tools=["calculator"]
     )
@@ -475,9 +475,9 @@ async for event in agent.stream_async(message="Hello", session_id="session-123")
 
 **After:**
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     user_id="user-456",
     enabled_tools=["calculator", "weather"],
@@ -499,7 +499,7 @@ async for event in agent.stream_async(message="Hello", session_id="session-123")
 
 ```python
 # Good: Reuse agent for same session
-agent = StrandsAgent(session_id="user-session-123")
+agent = MainAgent(session_id="user-session-123")
 
 async for event in agent.stream_async("First message"):
     print(event)
@@ -516,7 +516,7 @@ async for event in agent.stream_async("Follow-up message"):
 
 ```python
 # Good: Only enable tools you need
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="math-session",
     enabled_tools=["calculator"]  # Only math tools
 )
@@ -555,7 +555,7 @@ async for event in agent.stream_async(message):
 
 ```python
 # Recommended: Enable caching for better performance
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session",
     caching_enabled=True  # Reduces token usage
 )
@@ -565,13 +565,13 @@ agent = StrandsAgent(
 
 ```python
 # Fast responses: Use Haiku
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="quick-session",
     model_id="us.anthropic.claude-haiku-4-5-20251001-v1:0"
 )
 
 # Complex reasoning: Use Sonnet
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="complex-session",
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0"
 )

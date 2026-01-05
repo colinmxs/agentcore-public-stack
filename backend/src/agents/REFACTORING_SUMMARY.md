@@ -9,9 +9,9 @@ Successfully refactored the monolithic `agentcore/agent/agent.py` (546 lines) in
 ### Directory Structure
 
 ```
-backend/src/agents/strands_agent/
+backend/src/agents/main_agent/
 ├── __init__.py                           # Public API exports
-├── strands_agent.py                      # Main orchestrator (~200 lines)
+├── main_agent.py                      # Main orchestrator (~200 lines)
 ├── README.md                             # Architecture documentation
 ├── USAGE_EXAMPLES.md                     # Practical usage examples
 │
@@ -74,15 +74,15 @@ tool_filter = ToolFilter(registry=tool_registry)
 ```
 
 ### 3. **Maintained Backward Compatibility**
-`StrandsAgent` is a drop-in replacement for `ChatbotAgent`:
+`MainAgent` is a drop-in replacement for `ChatbotAgent`:
 ```python
 # Before
 from agentcore.agent.agent import ChatbotAgent
 agent = ChatbotAgent(session_id="123", enabled_tools=["calculator"])
 
 # After
-from agents.strands_agent import StrandsAgent
-agent = StrandsAgent(session_id="123", enabled_tools=["calculator"])
+from agents.main_agent import MainAgent
+agent = MainAgent(session_id="123", enabled_tools=["calculator"])
 ```
 
 ### 4. **Preserved Original Code**
@@ -118,7 +118,7 @@ The original `agentcore/agent/agent.py` remains **completely unmodified**.
 - **global_state.py**: Global stream processor (temporary, consider refactoring to DI)
 
 ### Main Orchestrator (1 file)
-- **strands_agent.py**: Slim coordination layer (~200 lines) that assembles all modules
+- **main_agent.py**: Slim coordination layer (~200 lines) that assembles all modules
 
 ## Benefits Achieved
 
@@ -153,41 +153,41 @@ The original `agentcore/agent/agent.py` remains **completely unmodified**.
 
 ### Python Modules (23 files)
 1. `agents/__init__.py`
-2. `strands_agent/__init__.py`
-3. `strands_agent/strands_agent.py`
-4. `strands_agent/core/__init__.py`
-5. `strands_agent/core/model_config.py`
-6. `strands_agent/core/system_prompt_builder.py`
-7. `strands_agent/core/agent_factory.py`
-8. `strands_agent/session/__init__.py`
-9. `strands_agent/session/session_factory.py`
-10. `strands_agent/session/hooks/__init__.py`
-11. `strands_agent/tools/__init__.py`
-12. `strands_agent/tools/tool_registry.py`
-13. `strands_agent/tools/tool_filter.py`
-14. `strands_agent/tools/gateway_integration.py`
-15. `strands_agent/multimodal/__init__.py`
-16. `strands_agent/multimodal/prompt_builder.py`
-17. `strands_agent/multimodal/image_handler.py`
-18. `strands_agent/multimodal/document_handler.py`
-19. `strands_agent/multimodal/file_sanitizer.py`
-20. `strands_agent/streaming/__init__.py`
-21. `strands_agent/streaming/stream_coordinator.py`
-22. `strands_agent/utils/__init__.py`
-23. `strands_agent/utils/timezone.py`
-24. `strands_agent/utils/global_state.py`
+2. `main_agent/__init__.py`
+3. `main_agent/main_agent.py`
+4. `main_agent/core/__init__.py`
+5. `main_agent/core/model_config.py`
+6. `main_agent/core/system_prompt_builder.py`
+7. `main_agent/core/agent_factory.py`
+8. `main_agent/session/__init__.py`
+9. `main_agent/session/session_factory.py`
+10. `main_agent/session/hooks/__init__.py`
+11. `main_agent/tools/__init__.py`
+12. `main_agent/tools/tool_registry.py`
+13. `main_agent/tools/tool_filter.py`
+14. `main_agent/tools/gateway_integration.py`
+15. `main_agent/multimodal/__init__.py`
+16. `main_agent/multimodal/prompt_builder.py`
+17. `main_agent/multimodal/image_handler.py`
+18. `main_agent/multimodal/document_handler.py`
+19. `main_agent/multimodal/file_sanitizer.py`
+20. `main_agent/streaming/__init__.py`
+21. `main_agent/streaming/stream_coordinator.py`
+22. `main_agent/utils/__init__.py`
+23. `main_agent/utils/timezone.py`
+24. `main_agent/utils/global_state.py`
 
 ### Documentation (2 files)
-1. `strands_agent/README.md` - Architecture documentation
-2. `strands_agent/USAGE_EXAMPLES.md` - Practical usage examples
+1. `main_agent/README.md` - Architecture documentation
+2. `main_agent/USAGE_EXAMPLES.md` - Practical usage examples
 
 ## Usage Example
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # Create agent
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     user_id="user-456",
     enabled_tools=["calculator", "weather", "gateway_wikipedia"],
@@ -210,7 +210,7 @@ Replace imports throughout codebase:
 from agentcore.agent.agent import ChatbotAgent
 
 # New
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 ```
 
 ### Option 2: Gradual Migration
@@ -219,15 +219,15 @@ Use both implementations side-by-side:
 # Legacy code continues using ChatbotAgent
 from agentcore.agent.agent import ChatbotAgent
 
-# New code uses StrandsAgent
-from agents.strands_agent import StrandsAgent
+# New code uses MainAgent
+from agents.main_agent import MainAgent
 ```
 
 ### Option 3: Aliased Migration
 Create alias for backward compatibility:
 ```python
 # In agentcore/agent/agent.py (optional)
-from agents.strands_agent import StrandsAgent as ChatbotAgent
+from agents.main_agent import MainAgent as ChatbotAgent
 ```
 
 ## Testing Recommendations
@@ -252,7 +252,7 @@ from agents.strands_agent import StrandsAgent as ChatbotAgent
 ### 1. Dependency Injection
 Replace global stream processor with proper DI:
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     stream_processor=custom_processor
 )
@@ -268,13 +268,13 @@ registry.load_plugins_from_directory("./custom_tools")
 ### 3. Configuration Files
 Support YAML/JSON configuration:
 ```python
-agent = StrandsAgent.from_config_file("agent_config.yaml")
+agent = MainAgent.from_config_file("agent_config.yaml")
 ```
 
 ### 4. Metrics Module
 Add dedicated monitoring:
 ```python
-from agents.strands_agent.metrics import AgentMetrics
+from agents.main_agent.metrics import AgentMetrics
 
 metrics = AgentMetrics(agent)
 print(metrics.get_tool_usage_stats())
@@ -283,7 +283,7 @@ print(metrics.get_tool_usage_stats())
 ### 5. Async Context Manager
 Support with statement:
 ```python
-async with StrandsAgent(session_id="123") as agent:
+async with MainAgent(session_id="123") as agent:
     async for event in agent.stream_async("Hello"):
         print(event)
 ```

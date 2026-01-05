@@ -3,9 +3,9 @@
 import pytest
 from datetime import datetime, timedelta
 from unittest.mock import AsyncMock, Mock
-from agents.strands_agent.quota.resolver import QuotaResolver
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.models import (
+from agents.main_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.models import (
     QuotaTier,
     QuotaAssignment,
     QuotaAssignmentType,

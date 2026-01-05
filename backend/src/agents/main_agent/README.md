@@ -7,8 +7,8 @@ A well-architected, maintainable implementation of a conversational AI agent wit
 This refactored agent implementation splits the monolithic `agentcore.agent.agent.py` into focused, single-responsibility modules:
 
 ```
-strands_agent/
-├── strands_agent.py              # Main orchestrator (~200 lines)
+main_agent/
+├── main_agent.py              # Main orchestrator (~200 lines)
 ├── core/                         # Core orchestration
 │   ├── model_config.py           # Model configuration & validation
 │   ├── system_prompt_builder.py  # System prompt construction
@@ -61,10 +61,10 @@ Changes are isolated to specific modules. For example:
 ### Basic Usage
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
 # Create agent
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     user_id="user-456",
     enabled_tools=["calculator", "weather", "gateway_wikipedia"],
@@ -84,9 +84,9 @@ async for event in agent.stream_async(
 ### With Multimodal Input
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(session_id="session-123")
+agent = MainAgent(session_id="session-123")
 
 # Stream with files
 files = [
@@ -107,7 +107,7 @@ async for event in agent.stream_async(
 ### Using Individual Modules
 
 ```python
-from agents.strands_agent import (
+from agents.main_agent import (
     ModelConfig,
     ToolRegistry,
     ToolFilter,
@@ -223,7 +223,7 @@ tools, gateway_ids = filter.filter_tools(["calculator", "weather"])
 
 ## Migration from Original Agent
 
-The new `StrandsAgent` class is a drop-in replacement for `ChatbotAgent`:
+The new `MainAgent` class is a drop-in replacement for `ChatbotAgent`:
 
 ### Before (Original)
 ```python
@@ -241,9 +241,9 @@ agent = ChatbotAgent(
 
 ### After (Refactored)
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     user_id="user-456",
     enabled_tools=["calculator"],
@@ -291,7 +291,7 @@ agent = StrandsAgent(
 ### Dependency Injection
 Replace global stream processor with proper DI:
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     stream_processor=custom_processor  # Inject instead of global
 )
@@ -307,13 +307,13 @@ registry.load_plugins_from_directory("./custom_tools")
 ### Configuration Files
 Support YAML/JSON configuration:
 ```python
-agent = StrandsAgent.from_config_file("agent_config.yaml")
+agent = MainAgent.from_config_file("agent_config.yaml")
 ```
 
 ### Metrics & Monitoring
 Add dedicated metrics module:
 ```python
-from agents.strands_agent.metrics import AgentMetrics
+from agents.main_agent.metrics import AgentMetrics
 
 metrics = AgentMetrics(agent)
 print(metrics.get_tool_usage_stats())
@@ -338,7 +338,7 @@ Original:
   agent.py: 546 lines
 
 Refactored:
-  strands_agent.py: ~200 lines (orchestrator)
+  main_agent.py: ~200 lines (orchestrator)
 
   core/
     model_config.py: ~70 lines
@@ -384,7 +384,7 @@ When adding new functionality:
 2. **Keep modules focused** - if a module grows too large, consider splitting
 3. **Update `__init__.py`** exports for public APIs
 4. **Document changes** in module docstrings
-5. **Maintain backward compatibility** in `StrandsAgent` public API
+5. **Maintain backward compatibility** in `MainAgent` public API
 
 ## License
 

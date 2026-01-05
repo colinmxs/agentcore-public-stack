@@ -11,13 +11,13 @@ No additional dependencies needed! The refactored agent uses the same dependenci
 ### 1. Import the Agent
 
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 ```
 
 ### 2. Create an Agent
 
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="my-session",
     enabled_tools=["calculator", "weather"]
 )
@@ -53,9 +53,9 @@ agent = ChatbotAgent(
 
 ### After
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-123",
     enabled_tools=["calculator"]
 )
@@ -67,9 +67,9 @@ agent = StrandsAgent(
 
 ### Simple Chat
 ```python
-from agents.strands_agent import StrandsAgent
+from agents.main_agent import MainAgent
 
-agent = StrandsAgent(session_id="chat-001")
+agent = MainAgent(session_id="chat-001")
 
 async for event in agent.stream_async("Hello!"):
     print(event)
@@ -77,7 +77,7 @@ async for event in agent.stream_async("Hello!"):
 
 ### With Custom Model
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="session-001",
     model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
     temperature=0.5
@@ -86,7 +86,7 @@ agent = StrandsAgent(
 
 ### With Tools
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="tools-session",
     enabled_tools=["calculator", "weather", "gateway_wikipedia"]
 )
@@ -112,7 +112,7 @@ with open("chart.png", "rb") as f:
 
 files = [FileContent("chart.png", "image/png", image_bytes)]
 
-agent = StrandsAgent(session_id="image-session")
+agent = MainAgent(session_id="image-session")
 async for event in agent.stream_async("Analyze this chart", files=files):
     print(event)
 ```
@@ -122,7 +122,7 @@ async for event in agent.stream_async("Analyze this chart", files=files):
 All constructor parameters:
 
 ```python
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="required-session-id",
     user_id="optional-user-id",              # defaults to session_id
     enabled_tools=["calculator", "weather"], # None = no tools
@@ -146,15 +146,15 @@ No environment variables needed. Sessions stored in `backend/src/sessions/`.
 
 ## Next Steps
 
-- 📖 Read [README.md](./strands_agent/README.md) for architecture details
-- 📝 See [USAGE_EXAMPLES.md](./strands_agent/USAGE_EXAMPLES.md) for advanced patterns
-- 🔧 Explore individual modules in `strands_agent/` directory
+- 📖 Read [README.md](./main_agent/README.md) for architecture details
+- 📝 See [USAGE_EXAMPLES.md](./main_agent/USAGE_EXAMPLES.md) for advanced patterns
+- 🔧 Explore individual modules in `main_agent/` directory
 
 ## Help
 
-- **Documentation**: See `strands_agent/README.md`
-- **Examples**: See `strands_agent/USAGE_EXAMPLES.md`
-- **Source**: Browse `strands_agent/` directory
+- **Documentation**: See `main_agent/README.md`
+- **Examples**: See `main_agent/USAGE_EXAMPLES.md`
+- **Source**: Browse `main_agent/` directory
 
 ## Troubleshooting
 
@@ -171,7 +171,7 @@ python your_script.py
 ```python
 # If no tools are working, check enabled_tools list
 
-agent = StrandsAgent(
+agent = MainAgent(
     session_id="debug",
     enabled_tools=["calculator"]  # Make sure tools are listed
 )
@@ -186,19 +186,19 @@ print(stats)
 # Make sure session_id is consistent across calls
 
 # Good: Same session_id
-agent1 = StrandsAgent(session_id="user-123")
-agent2 = StrandsAgent(session_id="user-123")  # Same conversation
+agent1 = MainAgent(session_id="user-123")
+agent2 = MainAgent(session_id="user-123")  # Same conversation
 
 # Bad: Different session_id
-agent1 = StrandsAgent(session_id="session-1")
-agent2 = StrandsAgent(session_id="session-2")  # New conversation
+agent1 = MainAgent(session_id="session-1")
+agent2 = MainAgent(session_id="session-2")  # New conversation
 ```
 
 ## Performance Tips
 
 1. **Enable Caching** (enabled by default)
    ```python
-   agent = StrandsAgent(session_id="s", caching_enabled=True)
+   agent = MainAgent(session_id="s", caching_enabled=True)
    ```
 
 2. **Use Appropriate Model**
@@ -216,7 +216,7 @@ agent2 = StrandsAgent(session_id="session-2")  # New conversation
 
 ## Migration Checklist
 
-- [ ] Replace imports: `ChatbotAgent` → `StrandsAgent`
+- [ ] Replace imports: `ChatbotAgent` → `MainAgent`
 - [ ] Test basic streaming
 - [ ] Test with your enabled_tools
 - [ ] Test multimodal (if used)

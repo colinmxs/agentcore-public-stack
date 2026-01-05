@@ -9,7 +9,7 @@ from strands.models import BedrockModel
 from strands.models.openai import OpenAIModel
 from strands.models.gemini import GeminiModel
 from strands.tools.executors import SequentialToolExecutor
-from agents.strands_agent.core.model_config import ModelConfig, ModelProvider
+from agents.main_agent.core.model_config import ModelConfig, ModelProvider
 
 logger = logging.getLogger(__name__)
 

@@ -3,7 +3,7 @@ Tool filtering based on user preferences
 """
 import logging
 from typing import List, Optional, Any, Tuple
-from agents.strands_agent.tools.tool_registry import ToolRegistry
+from agents.main_agent.tools.tool_registry import ToolRegistry
 
 logger = logging.getLogger(__name__)
 

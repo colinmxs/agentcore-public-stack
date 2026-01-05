@@ -14,7 +14,7 @@ from datetime import datetime, timezone
 import boto3
 
 # from agentcore.agent.agent import ChatbotAgent
-from agents.strands_agent.strands_agent import StrandsAgent
+from agents.main_agent.main_agent import MainAgent
 from apis.app_api.sessions.models import SessionMetadata
 from apis.app_api.sessions.services.metadata import store_session_metadata
 
@@ -106,7 +106,7 @@ def get_agent(
     caching_enabled: Optional[bool] = None,
     provider: Optional[str] = None,
     max_tokens: Optional[int] = None
-) -> StrandsAgent:
+) -> MainAgent:
     """
     Get or create agent instance with current configuration for session
 
@@ -126,7 +126,7 @@ def get_agent(
         max_tokens: Maximum tokens to generate
 
     Returns:
-        StrandsAgent instance (cached or newly created)
+        MainAgent instance (cached or newly created)
     """
     # Create cache key from all configuration parameters
     cache_key = _create_cache_key(
@@ -150,7 +150,7 @@ def get_agent(
     logger.debug(f"⚠️ Agent cache miss for session {session_id} - creating new instance")
 
     # Create agent with multi-provider support
-    agent = StrandsAgent(
+    agent = MainAgent(
         session_id=session_id,
         user_id=user_id,
         enabled_tools=enabled_tools,

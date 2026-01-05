@@ -3,10 +3,10 @@
 import pytest
 from unittest.mock import AsyncMock, Mock
 from datetime import datetime
-from agents.strands_agent.quota.checker import QuotaChecker
-from agents.strands_agent.quota.resolver import QuotaResolver
-from agents.strands_agent.quota.event_recorder import QuotaEventRecorder
-from agents.strands_agent.quota.models import (
+from agents.main_agent.quota.checker import QuotaChecker
+from agents.main_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.event_recorder import QuotaEventRecorder
+from agents.main_agent.quota.models import (
     QuotaTier,
     QuotaAssignment,
     QuotaAssignmentType,

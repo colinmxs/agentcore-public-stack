@@ -33,7 +33,7 @@ from apis.shared.quota import (
     build_quota_warning_event,
     QuotaExceededEvent,
 )
-from agents.strands_agent.session.session_factory import SessionFactory
+from agents.main_agent.session.session_factory import SessionFactory
 
 logger = logging.getLogger(__name__)
 

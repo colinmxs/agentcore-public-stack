@@ -35,7 +35,7 @@ from apis.app_api.tools.models import (
 from apis.app_api.tools.repository import ToolCatalogRepository
 
 # Import the existing in-memory catalog
-from agents.strands_agent.tools.tool_catalog import (
+from agents.main_agent.tools.tool_catalog import (
     TOOL_CATALOG,
     ToolCategory as LegacyToolCategory,
 )

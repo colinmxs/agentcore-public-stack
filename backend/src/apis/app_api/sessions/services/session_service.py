@@ -316,7 +316,7 @@ class SessionService:
         """
         try:
             # Check if AgentCore Memory is available
-            from agents.strands_agent.session.memory_config import load_memory_config
+            from agents.main_agent.session.memory_config import load_memory_config
 
             config = load_memory_config()
             if not config.is_cloud_mode:

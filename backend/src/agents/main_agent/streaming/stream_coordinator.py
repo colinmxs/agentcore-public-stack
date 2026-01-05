@@ -34,7 +34,7 @@ class StreamCoordinator:
         session_manager: Any,
         session_id: str,
         user_id: str,
-        strands_agent_wrapper: Any = None
+        main_agent_wrapper: Any = None
     ) -> AsyncGenerator[str, None]:
         """
         Stream agent responses with proper lifecycle management
@@ -48,7 +48,7 @@ class StreamCoordinator:
             session_manager: Session manager for persistence
             session_id: Session identifier
             user_id: User identifier
-            strands_agent_wrapper: StrandsAgent wrapper instance (has model_config, enabled_tools, etc.)
+            main_agent_wrapper: MainAgent wrapper instance (has model_config, enabled_tools, etc.)
 
         Yields:
             str: SSE formatted events
@@ -257,7 +257,7 @@ class StreamCoordinator:
                     # Persist error messages to session
                     try:
                         from strands.types.session import SessionMessage
-                        from agents.strands_agent.session.session_factory import SessionFactory
+                        from agents.main_agent.session.session_factory import SessionFactory
 
                         persist_session_manager = SessionFactory.create_session_manager(
                             session_id=session_id,
@@ -361,7 +361,7 @@ class StreamCoordinator:
                 session_id=session_id,
                 user_id=user_id,
                 message_id=message_id,  # May be None if no assistant messages
-                agent=strands_agent_wrapper  # Use wrapper instead of internal agent
+                agent=main_agent_wrapper  # Use wrapper instead of internal agent
             )
 
             # Store message-level metadata for assistant messages created during this stream
@@ -418,7 +418,7 @@ class StreamCoordinator:
                             stream_start_time=msg_start_time,
                             stream_end_time=msg_end_time,
                             first_token_time=first_token_for_message,
-                            agent=strands_agent_wrapper  # Use wrapper instead of internal agent
+                            agent=main_agent_wrapper  # Use wrapper instead of internal agent
                         )
                     )
 
@@ -462,7 +462,7 @@ class StreamCoordinator:
             # Persist error messages to session
             try:
                 from strands.types.session import SessionMessage
-                from agents.strands_agent.session.session_factory import SessionFactory
+                from agents.main_agent.session.session_factory import SessionFactory
 
                 persist_session_manager = SessionFactory.create_session_manager(
                     session_id=session_id,

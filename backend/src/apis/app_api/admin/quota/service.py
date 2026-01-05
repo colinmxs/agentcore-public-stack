@@ -7,9 +7,9 @@ import uuid
 import logging
 from apis.shared.auth.models import User
 from apis.app_api.costs.aggregator import CostAggregator
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.resolver import QuotaResolver
-from agents.strands_agent.quota.models import QuotaTier, QuotaAssignment
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.models import QuotaTier, QuotaAssignment
 from .models import (
     QuotaTierCreate,
     QuotaTierUpdate,
@@ -371,7 +371,7 @@ class QuotaAdminService:
 
     async def create_override(self, override_data, admin_user: User):
         """Create a new quota override"""
-        from agents.strands_agent.quota.models import QuotaOverride
+        from agents.main_agent.quota.models import QuotaOverride
         import uuid
 
         override_id = str(uuid.uuid4())

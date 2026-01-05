@@ -5,9 +5,9 @@ from typing import List, Optional
 import logging
 from apis.shared.auth import User, require_admin
 from apis.app_api.costs.aggregator import CostAggregator
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.resolver import QuotaResolver
-from agents.strands_agent.quota.models import QuotaTier, QuotaAssignment, QuotaOverride, QuotaEvent
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.models import QuotaTier, QuotaAssignment, QuotaOverride, QuotaEvent
 from .service import QuotaAdminService
 from .models import (
     QuotaTierCreate,

@@ -9,7 +9,7 @@ from typing import List, Optional, Set
 
 from apis.shared.auth.models import User
 from apis.shared.rbac.service import AppRoleService, get_app_role_service
-from agents.strands_agent.tools import get_tool_catalog_service
+from agents.main_agent.tools import get_tool_catalog_service
 
 logger = logging.getLogger(__name__)
 

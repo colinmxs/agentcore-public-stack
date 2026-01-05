@@ -130,7 +130,7 @@ The following concerns were removed from stream processing:
 ### Core Implementation
 - ✅ `stream_processor.py` - New pure function implementation (NEW)
 - ✅ `stream_coordinator.py` - Updated to use new processor
-- ✅ `strands_agent.py` - Removed stream processor dependency
+- ✅ `main_agent.py` - Removed stream processor dependency
 - ✅ `global_state.py` - Deprecated (kept for backward compatibility)
 
 ### Exports
@@ -141,7 +141,7 @@ The following concerns were removed from stream processing:
 ### For New Code
 
 ```python
-from agents.strands_agent.streaming import process_agent_stream
+from agents.main_agent.streaming import process_agent_stream
 
 # Get raw agent stream
 agent_stream = agent.stream_async(message)
@@ -193,7 +193,7 @@ Created a separate `ToolResultProcessor` class for handling tool result post-pro
 
 **Usage:**
 ```python
-from agents.strands_agent.streaming import ToolResultProcessor
+from agents.main_agent.streaming import ToolResultProcessor
 
 # Process tool result (typically called by event formatter or router)
 text, images = ToolResultProcessor.process_tool_result(
@@ -239,7 +239,7 @@ def create_tool_result_event(
 
 ### 3. **Deprecated File Cleanup** ✅ COMPLETED (2025-12-02)
 
-Deleted the deprecated `event_processor.py` file from `agents/strands_agent/streaming/`.
+Deleted the deprecated `event_processor.py` file from `agents/main_agent/streaming/`.
 
 **Note:** The `agentcore/utils/event_processor.py` file still exists and is used by `agentcore/agent/agent.py`. This is a separate implementation and should remain until the agentcore agent is fully migrated to the new architecture.
 

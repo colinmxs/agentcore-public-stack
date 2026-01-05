@@ -40,7 +40,7 @@ from apis.shared.quota import (
 )
 from apis.app_api.admin.services import get_tool_access_service
 from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
-from agents.strands_agent.session.session_factory import SessionFactory
+from agents.main_agent.session.session_factory import SessionFactory
 
 logger = logging.getLogger(__name__)
 

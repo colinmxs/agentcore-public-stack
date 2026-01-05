@@ -3,7 +3,7 @@ System prompt construction for agent
 """
 import logging
 from typing import Optional
-from agents.strands_agent.utils.timezone import get_current_date_pacific
+from agents.main_agent.utils.timezone import get_current_date_pacific
 
 logger = logging.getLogger(__name__)
 

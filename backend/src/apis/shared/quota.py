@@ -10,11 +10,11 @@ from typing import Optional
 from decimal import Decimal
 from pydantic import BaseModel, Field, ConfigDict
 
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.resolver import QuotaResolver
-from agents.strands_agent.quota.checker import QuotaChecker
-from agents.strands_agent.quota.event_recorder import QuotaEventRecorder
-from agents.strands_agent.quota.models import QuotaCheckResult
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.checker import QuotaChecker
+from agents.main_agent.quota.event_recorder import QuotaEventRecorder
+from agents.main_agent.quota.models import QuotaCheckResult
 from apis.app_api.costs.aggregator import CostAggregator
 
 logger = logging.getLogger(__name__)

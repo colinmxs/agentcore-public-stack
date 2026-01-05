@@ -28,7 +28,7 @@ from .models import (
 from .repository import ToolCatalogRepository, get_tool_catalog_repository
 
 # Import the existing in-memory catalog for fallback
-from agents.strands_agent.tools.tool_catalog import (
+from agents.main_agent.tools.tool_catalog import (
     TOOL_CATALOG,
     ToolMetadata,
     ToolCategory as LegacyToolCategory,

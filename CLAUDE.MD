@@ -16,7 +16,7 @@ This is a production-ready multi-agent conversational AI system built with AWS B
 /
 ├── backend/
 │   └── src/
-│       ├── agents/strands_agent/       # Core agent implementation
+│       ├── agents/main_agent/          # Core agent implementation
 │       │   ├── core/                   # Agent factory, model config, system prompt
 │       │   ├── session/                # Turn-based session management
 │       │   ├── streaming/              # SSE event processing & formatting
@@ -58,14 +58,14 @@ Tools communicate via different protocols:
 
 | Protocol | Location | Examples | Auth |
 |----------|----------|----------|------|
-| Direct call | `backend/src/agents/strands_agent/tools/` | Weather, Calculator, Visualization | N/A |
-| AWS SDK | `backend/src/agents/strands_agent/tools/` | Code Interpreter, Browser | IAM |
+| Direct call | `backend/src/agents/main_agent/tools/` | Weather, Calculator, Visualization | N/A |
+| AWS SDK | `backend/src/agents/main_agent/tools/` | Code Interpreter, Browser | IAM |
 | MCP + SigV4 | Cloud Lambda (Gateway) | Wikipedia, ArXiv, Finance | AWS SigV4 |
 | A2A | Cloud Runtime (WIP) | Report Writer | AgentCore auth |
 
 ### 2. Turn-based Session Management
 
-**File:** `backend/src/agents/strands_agent/session/turn_based_session_manager.py`
+**File:** `backend/src/agents/main_agent/session/turn_based_session_manager.py`
 
 - Pass-through mode: Messages sent individually to AgentCore Memory
 - Message count initialized once at startup (avoids eventual consistency issues)
@@ -83,7 +83,7 @@ Tools communicate via different protocols:
 
 ### 4. Prompt Caching Strategy
 
-**File:** `backend/src/agents/strands_agent/core/agent_factory.py`
+**File:** `backend/src/agents/main_agent/core/agent_factory.py`
 
 Two-level caching (Bedrock only):
 - System prompt caching (static)
@@ -132,7 +132,7 @@ The backend emits these Server-Sent Events:
 
 ## Model Configuration
 
-**File:** `backend/src/agents/strands_agent/core/model_config.py`
+**File:** `backend/src/agents/main_agent/core/model_config.py`
 
 **Default Model:** `us.anthropic.claude-haiku-4-5-20251001-v1:0` (cost-conscious for high-volume)
 
@@ -154,7 +154,7 @@ max_tokens: Optional[int] = None
 
 ## System Prompt
 
-**File:** `backend/src/agents/strands_agent/core/system_prompt_builder.py`
+**File:** `backend/src/agents/main_agent/core/system_prompt_builder.py`
 
 The agent uses a Boise State University-specific system prompt with:
 - Academic integrity guidelines
@@ -327,12 +327,12 @@ Frontend StreamParser
 - Async/await for I/O operations
 
 **Key Files:**
-- `backend/src/agents/strands_agent/strands_agent.py` - Main agent implementation
+- `backend/src/agents/main_agent/main_agent.py` - Main agent implementation
 - `backend/src/apis/app_api/chat/routes.py` - SSE streaming endpoints
-- `backend/src/agents/strands_agent/core/agent_factory.py` - Agent creation
+- `backend/src/agents/main_agent/core/agent_factory.py` - Agent creation
 
 **Tool Development:**
-- Local tools: Add to `backend/src/agents/strands_agent/tools/local/`
+- Local tools: Add to `backend/src/agents/main_agent/tools/local/`
 - Use `@tool` decorator from Strands framework
 - Return `ToolResult` with multimodal content support
 

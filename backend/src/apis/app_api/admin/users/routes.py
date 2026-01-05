@@ -6,8 +6,8 @@ import logging
 
 from apis.shared.auth import User, require_admin
 from apis.app_api.costs.aggregator import CostAggregator
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.resolver import QuotaResolver
 from users.repository import UserRepository
 
 from .service import UserAdminService

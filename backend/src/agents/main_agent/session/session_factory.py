@@ -7,7 +7,7 @@ from pathlib import Path
 from typing import Optional, Any, Dict, Tuple
 from functools import lru_cache
 
-from agents.strands_agent.session.memory_config import load_memory_config
+from agents.main_agent.session.memory_config import load_memory_config
 
 logger = logging.getLogger(__name__)
 
@@ -131,7 +131,7 @@ class SessionFactory:
             AgentCore Memory uses AWS-managed DynamoDB tables. The table is automatically
             created and managed by AWS Bedrock - you only need to provide the memory_id.
         """
-        from agents.strands_agent.session.turn_based_session_manager import TurnBasedSessionManager
+        from agents.main_agent.session.turn_based_session_manager import TurnBasedSessionManager
 
         logger.info(f"🚀 Cloud mode: Using AWS Bedrock AgentCore Memory")
         logger.info(f"   • Memory ID: {memory_id}")
@@ -210,7 +210,7 @@ class SessionFactory:
             LocalSessionBuffer: File-based session manager with buffering wrapper
         """
         from strands.session.file_session_manager import FileSessionManager
-        from agents.strands_agent.session.local_session_buffer import LocalSessionBuffer
+        from agents.main_agent.session.local_session_buffer import LocalSessionBuffer
 
         logger.info(f"💻 Local mode: Using FileSessionManager with buffering")
 
