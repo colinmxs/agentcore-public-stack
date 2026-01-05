@@ -18,6 +18,7 @@ import { ModelService } from './services/model/model.service';
 import { ModelSettings } from '../components/model-settings/model-settings';
 import { UserService } from '../auth/user.service';
 import { FileUploadService } from '../services/file-upload';
+import { StreamParserService } from './services/chat/stream-parser.service';
 
 @Component({
   selector: 'app-session-page',
@@ -36,6 +37,7 @@ export class ConversationPage implements OnDestroy {
   private modelService = inject(ModelService);
   private userService = inject(UserService);
   private fileUploadService = inject(FileUploadService);
+  private streamParserService = inject(StreamParserService);
 
   sessionId = signal<string | null>(null);
   isSettingsOpen = signal(false);
@@ -103,6 +105,7 @@ export class ConversationPage implements OnDestroy {
   readonly sessionConversation = this.sessionService.currentSession;
   readonly isChatLoading = this.chatStateService.isChatLoading;
   readonly isLoadingSession = this.messageMapService.isLoadingSession;
+  readonly streamingMessageId = this.streamParserService.streamingMessageId;
 
   // Get reference to MessageListComponent
   private messageListComponent = viewChild(MessageListComponent);

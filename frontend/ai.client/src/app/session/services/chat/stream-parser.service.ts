@@ -161,9 +161,24 @@ export class StreamParserService {
   public isToolUseInProgress = computed<boolean>(() => {
     const builder = this.currentMessageBuilder();
     if (!builder) return false;
-    
+
     return Array.from(builder.contentBlocks.values())
       .some(block => (block.type === 'toolUse' || block.type === 'tool_use') && !block.isComplete);
+  });
+
+  /**
+   * The ID of the message currently being streamed, or null if not streaming.
+   * Used by UI components to determine which message should animate.
+   */
+  public streamingMessageId = computed<string | null>(() => {
+    const builder = this.currentMessageBuilder();
+    const isComplete = this.isStreamCompleteSignal();
+
+    // Return the message ID if we have an active builder and stream is not complete
+    if (builder && !isComplete) {
+      return builder.id;
+    }
+    return null;
   });
   
   // =========================================================================

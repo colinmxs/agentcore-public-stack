@@ -24,6 +24,7 @@ export class MessageListComponent implements OnDestroy {
 
   messages = input.required<Message[]>();
   isChatLoading = input<boolean>(false);
+  streamingMessageId = input<string | null>(null);
 
   // Calculate the spacer height dynamically
   // This creates space at the bottom so user messages can scroll to the top

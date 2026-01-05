@@ -7,11 +7,12 @@ import { Message } from '../../../services/models/message.model';
 import { MarkdownComponent } from 'ngx-markdown';
 import { ToolUseComponent } from './tool-use';
 import { ReasoningContentComponent } from './reasoning-content';
+import { StreamingTextComponent } from './streaming-text.component';
 
 @Component({
     selector: 'app-assistant-message',
     changeDetection: ChangeDetectionStrategy.OnPush,
-    imports: [MarkdownComponent, ToolUseComponent, ReasoningContentComponent],
+    imports: [MarkdownComponent, ToolUseComponent, ReasoningContentComponent, StreamingTextComponent],
     template: `
         <div class="block-container">
             @for (block of message().content; track $index) {
@@ -23,7 +24,11 @@ import { ReasoningContentComponent } from './reasoning-content';
                 @else if (block.type === 'text' && block.text) {
                     <div class="message-block text-block" [style.animation-delay]="($index * 0.1) + 's'">
                         <div class="flex min-w-0 w-full justify-start">
-                            <markdown class="min-w-0 max-w-full overflow-hidden" clipboard mermaid katex [data]="block.text"></markdown>
+                            <app-streaming-text
+                                class="min-w-0 max-w-full overflow-hidden"
+                                [text]="block.text"
+                                [isStreaming]="isStreaming()"
+                            ></app-streaming-text>
                         </div>
                     </div>
                 }
@@ -84,5 +89,6 @@ import { ReasoningContentComponent } from './reasoning-content';
 })
 export class AssistantMessageComponent {
     message = input.required<Message>();
+    isStreaming = input<boolean>(false);
 }
 
