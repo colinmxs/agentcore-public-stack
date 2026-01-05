@@ -13,8 +13,8 @@ This plan details the implementation of multimodal support (documents and images
 | File Upload Service (Frontend) | Complete | `frontend/.../services/file-upload/file-upload.service.ts` |
 | Pre-signed URL Flow (Backend) | Complete | `backend/.../apis/app_api/files/` |
 | S3 Storage & DynamoDB Metadata | Complete | `backend/.../apis/app_api/files/repository.py` |
-| Multimodal Prompt Builder | Complete | `backend/.../agents/strands_agent/multimodal/prompt_builder.py` |
-| Image/Document Handlers | Complete | `backend/.../agents/strands_agent/multimodal/` |
+| Multimodal Prompt Builder | Complete | `backend/.../agents/main_agent/multimodal/prompt_builder.py` |
+| Image/Document Handlers | Complete | `backend/.../agents/main_agent/multimodal/` |
 | Chat Input UI (Drag/Drop) | Complete | `frontend/.../session/components/chat-input/` |
 | `InvocationRequest.files` field | Exists | `backend/.../apis/inference_api/chat/models.py` |
 
@@ -329,7 +329,7 @@ class ChatRequest(BaseModel):
 
 **Goal**: Persist user messages with file attachments to session history.
 
-**File**: `backend/src/agents/strands_agent/session/turn_based_session_manager.py`
+**File**: `backend/src/agents/main_agent/session/turn_based_session_manager.py`
 
 **Changes**:
 - When building user message for session, include document/image references
@@ -382,7 +382,7 @@ if (fileUploadIds && fileUploadIds.length > 0) {
 **Goal**: Ensure image/document responses from agent are properly streamed.
 
 **Files to verify**:
-1. `backend/src/agents/strands_agent/streaming/stream_processor.py` - already handles tool results with images
+1. `backend/src/agents/main_agent/streaming/stream_processor.py` - already handles tool results with images
 2. `frontend/ai.client/src/app/session/services/chat/stream-parser.service.ts` - verify image block parsing
 
 The streaming infrastructure should already support multimodal responses via tool results (e.g., Code Interpreter returning charts). Verify no additional changes needed.

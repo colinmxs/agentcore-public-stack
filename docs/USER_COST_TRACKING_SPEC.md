@@ -32,7 +32,7 @@ User Request
     ↓
 FastAPI Endpoint (inference_api/chat/routes.py)
     ↓
-get_agent() (chat/service.py) - Creates StrandsAgent with model config
+get_agent() (chat/service.py) - Creates MainAgent with model config
     ↓
 StreamCoordinator.stream_response() (streaming/stream_coordinator.py)
     ↓
@@ -57,7 +57,7 @@ Storage Layer (DynamoDB in production, local files in development)
 ### Existing Components ✅
 
 #### 1. Token Usage Tracking (Already Implemented)
-- **Location**: `backend/src/agents/strands_agent/streaming/stream_processor.py:844-1088`
+- **Location**: `backend/src/agents/main_agent/streaming/stream_processor.py:844-1088`
 - **Functionality**: Extracts token usage from model metadata events
 - **Data Captured**:
   - `inputTokens` - Standard input tokens
@@ -278,7 +278,7 @@ class UserCostSummary(BaseModel):
 
 ### Point of Capture: Stream Coordinator
 
-**Location**: `backend/src/agents/strands_agent/streaming/stream_coordinator.py`
+**Location**: `backend/src/agents/main_agent/streaming/stream_coordinator.py`
 
 The stream coordinator already stores message metadata after streaming completes. We enhance this to include pricing and cost calculation.
 
@@ -300,7 +300,7 @@ if message_id is not None:
             stream_start_time=stream_start_time,
             stream_end_time=stream_end_time,
             first_token_time=first_token_time,
-            agent=strands_agent_wrapper
+            agent=main_agent_wrapper
         )
 ```
 
@@ -316,7 +316,7 @@ if message_id is not None:
     if accumulated_metadata.get("usage") or first_token_time:
         # ✨ NEW: Get pricing snapshot at time of request
         pricing_snapshot = await self._get_pricing_snapshot(
-            agent=strands_agent_wrapper
+            agent=main_agent_wrapper
         )
 
         # ✨ NEW: Calculate cost from usage + pricing
@@ -333,7 +333,7 @@ if message_id is not None:
             stream_start_time=stream_start_time,
             stream_end_time=stream_end_time,
             first_token_time=first_token_time,
-            agent=strands_agent_wrapper,
+            agent=main_agent_wrapper,
             pricing_snapshot=pricing_snapshot,  # ✨ NEW
             cost=cost  # ✨ NEW
         )
@@ -978,7 +978,7 @@ class CostCalculator:
 
 ### Integration Point
 
-**File**: `backend/src/agents/strands_agent/streaming/stream_coordinator.py`
+**File**: `backend/src/agents/main_agent/streaming/stream_coordinator.py`
 
 Add new methods:
 
@@ -988,7 +988,7 @@ async def _get_pricing_snapshot(self, agent: Any) -> Optional[Dict[str, Any]]:
     Get pricing snapshot from agent's model configuration
 
     Args:
-        agent: StrandsAgent wrapper instance
+        agent: MainAgent wrapper instance
 
     Returns:
         Pricing snapshot dict or None if unavailable
@@ -1587,7 +1587,7 @@ dynamodb.Table(COST_SUMMARY_TABLE).get_item(...)       # Get cost summary
 - `backend/src/apis/app_api/costs/pricing_service.py`
 
 **Files to Modify**:
-- `backend/src/agents/strands_agent/streaming/stream_coordinator.py`
+- `backend/src/agents/main_agent/streaming/stream_coordinator.py`
 
 **Tests**:
 - Cost calculation unit tests (various token combinations)

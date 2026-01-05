@@ -184,8 +184,8 @@ Expected: `19 passed`
 ### 3. Test Quota Resolution
 
 ```python
-from agents.strands_agent.quota.repository import QuotaRepository
-from agents.strands_agent.quota.resolver import QuotaResolver
+from agents.main_agent.quota.repository import QuotaRepository
+from agents.main_agent.quota.resolver import QuotaResolver
 from apis.shared.auth.models import User
 import asyncio
 

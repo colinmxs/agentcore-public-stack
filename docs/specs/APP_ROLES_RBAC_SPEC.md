@@ -1838,8 +1838,8 @@ To add AppRole as an assignment type:
 4. Add AppRole to assignment creation UI
 
 Key files to modify:
-- backend/src/agents/strands_agent/quota/models.py - AssignmentType enum
-- backend/src/agents/strands_agent/quota/resolver.py - Resolution logic
+- backend/src/agents/main_agent/quota/models.py - AssignmentType enum
+- backend/src/agents/main_agent/quota/resolver.py - Resolution logic
 - frontend/ai.client/src/app/admin/quota/assignments/ - UI
 -->
 

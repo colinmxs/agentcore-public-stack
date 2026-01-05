@@ -10,7 +10,7 @@
 
 ### **1. Backend Models & Domain Logic (Items 1-5)**
 
-#### **Models (`backend/src/agents/strands_agent/quota/models.py`)**
+#### **Models (`backend/src/agents/main_agent/quota/models.py`)**
 - ✅ Added `EMAIL_DOMAIN` to `QuotaAssignmentType` enum
 - ✅ Updated `QuotaTier` with Phase 2 fields:
   - `soft_limit_percentage` (default: 80.0)
@@ -22,25 +22,25 @@
 - ✅ Updated `ResolvedQuota` with optional `override` field
 - ✅ **New:** `QuotaOverride` model with temporal bounds and validation
 
-#### **Repository (`backend/src/agents/strands_agent/quota/repository.py`)**
+#### **Repository (`backend/src/agents/main_agent/quota/repository.py`)**
 - ✅ Added override CRUD methods:
   - `create_override()`, `get_override()`, `get_active_override()`
   - `list_overrides()`, `update_override()`, `delete_override()`
 - ✅ Added `get_recent_event()` for warning deduplication
 - ✅ Uses GSI4 (UserOverrideIndex) for O(1) active override lookups
 
-#### **Checker (`backend/src/agents/strands_agent/quota/checker.py`)**
+#### **Checker (`backend/src/agents/main_agent/quota/checker.py`)**
 - ✅ Implemented soft limit warning detection (80%, 90%)
 - ✅ Added `action_on_limit: "warn"` support (allow over-limit with warning)
 - ✅ Returns `warning_level` in `QuotaCheckResult`
 - ✅ Records warning events with deduplication
 
-#### **Event Recorder (`backend/src/agents/strands_agent/quota/event_recorder.py`)**
+#### **Event Recorder (`backend/src/agents/main_agent/quota/event_recorder.py`)**
 - ✅ `record_warning_if_needed()` - 60-minute deduplication
 - ✅ `record_override_applied()` - tracks override usage
 - ✅ `record_reset()` - manual quota resets
 
-#### **Resolver (`backend/src/agents/strands_agent/quota/resolver.py`)**
+#### **Resolver (`backend/src/agents/main_agent/quota/resolver.py`)**
 - ✅ Priority-based resolution with Phase 2 order:
   1. Active override (highest)
   2. Direct user assignment
@@ -238,8 +238,8 @@
 
 #### **Backend Tests (Item 16)**
 **Files to create/update:**
-- `backend/tests/agents/strands_agent/quota/test_resolver.py` - Phase 2 tests
-- `backend/tests/agents/strands_agent/quota/test_checker.py` - Soft limit tests
+- `backend/tests/agents/main_agent/quota/test_resolver.py` - Phase 2 tests
+- `backend/tests/agents/main_agent/quota/test_checker.py` - Soft limit tests
 - `backend/tests/apis/app_api/admin/quota/test_routes.py` - Override routes
 
 **Test coverage needed:**
@@ -391,7 +391,7 @@ QuotaEvents Table:
 
 - Phase 1 Spec: `docs/QUOTA_MANAGEMENT_PHASE1_SPEC.md`
 - Phase 2 Spec: `docs/QUOTA_MANAGEMENT_PHASE2_SPEC.md`
-- Backend Models: `backend/src/agents/strands_agent/quota/models.py`
+- Backend Models: `backend/src/agents/main_agent/quota/models.py`
 - Frontend Models: `frontend/ai.client/src/app/admin/quota-tiers/models/quota.models.ts`
 - API Routes: `backend/src/apis/app_api/admin/quota/routes.py`
 

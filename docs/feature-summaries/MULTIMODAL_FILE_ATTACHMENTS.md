@@ -87,9 +87,9 @@ Users can attach files to chat messages. Files are uploaded to S3 via pre-signed
 | `apis/app_api/files/repository.py` | DynamoDB operations for file metadata |
 | `apis/app_api/files/routes.py` | REST endpoints: `/presign`, `/{id}/complete`, `/quota` |
 | `apis/app_api/files/file_resolver.py` | Resolves upload IDs to file content from S3 |
-| `agents/strands_agent/multimodal/prompt_builder.py` | Builds multimodal prompts with text, images, documents |
-| `agents/strands_agent/multimodal/image_handler.py` | Creates Bedrock image content blocks |
-| `agents/strands_agent/multimodal/document_handler.py` | Creates Bedrock document content blocks |
+| `agents/main_agent/multimodal/prompt_builder.py` | Builds multimodal prompts with text, images, documents |
+| `agents/main_agent/multimodal/image_handler.py` | Creates Bedrock image content blocks |
+| `agents/main_agent/multimodal/document_handler.py` | Creates Bedrock document content blocks |
 
 ### Frontend
 

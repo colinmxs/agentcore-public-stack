@@ -1220,8 +1220,8 @@ export class TierListPage implements OnInit {
 
 ```python
 import pytest
-from agents.strands_agent.quota.checker import QuotaChecker
-from agents.strands_agent.quota.models import QuotaTier, QuotaCheckResult
+from agents.main_agent.quota.checker import QuotaChecker
+from agents.main_agent.quota.models import QuotaTier, QuotaCheckResult
 
 @pytest.mark.asyncio
 async def test_soft_limit_warning_80_percent(checker, mock_resolver, mock_cost_aggregator):
