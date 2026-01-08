@@ -269,7 +269,7 @@ export class AppApiStack extends cdk.Stack {
       code: lambda.DockerImageCode.fromImageAsset(repoRoot, {
         file: path.relative(repoRoot, dockerfilePath),
       }),
-      architecture: lambda.Architecture.ARM_64, // docling (the document parsing library) supports ARM64 (py3-none-any wheel)
+      architecture: lambda.Architecture.ARM_64, // ARM64 (Graviton2) is ~20% cheaper and better price/performance for Lambda
       timeout: cdk.Duration.minutes(15),
       memorySize: 10240, // Increased to max for heavy ML libraries and to speed up init/invoke
       environment: {
