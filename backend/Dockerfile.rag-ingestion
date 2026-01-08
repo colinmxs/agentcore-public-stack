@@ -2,8 +2,8 @@
 # STAGE 1: Builder (Compiler & Downloader)
 # ==========================================
 # Note: AWS Lambda base images support both x86_64 and ARM64
-# CDK will build for the specified architecture (ARM_64 in this case)
-FROM --platform=linux/arm64 public.ecr.aws/lambda/python:3.11 AS builder
+# CDK will build for the specified architecture via --platform flag
+FROM public.ecr.aws/lambda/python:3.11 AS builder
 
 # 1. Install system tools
 # Rust/GCC are needed for compiling dependencies like tiktoken or docling-core
@@ -71,7 +71,7 @@ RUN rm -rf /tmp/models/docling-artifacts/easyocr \
 # ==========================================
 # STAGE 2: Runtime (Production Image)
 # ==========================================
-FROM --platform=linux/arm64 public.ecr.aws/lambda/python:3.11
+FROM public.ecr.aws/lambda/python:3.11
 
 # 1. Install only runtime system libs (GL/Glib for CV2)
 RUN dnf install -y mesa-libGL glib2 && dnf clean all

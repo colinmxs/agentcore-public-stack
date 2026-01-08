@@ -217,6 +217,14 @@ jobs:
         run: |
           bash scripts/common/install-deps.sh
 
+      - name: Set up QEMU for ARM64 emulation
+        uses: docker/setup-qemu-action@v3
+        with:
+          platforms: linux/arm64
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
       - name: Synthesize CloudFormation template
         run: |
           bash scripts/stack-app-api/synth.sh
