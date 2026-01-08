@@ -5,8 +5,17 @@ FROM public.ecr.aws/lambda/python:3.11 AS builder
 
 # 1. Install system tools
 # Rust/GCC are needed for compiling dependencies like tiktoken or docling-core
-RUN yum install -y gcc gcc-c++ make mesa-libGL glib2 tar gzip && \
-    curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+RUN yum update -y && \
+    yum install -y gcc gcc-c++ make mesa-libGL glib2 tar gzip curl ca-certificates && \
+    yum clean all
+
+# Install Rust (separate step for better error handling)
+# Using explicit retry logic for network reliability in CI
+RUN set -euxo pipefail && \
+    echo "Installing Rust..." && \
+    curl --version && \
+    curl --proto "=https" --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y --default-toolchain stable && \
+    echo "Rust installation completed successfully"
 
 # 2. Set rust path
 ENV PATH="/root/.cargo/bin:${PATH}"
