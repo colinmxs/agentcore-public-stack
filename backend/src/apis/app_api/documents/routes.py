@@ -211,7 +211,7 @@ async def delete_document(
     user_id: str = Depends(get_current_user_id)
 ) -> None:
     """
-    Delete document from DynamoDB and S3
+    Delete document from DynamoDB, S3, and vector store
     
     Args:
         assistant_id: Parent assistant identifier
@@ -256,7 +256,16 @@ async def delete_document(
             # Log but don't fail - DynamoDB deletion succeeded
             logger.warning(f"Failed to delete S3 object {document.s3_key}: {s3_error}")
         
-        # Note: Vector store cleanup can be done asynchronously if needed
+        # Delete vector store objects
+        try:
+            from apis.app_api.documents.ingestion.embeddings.bedrock_embeddings import delete_vectors_for_document
+            
+            deleted_count = await delete_vectors_for_document(document_id)
+            logger.info(f"Deleted {deleted_count} vectors for document {document_id}")
+        except Exception as vector_error:
+            # Log but don't fail - DynamoDB and S3 deletion succeeded
+            logger.warning(f"Failed to delete vectors for document {document_id}: {vector_error}")
+        
         return None
     
     except HTTPException:

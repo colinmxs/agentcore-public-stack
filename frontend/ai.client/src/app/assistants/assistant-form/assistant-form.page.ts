@@ -26,6 +26,7 @@ export class AssistantFormPage implements OnInit {
   );
 
   readonly uploadedDocuments = signal<Document[]>([]);
+  readonly isLoadingDocuments = signal<boolean>(false);
   readonly currentUpload = signal<{
     file: File;
     progress: number;
@@ -265,6 +266,8 @@ export class AssistantFormPage implements OnInit {
       return;
     }
 
+    this.isLoadingDocuments.set(true);
+
     try {
       const response = await this.documentService.listDocuments(assistantId);
       this.uploadedDocuments.set(response.documents);
@@ -282,6 +285,8 @@ export class AssistantFormPage implements OnInit {
     } catch (error) {
       console.error('Error loading documents:', error);
       // Don't show error to user, just log it
+    } finally {
+      this.isLoadingDocuments.set(false);
     }
   }
 

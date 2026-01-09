@@ -185,6 +185,76 @@ async def test_s3vector_dump():
         # This proves your non-filterable text field is working:
         print(f"Content: {v.get('metadata', {}).get('text')[:100]}...")
         
+async def delete_vectors_for_document(document_id: str) -> int:
+    """
+    Delete all vectors for a specific document from the S3 vector store.
+    
+    Vectors are stored with keys formatted as {document_id}#{chunk_index},
+    so we need to find all vectors with keys starting with {document_id}#
+    and delete them.
+    
+    Args:
+        document_id: The document identifier
+        
+    Returns:
+        Number of vectors deleted
+    """
+    client = boto3.client('s3vectors', region_name=AWS_REGION)
+    vector_bucket = _get_vector_store_bucket()
+    vector_index = _get_vector_store_index()
+    
+    keys_to_delete = []
+    next_token = None
+    
+    # List all vectors with pagination, filtering for this document
+    while True:
+        list_params = {
+            'vectorBucketName': vector_bucket,
+            'indexName': vector_index,
+            'maxResults': 1000,  # Maximum allowed
+            'returnMetadata': True
+        }
+        
+        if next_token:
+            list_params['nextToken'] = next_token
+        
+        response = client.list_vectors(**list_params)
+        vectors = response.get('vectors', [])
+        
+        # Filter vectors for this document (keys start with {document_id}#)
+        document_prefix = f"{document_id}#"
+        for vector in vectors:
+            vector_key = vector.get('key', '')
+            if vector_key.startswith(document_prefix):
+                keys_to_delete.append(vector_key)
+        
+        # Check if there are more pages
+        next_token = response.get('nextToken')
+        if not next_token:
+            break
+    
+    # Delete vectors in batches if any were found
+    if keys_to_delete:
+        # Delete in batches of 500 (typical API limit)
+        batch_size = 500
+        deleted_count = 0
+        
+        for i in range(0, len(keys_to_delete), batch_size):
+            batch = keys_to_delete[i:i + batch_size]
+            client.delete_vectors(
+                vectorBucketName=vector_bucket,
+                indexName=vector_index,
+                keys=batch
+            )
+            deleted_count += len(batch)
+        
+        logger.info(f"Deleted {deleted_count} vectors for document {document_id}")
+        return deleted_count
+    else:
+        logger.info(f"No vectors found for document {document_id}")
+        return 0
+
+
 async def delete_s3vector_data():
     client = boto3.client('s3vectors', region_name=AWS_REGION)
 
