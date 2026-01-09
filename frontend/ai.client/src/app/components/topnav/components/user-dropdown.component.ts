@@ -14,7 +14,8 @@ import {
   heroMoon,
   heroComputerDesktop,
   heroChatBubbleLeftRight,
-  heroDocument
+  heroDocument,
+  heroBriefcase
 } from '@ng-icons/heroicons/outline';
 import { ThemeService, ThemePreference } from './theme-toggle/theme.service';
 
@@ -38,6 +39,7 @@ export interface User {
       heroCommandLine,
       heroSparkles,
       heroSun,
+      heroBriefcase,
       heroMoon,
       heroComputerDesktop,
       heroChatBubbleLeftRight,
@@ -119,6 +121,17 @@ export interface User {
                   <span>Admin Dashboard</span>
                 </a>
               }
+
+              <!-- Assistants (available to all users) -->
+              <a
+                cdkMenuItem
+                routerLink="/assistants"
+                class="flex w-full items-center gap-3 px-3 py-2 text-sm/6 text-gray-700 hover:bg-gray-50 focus:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700 dark:focus:bg-gray-700 rounded-xs outline-hidden"
+                role="menuitem"
+              >
+                <ng-icon name="heroBriefcase" class="size-5 text-gray-400 dark:text-gray-500" />
+                <span>Assistants</span>
+              </a>
 
               <!-- Cost Dashboard (available to all users) -->
               <a

@@ -3,7 +3,9 @@ import tempfile
 import os
 from pathlib import Path
 import shutil
-from typing import Optional, List, Union
+import asyncio
+import time
+from typing import Optional, List, Union, Callable, Coroutine, Any
 logger = logging.getLogger(__name__)
 
 # Set environment variables for model caching and performance
@@ -68,9 +70,21 @@ def _get_file_extension(filename: Optional[str], mime_type: str) -> str:
 
 # Changed return type hint to allow returning list of chunks (Preferred) 
 # or string (Legacy)
-async def process_with_docling(file_bytes: bytes, mime_type: str, filename: Optional[str] = None) -> List[str]:
+async def process_with_docling(
+    file_bytes: bytes, 
+    mime_type: str, 
+    filename: Optional[str] = None,
+    progress_callback: Optional[Callable[[int], Coroutine[Any, Any, None]]] = None
+) -> List[str]:
     """
     Extract and chunk text using Docling.
+    
+    Args:
+        file_bytes: Document file content
+        mime_type: MIME type of the document
+        filename: Optional filename
+        progress_callback: Optional async callback function(chunk_count) called periodically during chunking
+    
     Returns: A LIST of text chunks (preserving semantic boundaries).
     """
     
@@ -152,11 +166,33 @@ async def process_with_docling(file_bytes: bytes, mime_type: str, filename: Opti
             
             text_parts = []
             chunk_count = 0
+            last_update_time = time.time()
+            UPDATE_INTERVAL_SECONDS = 2.0  # Update at most every 2 seconds
+            UPDATE_INTERVAL_CHUNKS = 10  # Update every 10 chunks
+            
             for chunk in chunk_iter:
                 enriched_text = chunker.contextualize(chunk=chunk)
                 if enriched_text:
                     text_parts.append(enriched_text)
                     chunk_count += 1
+                    
+                    # Check if we should update progress
+                    current_time = time.time()
+                    time_since_update = current_time - last_update_time
+                    should_update = (
+                        chunk_count % UPDATE_INTERVAL_CHUNKS == 0 or
+                        time_since_update >= UPDATE_INTERVAL_SECONDS
+                    )
+                    
+                    if should_update and progress_callback:
+                        try:
+                            # Call progress callback (fire and forget - don't block chunking)
+                            await progress_callback(chunk_count)
+                            last_update_time = current_time
+                        except Exception as e:
+                            # Log but don't fail chunking if status update fails
+                            logger.warning(f"Failed to update chunking progress: {e}")
+                    
                     # Log progress every 10 chunks to avoid excessive logging
                     if chunk_count % 10 == 0:
                         logger.info(f"Processed {chunk_count} chunks so far...")

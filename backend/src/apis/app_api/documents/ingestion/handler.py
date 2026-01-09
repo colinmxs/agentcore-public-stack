@@ -255,9 +255,27 @@ async def _process_document_pipeline(
     if not is_docling_supported(mime_type, filename):
         raise ValueError(f"Unsupported file type: {mime_type}. Docling does not support this format.")
     
-    # 3. Process AND Chunk via Docling
-    # We await the result which is a List[str] (the chunks)
-    chunks = await process_with_docling(file_content, mime_type, filename)
+    # 3. Process AND Chunk via Docling with progress tracking
+    # Define progress callback to update status during chunking
+    async def update_chunking_progress(chunk_count: int) -> None:
+        """Update chunk count in DynamoDB during chunking process"""
+        try:
+            await status_manager.update_status(
+                assistant_id=assistant_id,
+                document_id=document_id,
+                new_status='chunking',  # Stay in chunking status
+                chunk_count=chunk_count
+            )
+        except Exception as e:
+            logger.warning(f"Failed to update chunking progress: {e}")
+            # Don't raise - we don't want status update failures to break chunking
+    
+    chunks = await process_with_docling(
+        file_content, 
+        mime_type, 
+        filename,
+        progress_callback=update_chunking_progress
+    )
     
     if not chunks:
         raise ValueError(f"Docling produced zero chunks for file: {filename}")

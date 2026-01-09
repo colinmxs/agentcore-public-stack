@@ -1,4 +1,5 @@
 import { Injectable, signal, inject } from '@angular/core';
+import { firstValueFrom } from 'rxjs';
 import { 
   Assistant, 
   CreateAssistantDraftRequest,
@@ -26,7 +27,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      const assistant = await this.apiService.createDraft(request).toPromise();
+      const assistant = await firstValueFrom(this.apiService.createDraft(request));
       if (!assistant) {
         throw new Error('No assistant returned from API');
       }
@@ -45,10 +46,10 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      const response = await this.apiService.getAssistants({
+      const response = await firstValueFrom(this.apiService.getAssistants({
         includeDrafts,
         includeArchived
-      }).toPromise();
+      }));
 
       if (response) {
         this.assistants.set(response.assistants);
@@ -67,7 +68,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      const assistant = await this.apiService.createAssistant(request).toPromise();
+      const assistant = await firstValueFrom(this.apiService.createAssistant(request));
       if (!assistant) {
         throw new Error('No assistant returned from API');
       }
@@ -89,7 +90,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      const updatedAssistant = await this.apiService.updateAssistant(id, request).toPromise();
+      const updatedAssistant = await firstValueFrom(this.apiService.updateAssistant(id, request));
       if (!updatedAssistant) {
         throw new Error('No assistant returned from API');
       }
@@ -114,7 +115,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      await this.apiService.archiveAssistant(id).toPromise();
+      await firstValueFrom(this.apiService.archiveAssistant(id));
 
       // Remove from local list (archived assistants are hidden by default)
       this.assistants.update(current =>
@@ -134,7 +135,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      await this.apiService.deleteAssistant(id).toPromise();
+      await firstValueFrom(this.apiService.deleteAssistant(id));
 
       // Remove from local list
       this.assistants.update(current =>
@@ -154,7 +155,7 @@ export class AssistantService {
     this.error.set(null);
 
     try {
-      const assistant = await this.apiService.getAssistant(id).toPromise();
+      const assistant = await firstValueFrom(this.apiService.getAssistant(id));
       if (!assistant) {
         throw new Error('Assistant not found');
       }
