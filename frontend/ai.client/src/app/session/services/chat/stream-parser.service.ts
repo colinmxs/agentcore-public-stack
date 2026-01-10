@@ -8,7 +8,7 @@ import {
   ContentBlockDeltaEvent,
   ContentBlockStopEvent,
   MessageStopEvent,
-  ToolUseEvent
+  ToolUseEvent,
 } from '../models/message.model';
 import { MetadataEvent } from '../models/content-types';
 import { ChatStateService } from './chat-state.service';
@@ -670,7 +670,7 @@ export class StreamParserService {
       role: eventData.role,
       contentBlocks: new Map(),
       created_at: new Date().toISOString(),
-      isComplete: false
+      isComplete: false,
     };
 
     this.currentMessageBuilder.set(builder);
@@ -1374,13 +1374,15 @@ export class StreamParserService {
       .sort(([a], [b]) => a - b)
       .map(([_, block]) => this.buildContentBlock(block));
 
-    return {
+    const message: Message = {
       id: builder.id,
       role: builder.role,
       content: sortedBlocks,
       created_at: builder.created_at,
       metadata: this.getMetadataForMessage()
     };
+
+    return message;
   }
 
   /**
