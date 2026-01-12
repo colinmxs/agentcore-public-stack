@@ -8,6 +8,7 @@ FROM public.ecr.aws/lambda/python:3.11 AS builder
 # 1. Install system tools
 # Rust/GCC are needed for compiling dependencies like tiktoken or docling-core
 # Try dnf first (Amazon Linux 2023), fall back to yum (Amazon Linux 2)
+# For AL2, we'll use the default GCC and pin NumPy to 1.x to avoid compilation issues
 RUN (dnf --version > /dev/null 2>&1 && \
      dnf update -y && \
      dnf install -y gcc gcc-c++ make mesa-libGL glib2 tar gzip curl ca-certificates && \
@@ -32,7 +33,12 @@ RUN mkdir -p /tmp/models/docling-artifacts \
     /tmp/models/tiktoken_cache \
     /tmp/packages
 
-# 4. Install PyTorch CPU *Explicitly*
+# 4. Install NumPy 1.x FIRST (before other packages)
+# This ensures NumPy 1.x is installed and prevents NumPy 2.x from being pulled in
+# NumPy 2.x requires GCC 9.3+, but AL2 only has GCC 7.3.1
+RUN pip install --target /tmp/packages --no-cache-dir "numpy<2.0.0"
+
+# 5. Install PyTorch CPU *Explicitly*
 # Installing before requirements.txt ensures we get the lightweight CPU version and not the version that includes GPU support
 RUN pip install \
     --target /tmp/packages \
@@ -40,14 +46,15 @@ RUN pip install \
     --index-url https://download.pytorch.org/whl/cpu \
     torch
 
-# 5. Install Your Requirements
+# 6. Install Your Requirements
+# NumPy is already installed, so pip will use the existing version
 COPY ./backend/src/apis/app_api/documents/ingestion/requirements.txt .
 RUN pip install \
     --target /tmp/packages \
     --no-cache-dir \
     -r requirements.txt
 
-# 6. Download Tiktoken Vocabulary (Offline Support)
+# 7. Download Tiktoken Vocabulary (Offline Support)
 # We set PYTHONPATH so it can find the 'tiktoken' module in /tmp/packages
 ENV TIKTOKEN_CACHE_DIR=/tmp/models/tiktoken_cache \
     PYTHONPATH=/tmp/packages
@@ -56,7 +63,7 @@ ENV TIKTOKEN_CACHE_DIR=/tmp/models/tiktoken_cache \
 RUN mkdir -p /tmp/models/tiktoken_cache && \
     python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
 
-# 7. Download Docling Models
+# 8. Download Docling Models
 # We use 'download_models' to fetch the standard pipeline (Layout, Tables, OCR).
 # We force it to the specific artifacts folder.
 ENV PYTHONPATH=/tmp/packages
@@ -67,7 +74,7 @@ RUN python -c "from docling.utils.model_downloader import download_models; \
         force=True \
     )"
 
-# 8. Clean up OCR (Optimization)
+# 9. Clean up OCR (Optimization)
 # We delete the heavy EasyOCR model (~200MB) and the table structure model to keep the Lambda image slim
 RUN rm -rf /tmp/models/docling-artifacts/easyocr \
     /tmp/models/docling-artifacts/table_structure_model
