@@ -1,10 +1,14 @@
 import { Component, ChangeDetectionStrategy, inject, OnInit, signal, computed } from '@angular/core';
 import { Router } from '@angular/router';
 import { FormsModule } from '@angular/forms';
+import { Dialog } from '@angular/cdk/dialog';
+import { firstValueFrom } from 'rxjs';
 import { AssistantService } from './services/assistant.service';
 import { AssistantListComponent } from './components/assistant-list.component';
 import { Assistant } from './models/assistant.model';
 import { UserService } from '../auth/user.service';
+import { ConfirmationDialogComponent, ConfirmationDialogData } from '../components/confirmation-dialog/confirmation-dialog.component';
+import { ShareAssistantDialogComponent, ShareAssistantDialogData } from './components/share-assistant-dialog.component';
 
 @Component({
   selector: 'app-assistants',
@@ -17,6 +21,7 @@ export class AssistantsPage implements OnInit {
   private router = inject(Router);
   private assistantService = inject(AssistantService);
   private userService = inject(UserService);
+  private dialog = inject(Dialog);
 
   // Use service signals for reactive data
   readonly assistants = this.assistantService.assistants$;
@@ -27,6 +32,7 @@ export class AssistantsPage implements OnInit {
   searchQuery = signal<string>('');
 
   // Computed signals for filtered assistants
+  // Note: Public assistants owned by the current user will appear in both lists
   readonly myAssistants = computed(() => {
     const allAssistants = this.assistants();
     const currentUser = this.userService.currentUser();
@@ -34,23 +40,14 @@ export class AssistantsPage implements OnInit {
     if (!currentUser) {
       return [];
     }
-
-    return allAssistants.filter(
-      assistant => assistant.ownerId === currentUser.empl_id
-    );
+    return allAssistants;
   });
 
   readonly publicAssistants = computed(() => {
     const allAssistants = this.assistants();
-    const currentUser = this.userService.currentUser();
     
-    if (!currentUser) {
-      return allAssistants.filter(assistant => assistant.visibility === 'PUBLIC');
-    }
-
-    // Public assistants are those with PUBLIC visibility that are not owned by current user
     return allAssistants.filter(
-      assistant => assistant.visibility === 'PUBLIC' && assistant.ownerId !== currentUser.empl_id
+      assistant => assistant.visibility === 'PUBLIC'
     );
   });
 
@@ -84,5 +81,58 @@ export class AssistantsPage implements OnInit {
 
   onAssistantSelected(assistant: Assistant): void {
     this.router.navigate(['/assistants', assistant.assistantId, 'edit']);
+  }
+
+  async onShareRequested(assistant: Assistant): Promise<void> {
+    const dialogRef = this.dialog.open(ShareAssistantDialogComponent, {
+      data: {
+        assistant
+      } as ShareAssistantDialogData
+    });
+
+    const result = await firstValueFrom(dialogRef.closed);
+    // TODO: Handle share result when sharing API is implemented
+    console.warn('Sharing not yet implemented', result);
+  }
+
+  async onMakePublicRequested(assistant: Assistant): Promise<void> {
+    try {
+      await this.assistantService.updateAssistant(assistant.assistantId, {
+        visibility: 'PUBLIC'
+      });
+    } catch (error) {
+      console.error('Error making assistant public:', error);
+    }
+  }
+
+  async onMakePrivateRequested(assistant: Assistant): Promise<void> {
+    try {
+      await this.assistantService.updateAssistant(assistant.assistantId, {
+        visibility: 'PRIVATE'
+      });
+    } catch (error) {
+      console.error('Error making assistant private:', error);
+    }
+  }
+
+  async onDeleteRequested(assistant: Assistant): Promise<void> {
+    const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
+      data: {
+        title: 'Delete Assistant',
+        message: `Are you sure you want to delete "${assistant.name}"? This action cannot be undone.`,
+        confirmText: 'Delete',
+        cancelText: 'Cancel',
+        destructive: true
+      } as ConfirmationDialogData
+    });
+
+    const confirmed = await firstValueFrom(dialogRef.closed);
+    if (confirmed) {
+      try {
+        await this.assistantService.deleteAssistant(assistant.assistantId);
+      } catch (error) {
+        console.error('Error deleting assistant:', error);
+      }
+    }
   }
 }

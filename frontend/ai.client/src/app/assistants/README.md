@@ -140,22 +140,6 @@ Navigate to /assistants
 List refreshes showing new assistant
 ```
 
-### Browser Console Testing
-
-```javascript
-// Check service is loaded
-const service = document.querySelector('app-assistants').__ngContext__[8];
-
-// Check assistants signal
-console.log(service.assistants());
-
-// Check loading state
-console.log(service.loading());
-
-// Check error state
-console.log(service.error());
-```
-
 ## Status
 
 ✅ HTTP calls implemented  

@@ -223,6 +223,19 @@ async def get_assistant(assistant_id: str, owner_id: str) -> Optional[Assistant]
         return await _get_assistant_cloud(assistant_id, owner_id, assistants_table)
     else:
         return await _get_assistant_local(assistant_id, owner_id)
+    
+async def get_all_assistants() -> List[Assistant]:
+    """
+    Retrieve all assistants
+    
+    Returns:
+        List of Assistant objects
+    """
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if assistants_table:
+        return await _get_all_assistants_cloud(assistants_table)
+    else:
+        return await _get_all_assistants_local()
 
 
 async def _get_assistant_local(assistant_id: str, owner_id: str) -> Optional[Assistant]:

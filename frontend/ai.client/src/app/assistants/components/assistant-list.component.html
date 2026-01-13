@@ -1,20 +1,123 @@
 <div class="space-y-2">
   @for (assistant of assistants(); track assistant.assistantId) {
-    <button
-      type="button"
-      (click)="onAssistantClick(assistant)"
-      class="w-full text-left p-4 rounded-lg border border-gray-200 dark:border-gray-700 hover:bg-gray-50 dark:hover:bg-gray-800 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500"
-    >
-      <h3 class="text-lg font-medium text-gray-900 dark:text-gray-100">
-        {{ assistant.name }}
-      </h3>
-      <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-        {{ assistant.description }}
-        {{ assistant.status}}
-      </p>
-    </button>
+    <div class="group relative w-full flex items-center gap-4 rounded-sm border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-700">
+      <button
+        type="button"
+        (click)="onAssistantClick(assistant)"
+        class="flex-1 flex items-center gap-4 text-left focus:outline-hidden focus:ring-3 focus:ring-blue-500/50"
+      >
+        <!-- Icon Placeholder -->
+        <div class="flex shrink-0 size-16 items-center justify-center rounded-sm border border-gray-300 bg-gray-50 dark:border-gray-600 dark:bg-gray-700">
+          <!-- Placeholder for future icon/emoji/image -->
+          <div class="text-2xl text-gray-400 dark:text-gray-500">🤖</div>
+        </div>
+
+        <!-- Content -->
+        <div class="flex-1 min-w-0">
+          <h3 class="text-lg/7 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400">
+            {{ assistant.name }}
+          </h3>
+          @if (assistant.description) {
+            <p class="mt-2 text-sm/6 text-gray-600 dark:text-gray-400 line-clamp-2">
+              {{ assistant.description }}
+            </p>
+          }
+        </div>
+
+        <!-- Badges (hidden in readonly mode) -->
+        @if (!readonlyMode()) {
+          <div class="flex shrink-0 items-center gap-2">
+            <!-- Status Badge (only for DRAFT) -->
+            @if (assistant.status === 'DRAFT') {
+              <span [class]="getStatusBadgeClasses(assistant.status)">
+                {{ assistant.status }}
+              </span>
+            }
+            
+            <!-- Visibility Badge (always displayed) -->
+            <span [class]="getVisibilityBadgeClasses(assistant.visibility)">
+              {{ assistant.visibility }}
+            </span>
+          </div>
+        }
+      </button>
+
+      <!-- Context Menu Button (hidden in readonly mode) -->
+      @if (!readonlyMode()) {
+        <div class="context-menu-container relative flex shrink-0">
+        <button
+          type="button"
+          (click)="onMenuToggle(assistant.assistantId, $event)"
+          class="flex items-center justify-center size-8 rounded-sm text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700"
+          [attr.aria-expanded]="isMenuOpen(assistant.assistantId)"
+          aria-label="Open menu for {{ assistant.name }}"
+        >
+          <svg class="size-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+            <path d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM10 8.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM11.5 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z" />
+          </svg>
+        </button>
+
+        <!-- Context Menu Dropdown -->
+        @if (isMenuOpen(assistant.assistantId)) {
+          <div
+            class="absolute right-0 top-10 z-50 w-48 rounded-sm border border-gray-200 bg-white shadow-lg dark:border-gray-700 dark:bg-gray-800"
+            role="menu"
+            aria-orientation="vertical"
+          >
+            <div class="py-1">
+              @if (assistant.status === 'COMPLETE') {
+                <!-- Share -->
+                <button
+                  type="button"
+                  (click)="onMenuAction(assistant, 'share', $event)"
+                  class="w-full px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                  role="menuitem"
+                >
+                  Share
+                </button>
+
+                <!-- Make Public / Make Private -->
+                @if (assistant.visibility === 'PUBLIC') {
+                  <button
+                    type="button"
+                    (click)="onMenuAction(assistant, 'make-private', $event)"
+                    class="w-full px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                    role="menuitem"
+                  >
+                    Make Private
+                  </button>
+                } @else {
+                  <button
+                    type="button"
+                    (click)="onMenuAction(assistant, 'make-public', $event)"
+                    class="w-full px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                    role="menuitem"
+                  >
+                    Make Public
+                  </button>
+                }
+
+                <!-- Divider -->
+                <div class="my-1 border-t border-gray-200 dark:border-gray-700"></div>
+              }
+              
+              <!-- Delete -->
+              <button
+                type="button"
+                (click)="onMenuAction(assistant, 'delete', $event)"
+                class="w-full px-4 py-2 text-left text-sm/6 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                role="menuitem"
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        }
+        </div>
+      }
+    </div>
   } @empty {
-    <div class="text-center py-8 text-gray-500 dark:text-gray-400">
+    <div class="text-center py-8 text-sm/6 text-gray-500 dark:text-gray-400">
       No assistants available
     </div>
   }
