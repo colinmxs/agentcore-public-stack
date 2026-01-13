@@ -92,7 +92,7 @@ export class AssistantsPage implements OnInit {
 
     const result = await firstValueFrom(dialogRef.closed);
     // TODO: Handle share result when sharing API is implemented
-    console.log(result);
+    console.warn('Sharing not yet implemented', result);
   }
 
   async onMakePublicRequested(assistant: Assistant): Promise<void> {
@@ -107,7 +107,6 @@ export class AssistantsPage implements OnInit {
 
   async onMakePrivateRequested(assistant: Assistant): Promise<void> {
     try {
-      console.log('Making assistant private:', assistant.assistantId);
       await this.assistantService.updateAssistant(assistant.assistantId, {
         visibility: 'PRIVATE'
       });

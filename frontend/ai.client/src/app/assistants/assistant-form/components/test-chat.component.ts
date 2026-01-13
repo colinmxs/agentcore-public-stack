@@ -122,14 +122,6 @@ export class TestChatComponent implements AfterViewChecked {
   }
 
   private handleStreamEvent(event: string, data: any): void {
-    // Handle debug events even when no assistant message exists yet
-    if (event === 'debug') {
-      if (data.type === 'rag_debug') {
-        console.log(`[RAG Debug] Found ${data.chunk_count} chunks:`, data.chunks);
-        // Optionally display debug info in UI (for now just log to console)
-      }
-      return;
-    }
 
     if (!this.currentAssistantMessage) {
       return;

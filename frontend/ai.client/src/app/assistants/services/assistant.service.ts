@@ -52,7 +52,6 @@ export class AssistantService {
         includePublic
       }));
 
-      console.log('loadAssistants response', response);
       if (response) {
         this.assistants.set(response.assistants);
       }
