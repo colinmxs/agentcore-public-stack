@@ -48,7 +48,6 @@ export class AssistantListComponent {
         this.shareRequested.emit(assistant);
         break;
       case 'make-public':
-        console.log('Making assistant public:', assistant.assistantId);
         this.makePublicRequested.emit(assistant);
         break;
       case 'make-private':
