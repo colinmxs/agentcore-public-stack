@@ -60,9 +60,14 @@ class ModelConfig:
             "temperature": self.temperature
         }
 
-        # Add cache_prompt if caching is enabled (BedrockModel handles SystemContentBlock formatting)
+        # Add caching configuration if enabled (BedrockModel handles SystemContentBlock formatting)
+        # Two-level caching strategy:
+        # 1. cache_prompt="default" - Caches system prompt (benefits first turn before any assistant messages)
+        # 2. cache_tools="default" - Caches tool definitions separately (tools change less frequently than conversation)
+        # ConversationCachingHook handles conversation history caching (single cache point at end of last assistant message)
         if self.caching_enabled:
             config["cache_prompt"] = "default"
+            config["cache_tools"] = "default"
 
         return config
 

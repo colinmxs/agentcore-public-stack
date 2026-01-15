@@ -216,6 +216,12 @@ class StreamCoordinator:
                         # Add end-to-end latency to metrics for consistency
                         final_metadata["metrics"]["latencyMs"] = int((stream_end_time - stream_start_time) * 1000)
 
+                        # Log cache metrics for performance monitoring
+                        self._log_cache_metrics(
+                            usage=final_metadata.get("usage", {}),
+                            session_id=session_id
+                        )
+
                         # Send final metadata event to client (before done event)
                         final_metadata_event = {"type": "metadata", "data": final_metadata}
                         yield self._format_sse_event(final_metadata_event)
@@ -512,6 +518,65 @@ class StreamCoordinator:
             # Fallback for non-serializable objects (should never happen with new processor)
             logger.error(f"Failed to serialize event: {e}")
             return f"event: error\ndata: {json.dumps({'error': f'Serialization error: {str(e)}'})}\n\n"
+
+    def _log_cache_metrics(self, usage: Dict[str, Any], session_id: str) -> None:
+        """
+        Log cache performance metrics for monitoring and optimization.
+
+        Logs detailed cache statistics including:
+        - Cache read tokens (90% cost savings per token)
+        - Cache write tokens (25% premium per token)
+        - Cache hit rate (percentage of input tokens from cache)
+        - Estimated cost savings from caching
+
+        Args:
+            usage: Token usage dictionary from model response
+            session_id: Session identifier for log correlation
+        """
+        cache_read = usage.get("cacheReadInputTokens", 0)
+        cache_write = usage.get("cacheWriteInputTokens", 0)
+        input_tokens = usage.get("inputTokens", 0)
+        output_tokens = usage.get("outputTokens", 0)
+
+        # Only log if we have cache activity
+        if cache_read or cache_write:
+            # Calculate cache hit rate
+            # Total cacheable tokens = cache_read + cache_write + uncached input tokens
+            # Note: inputTokens in Bedrock response = tokens AFTER last cache breakpoint (uncached)
+            total_input = cache_read + cache_write + input_tokens
+            cache_hit_rate = (cache_read / total_input * 100) if total_input > 0 else 0
+
+            # Estimate cost impact (relative to non-cached scenario)
+            # Cache read: 10% of base cost (90% savings)
+            # Cache write: 125% of base cost (25% premium)
+            # Regular input: 100% of base cost
+            #
+            # Cost without caching: all tokens at 100%
+            # Cost with caching: cache_read * 0.10 + cache_write * 1.25 + input * 1.0
+            cost_without_cache = total_input  # Normalized to 1.0 per token
+            cost_with_cache = (cache_read * 0.10) + (cache_write * 1.25) + input_tokens
+            cost_savings_pct = ((cost_without_cache - cost_with_cache) / cost_without_cache * 100) if cost_without_cache > 0 else 0
+
+            logger.info(
+                f"📦 Cache metrics [session={session_id[:8]}...]: "
+                f"read={cache_read:,} tokens, write={cache_write:,} tokens, "
+                f"uncached={input_tokens:,} tokens, output={output_tokens:,} tokens | "
+                f"hit_rate={cache_hit_rate:.1f}%, est_savings={cost_savings_pct:.1f}%"
+            )
+
+            # Log warning if cache write with no reads (first request or cache miss)
+            if cache_write > 0 and cache_read == 0:
+                logger.debug(
+                    f"📦 Cache write only (new cache entry or miss) - "
+                    f"subsequent requests should see cache reads"
+                )
+        else:
+            # No cache activity - might be non-Bedrock model or caching disabled
+            if input_tokens > 0:
+                logger.debug(
+                    f"📦 No cache activity [session={session_id[:8]}...]: "
+                    f"input={input_tokens:,} tokens, output={output_tokens:,} tokens"
+                )
 
     def _flush_session(self, session_manager: Any) -> Optional[int]:
         """

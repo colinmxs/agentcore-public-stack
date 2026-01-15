@@ -19,12 +19,30 @@ Model Compatibility:
 - NOT supported: Llama, Mistral, Titan, and other non-Claude/Nova models
 - Requires Bedrock API version that supports prompt caching (2023-09-30 or later)
 
-Strategy: Single Cache Point at End of Last Assistant Message
+Three-Level Caching Strategy:
+This hook is part of a three-level caching strategy configured in model_config.py:
+
+1. cache_prompt="default" (BedrockModel) - Caches system prompt
+   - Benefits first turn before any assistant messages exist
+   - Write premium (25%) paid once, then 90% savings on subsequent turns
+
+2. cache_tools="default" (BedrockModel) - Caches tool definitions
+   - Tools change less frequently than conversation
+   - Cached separately so tool changes don't invalidate conversation cache
+
+3. ConversationCachingHook (this hook) - Caches conversation history
+   - Single cache point at end of last assistant message
+   - Covers entire conversation including system prompt and tools
+   - Works universally for: pure conversation, tool loops, and mixed scenarios
+
+Why Single Cache Point:
 - A cache point means "cache everything up to this point"
-- Placing one CP at the end of the last assistant message caches the entire conversation
-- Works universally for: pure conversation, tool loops, and mixed scenarios
 - Multiple cache points cause DUPLICATE write premiums (25% each)
 - Testing showed 1 CP performs equally to 3 CPs but avoids redundant costs
+- The cache point at end of last assistant message is optimal because it:
+  * Includes all previous context (system, tools, messages)
+  * Is positioned just before new user input
+  * Maximizes cache hit rate for subsequent turns
 """
 
 import logging
