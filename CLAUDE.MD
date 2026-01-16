@@ -83,13 +83,28 @@ Tools communicate via different protocols:
 
 ### 4. Prompt Caching Strategy
 
-**File:** `backend/src/agents/main_agent/core/agent_factory.py`
+**Files:**
+- `backend/src/agents/main_agent/core/model_config.py` - Bedrock caching config
+- `backend/src/agents/main_agent/session/hooks/conversation_caching.py` - Conversation cache hook
 
-Two-level caching (Bedrock only):
-- System prompt caching (static)
-- Conversation history caching (dynamic, last 2 messages)
-- Max 4 cache points with rotation
-- Enabled via `ConversationCachingHook`
+Three-level caching (Bedrock only):
+
+| Level | Config | What's Cached | When Used |
+|-------|--------|--------------|-----------|
+| 1. System Prompt | `cache_prompt="default"` | System instructions | First turn (before assistant messages exist) |
+| 2. Tool Definitions | `cache_tools="default"` | Tool schemas | All turns (tools change less frequently) |
+| 3. Conversation | `ConversationCachingHook` | Full message history | Turn 2+ (single CP at end of last assistant msg) |
+
+**Cost Model:**
+- Cache write: 25% premium (one-time per cache point)
+- Cache read: 90% savings (every subsequent read)
+- Break-even: After 2 requests using cached content
+
+**Cache Metrics Logging:**
+Cache performance is logged per request with hit rate and estimated savings:
+```
+📦 Cache metrics [session=abc123...]: read=5,000 tokens, write=0 tokens, uncached=50 tokens | hit_rate=99.0%, est_savings=89.1%
+```
 
 ### 5. Multimodal I/O
 

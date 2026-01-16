@@ -60,9 +60,12 @@ class ModelConfig:
             "temperature": self.temperature
         }
 
-        # Add cache_prompt if caching is enabled (BedrockModel handles SystemContentBlock formatting)
-        if self.caching_enabled:
-            config["cache_prompt"] = "default"
+        # NOTE: cache_prompt and cache_tools are deprecated in newer Strands versions
+        # The ConversationCachingHook handles all caching via cachePoint blocks in messages
+        # System prompt and tool caching should be handled by the hook or manually adding cachePoint
+        #
+        # If you see "cache_prompt is deprecated" warnings, the caching is still working
+        # but through the hook mechanism rather than the deprecated config parameters
 
         return config
 
