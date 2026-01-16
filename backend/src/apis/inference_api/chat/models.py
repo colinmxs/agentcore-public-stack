@@ -27,6 +27,7 @@ class InvocationRequest(BaseModel):
     file_upload_ids: Optional[List[str]] = None  # Upload IDs to resolve from S3
     provider: Optional[str] = None  # LLM provider: "bedrock", "openai", or "gemini"
     max_tokens: Optional[int] = None  # Maximum tokens to generate
+    assistant_id: Optional[str] = None  # Assistant ID for RAG-enabled chat
 
 
 # class InvocationRequest(BaseModel):
@@ -45,6 +46,7 @@ class ChatRequest(BaseModel):
     files: Optional[List[FileContent]] = None  # Direct file content (base64-encoded)
     file_upload_ids: Optional[List[str]] = None  # Upload IDs to resolve from S3
     enabled_tools: Optional[List[str]] = None  # User-specific tool preferences (tool IDs)
+    assistant_id: Optional[str] = None  # Assistant ID for RAG-enabled chat
 
 class ChatEvent(BaseModel):
     """SSE event sent to client"""

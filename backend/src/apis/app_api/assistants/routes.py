@@ -17,16 +17,25 @@ from .models import (
     UpdateAssistantRequest,
     AssistantResponse,
     AssistantsListResponse,
-    AssistantTestChatRequest
+    AssistantTestChatRequest,
+    ShareAssistantRequest,
+    UnshareAssistantRequest,
+    AssistantSharesResponse
 )
 from .services.assistant_service import (
     create_assistant_draft,
     create_assistant,
     get_assistant,
+    get_assistant_with_access_check,
+    assistant_exists,
     update_assistant,
     list_user_assistants,
     archive_assistant,
-    delete_assistant
+    delete_assistant,
+    share_assistant,
+    unshare_assistant,
+    list_assistant_shares,
+    list_shared_with_user
 )
 from .services.rag_service import (
     search_assistant_knowledgebase_with_formatting,
@@ -206,12 +215,32 @@ async def list_assistants_endpoint(
             include_public=include_public
         )
         
+        # Also get assistants shared with this user
+        shared_assistants = await list_shared_with_user(current_user.email)
+        
+        # Filter out duplicates (assistants the user already owns)
+        owned_assistant_ids = {a.assistant_id for a in assistants}
+        unique_shared = [a for a in shared_assistants if a.assistant_id not in owned_assistant_ids]
+        
+        # Combine lists (user's own assistants first, then shared)
+        all_assistants = assistants + unique_shared
+        
+        # Sort by created_at descending (most recent first)
+        all_assistants.sort(key=lambda x: x.created_at, reverse=True)
+        
+        # Apply limit if specified (simple truncation for now - proper pagination would be more complex)
+        if limit and limit > 0:
+            all_assistants = all_assistants[:limit]
+            # Note: next_token handling becomes complex with merged lists, so we'll set it to None
+            # A more sophisticated implementation would handle pagination properly
+            next_page_token = None if len(all_assistants) < limit else next_page_token
+        
         # Convert to response models (excludes owner_id for privacy)
         assistant_responses = [
             AssistantResponse.model_validate(
                 assistant.model_dump(by_alias=True, exclude={'ownerId'})
             )
-            for assistant in assistants
+            for assistant in all_assistants
         ]
         
         return AssistantsListResponse(
@@ -233,9 +262,12 @@ async def get_assistant_endpoint(
     current_user: User = Depends(get_current_user)
 ):
     """
-    Retrieve a specific assistant by ID.
+    Retrieve a specific assistant by ID with visibility-based access control.
     
-    Requires JWT authentication. Users can only access their own assistants.
+    Requires JWT authentication. Access is controlled by assistant visibility:
+    - PRIVATE: Only owner can access
+    - PUBLIC: Anyone can access
+    - SHARED: Owner or users with share records can access
     
     Args:
         assistant_id: Assistant identifier from URL path
@@ -247,7 +279,8 @@ async def get_assistant_endpoint(
     Raises:
         HTTPException:
             - 401 if not authenticated
-            - 404 if assistant not found or not owned by user
+            - 403 if access denied (assistant exists but user lacks permission)
+            - 404 if assistant not found
             - 500 if server error
     """
     user_id = current_user.user_id
@@ -255,16 +288,26 @@ async def get_assistant_endpoint(
     logger.info(f"GET /assistants/{assistant_id} - User: {user_id}")
     
     try:
-        # Retrieve assistant
-        assistant = await get_assistant(
-            assistant_id=assistant_id,
-            owner_id=user_id
-        )
-        
-        if not assistant:
+        # First check if assistant exists (without access check)
+        exists = await assistant_exists(assistant_id)
+        if not exists:
             raise HTTPException(
                 status_code=404,
                 detail=f"Assistant not found: {assistant_id}"
+            )
+        
+        # Assistant exists, now check access
+        assistant = await get_assistant_with_access_check(
+            assistant_id=assistant_id,
+            user_id=user_id,
+            user_email=current_user.email
+        )
+        
+        if not assistant:
+            # Assistant exists but access is denied
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You do not have permission to access this assistant"
             )
         
         # Convert to response model (excludes owner_id for privacy)
@@ -327,7 +370,8 @@ async def update_assistant_endpoint(
             instructions=request.instructions,
             visibility=request.visibility,
             tags=request.tags,
-            status=request.status
+            status=request.status,
+            image_url=request.image_url
         )
         
         if not updated_assistant:
@@ -641,5 +685,182 @@ async def test_chat_endpoint(
         raise HTTPException(
             status_code=500,
             detail=f"Failed to process test chat: {str(e)}"
+        )
+
+
+@router.post("/{assistant_id}/shares", response_model=AssistantSharesResponse)
+async def share_assistant_endpoint(
+    assistant_id: str,
+    request: ShareAssistantRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Share an assistant with specified email addresses.
+    
+    Requires JWT authentication. Only the owner can share their assistant.
+    Creates share records for each email address. Emails are normalized to lowercase.
+    
+    Args:
+        assistant_id: Assistant identifier
+        request: ShareAssistantRequest with list of email addresses
+        current_user: Authenticated user from JWT token (injected by dependency)
+    
+    Returns:
+        AssistantSharesResponse with updated list of shared emails
+    
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 404 if assistant not found or not owned by user
+            - 500 if server error
+    """
+    user_id = current_user.user_id
+    
+    logger.info(f"POST /assistants/{assistant_id}/shares - User: {user_id}, Emails: {len(request.emails)}")
+    
+    try:
+        # Share assistant with emails
+        success = await share_assistant(
+            assistant_id=assistant_id,
+            owner_id=user_id,
+            emails=request.emails
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assistant not found: {assistant_id}"
+            )
+        
+        # Get updated share list
+        shared_emails = await list_assistant_shares(assistant_id, user_id)
+        
+        return AssistantSharesResponse(
+            assistant_id=assistant_id,
+            shared_with=shared_emails
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error sharing assistant: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to share assistant: {str(e)}"
+        )
+
+
+@router.delete("/{assistant_id}/shares", response_model=AssistantSharesResponse)
+async def unshare_assistant_endpoint(
+    assistant_id: str,
+    request: UnshareAssistantRequest,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Remove shares from an assistant for specified email addresses.
+    
+    Requires JWT authentication. Only the owner can unshare their assistant.
+    
+    Args:
+        assistant_id: Assistant identifier
+        request: UnshareAssistantRequest with list of email addresses to remove
+        current_user: Authenticated user from JWT token (injected by dependency)
+    
+    Returns:
+        AssistantSharesResponse with updated list of shared emails
+    
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 404 if assistant not found or not owned by user
+            - 500 if server error
+    """
+    user_id = current_user.user_id
+    
+    logger.info(f"DELETE /assistants/{assistant_id}/shares - User: {user_id}, Emails: {len(request.emails)}")
+    
+    try:
+        # Unshare assistant from emails
+        success = await unshare_assistant(
+            assistant_id=assistant_id,
+            owner_id=user_id,
+            emails=request.emails
+        )
+        
+        if not success:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assistant not found: {assistant_id}"
+            )
+        
+        # Get updated share list
+        shared_emails = await list_assistant_shares(assistant_id, user_id)
+        
+        return AssistantSharesResponse(
+            assistant_id=assistant_id,
+            shared_with=shared_emails
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error unsharing assistant: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to unshare assistant: {str(e)}"
+        )
+
+
+@router.get("/{assistant_id}/shares", response_model=AssistantSharesResponse)
+async def get_assistant_shares_endpoint(
+    assistant_id: str,
+    current_user: User = Depends(get_current_user)
+):
+    """
+    Get list of email addresses an assistant is shared with.
+    
+    Requires JWT authentication. Only the owner can view the share list.
+    
+    Args:
+        assistant_id: Assistant identifier
+        current_user: Authenticated user from JWT token (injected by dependency)
+    
+    Returns:
+        AssistantSharesResponse with list of shared emails
+    
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 404 if assistant not found or not owned by user
+            - 500 if server error
+    """
+    user_id = current_user.user_id
+    
+    logger.info(f"GET /assistants/{assistant_id}/shares - User: {user_id}")
+    
+    try:
+        # Get share list
+        shared_emails = await list_assistant_shares(assistant_id, user_id)
+        
+        # Verify ownership (list_assistant_shares checks this, but we want to return 404 if not found)
+        assistant = await get_assistant(assistant_id, user_id)
+        if not assistant:
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assistant not found: {assistant_id}"
+            )
+        
+        return AssistantSharesResponse(
+            assistant_id=assistant_id,
+            shared_with=shared_emails
+        )
+    
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error getting assistant shares: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail=f"Failed to get assistant shares: {str(e)}"
         )
 

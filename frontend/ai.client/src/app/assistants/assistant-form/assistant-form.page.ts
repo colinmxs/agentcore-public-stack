@@ -1,17 +1,24 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } from '@angular/core';
-import { ActivatedRoute, Router } from '@angular/router';
+import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
 import { TestChatComponent } from './components/test-chat.component';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 
 @Component({
   selector: 'app-assistant-form-page',
   templateUrl: './assistant-form.page.html',
   styleUrl: './assistant-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, TestChatComponent],
+  imports: [ReactiveFormsModule, TestChatComponent, NgIcon, RouterLink],
+  providers:[
+    provideIcons({
+      heroArrowLeft
+    })
+  ]
 })
 export class AssistantFormPage implements OnInit {
   private route = inject(ActivatedRoute);

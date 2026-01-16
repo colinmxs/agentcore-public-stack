@@ -277,6 +277,175 @@ async def invocations(
             }
         )
 
+    # Handle assistant RAG integration if assistant_id is provided
+    # Import here to avoid circular import (app_api.assistants imports from inference_api.chat.routes)
+    assistant = None
+    augmented_message = input_data.message
+    system_prompt = input_data.system_prompt  # Start with provided system prompt
+    
+    logger.info(f"Invocation request - Session: {input_data.session_id}, Assistant ID: {input_data.assistant_id}, Message: {input_data.message[:50]}...")
+    
+    if input_data.assistant_id:
+        # Local imports to avoid circular dependency
+        from apis.app_api.assistants.services.assistant_service import get_assistant_with_access_check
+        from apis.app_api.assistants.services.rag_service import (
+            search_assistant_knowledgebase_with_formatting,
+            augment_prompt_with_context,
+        )
+        from apis.app_api.sessions.services.metadata import (
+            get_session_metadata,
+            store_session_metadata,
+        )
+        from apis.app_api.sessions.models import (
+            SessionMetadata,
+            SessionPreferences,
+        )
+        from apis.app_api.sessions.services.messages import get_messages
+        
+        logger.info(f"Assistant RAG requested - Assistant: {input_data.assistant_id}, Session: {input_data.session_id}")
+        
+        # 1. Check if session already has an assistant attached
+        # If it does, verify it's the same assistant (can't change assistants mid-session)
+        # If it doesn't, verify session has no messages (can only attach to new sessions)
+        try:
+            existing_metadata = await get_session_metadata(input_data.session_id, user_id)
+            existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
+            
+            if existing_assistant_id:
+                # Session already has an assistant - verify it's the same one
+                if existing_assistant_id != input_data.assistant_id:
+                    logger.warning(f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
+                    )
+                # Same assistant - allow it to continue
+                logger.info(f"Continuing with existing assistant {input_data.assistant_id} in session {input_data.session_id}")
+            else:
+                # No assistant attached - verify session has no messages (can only attach to new sessions)
+                messages_response = await get_messages(
+                    session_id=input_data.session_id,
+                    user_id=user_id,
+                    limit=1  # Only need to check if any messages exist
+                )
+                if messages_response.messages and len(messages_response.messages) > 0:
+                    logger.warning(f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
+                    )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error checking session state: {e}", exc_info=True)
+            # Continue anyway - better to allow than block on error
+            
+        # 2. Load assistant with access check
+        assistant = await get_assistant_with_access_check(
+            assistant_id=input_data.assistant_id,
+            user_id=user_id
+        )
+        
+        if not assistant:
+            logger.warning(f"Assistant {input_data.assistant_id} not found or access denied for user {user_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assistant not found or access denied: {input_data.assistant_id}"
+            )
+        
+        # 3. Search assistant knowledge base
+        try:
+            logger.info(f"Searching knowledge base for assistant {input_data.assistant_id} with query: {input_data.message[:100]}...")
+            context_chunks = await search_assistant_knowledgebase_with_formatting(
+                assistant_id=input_data.assistant_id,
+                query=input_data.message,
+                top_k=5
+            )
+            logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
+            
+            # 4. Augment message with context
+            if context_chunks:
+                augmented_message = augment_prompt_with_context(
+                    user_message=input_data.message,
+                    context_chunks=context_chunks
+                )
+                logger.info(f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(input_data.message)}, Augmented length: {len(augmented_message)}")
+            else:
+                logger.info(f"⚠️ No context chunks found for assistant {input_data.assistant_id} - using original message without augmentation")
+        except Exception as e:
+            logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
+            # Continue without RAG context rather than failing
+        
+        # 5. Append assistant's instructions to the base system prompt (don't replace)
+        if assistant.instructions:
+            # Import here to avoid circular dependency
+            from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+            
+            # Build the base prompt with date
+            base_prompt_builder = SystemPromptBuilder()
+            base_prompt = base_prompt_builder.build(include_date=True)
+            
+            # Append assistant instructions to the base prompt
+            system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{assistant.instructions}"
+            logger.info(f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})")
+        else:
+            # No assistant instructions - use base prompt if no system_prompt provided
+            if not system_prompt:
+                from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+                base_prompt_builder = SystemPromptBuilder()
+                system_prompt = base_prompt_builder.build(include_date=True)
+            logger.info(f"⚠️ Assistant {input_data.assistant_id} has no instructions - using {'provided' if system_prompt else 'default'} system prompt")
+        
+        # 6. Save assistant_id to session preferences (persist for future loads)
+        try:
+            existing_metadata = await get_session_metadata(input_data.session_id, user_id)
+            if existing_metadata:
+                # Update existing metadata with assistant_id in preferences
+                prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
+                prefs_dict['assistant_id'] = input_data.assistant_id
+                preferences = SessionPreferences(**prefs_dict)
+                
+                updated_metadata = SessionMetadata(
+                    session_id=existing_metadata.session_id,
+                    user_id=existing_metadata.user_id,
+                    title=existing_metadata.title,
+                    status=existing_metadata.status,
+                    created_at=existing_metadata.created_at,
+                    last_message_at=existing_metadata.last_message_at,
+                    message_count=existing_metadata.message_count,
+                    starred=existing_metadata.starred,
+                    tags=existing_metadata.tags,
+                    preferences=preferences
+                )
+            else:
+                # Create new metadata with assistant_id in preferences
+                from datetime import datetime, timezone
+                now = datetime.now(timezone.utc).isoformat()
+                preferences = SessionPreferences(assistant_id=input_data.assistant_id)
+                
+                updated_metadata = SessionMetadata(
+                    session_id=input_data.session_id,
+                    user_id=user_id,
+                    title="",
+                    status="active",
+                    created_at=now,
+                    last_message_at=now,
+                    message_count=0,
+                    starred=False,
+                    tags=[],
+                    preferences=preferences
+                )
+            
+            await store_session_metadata(
+                session_id=input_data.session_id,
+                user_id=user_id,
+                session_metadata=updated_metadata
+            )
+            logger.info(f"💾 Saved assistant_id {input_data.assistant_id} to session {input_data.session_id} preferences")
+        except Exception as e:
+            logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
+            # Continue - not critical if metadata save fails
+
     try:
         # Resolve caching_enabled based on managed model configuration
         # This allows admins to disable caching for models that don't support it
@@ -291,13 +460,14 @@ async def invocations(
         # Get agent instance with user-specific configuration
         # AgentCore Memory tracks preferences across sessions per user_id
         # Supports multiple LLM providers: AWS Bedrock, OpenAI, and Google Gemini
+        # Use augmented message and assistant system prompt if assistant RAG was applied
         agent = get_agent(
             session_id=input_data.session_id,
             user_id=user_id,
             enabled_tools=input_data.enabled_tools,
             model_id=input_data.model_id,
             temperature=input_data.temperature,
-            system_prompt=input_data.system_prompt,
+            system_prompt=system_prompt,  # Use assistant's instructions if available
             caching_enabled=caching_enabled,
             provider=input_data.provider,
             max_tokens=input_data.max_tokens
@@ -311,9 +481,10 @@ async def invocations(
                 yield quota_warning_event.to_sse_format()
 
             # Then yield all agent stream events
+            # Use augmented message if assistant RAG was applied
             # Use resolved files (from S3) merged with any direct file content
             async for event in agent.stream_async(
-                input_data.message,
+                augmented_message,  # Use augmented message if assistant RAG was applied
                 session_id=input_data.session_id,
                 files=files_to_send if files_to_send else None
             ):

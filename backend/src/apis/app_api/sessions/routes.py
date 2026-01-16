@@ -190,14 +190,16 @@ async def update_session_metadata_endpoint(
                 request.last_temperature is not None,
                 request.enabled_tools,
                 request.selected_prompt_id,
-                request.custom_prompt_text
+                request.custom_prompt_text,
+                request.assistant_id
             ]):
                 preferences = SessionPreferences(
                     last_model=request.last_model,
                     last_temperature=request.last_temperature,
                     enabled_tools=request.enabled_tools,
                     selected_prompt_id=request.selected_prompt_id,
-                    custom_prompt_text=request.custom_prompt_text
+                    custom_prompt_text=request.custom_prompt_text,
+                    assistant_id=request.assistant_id
                 )
 
             # IMPORTANT: Do NOT set message_count here - it should only be managed by
@@ -227,7 +229,8 @@ async def update_session_metadata_endpoint(
                 request.last_temperature is not None,
                 request.enabled_tools,
                 request.selected_prompt_id,
-                request.custom_prompt_text
+                request.custom_prompt_text,
+                request.assistant_id
             ]):
                 # Merge with existing preferences
                 existing_prefs = preferences.model_dump(by_alias=False) if preferences else {}
@@ -242,6 +245,8 @@ async def update_session_metadata_endpoint(
                     new_prefs['selected_prompt_id'] = request.selected_prompt_id
                 if request.custom_prompt_text:
                     new_prefs['custom_prompt_text'] = request.custom_prompt_text
+                if request.assistant_id:
+                    new_prefs['assistant_id'] = request.assistant_id
 
                 merged_prefs = {**existing_prefs, **new_prefs}
                 preferences = SessionPreferences(**merged_prefs)

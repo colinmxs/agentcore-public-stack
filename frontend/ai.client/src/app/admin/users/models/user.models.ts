@@ -97,3 +97,4 @@ export interface UserListRequestOptions {
 export interface UserSearchOptions {
   email: string;
 }
+ 

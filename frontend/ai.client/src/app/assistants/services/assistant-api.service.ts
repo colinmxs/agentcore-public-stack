@@ -6,7 +6,10 @@ import {
   CreateAssistantDraftRequest,
   CreateAssistantRequest, 
   UpdateAssistantRequest,
-  AssistantsListResponse 
+  AssistantsListResponse,
+  ShareAssistantRequest,
+  UnshareAssistantRequest,
+  AssistantSharesResponse
 } from '../models/assistant.model';
 import {
   CreateDocumentRequest,
@@ -87,5 +90,17 @@ export class AssistantApiService {
       `${this.baseUrl}/${assistantId}/documents/upload-url`,
       request
     );
+  }
+
+  shareAssistant(id: string, request: ShareAssistantRequest): Observable<AssistantSharesResponse> {
+    return this.http.post<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`, request);
+  }
+
+  unshareAssistant(id: string, request: UnshareAssistantRequest): Observable<AssistantSharesResponse> {
+    return this.http.delete<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`, { body: request });
+  }
+
+  getAssistantShares(id: string): Observable<AssistantSharesResponse> {
+    return this.http.get<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`);
   }
 }

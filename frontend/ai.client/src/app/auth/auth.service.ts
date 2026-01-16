@@ -34,6 +34,7 @@ export class AuthService {
   private readonly refreshTokenKey = 'refresh_token';
   private readonly tokenExpiryKey = 'token_expiry';
   private readonly stateKey = 'auth_state';
+  private readonly returnUrlKey = 'auth_return_url';
 
   /**
    * Get the current access token from localStorage.
@@ -224,6 +225,10 @@ export class AuthService {
 
       // Store state token in sessionStorage for CSRF protection
       sessionStorage.setItem(this.stateKey, response.state);
+      
+      // Note: redirectUri parameter is for OIDC callback URL override (must be absolute URI)
+      // The final destination (returnUrl) is stored separately in sessionStorage by the login page
+      // We don't store it here because this method shouldn't be responsible for final destination
 
       // Redirect to authorization URL
       window.location.href = response.authorization_url;
@@ -251,6 +256,21 @@ export class AuthService {
    */
   clearStoredState(): void {
     sessionStorage.removeItem(this.stateKey);
+  }
+
+  /**
+   * Get the stored return URL from sessionStorage.
+   * @returns The return URL or null if not found
+   */
+  getStoredReturnUrl(): string | null {
+    return sessionStorage.getItem(this.returnUrlKey);
+  }
+
+  /**
+   * Clear the stored return URL from sessionStorage.
+   */
+  clearStoredReturnUrl(): void {
+    sessionStorage.removeItem(this.returnUrlKey);
   }
 
   /**

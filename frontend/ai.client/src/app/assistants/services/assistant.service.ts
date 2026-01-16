@@ -4,7 +4,10 @@ import {
   Assistant, 
   CreateAssistantDraftRequest,
   CreateAssistantRequest, 
-  UpdateAssistantRequest 
+  UpdateAssistantRequest,
+  ShareAssistantRequest,
+  UnshareAssistantRequest,
+  AssistantSharesResponse
 } from '../models/assistant.model';
 import { AssistantApiService } from './assistant-api.service';
 
@@ -183,5 +186,57 @@ export class AssistantService {
 
   getAssistantById(id: string): Assistant | undefined {
     return this.assistants().find(assistant => assistant.assistantId === id);
+  }
+
+  async shareAssistant(id: string, emails: string[]): Promise<AssistantSharesResponse> {
+    this.loading.set(true);
+    this.error.set(null);
+
+    try {
+      const response = await firstValueFrom(
+        this.apiService.shareAssistant(id, { emails })
+      );
+      return response;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to share assistant';
+      this.error.set(errorMessage);
+      throw err;
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async unshareAssistant(id: string, emails: string[]): Promise<AssistantSharesResponse> {
+    this.loading.set(true);
+    this.error.set(null);
+
+    try {
+      const response = await firstValueFrom(
+        this.apiService.unshareAssistant(id, { emails })
+      );
+      return response;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to unshare assistant';
+      this.error.set(errorMessage);
+      throw err;
+    } finally {
+      this.loading.set(false);
+    }
+  }
+
+  async getAssistantShares(id: string): Promise<string[]> {
+    this.loading.set(true);
+    this.error.set(null);
+
+    try {
+      const response = await firstValueFrom(this.apiService.getAssistantShares(id));
+      return response.sharedWith;
+    } catch (err) {
+      const errorMessage = err instanceof Error ? err.message : 'Failed to get assistant shares';
+      this.error.set(errorMessage);
+      throw err;
+    } finally {
+      this.loading.set(false);
+    }
   }
 }

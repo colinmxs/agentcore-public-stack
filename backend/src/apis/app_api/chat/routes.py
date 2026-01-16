@@ -41,6 +41,17 @@ from apis.shared.quota import (
 from apis.app_api.admin.services import get_tool_access_service
 from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
 from agents.main_agent.session.session_factory import SessionFactory
+from apis.app_api.assistants.services.assistant_service import (
+    get_assistant_with_access_check,
+    assistant_exists
+)
+from apis.app_api.assistants.services.rag_service import (
+    search_assistant_knowledgebase_with_formatting,
+    augment_prompt_with_context
+)
+from apis.app_api.sessions.services.messages import get_messages
+from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
+from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
 
 logger = logging.getLogger(__name__)
 
@@ -184,6 +195,189 @@ async def chat_stream(
             }
         )
 
+    # Handle assistant RAG integration if assistant_id is provided
+    assistant = None
+    augmented_message = request.message
+    system_prompt = None
+    
+    # Get assistant_id from request or session preferences (priority: request > preferences)
+    assistant_id_to_use = request.assistant_id
+    if not assistant_id_to_use:
+        # Check session preferences for persisted assistant
+        try:
+            existing_metadata = await get_session_metadata(request.session_id, user_id)
+            if existing_metadata and existing_metadata.preferences:
+                assistant_id_to_use = existing_metadata.preferences.assistant_id
+                if assistant_id_to_use:
+                    logger.info(f"Using persisted assistant {assistant_id_to_use} from session preferences")
+        except Exception as e:
+            logger.error(f"Error checking session preferences for assistant: {e}", exc_info=True)
+            # Continue without assistant if metadata check fails
+    
+    logger.info(f"Chat request received - Session: {request.session_id}, Assistant ID: {assistant_id_to_use}, Message: {request.message[:50]}...")
+    
+    if assistant_id_to_use:
+        logger.info(f"Assistant RAG requested - Assistant: {assistant_id_to_use}, Session: {request.session_id}")
+        
+        # 1. Check if session already has an assistant attached
+        # If it does, verify it's the same assistant (can't change assistants mid-session)
+        # If it doesn't, verify session has no messages (can only attach to new sessions)
+        try:
+            existing_metadata = await get_session_metadata(request.session_id, user_id)
+            existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
+            
+            if existing_assistant_id:
+                # Session already has an assistant - verify it's the same one (if request provided one)
+                if request.assistant_id and existing_assistant_id != request.assistant_id:
+                    logger.warning(f"Attempted to change assistant from {existing_assistant_id} to {request.assistant_id} in session {request.session_id}")
+                    raise HTTPException(
+                        status_code=400,
+                        detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
+                    )
+                # Same assistant or using persisted one - allow it to continue
+                logger.info(f"Continuing with existing assistant {assistant_id_to_use} in session {request.session_id}")
+            else:
+                # No assistant attached - verify session has no messages (can only attach to new sessions)
+                # Only check if this is a new attachment (from request, not from preferences)
+                if request.assistant_id:
+                    messages_response = await get_messages(
+                        session_id=request.session_id,
+                        user_id=user_id,
+                        limit=1  # Only need to check if any messages exist
+                    )
+                    if messages_response.messages and len(messages_response.messages) > 0:
+                        logger.warning(f"Attempted to attach assistant {request.assistant_id} to session {request.session_id} with existing messages")
+                        raise HTTPException(
+                            status_code=400,
+                            detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
+                        )
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Error checking session state: {e}", exc_info=True)
+            # Continue anyway - better to allow than block on error
+            
+        
+        # 2. Load assistant with access check
+        # First check if assistant exists (without access check) to distinguish 404 from 403
+        exists = await assistant_exists(assistant_id_to_use)
+        
+        if not exists:
+            # Assistant doesn't exist
+            logger.warning(f"Assistant {assistant_id_to_use} not found for user {user_id}")
+            raise HTTPException(
+                status_code=404,
+                detail=f"Assistant not found: {assistant_id_to_use}"
+            )
+        
+        # Assistant exists, now check access
+        assistant = await get_assistant_with_access_check(
+            assistant_id=assistant_id_to_use,
+            user_id=user_id
+        )
+        
+        if not assistant:
+            # Assistant exists but access denied (PRIVATE and not owner)
+            logger.warning(f"Access denied: user {user_id} attempted to access PRIVATE assistant {assistant_id_to_use}")
+            raise HTTPException(
+                status_code=403,
+                detail=f"Access denied: You don't have permission to use this assistant"
+            )
+        
+        # 3. Search assistant knowledge base
+        try:
+            logger.info(f"Searching knowledge base for assistant {assistant_id_to_use} with query: {request.message[:100]}...")
+            context_chunks = await search_assistant_knowledgebase_with_formatting(
+                assistant_id=assistant_id_to_use,
+                query=request.message,
+                top_k=5
+            )
+            logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
+            
+            # 4. Augment message with context
+            if context_chunks:
+                augmented_message = augment_prompt_with_context(
+                    user_message=request.message,
+                    context_chunks=context_chunks
+                )
+                logger.info(f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(request.message)}, Augmented length: {len(augmented_message)}")
+            else:
+                logger.info(f"⚠️ No context chunks found for assistant {assistant_id_to_use} - using original message without augmentation")
+        except Exception as e:
+            logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
+            # Continue without RAG context rather than failing
+        
+        # 5. Append assistant's instructions to the base system prompt (don't replace)
+        if assistant.instructions:
+            from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+            
+            # Build the base prompt with date
+            base_prompt_builder = SystemPromptBuilder()
+            base_prompt = base_prompt_builder.build(include_date=True)
+            
+            # Append assistant instructions to the base prompt
+            system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{assistant.instructions}"
+            logger.info(f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})")
+        else:
+            # No assistant instructions - use base prompt if no system_prompt provided
+            if not system_prompt:
+                from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+                base_prompt_builder = SystemPromptBuilder()
+                system_prompt = base_prompt_builder.build(include_date=True)
+            logger.info(f"⚠️ Assistant {assistant_id_to_use} has no instructions - using {'provided' if system_prompt else 'default'} system prompt")
+        
+        # 6. Save assistant_id to session preferences (persist for future loads)
+        # Only save if it came from the request (not already persisted)
+        if request.assistant_id:
+            try:
+                existing_metadata = await get_session_metadata(request.session_id, user_id)
+                if existing_metadata:
+                    # Update existing metadata with assistant_id in preferences
+                    prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
+                    prefs_dict['assistant_id'] = assistant_id_to_use
+                    preferences = SessionPreferences(**prefs_dict)
+                    
+                    updated_metadata = SessionMetadata(
+                        session_id=existing_metadata.session_id,
+                        user_id=existing_metadata.user_id,
+                        title=existing_metadata.title,
+                        status=existing_metadata.status,
+                        created_at=existing_metadata.created_at,
+                        last_message_at=existing_metadata.last_message_at,
+                        message_count=existing_metadata.message_count,
+                        starred=existing_metadata.starred,
+                        tags=existing_metadata.tags,
+                        preferences=preferences
+                    )
+                else:
+                    # Create new metadata with assistant_id in preferences
+                    from datetime import datetime, timezone
+                    now = datetime.now(timezone.utc).isoformat()
+                    preferences = SessionPreferences(assistant_id=assistant_id_to_use)
+                    
+                    updated_metadata = SessionMetadata(
+                        session_id=request.session_id,
+                        user_id=user_id,
+                        title="New Conversation",
+                        status="active",
+                        created_at=now,
+                        last_message_at=now,
+                        message_count=0,  # Will be updated by stream coordinator
+                        starred=False,
+                        tags=[],
+                        preferences=preferences
+                    )
+                
+                await store_session_metadata(
+                    session_id=request.session_id,
+                    user_id=user_id,
+                    session_metadata=updated_metadata
+                )
+                logger.info(f"💾 Saved assistant_id {assistant_id_to_use} to session {request.session_id} preferences")
+            except Exception as e:
+                logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
+                # Don't fail the request if metadata save fails
+
     # Resolve file upload IDs to FileContent objects
     files_to_send = list(request.files) if request.files else []
 
@@ -210,10 +404,12 @@ async def chat_stream(
 
     try:
         # Get agent instance (with or without tool filtering)
+        # Use assistant's system prompt if provided
         agent = get_agent(
             session_id=request.session_id,
             user_id=user_id,
-            enabled_tools=authorized_tools  # Filtered by RBAC (may be None for all allowed)
+            enabled_tools=authorized_tools,  # Filtered by RBAC (may be None for all allowed)
+            system_prompt=system_prompt  # Assistant instructions if assistant is attached
         )
 
         # Wrap stream to ensure flush on disconnect and prevent further processing
@@ -222,8 +418,9 @@ async def chat_stream(
             if quota_warning_event:
                 yield quota_warning_event.to_sse_format()
             # Pass resolved files (from S3) merged with any direct file content
+            # Use augmented message if assistant RAG was applied
             stream_iterator = agent.stream_async(
-                request.message,
+                augmented_message,  # Use augmented message if assistant RAG was applied
                 session_id=request.session_id,
                 files=files_to_send if files_to_send else None
             )

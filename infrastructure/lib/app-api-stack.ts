@@ -204,6 +204,19 @@ export class AppApiStack extends cdk.Stack {
         type: dynamodb.AttributeType.STRING,
       },
     });
+
+    assistantsTable.addGlobalSecondaryIndex({
+      indexName: 'SharedWithIndex',
+      partitionKey: {
+        name: 'GSI3_PK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: 'GSI3_SK',
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
     
     // ============================================================
     // Assistants Document Drop Bucket (RAG Injestion Drop Bucket)

@@ -1,6 +1,6 @@
-<div class="space-y-2">
+<div class="space-y-2 pb-40">
   @for (assistant of assistants(); track assistant.assistantId) {
-    <div class="group relative w-full flex items-center gap-4 rounded-sm border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-700">
+    <div class="group relative w-full flex items-center gap-4 rounded-sm border border-gray-200 bg-white p-6 transition-all hover:border-blue-300 hover:shadow-sm dark:border-gray-700 dark:bg-gray-800 dark:group-hover:text-blue-400">
       <button
         type="button"
         (click)="onAssistantClick(assistant)"
@@ -14,7 +14,7 @@
 
         <!-- Content -->
         <div class="flex-1 min-w-0">
-          <h3 class="text-lg/7 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400">
+          <h3 class="text-lg/7 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white">
             {{ assistant.name }}
           </h3>
           @if (assistant.description) {
@@ -65,7 +65,20 @@
             aria-orientation="vertical"
           >
             <div class="py-1">
+              <!-- Edit -->
+              <button
+                type="button"
+                (click)="onMenuAction(assistant, 'edit', $event)"
+                class="w-full px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-100 dark:text-gray-300 dark:hover:bg-gray-700"
+                role="menuitem"
+              >
+                Edit
+              </button>
+
               @if (assistant.status === 'COMPLETE') {
+                <!-- Divider -->
+                <div class="my-1 border-t border-gray-200 dark:border-gray-700"></div>
+
                 <!-- Share -->
                 <button
                   type="button"

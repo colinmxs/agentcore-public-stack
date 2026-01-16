@@ -7,6 +7,7 @@ export interface SessionPreferences {
   enabledTools?: string[];
   selectedPromptId?: string;
   customPromptText?: string;
+  assistantId?: string;
 }
 
 export interface SessionMetadata {
@@ -33,4 +34,5 @@ export interface UpdateSessionMetadataRequest {
   enabledTools?: string[];
   selectedPromptId?: string;
   customPromptText?: string;
+  assistantId?: string;
 }

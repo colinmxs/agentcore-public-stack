@@ -1,5 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, OnInit, signal, computed } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink } from '@angular/router';
 import { FormsModule } from '@angular/forms';
 import { Dialog } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
@@ -9,13 +9,20 @@ import { Assistant } from './models/assistant.model';
 import { UserService } from '../auth/user.service';
 import { ConfirmationDialogComponent, ConfirmationDialogData } from '../components/confirmation-dialog/confirmation-dialog.component';
 import { ShareAssistantDialogComponent, ShareAssistantDialogData } from './components/share-assistant-dialog.component';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 
 @Component({
   selector: 'app-assistants',
   templateUrl: './assistants.page.html',
   styleUrl: './assistants.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AssistantListComponent, FormsModule],
+  imports: [AssistantListComponent, FormsModule, NgIcon, RouterLink],
+  providers:[
+    provideIcons({
+      heroArrowLeft
+    })
+  ]
 })
 export class AssistantsPage implements OnInit {
   private router = inject(Router);
@@ -28,11 +35,7 @@ export class AssistantsPage implements OnInit {
   readonly loading = this.assistantService.loading$;
   readonly error = this.assistantService.error$;
 
-  // Search query signal (stub - not implemented yet)
-  searchQuery = signal<string>('');
-
   // Computed signals for filtered assistants
-  // Note: Public assistants owned by the current user will appear in both lists
   readonly myAssistants = computed(() => {
     const allAssistants = this.assistants();
     const currentUser = this.userService.currentUser();
@@ -43,14 +46,6 @@ export class AssistantsPage implements OnInit {
     return allAssistants;
   });
 
-  readonly publicAssistants = computed(() => {
-    const allAssistants = this.assistants();
-    
-    return allAssistants.filter(
-      assistant => assistant.visibility === 'PUBLIC'
-    );
-  });
-
   ngOnInit(): void {
     // Load assistants from backend
     this.loadAssistants();
@@ -58,8 +53,8 @@ export class AssistantsPage implements OnInit {
 
   async loadAssistants(): Promise<void> {
     try {
-      // Load COMPLETE assistants (not drafts or archived) and include public assistants
-      await this.assistantService.loadAssistants(true, false, true);
+      // Load COMPLETE assistants (not drafts or archived) and do NOT include public assistants
+      await this.assistantService.loadAssistants(true, false, false);
     } catch (error) {
       console.error('Error loading assistants:', error);
     }
@@ -81,6 +76,13 @@ export class AssistantsPage implements OnInit {
 
   onAssistantSelected(assistant: Assistant): void {
     this.router.navigate(['/assistants', assistant.assistantId, 'edit']);
+  }
+
+  onChatRequested(assistant: Assistant): void {
+    // Navigate to home with assistantId query parameter
+    this.router.navigate(['/'], {
+      queryParams: { assistantId: assistant.assistantId }
+    });
   }
 
   async onShareRequested(assistant: Assistant): Promise<void> {

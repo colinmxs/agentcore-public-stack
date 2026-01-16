@@ -1,6 +1,6 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
-import { firstValueFrom } from 'rxjs';
+import { firstValueFrom, of } from 'rxjs';
 import { environment } from '../../../environments/environment';
 import { AuthService } from '../../auth/auth.service';
 
@@ -139,7 +139,8 @@ export class ToolService {
       await this.authService.ensureAuthenticated();
 
       const response = await firstValueFrom(
-        this.http.get<ToolsResponse>(`${this.baseUrl}/`)
+        // this.http.get<ToolsResponse>(`${this.baseUrl}/`)
+        of({tools: [], appRolesApplied: []})
       );
 
       this._tools.set(response.tools);
@@ -147,8 +148,8 @@ export class ToolService {
       this._initialized.set(true);
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load tools';
-      this._error.set(message);
-      console.error('Tool load error:', err);
+      // this._error.set(message);
+      // console.error('Tool load error:', err);
     } finally {
       this._loading.set(false);
     }

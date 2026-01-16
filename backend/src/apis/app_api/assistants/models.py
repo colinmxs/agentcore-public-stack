@@ -21,6 +21,7 @@ class Assistant(BaseModel):
     created_at: str = Field(..., alias="createdAt", description="ISO 8601 timestamp of creation")
     updated_at: str = Field(..., alias="updatedAt", description="ISO 8601 timestamp of last update")
     status: Literal['DRAFT', 'COMPLETE', 'ARCHIVED'] = Field(..., description="Assistant lifecycle status")
+    image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
 
 class CreateAssistantDraftRequest(BaseModel):
@@ -39,6 +40,7 @@ class CreateAssistantRequest(BaseModel):
     instructions: str = Field(..., description="System prompt")
     visibility: Literal['PRIVATE', 'PUBLIC', 'SHARED'] = Field('PRIVATE', description="Access control")
     tags: Optional[List[str]] = Field(default_factory=list, description="Search keywords")
+    image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
 
 class UpdateAssistantRequest(BaseModel):
@@ -51,6 +53,7 @@ class UpdateAssistantRequest(BaseModel):
     visibility: Optional[Literal['PRIVATE', 'PUBLIC', 'SHARED']] = Field(None, description="Access control")
     tags: Optional[List[str]] = Field(None, description="Search keywords")
     status: Optional[Literal['DRAFT', 'COMPLETE', 'ARCHIVED']] = Field(None, description="Lifecycle status")
+    image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
 
 class AssistantResponse(BaseModel):
@@ -69,6 +72,7 @@ class AssistantResponse(BaseModel):
     created_at: str = Field(..., alias="createdAt", description="ISO 8601 creation timestamp")
     updated_at: str = Field(..., alias="updatedAt", description="ISO 8601 update timestamp")
     status: Literal['DRAFT', 'COMPLETE', 'ARCHIVED'] = Field(..., description="Lifecycle status")
+    image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
 
 class AssistantsListResponse(BaseModel):
@@ -85,4 +89,26 @@ class AssistantTestChatRequest(BaseModel):
 
     message: str = Field(..., description="User message to test")
     session_id: Optional[str] = Field(None, description="Optional session ID for ephemeral chat")
+
+
+class ShareAssistantRequest(BaseModel):
+    """Request body for sharing an assistant with email addresses"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    emails: List[str] = Field(..., min_length=1, description="Email addresses to share with")
+
+
+class UnshareAssistantRequest(BaseModel):
+    """Request body for removing shares from an assistant"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    emails: List[str] = Field(..., min_length=1, description="Email addresses to remove from shares")
+
+
+class AssistantSharesResponse(BaseModel):
+    """Response containing list of emails an assistant is shared with"""
+    model_config = ConfigDict(populate_by_name=True)
+
+    assistant_id: str = Field(..., alias="assistantId", description="Assistant identifier")
+    shared_with: List[str] = Field(..., alias="sharedWith", description="List of email addresses this assistant is shared with")
 

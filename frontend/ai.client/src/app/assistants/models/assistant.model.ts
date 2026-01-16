@@ -11,6 +11,7 @@ export interface Assistant {
   createdAt: string;
   updatedAt: string;
   status: 'DRAFT' | 'COMPLETE' | 'ARCHIVED';
+  imageUrl?: string;
 }
 
 export interface CreateAssistantDraftRequest {
@@ -39,5 +40,28 @@ export interface UpdateAssistantRequest {
 export interface AssistantsListResponse {
   assistants: Assistant[];
   nextToken?: string;
+}
+
+export interface ShareAssistantRequest {
+  emails: string[];
+}
+
+export interface UnshareAssistantRequest {
+  emails: string[];
+}
+
+export interface AssistantSharesResponse {
+  assistantId: string;
+  sharedWith: string[];
+}
+
+export interface UserSearchResult {
+  userId: string;
+  email: string;
+  name: string;
+}
+
+export interface UserSearchResponse {
+  users: UserSearchResult[];
 }
 

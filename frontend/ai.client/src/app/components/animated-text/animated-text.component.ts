@@ -4,7 +4,7 @@ import { Component, ChangeDetectionStrategy, input, signal, effect, OnDestroy } 
   selector: 'app-animated-text',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <h1 class="text-4xl/tight font-semibold text-gray-900 dark:text-gray-100">
+    <h1 class="text-4xl/tight font-semibold dark:text-gray-100 text-gray-900 ">
       {{ displayedText() }}@if (isAnimating()) {<span class="animate-pulse">|</span>}
     </h1>
   `,

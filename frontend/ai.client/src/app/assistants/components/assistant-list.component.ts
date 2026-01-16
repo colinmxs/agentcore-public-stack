@@ -11,6 +11,7 @@ export class AssistantListComponent {
   assistants = input.required<Assistant[]>();
   readonlyMode = input<boolean>(false);
   assistantSelected = output<Assistant>();
+  chatRequested = output<Assistant>();
   shareRequested = output<Assistant>();
   makePublicRequested = output<Assistant>();
   makePrivateRequested = output<Assistant>();
@@ -31,7 +32,8 @@ export class AssistantListComponent {
   }
 
   onAssistantClick(assistant: Assistant): void {
-    this.assistantSelected.emit(assistant);
+    // Clicking the card starts a chat
+    this.chatRequested.emit(assistant);
   }
 
   onMenuToggle(assistantId: string, event: Event): void {
@@ -39,11 +41,14 @@ export class AssistantListComponent {
     this.openMenuId.set(this.openMenuId() === assistantId ? null : assistantId);
   }
 
-  onMenuAction(assistant: Assistant, action: 'share' | 'make-public' | 'make-private' | 'delete', event: Event): void {
+  onMenuAction(assistant: Assistant, action: 'edit' | 'share' | 'make-public' | 'make-private' | 'delete', event: Event): void {
     event.stopPropagation();
     this.openMenuId.set(null);
 
     switch (action) {
+      case 'edit':
+        this.assistantSelected.emit(assistant);
+        break;
       case 'share':
         this.shareRequested.emit(assistant);
         break;

@@ -13,6 +13,7 @@ class SessionPreferences(BaseModel):
     enabled_tools: Optional[List[str]] = Field(None, alias="enabledTools", description="List of enabled tool names")
     selected_prompt_id: Optional[str] = Field(None, alias="selectedPromptId", description="ID of selected prompt template")
     custom_prompt_text: Optional[str] = Field(None, alias="customPromptText", description="Custom prompt text if used")
+    assistant_id: Optional[str] = Field(None, alias="assistantId", description="Assistant ID attached to this session")
 
     # System prompt hash for tracking exact prompt version sent to the model
     # This is a hash of the FINAL rendered system prompt (after date injection, variable substitution, etc.)
@@ -68,6 +69,8 @@ class UpdateSessionMetadataRequest(BaseModel):
     selected_prompt_id: Optional[str] = Field(None, alias="selectedPromptId", description="Selected prompt ID")
     custom_prompt_text: Optional[str] = Field(None, alias="customPromptText", description="Custom prompt text")
     system_prompt_hash: Optional[str] = Field(None, alias="systemPromptHash", description="MD5 hash of final rendered system prompt")
+    assistant_id: Optional[str] = Field(None, alias="assistantId", description="Assistant ID attached to this session")
+    assistant_id: Optional[str] = Field(None, alias="assistantId", description="Assistant ID attached to this session")
 
 
 class SessionMetadataResponse(BaseModel):

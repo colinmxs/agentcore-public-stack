@@ -223,6 +223,81 @@ async def get_assistant(assistant_id: str, owner_id: str) -> Optional[Assistant]
         return await _get_assistant_cloud(assistant_id, owner_id, assistants_table)
     else:
         return await _get_assistant_local(assistant_id, owner_id)
+
+
+async def get_assistant_with_access_check(assistant_id: str, user_id: str, user_email: str = None) -> Optional[Assistant]:
+    """
+    Retrieve assistant by ID with visibility-based access control
+    
+    Checks visibility:
+    - PRIVATE: Only owner can access
+    - PUBLIC: Anyone can access
+    - SHARED: Only owner or users with share records can access
+    
+    Args:
+        assistant_id: Assistant identifier
+        user_id: User identifier requesting access
+        user_email: User's email address (required for SHARED visibility check)
+    
+    Returns:
+        Assistant object if found and access granted, None otherwise
+        None can mean either:
+        - Assistant not found (404)
+        - Access denied (403 for PRIVATE assistant not owned by user, or SHARED without share record)
+    """
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    
+    # Get assistant without ownership check first
+    if assistants_table:
+        assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
+    else:
+        assistant = await _get_assistant_local_without_ownership_check(assistant_id)
+    
+    if not assistant:
+        # Assistant not found
+        return None
+    
+    # Check visibility-based access
+    if assistant.visibility == 'PRIVATE':
+        # Only owner can access PRIVATE assistants
+        if assistant.owner_id != user_id:
+            logger.warning(f"Access denied: user {user_id} attempted to access PRIVATE assistant {assistant_id} owned by {assistant.owner_id}")
+            return None
+    elif assistant.visibility == 'SHARED':
+        # SHARED: owner or users with share records can access
+        if assistant.owner_id != user_id:
+            # Not the owner, check if user has share access
+            if not user_email:
+                logger.warning(f"Access denied: user_email required for SHARED assistant {assistant_id}")
+                return None
+            
+            has_share = await check_share_access(assistant_id, user_email)
+            if not has_share:
+                logger.warning(f"Access denied: user {user_id} ({user_email}) attempted to access SHARED assistant {assistant_id} without share record")
+                return None
+    # PUBLIC is accessible by anyone
+    
+    return assistant
+
+
+async def assistant_exists(assistant_id: str) -> bool:
+    """
+    Check if assistant exists (without access check)
+    
+    Args:
+        assistant_id: Assistant identifier
+    
+    Returns:
+        True if assistant exists, False otherwise
+    """
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    
+    if assistants_table:
+        assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
+    else:
+        assistant = await _get_assistant_local_without_ownership_check(assistant_id)
+    
+    return assistant is not None
     
 async def get_all_assistants() -> List[Assistant]:
     """
@@ -262,6 +337,32 @@ async def _get_assistant_local(assistant_id: str, owner_id: str) -> Optional[Ass
         if data.get('ownerId') != owner_id:
             logger.warning(f"Access denied: assistant {assistant_id} not owned by user {owner_id}")
             return None
+        
+        return Assistant.model_validate(data)
+    
+    except Exception as e:
+        logger.error(f"Failed to read assistant from local file: {e}")
+        return None
+
+
+async def _get_assistant_local_without_ownership_check(assistant_id: str) -> Optional[Assistant]:
+    """
+    Retrieve assistant from local file storage without ownership verification
+    
+    Args:
+        assistant_id: Assistant identifier
+    
+    Returns:
+        Assistant object if found, None otherwise
+    """
+    assistant_file = get_assistant_path(assistant_id)
+    
+    if not assistant_file.exists():
+        return None
+    
+    try:
+        with open(assistant_file, 'r') as f:
+            data = json.load(f)
         
         return Assistant.model_validate(data)
     
@@ -325,6 +426,53 @@ async def _get_assistant_cloud(
         return None
 
 
+async def _get_assistant_cloud_without_ownership_check(
+    assistant_id: str,
+    table_name: str
+) -> Optional[Assistant]:
+    """
+    Retrieve assistant from DynamoDB without ownership verification
+    
+    Args:
+        assistant_id: Assistant identifier
+        table_name: DynamoDB table name
+    
+    Returns:
+        Assistant object if found, None otherwise
+    """
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(table_name)
+        
+        response = table.get_item(
+            Key={
+                'PK': f'AST#{assistant_id}',
+                'SK': 'METADATA'
+            }
+        )
+        
+        if 'Item' not in response:
+            logger.info(f"Assistant {assistant_id} not found in DynamoDB")
+            return None
+        
+        item = response['Item']
+        return Assistant.model_validate(item)
+    
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        if error_code == 'ResourceNotFoundException':
+            logger.info(f"Table {table_name} not found")
+        else:
+            logger.error(f"Failed to retrieve assistant from DynamoDB: {error_code} - {e}")
+        return None
+    except Exception as e:
+        logger.error(f"Failed to retrieve assistant from DynamoDB: {e}", exc_info=True)
+        return None
+
+
 async def update_assistant(
     assistant_id: str,
     owner_id: str,
@@ -333,7 +481,8 @@ async def update_assistant(
     instructions: Optional[str] = None,
     visibility: Optional[str] = None,
     tags: Optional[List[str]] = None,
-    status: Optional[str] = None
+    status: Optional[str] = None,
+    image_url: Optional[str] = None
 ) -> Optional[Assistant]:
     """
     Update assistant fields (deep merge)
@@ -350,6 +499,7 @@ async def update_assistant(
         visibility: Optional new visibility
         tags: Optional new tags
         status: Optional new status
+        image_url: Optional new image URL
     
     Returns:
         Updated Assistant object if found and updated, None otherwise
@@ -374,6 +524,8 @@ async def update_assistant(
         updates['tags'] = tags
     if status is not None:
         updates['status'] = status
+    if image_url is not None:
+        updates['image_url'] = image_url
     
     # Always update the updated_at timestamp
     updates['updated_at'] = _get_current_timestamp()
@@ -547,12 +699,15 @@ async def list_user_assistants(
         next_token: Pagination token for retrieving next page (optional)
         include_archived: Whether to include archived assistants
         include_drafts: Whether to include draft assistants
-        include_public: Whether to include public assistants (in addition to user's own)
+        include_public: Deprecated/Ignored. Public assistants are no longer listed in a general index.
     
     Returns:
         Tuple of (list of Assistant objects, next_token if more assistants exist)
         Assistants are sorted by created_at descending (most recent first)
     """
+    # Force include_public to False as the feature is removed
+    include_public = False
+
     assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
     
     if assistants_table:
@@ -639,7 +794,7 @@ async def _list_user_assistants_local(
         next_token: Pagination token (optional)
         include_archived: Whether to include archived assistants
         include_drafts: Whether to include draft assistants
-        include_public: Whether to include public assistants (in addition to user's own)
+        include_public: Ignored.
     
     Returns:
         Tuple of (list of Assistant objects, next_token if more exist)
@@ -662,11 +817,10 @@ async def _list_user_assistants_local(
                 # Parse assistant
                 assistant = Assistant.model_validate(data)
                 
-                # Filter logic: include if owned by user OR (include_public and visibility is PUBLIC)
+                # Filter logic: include if owned by user
                 is_owner = data.get('ownerId') == owner_id
-                is_public = include_public and assistant.visibility == 'PUBLIC' and data.get('ownerId') != owner_id
                 
-                if not (is_owner or is_public):
+                if not is_owner:
                     continue
                 
                 # Filter by status
@@ -715,7 +869,7 @@ async def _list_user_assistants_cloud(
         next_token: Pagination token (optional)
         include_archived: Whether to include archived assistants
         include_drafts: Whether to include draft assistants
-        include_public: Whether to include public assistants (in addition to user's own)
+        include_public: Ignored.
     
     Returns:
         Tuple of (list of Assistant objects, next_token if more exist)
@@ -741,28 +895,21 @@ async def _list_user_assistants_cloud(
         
         # Parse pagination token
         owner_exclusive_start_key = None
-        public_exclusive_start_key = None
         if next_token:
             try:
                 decoded = base64.b64decode(next_token).decode('utf-8')
                 token_data = json.loads(decoded)
                 owner_exclusive_start_key = token_data.get('owner_key')
-                public_exclusive_start_key = token_data.get('public_key')
             except Exception as e:
                 logger.warning(f"Invalid next_token: {e}, ignoring pagination")
-        
-        # When merging results from two queries, we need to fetch more items
-        # to account for filtering. Use a multiplier to ensure we have enough.
-        # DynamoDB filters happen after the query, so we may get fewer items than requested.
-        query_limit = limit * 2 if (limit and limit > 0 and include_public) else limit
         
         # Build base query parameters
         base_query_params = {
             'ScanIndexForward': False,  # Descending order (most recent first)
         }
         
-        if query_limit and query_limit > 0:
-            base_query_params['Limit'] = query_limit
+        if limit and limit > 0:
+            base_query_params['Limit'] = limit
         
         if filter_parts:
             base_query_params['FilterExpression'] = ' AND '.join(filter_parts)
@@ -781,92 +928,27 @@ async def _list_user_assistants_cloud(
         
         owner_response = table.query(**owner_query_params)
         
-        owner_assistants = []
+        all_assistants = []
         for item in owner_response.get('Items', []):
             try:
-                owner_assistants.append(Assistant.model_validate(item))
+                all_assistants.append(Assistant.model_validate(item))
             except Exception as e:
                 logger.warning(f"Failed to parse assistant item: {e}")
                 continue
         
         owner_last_key = owner_response.get('LastEvaluatedKey')
         
-        # Query public assistants if requested
-        public_assistants = []
-        public_last_key = None
-        if include_public:
-            # Filter out assistants owned by current user to avoid duplicates
-            public_filter_parts = filter_parts.copy()
-            public_filter_parts.append("ownerId <> :owner_id")
-            public_expression_values = expression_attribute_values.copy()
-            public_expression_values[":owner_id"] = owner_id
-            
-            public_query_params = {
-                **base_query_params,
-                'IndexName': 'VisibilityStatusIndex',
-                'KeyConditionExpression': Key('GSI2_PK').eq('VISIBILITY#PUBLIC'),
-                'FilterExpression': ' AND '.join(public_filter_parts),
-                'ExpressionAttributeNames': {'#status': 'status'},
-                'ExpressionAttributeValues': public_expression_values,
-            }
-            
-            if public_exclusive_start_key:
-                public_query_params['ExclusiveStartKey'] = public_exclusive_start_key
-            
-            public_response = table.query(**public_query_params)
-            
-            for item in public_response.get('Items', []):
-                try:
-                    public_assistants.append(Assistant.model_validate(item))
-                except Exception as e:
-                    logger.warning(f"Failed to parse public assistant item: {e}")
-                    continue
-            
-            public_last_key = public_response.get('LastEvaluatedKey')
-        
-        # Merge and sort results (both lists are already sorted by created_at descending)
-        # Use a merge algorithm for two sorted lists - O(n) instead of O(n log n)
-        all_assistants = []
-        owner_idx = 0
-        public_idx = 0
-        
-        while (owner_idx < len(owner_assistants) or public_idx < len(public_assistants)):
-            # Check if we've reached the limit
-            if limit and limit > 0 and len(all_assistants) >= limit:
-                break
-            
-            # Compare timestamps and take the more recent one
-            if owner_idx >= len(owner_assistants):
-                all_assistants.append(public_assistants[public_idx])
-                public_idx += 1
-            elif public_idx >= len(public_assistants):
-                all_assistants.append(owner_assistants[owner_idx])
-                owner_idx += 1
-            elif owner_assistants[owner_idx].created_at >= public_assistants[public_idx].created_at:
-                all_assistants.append(owner_assistants[owner_idx])
-                owner_idx += 1
-            else:
-                all_assistants.append(public_assistants[public_idx])
-                public_idx += 1
-        
-        # Apply final limit (should already be applied, but ensure)
-        if limit and limit > 0:
-            all_assistants = all_assistants[:limit]
-        
         # Generate next_token from LastEvaluatedKeys
-        # Only include keys for queries that have more results
         next_page_token = None
         token_data = {}
         if owner_last_key:
             token_data['owner_key'] = owner_last_key
-        if public_last_key:
-            token_data['public_key'] = public_last_key
         
         if token_data:
             encoded = json.dumps(token_data)
             next_page_token = base64.b64encode(encoded.encode('utf-8')).decode('utf-8')
         
-        logger.info(f"Listed {len(all_assistants)} assistants for user {owner_id} (include_public={include_public})")
+        logger.info(f"Listed {len(all_assistants)} assistants for user {owner_id}")
         return all_assistants, next_page_token
     
     except ClientError as e:
@@ -984,4 +1066,285 @@ async def _delete_assistant_cloud(assistant_id: str, table_name: str) -> bool:
     except Exception as e:
         logger.error(f"Failed to delete assistant from DynamoDB: {e}")
         return False
+
+
+# ========== Share Management Functions ==========
+
+async def share_assistant(assistant_id: str, owner_id: str, emails: List[str]) -> bool:
+    """
+    Share an assistant with specified email addresses.
+    
+    Creates share records in DynamoDB for each email. Emails are normalized to lowercase.
+    Only the owner can share their assistant.
+    
+    Args:
+        assistant_id: Assistant identifier
+        owner_id: User identifier (must be the owner)
+        emails: List of email addresses to share with
+    
+    Returns:
+        True if shares were created successfully, False otherwise
+    """
+    # Verify ownership first
+    assistant = await get_assistant(assistant_id, owner_id)
+    if not assistant:
+        logger.warning(f"Cannot share assistant {assistant_id}: not found or not owned by {owner_id}")
+        return False
+    
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if not assistants_table:
+        logger.error("Cannot share assistant: ASSISTANTS_TABLE_NAME not configured")
+        return False
+    
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(assistants_table)
+        
+        # Normalize emails to lowercase
+        normalized_emails = [email.lower().strip() for email in emails if email.strip()]
+        
+        if not normalized_emails:
+            logger.warning(f"No valid emails provided for sharing assistant {assistant_id}")
+            return False
+        
+        # Create share records for each email
+        for email in normalized_emails:
+            try:
+                table.put_item(
+                    Item={
+                        'PK': f'AST#{assistant_id}',
+                        'SK': f'SHARE#{email}',
+                        'GSI3_PK': f'SHARE#{email}',
+                        'GSI3_SK': f'AST#{assistant_id}',
+                        'assistantId': assistant_id,
+                        'email': email,
+                        'createdAt': _get_current_timestamp()
+                    }
+                )
+                logger.info(f"Created share record for assistant {assistant_id} with {email}")
+            except ClientError as e:
+                logger.error(f"Failed to create share record for {email}: {e}")
+                # Continue with other emails even if one fails
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error sharing assistant {assistant_id}: {e}", exc_info=True)
+        return False
+
+
+async def unshare_assistant(assistant_id: str, owner_id: str, emails: List[str]) -> bool:
+    """
+    Remove shares from an assistant for specified email addresses.
+    
+    Deletes share records from DynamoDB. Only the owner can unshare.
+    
+    Args:
+        assistant_id: Assistant identifier
+        owner_id: User identifier (must be the owner)
+        emails: List of email addresses to remove from shares
+    
+    Returns:
+        True if shares were removed successfully, False otherwise
+    """
+    # Verify ownership first
+    assistant = await get_assistant(assistant_id, owner_id)
+    if not assistant:
+        logger.warning(f"Cannot unshare assistant {assistant_id}: not found or not owned by {owner_id}")
+        return False
+    
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if not assistants_table:
+        logger.error("Cannot unshare assistant: ASSISTANTS_TABLE_NAME not configured")
+        return False
+    
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(assistants_table)
+        
+        # Normalize emails to lowercase
+        normalized_emails = [email.lower().strip() for email in emails if email.strip()]
+        
+        if not normalized_emails:
+            logger.warning(f"No valid emails provided for unsharing assistant {assistant_id}")
+            return False
+        
+        # Delete share records for each email
+        for email in normalized_emails:
+            try:
+                table.delete_item(
+                    Key={
+                        'PK': f'AST#{assistant_id}',
+                        'SK': f'SHARE#{email}'
+                    }
+                )
+                logger.info(f"Removed share record for assistant {assistant_id} with {email}")
+            except ClientError as e:
+                logger.error(f"Failed to delete share record for {email}: {e}")
+                # Continue with other emails even if one fails
+        
+        return True
+    
+    except Exception as e:
+        logger.error(f"Error unsharing assistant {assistant_id}: {e}", exc_info=True)
+        return False
+
+
+async def list_assistant_shares(assistant_id: str, owner_id: str) -> List[str]:
+    """
+    List all email addresses an assistant is shared with.
+    
+    Only the owner can view the share list.
+    
+    Args:
+        assistant_id: Assistant identifier
+        owner_id: User identifier (must be the owner)
+    
+    Returns:
+        List of email addresses (lowercase, normalized)
+    """
+    # Verify ownership first
+    assistant = await get_assistant(assistant_id, owner_id)
+    if not assistant:
+        logger.warning(f"Cannot list shares for assistant {assistant_id}: not found or not owned by {owner_id}")
+        return []
+    
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if not assistants_table:
+        logger.debug("Cannot list shares: ASSISTANTS_TABLE_NAME not configured")
+        return []
+    
+    try:
+        import boto3
+        from boto3.dynamodb.conditions import Key
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(assistants_table)
+        
+        # Query all share records for this assistant
+        response = table.query(
+            KeyConditionExpression=Key('PK').eq(f'AST#{assistant_id}') & Key('SK').begins_with('SHARE#')
+        )
+        
+        emails = []
+        for item in response.get('Items', []):
+            email = item.get('email')
+            if email:
+                emails.append(email)
+        
+        logger.info(f"Found {len(emails)} shares for assistant {assistant_id}")
+        return emails
+    
+    except ClientError as e:
+        logger.error(f"Error listing shares for assistant {assistant_id}: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error listing shares for assistant {assistant_id}: {e}", exc_info=True)
+        return []
+
+
+async def check_share_access(assistant_id: str, user_email: str) -> bool:
+    """
+    Check if a user has share access to an assistant.
+    
+    Args:
+        assistant_id: Assistant identifier
+        user_email: User's email address (will be normalized to lowercase)
+    
+    Returns:
+        True if share record exists, False otherwise
+    """
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if not assistants_table:
+        return False
+    
+    try:
+        import boto3
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(assistants_table)
+        
+        # Normalize email
+        normalized_email = user_email.lower().strip()
+        
+        # Check if share record exists
+        response = table.get_item(
+            Key={
+                'PK': f'AST#{assistant_id}',
+                'SK': f'SHARE#{normalized_email}'
+            }
+        )
+        
+        return 'Item' in response
+    
+    except ClientError as e:
+        logger.debug(f"Error checking share access: {e}")
+        return False
+    except Exception as e:
+        logger.error(f"Error checking share access: {e}", exc_info=True)
+        return False
+
+
+async def list_shared_with_user(user_email: str) -> List[Assistant]:
+    """
+    List all assistants shared with a specific user email.
+    
+    Args:
+        user_email: User's email address (will be normalized to lowercase)
+    
+    Returns:
+        List of Assistant objects shared with this email
+    """
+    assistants_table = os.environ.get('ASSISTANTS_TABLE_NAME')
+    if not assistants_table:
+        logger.debug("Cannot list shared assistants: ASSISTANTS_TABLE_NAME not configured")
+        return []
+    
+    try:
+        import boto3
+        from boto3.dynamodb.conditions import Key
+        from botocore.exceptions import ClientError
+        
+        dynamodb = boto3.resource('dynamodb')
+        table = dynamodb.Table(assistants_table)
+        
+        # Normalize email
+        normalized_email = user_email.lower().strip()
+        
+        # Query GSI3 for all assistants shared with this email
+        response = table.query(
+            IndexName='SharedWithIndex',
+            KeyConditionExpression=Key('GSI3_PK').eq(f'SHARE#{normalized_email}')
+        )
+        
+        assistants = []
+        for item in response.get('Items', []):
+            assistant_id = item.get('assistantId')
+            if assistant_id:
+                # Get the full assistant metadata
+                assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
+                if assistant:
+                    assistants.append(assistant)
+        
+        logger.info(f"Found {len(assistants)} assistants shared with {normalized_email}")
+        return assistants
+    
+    except ClientError as e:
+        error_code = e.response.get('Error', {}).get('Code', 'Unknown')
+        if error_code == 'ResourceNotFoundException':
+            logger.debug(f"SharedWithIndex GSI not found - sharing feature may not be deployed yet")
+        else:
+            logger.error(f"Error listing shared assistants: {e}")
+        return []
+    except Exception as e:
+        logger.error(f"Error listing shared assistants: {e}", exc_info=True)
+        return []
 

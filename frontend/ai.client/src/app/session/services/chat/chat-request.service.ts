@@ -37,14 +37,16 @@ export class ChatRequestService {
   async submitChatRequest(
     userInput: string,
     sessionId: string | null,
-    fileUploadIds?: string[]
+    fileUploadIds?: string[],
+    assistantId?: string
   ): Promise<void> {
     // Ensure conversation exists and get its ID
     // Update URL to reflect current conversation
     const isNewSession = !sessionId;
     sessionId = sessionId || uuidv4();
 
-    this.navigateToSession(sessionId);
+    // Preserve assistantId in URL when navigating to new session
+    this.navigateToSession(sessionId, assistantId);
 
     // If this is a new session, add it to the session cache optimistically
     if (isNewSession) {
@@ -65,8 +67,8 @@ export class ChatRequestService {
     // Start streaming for this conversation
     this.messageMapService.startStreaming(sessionId);
 
-    // Build and send request with file upload IDs
-    const requestObject = this.buildChatRequestObject(userInput, sessionId, fileUploadIds);
+    // Build and send request with file upload IDs and assistant ID
+    const requestObject = this.buildChatRequestObject(userInput, sessionId, fileUploadIds, assistantId);
 
     try {
       await this.chatHttpService.sendChatRequest(requestObject);
@@ -82,16 +84,27 @@ export class ChatRequestService {
   /**
    * Navigates to the conversation route
    * @param sessionId The conversation ID to navigate to
+   * @param assistantId Optional assistant ID to preserve in query params
    */
-  private navigateToSession(sessionId: string): void {
-    // Using replaceUrl to avoid polluting browser history
-    this.router.navigate(['s', sessionId], { replaceUrl: true });
+  private navigateToSession(sessionId: string, assistantId?: string): void {
+    // Build query params - only include assistantId if it has a value
+    const queryParams: Record<string, string> = {};
+    if (assistantId) {
+      queryParams['assistantId'] = assistantId;
+    }
+    
+    this.router.navigate(['s', sessionId], { 
+      replaceUrl: true,
+      queryParams,
+      queryParamsHandling: 'merge'
+    })
   }
 
   private buildChatRequestObject(
     message: string,
     session_id: string,
-    fileUploadIds?: string[]
+    fileUploadIds?: string[],
+    assistantId?: string
   ) {
     const selectedModel = this.modelService.getSelectedModel();
 
@@ -116,6 +129,11 @@ export class ChatRequestService {
     // Add file upload IDs if present
     if (fileUploadIds && fileUploadIds.length > 0) {
       requestObject['file_upload_ids'] = fileUploadIds;
+    }
+
+    // Add assistant ID if present
+    if (assistantId) {
+      requestObject['assistant_id'] = assistantId;
     }
 
     return requestObject;

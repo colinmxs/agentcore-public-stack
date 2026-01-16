@@ -43,13 +43,23 @@ export class CallbackPage implements OnInit {
       this.statusMessage.set('Exchanging authorization code for tokens...');
       await this.callbackService.exchangeCodeForTokens(code, state, redirectUri);
 
-      // Success - redirect to home
+      // Success - redirect to return URL or home
       this.statusMessage.set('Authentication successful! Redirecting...');
       this.isLoading.set(false);
       
+      // Get stored return URL from sessionStorage (preserves query params from original URL)
+      const returnUrl = sessionStorage.getItem('auth_return_url');
+      sessionStorage.removeItem('auth_return_url'); // Clean up
+      
       // Small delay to show success message before redirect
       setTimeout(() => {
-        this.router.navigate(['/']);
+        if (returnUrl) {
+          // Navigate to the return URL (includes query params)
+          this.router.navigateByUrl(returnUrl);
+        } else {
+          // Fallback to home if no return URL
+          this.router.navigate(['/']);
+        }
       }, 500);
     } catch (error) {
       // Handle errors
