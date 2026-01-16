@@ -60,14 +60,12 @@ class ModelConfig:
             "temperature": self.temperature
         }
 
-        # Add caching configuration if enabled (BedrockModel handles SystemContentBlock formatting)
-        # Two-level caching strategy:
-        # 1. cache_prompt="default" - Caches system prompt (benefits first turn before any assistant messages)
-        # 2. cache_tools="default" - Caches tool definitions separately (tools change less frequently than conversation)
-        # ConversationCachingHook handles conversation history caching (single cache point at end of last assistant message)
-        if self.caching_enabled:
-            config["cache_prompt"] = "default"
-            config["cache_tools"] = "default"
+        # NOTE: cache_prompt and cache_tools are deprecated in newer Strands versions
+        # The ConversationCachingHook handles all caching via cachePoint blocks in messages
+        # System prompt and tool caching should be handled by the hook or manually adding cachePoint
+        #
+        # If you see "cache_prompt is deprecated" warnings, the caching is still working
+        # but through the hook mechanism rather than the deprecated config parameters
 
         return config
 

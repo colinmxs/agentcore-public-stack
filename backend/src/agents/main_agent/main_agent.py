@@ -248,6 +248,9 @@ class MainAgent:
         if self.model_config.caching_enabled and self.model_config.get_provider() == ModelProvider.BEDROCK:
             conversation_hook = ConversationCachingHook(enabled=True)
             hooks.append(conversation_hook)
+            logger.info(f"✅ ConversationCachingHook registered (caching_enabled={self.model_config.caching_enabled})")
+        else:
+            logger.info(f"⚠️ ConversationCachingHook NOT registered (caching_enabled={self.model_config.caching_enabled}, provider={self.model_config.get_provider()})")
 
         return hooks
 

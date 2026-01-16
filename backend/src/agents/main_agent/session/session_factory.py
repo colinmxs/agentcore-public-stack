@@ -8,6 +8,7 @@ from typing import Optional, Any, Dict, Tuple
 from functools import lru_cache
 
 from agents.main_agent.session.memory_config import load_memory_config
+from agents.main_agent.session.compaction_models import CompactionConfig
 
 logger = logging.getLogger(__name__)
 
@@ -77,7 +78,9 @@ class SessionFactory:
     def create_session_manager(
         session_id: str,
         user_id: str,
-        caching_enabled: bool = True
+        caching_enabled: bool = True,
+        compaction_enabled: Optional[bool] = None,
+        compaction_threshold: Optional[int] = None,
     ) -> Any:
         """
         Create appropriate session manager based on environment configuration
@@ -86,6 +89,8 @@ class SessionFactory:
             session_id: Session identifier for message persistence
             user_id: User identifier for cross-session preferences
             caching_enabled: Whether to enable prompt caching
+            compaction_enabled: Override COMPACTION_ENABLED env var
+            compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
             Session manager instance (TurnBasedSessionManager or LocalSessionBuffer)
@@ -100,11 +105,16 @@ class SessionFactory:
                 session_id=session_id,
                 user_id=user_id,
                 aws_region=config.region,
-                caching_enabled=caching_enabled
+                caching_enabled=caching_enabled,
+                compaction_enabled=compaction_enabled,
+                compaction_threshold=compaction_threshold,
             )
         else:
             # Local development: Use file-based session manager with buffering
-            return SessionFactory._create_local_session_manager(session_id)
+            return SessionFactory._create_local_session_manager(
+                session_id=session_id,
+                user_id=user_id,
+            )
 
     @staticmethod
     def _create_cloud_session_manager(
@@ -112,10 +122,12 @@ class SessionFactory:
         session_id: str,
         user_id: str,
         aws_region: str,
-        caching_enabled: bool
+        caching_enabled: bool,
+        compaction_enabled: Optional[bool] = None,
+        compaction_threshold: Optional[int] = None,
     ) -> Any:
         """
-        Create AgentCore Memory session manager with turn-based buffering
+        Create AgentCore Memory session manager with built-in compaction
 
         Args:
             memory_id: AgentCore Memory ID (AWS Bedrock service)
@@ -123,9 +135,11 @@ class SessionFactory:
             user_id: User identifier
             aws_region: AWS region
             caching_enabled: Whether to enable caching
+            compaction_enabled: Override COMPACTION_ENABLED env var
+            compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
-            TurnBasedSessionManager: Session manager with AgentCore Memory
+            TurnBasedSessionManager with compaction support
 
         Note:
             AgentCore Memory uses AWS-managed DynamoDB tables. The table is automatically
@@ -184,10 +198,22 @@ class SessionFactory:
             retrieval_config=retrieval_config
         )
 
-        # Create Turn-based Session Manager (reduces API calls by 75%)
+        # Build compaction config
+        compaction_config = CompactionConfig.from_env()
+
+        # Apply overrides
+        if compaction_enabled is not None:
+            compaction_config.enabled = compaction_enabled
+        if compaction_threshold is not None:
+            compaction_config.token_threshold = compaction_threshold
+
+        # Create session manager with compaction built-in
         session_manager = TurnBasedSessionManager(
             agentcore_memory_config=agentcore_memory_config,
-            region_name=aws_region
+            region_name=aws_region,
+            compaction_config=compaction_config if compaction_config.enabled else None,
+            user_id=user_id,
+            summarization_strategy_id=summary_id,
         )
 
         logger.info(f"✅ AgentCore Memory initialized: user_id={user_id}")
@@ -195,19 +221,30 @@ class SessionFactory:
         logger.info(f"   • Storage: AWS-managed DynamoDB")
         logger.info(f"   • Short-term memory: Conversation history (90 days retention)")
         logger.info(f"   • Long-term memory: {'Enabled' if retrieval_config else 'Disabled'} ({len(retrieval_config)} namespaces)")
+        if compaction_config.enabled:
+            logger.info(f"   • Compaction: Enabled (threshold={compaction_config.token_threshold:,})")
+        else:
+            logger.info(f"   • Compaction: Disabled")
 
         return session_manager
 
     @staticmethod
-    def _create_local_session_manager(session_id: str) -> Any:
+    def _create_local_session_manager(
+        session_id: str,
+        user_id: str = "local-user",
+    ) -> Any:
         """
         Create file-based session manager with buffering
 
+        Note: Compaction is not supported in local mode since it requires
+        DynamoDB for state persistence.
+
         Args:
             session_id: Session identifier
+            user_id: User identifier
 
         Returns:
-            LocalSessionBuffer: File-based session manager with buffering wrapper
+            LocalSessionBuffer wrapping FileSessionManager
         """
         from strands.session.file_session_manager import FileSessionManager
         from agents.main_agent.session.local_session_buffer import LocalSessionBuffer
@@ -233,6 +270,7 @@ class SessionFactory:
         logger.info(f"✅ FileSessionManager with buffering initialized: {sessions_dir}")
         logger.info(f"   • Session: {session_id}")
         logger.info(f"   • File-based persistence: {sessions_dir}")
+        logger.info(f"   • Compaction: Not supported in local mode")
 
         return session_manager
 

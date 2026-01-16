@@ -3,11 +3,14 @@
 This hook implements prompt caching for AWS Bedrock Claude models, which provides
 significant cost and latency benefits for conversational AI applications.
 
+Based on: "Agent Loop Caching: The Missing Optimization for Agent Workflows"
+https://medium.com/@kihyeon/agent-loop-caching
+
 Benefits:
-- Cost Reduction: Cached tokens are billed at ~90% lower cost than regular input tokens
-- Latency Improvement: Cached content doesn't need to be re-processed, reducing response time
-- Token Efficiency: Reduces the effective token count for long conversations
-- Better UX: Faster responses, especially in multi-turn conversations
+- Cost Reduction: Cached tokens cost 90% less ($0.10/1M vs $1.00/1M for reads)
+- Latency Improvement: Consistent sub-second TTFT even at 75K+ token contexts
+- Token Efficiency: Reduces redundant processing in agent loops
+- Predictable Performance: Minimal variance in response times
 
 Model Compatibility:
 - Claude models on AWS Bedrock:
@@ -15,34 +18,38 @@ Model Compatibility:
 - Amazon Nova models on AWS Bedrock:
   * Nova Micro, Nova Lite, Nova Pro, Nova Premier
   * Note: Nova has automatic caching, but explicit cache points unlock cost savings
-  * Note: Nova does not support tool definition caching (messages only)
 - NOT supported: Llama, Mistral, Titan, and other non-Claude/Nova models
 - Requires Bedrock API version that supports prompt caching (2023-09-30 or later)
 
-Three-Level Caching Strategy:
-This hook is part of a three-level caching strategy configured in model_config.py:
+Single Cache Point Strategy:
+- Place ONE cache point at the end of the latest assistant message
+- Move it forward as the conversation grows
+- This single checkpoint covers EVERYTHING: system prompt, tools, and conversation
 
-1. cache_prompt="default" (BedrockModel) - Caches system prompt
-   - Benefits first turn before any assistant messages exist
-   - Write premium (25%) paid once, then 90% savings on subsequent turns
-
-2. cache_tools="default" (BedrockModel) - Caches tool definitions
-   - Tools change less frequently than conversation
-   - Cached separately so tool changes don't invalidate conversation cache
-
-3. ConversationCachingHook (this hook) - Caches conversation history
-   - Single cache point at end of last assistant message
-   - Covers entire conversation including system prompt and tools
-   - Works universally for: pure conversation, tool loops, and mixed scenarios
-
-Why Single Cache Point:
+Why Single Cache Point (Not Multiple):
 - A cache point means "cache everything up to this point"
 - Multiple cache points cause DUPLICATE write premiums (25% each)
 - Testing showed 1 CP performs equally to 3 CPs but avoids redundant costs
 - The cache point at end of last assistant message is optimal because it:
-  * Includes all previous context (system, tools, messages)
+  * Includes all previous context (system prompt, tools, messages)
   * Is positioned just before new user input
-  * Maximizes cache hit rate for subsequent turns
+  * Maximizes cache hit rate for subsequent turns and agent loops
+
+Cost Model:
+- Base Input: $1.00/1M tokens
+- Cache Write: $1.25/1M tokens (25% premium, paid once)
+- Cache Read: $0.10/1M tokens (90% discount on subsequent requests)
+- Break-even: After 2 requests using cached content
+
+Expected Behavior:
+- First turn: No cache activity (no assistant message yet)
+- Second turn: Cache write (25% premium to store context)
+- Third turn+: Cache read (90% savings, compounding with each tool call)
+
+In agent loops with multiple tool calls, savings compound:
+- 5 tool calls: ~57% cost savings
+- 10 tool calls: ~70% cost savings
+- 19 tool calls (complex research): ~68% cost savings observed
 """
 
 import logging
@@ -119,19 +126,35 @@ class ConversationCachingHook(HookProvider):
         5. Append single cache point to end of last assistant content
         """
         if not self.enabled:
+            logger.info("ConversationCachingHook: disabled, skipping")
             return
+
+        logger.info(f"🔄 ConversationCachingHook: processing {len(event.agent.messages) if event.agent.messages else 0} messages")
 
         # Step 0: Check if model supports caching
-        # Get model_id from the agent's model if available
+        # Get model_id from the agent's model config
+        # BedrockModel stores config as a TypedDict, so we need dict access (not attribute access)
         model_id = None
         if hasattr(event.agent, 'model') and hasattr(event.agent.model, 'config'):
-            model_id = getattr(event.agent.model.config, 'model_id', None)
-        elif hasattr(event.agent, 'model') and hasattr(event.agent.model, 'model_id'):
-            model_id = event.agent.model.model_id
+            config = event.agent.model.config
+            # TypedDict/dict - use .get() for safe access
+            if isinstance(config, dict):
+                model_id = config.get('model_id')
+            else:
+                # Fallback for attribute access (other model providers)
+                model_id = getattr(config, 'model_id', None)
+
+        # Additional fallback: some models may store model_id directly
+        if not model_id and hasattr(event.agent, 'model'):
+            model_id = getattr(event.agent.model, 'model_id', None)
+
+        logger.info(f"🔄 Extracted model_id: {model_id}")
 
         if not is_caching_supported(model_id):
-            logger.debug(f"Model {model_id} does not support caching - skipping cache point")
+            logger.info(f"🔄 Model {model_id} does not support caching - skipping cache point")
             return
+
+        logger.info(f"✅ Model {model_id} supports caching - proceeding with cache point")
 
         messages = event.agent.messages
         if not messages:
@@ -156,18 +179,18 @@ class ConversationCachingHook(HookProvider):
 
         # Step 2: If no assistant message yet, nothing to cache
         if last_assistant_idx is None:
-            logger.debug("No assistant message in conversation - skipping cache point")
+            logger.info("🔄 No assistant message in conversation - skipping cache point (first turn)")
             return
 
         last_assistant_content = messages[last_assistant_idx].get("content", [])
         if not isinstance(last_assistant_content, list) or len(last_assistant_content) == 0:
-            logger.debug("Last assistant message has no content - skipping cache point")
+            logger.info("🔄 Last assistant message has no content - skipping cache point")
             return
 
         # Step 3: Check if cache point already exists at the end of last assistant message
         last_block = last_assistant_content[-1]
         if isinstance(last_block, dict) and "cachePoint" in last_block:
-            logger.debug("Cache point already exists at end of last assistant message")
+            logger.info("🔄 Cache point already exists at end of last assistant message")
             return
 
         # Step 4: Remove ALL existing cache points (we only want 1 at the end)
@@ -176,7 +199,7 @@ class ConversationCachingHook(HookProvider):
             msg_content = messages[msg_idx].get("content", [])
             if isinstance(msg_content, list) and block_idx < len(msg_content):
                 del msg_content[block_idx]
-                logger.debug(f"Removed old cache point at msg {msg_idx} block {block_idx}")
+                logger.info(f"🔄 Removed old cache point at msg {msg_idx} block {block_idx}")
 
         # Step 5: Add single cache point at the end of the last assistant message
         cache_block = {"cachePoint": {"type": "default"}}
@@ -185,5 +208,5 @@ class ConversationCachingHook(HookProvider):
         last_assistant_content = messages[last_assistant_idx].get("content", [])
         if isinstance(last_assistant_content, list):
             last_assistant_content.append(cache_block)
-            logger.debug(f"Added cache point at end of assistant message {last_assistant_idx}")
+            logger.info(f"✅ Added cache point at end of assistant message {last_assistant_idx}")
 
