@@ -1,4 +1,11 @@
-import { Component, ChangeDetectionStrategy, input, output, signal, HostListener } from '@angular/core';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  input,
+  output,
+  signal,
+  HostListener,
+} from '@angular/core';
 import { Assistant } from '../models/assistant.model';
 
 @Component({
@@ -41,7 +48,11 @@ export class AssistantListComponent {
     this.openMenuId.set(this.openMenuId() === assistantId ? null : assistantId);
   }
 
-  onMenuAction(assistant: Assistant, action: 'edit' | 'share' | 'make-public' | 'make-private' | 'delete', event: Event): void {
+  onMenuAction(
+    assistant: Assistant,
+    action: 'edit' | 'share' | 'make-public' | 'make-private' | 'delete',
+    event: Event,
+  ): void {
     event.stopPropagation();
     this.openMenuId.set(null);
 
@@ -69,8 +80,8 @@ export class AssistantListComponent {
   }
 
   getStatusBadgeClasses(status: Assistant['status']): string {
-    const baseClasses = 'inline-flex items-center rounded-sm px-2.5 py-1 text-xs/5 font-medium';
-    
+    const baseClasses = 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium';
+
     switch (status) {
       case 'COMPLETE':
         return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300`;
@@ -84,8 +95,8 @@ export class AssistantListComponent {
   }
 
   getVisibilityBadgeClasses(visibility: Assistant['visibility']): string {
-    const baseClasses = 'inline-flex items-center rounded-sm px-2.5 py-1 text-xs/5 font-medium';
-    
+    const baseClasses = 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium';
+
     switch (visibility) {
       case 'PUBLIC':
         return `${baseClasses} bg-blue-100 text-blue-800 dark:bg-blue-900/30 dark:text-blue-300`;
