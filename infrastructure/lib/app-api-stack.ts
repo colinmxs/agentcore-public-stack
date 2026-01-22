@@ -12,6 +12,7 @@ import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as logs from "aws-cdk-lib/aws-logs";
+import * as kms from "aws-cdk-lib/aws-kms";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags } from "./config";
@@ -853,6 +854,107 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
+    // OAuth Provider Management
+    // ============================================================
+
+    // KMS Key for encrypting OAuth user tokens at rest
+    const oauthTokenEncryptionKey = new kms.Key(this, "OAuthTokenEncryptionKey", {
+      alias: getResourceName(config, "oauth-token-key"),
+      description: "KMS key for encrypting OAuth user tokens at rest",
+      enableKeyRotation: true,
+      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+    });
+
+    // OAuth Providers Table - Admin-configured OAuth provider settings
+    const oauthProvidersTable = new dynamodb.Table(this, "OAuthProvidersTable", {
+      tableName: getResourceName(config, "oauth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled providers for user display
+    oauthProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // OAuth User Tokens Table - User-connected OAuth tokens (KMS encrypted)
+    const oauthUserTokensTable = new dynamodb.Table(this, "OAuthUserTokensTable", {
+      tableName: getResourceName(config, "oauth-user-tokens"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: oauthTokenEncryptionKey,
+    });
+
+    // GSI1: ProviderUsersIndex - List users connected to a provider (admin view)
+    oauthUserTokensTable.addGlobalSecondaryIndex({
+      indexName: "ProviderUsersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Secrets Manager for OAuth client secrets
+    const oauthClientSecretsSecret = new secretsmanager.Secret(this, "OAuthClientSecretsSecret", {
+      secretName: getResourceName(config, "oauth-client-secrets"),
+      description: "OAuth provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store OAuth resource names in SSM
+    new ssm.StringParameter(this, "OAuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/providers-table-name`,
+      stringValue: oauthProvidersTable.tableName,
+      description: "OAuth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/providers-table-arn`,
+      stringValue: oauthProvidersTable.tableArn,
+      description: "OAuth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthUserTokensTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-name`,
+      stringValue: oauthUserTokensTable.tableName,
+      description: "OAuth user tokens table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthUserTokensTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-arn`,
+      stringValue: oauthUserTokensTable.tableArn,
+      description: "OAuth user tokens table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthTokenEncryptionKeyArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/token-encryption-key-arn`,
+      stringValue: oauthTokenEncryptionKey.keyArn,
+      description: "KMS key ARN for OAuth token encryption",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthClientSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/client-secrets-arn`,
+      stringValue: oauthClientSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for OAuth client secrets",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
@@ -1044,6 +1146,10 @@ export class AppApiStack extends cdk.Stack {
         ENTRA_CLIENT_ID: config.appApi.entraClientId,
         ENTRA_TENANT_ID: config.appApi.entraTenantId,
         ENTRA_REDIRECT_URI: config.appApi.entraRedirectUri,
+        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTable.tableName,
+        DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTable.tableName,
+        OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKey.keyArn,
+        OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsSecret.secretArn,
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -1109,6 +1215,12 @@ export class AppApiStack extends cdk.Stack {
         resources: [authSecretArn],
       }),
     );
+
+    // Grant permissions for OAuth provider management
+    oauthProvidersTable.grantReadWriteData(taskDefinition.taskRole);
+    oauthUserTokensTable.grantReadWriteData(taskDefinition.taskRole);
+    oauthTokenEncryptionKey.grantEncryptDecrypt(taskDefinition.taskRole);
+    oauthClientSecretsSecret.grantRead(taskDefinition.taskRole);
 
     // ============================================================
     // Target Group
@@ -1280,6 +1392,30 @@ export class AppApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AssistantsVectorIndexArn", {
       value: assistantsVectorIndex.getAtt("IndexArn").toString(),
       description: "ARN of the assistants vector index",
+    });
+
+    new cdk.CfnOutput(this, "OAuthProvidersTableName", {
+      value: oauthProvidersTable.tableName,
+      description: "OAuth providers configuration table name",
+      exportName: `${config.projectPrefix}-OAuthProvidersTableName`,
+    });
+
+    new cdk.CfnOutput(this, "OAuthUserTokensTableName", {
+      value: oauthUserTokensTable.tableName,
+      description: "OAuth user tokens table name (KMS encrypted)",
+      exportName: `${config.projectPrefix}-OAuthUserTokensTableName`,
+    });
+
+    new cdk.CfnOutput(this, "OAuthTokenEncryptionKeyArn", {
+      value: oauthTokenEncryptionKey.keyArn,
+      description: "KMS key ARN for OAuth token encryption",
+      exportName: `${config.projectPrefix}-OAuthTokenEncryptionKeyArn`,
+    });
+
+    new cdk.CfnOutput(this, "OAuthClientSecretsSecretArn", {
+      value: oauthClientSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for OAuth client secrets",
+      exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
     });
   }
 }
