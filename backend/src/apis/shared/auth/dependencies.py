@@ -1,6 +1,7 @@
 """FastAPI dependencies for authentication."""
 
 import asyncio
+import jwt
 import logging
 import os
 from typing import Optional
@@ -163,4 +164,117 @@ async def get_current_user_id(
         User ID string (or "anonymous" if auth disabled)
     """
     return user.user_id
+
+
+async def get_current_user_trusted(
+    credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
+) -> User:
+    """
+    FastAPI dependency to get current user from pre-validated JWT.
+    
+    Use this when JWT validation is already performed at the network level
+    (e.g., by AWS Bedrock AgentCore Runtime's JWT authorizer). This method
+    skips expensive signature verification and simply extracts claims from
+    the token.
+    
+    Security: Only use this in services where the JWT validation
+    is guaranteed. IE AgentCore Runtime with Inbound Auth. For services without pre-validation, use
+    get_current_user() instead.
+    
+    When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
+    authentication for local development only.
+    
+    Args:
+        credentials: HTTP Bearer token credentials (None if missing)
+    
+    Returns:
+        User object with authenticated user information
+    
+    Raises:
+        HTTPException:
+            - 401 if token is missing or malformed
+            - 500 if auth is misconfigured (disabled in non-dev environment)
+    """
+    # Check if authentication is disabled
+    if not ENABLE_AUTHENTICATION:
+        if not IS_DEVELOPMENT:
+            # Fail closed in non-development environments
+            logger.error(
+                "SECURITY ERROR: ENABLE_AUTHENTICATION=false in non-development environment. "
+                "This is not allowed. Set ENVIRONMENT=development or enable authentication."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication service misconfigured."
+            )
+        logger.warning(
+            "⚠️ Authentication is DISABLED (ENABLE_AUTHENTICATION=false, ENVIRONMENT=development)"
+        )
+        return User(
+            email="anonymous@local.dev",
+            user_id="000000000",
+            name="Anonymous User (Dev)",
+            roles=["Developer"],  # Give dev role for local testing
+            picture=None
+        )
+    
+    # Check if credentials are missing
+    if credentials is None:
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication required. Please provide a valid Bearer token in the Authorization header.",
+            headers={"WWW-Authenticate": "Bearer"},
+        )
+    
+    token = credentials.credentials
+    
+    try:
+        # Decode JWT without verification (network layer already validated it)
+        payload = jwt.decode(token, options={"verify_signature": False})
+        
+        # Extract user information from claims
+        email = payload.get('email') or payload.get('preferred_username')
+        name = payload.get('name') or (
+            f"{payload.get('given_name', '')} {payload.get('family_name', '')}"
+        ).strip()
+        user_id = payload.get('http://schemas.boisestate.edu/claims/employeenumber')
+        roles = payload.get('roles', [])
+        picture = payload.get('picture')
+        
+        # Basic validation of user_id (should still be a 9-digit number)
+        if not user_id or not user_id.isdigit() or len(user_id) != 9:
+            logger.warning(f"Invalid emplId in network-validated token for user: {email}")
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Invalid user."
+            )
+        
+        user = User(
+            email=email.lower() if email else "",
+            name=name,
+            user_id=user_id,
+            roles=roles,
+            picture=picture
+        )
+        
+        # Fire-and-forget sync to Users table
+        sync_service = _get_user_sync_service()
+        if sync_service and sync_service.enabled:
+            # Use asyncio.create_task for fire-and-forget behavior
+            asyncio.create_task(_sync_user_background(sync_service, user))
+        
+        return user
+        
+    except jwt.DecodeError as e:
+        logger.error(f"Failed to decode JWT token: {e}")
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Malformed token."
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error extracting user from token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_401_UNAUTHORIZED,
+            detail="Authentication failed."
+        )
 

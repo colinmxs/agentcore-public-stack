@@ -16,7 +16,7 @@ from datetime import datetime, timezone
 
 from .models import InvocationRequest, FileContent
 from .service import get_agent
-from apis.shared.auth.dependencies import get_current_user
+from apis.shared.auth.dependencies import get_current_user_trusted
 from apis.shared.auth.models import User
 from apis.app_api.admin.services.managed_models import list_managed_models
 from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
@@ -180,7 +180,7 @@ async def ping():
 @router.post("/invocations")
 async def invocations(
     request: InvocationRequest,
-    current_user: User = Depends(get_current_user)
+    current_user: User = Depends(get_current_user_trusted)
 ):
     """
     AgentCore Runtime standard invocation endpoint (required)
