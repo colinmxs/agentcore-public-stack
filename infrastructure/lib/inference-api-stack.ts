@@ -330,31 +330,61 @@ export class InferenceApiStack extends cdk.Stack {
     
     // Grant Runtime permission to access Memory
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'MemoryAccess',
       effect: iam.Effect.ALLOW,
       actions: [
         'bedrock-agentcore:CreateEvent',
         'bedrock-agentcore:RetrieveMemory',
         'bedrock-agentcore:ListEvents',
+        'bedrock-agentcore:ListMemorySessions',
+        'bedrock-agentcore:GetMemorySession',
+        'bedrock-agentcore:DeleteMemorySession',
       ],
       resources: [this.memory.attrMemoryArn],
     }));
 
     // Grant Runtime permission to use Code Interpreter
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'CodeInterpreterAccess',
       effect: iam.Effect.ALLOW,
       actions: [
-        'bedrock:InvokeCodeInterpreter',
+        'bedrock-agentcore:InvokeCodeInterpreter',
+        'bedrock-agentcore:CreateCodeInterpreterSession',
       ],
       resources: [this.codeInterpreter.attrCodeInterpreterArn],
     }));
 
     // Grant Runtime permission to use Browser
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'BrowserAccess',
       effect: iam.Effect.ALLOW,
       actions: [
-        'bedrock:InvokeBrowser',
+        'bedrock-agentcore:InvokeBrowser',
       ],
       resources: [this.browser.attrBrowserArn],
+    }));
+
+    // Runtime self-access permissions (required for runtime invocation and introspection)
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'RuntimeSelfAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock-agentcore:InvokeAgentRuntime',
+        'bedrock-agentcore:GetAgentRuntime',
+        'bedrock-agentcore:ListAgentRuntimes',
+      ],
+      resources: [`arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:runtime/*`],
+    }));
+
+    // STS permissions for runtime credential management
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'STSAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'sts:GetCallerIdentity',
+        'sts:AssumeRole',
+      ],
+      resources: ['*'],
     }));
 
     this.runtime = new bedrock.CfnRuntime(this, 'AgentCoreRuntime', {
