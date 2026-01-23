@@ -405,12 +405,13 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
 
                 # Persist timeout error to session
                 try:
+                    from strands.types.content import Message
                     from strands.types.session import SessionMessage
 
                     session_manager = SessionFactory.create_session_manager(session_id=request.session_id, user_id=user_id, caching_enabled=False)
 
-                    user_msg = {"role": "user", "content": [{"text": request.message}]}
-                    assistant_msg = {"role": "assistant", "content": [{"text": error_event.message}]}
+                    user_msg: Message = {"role": "user", "content": [{"text": request.message}]}
+                    assistant_msg: Message = {"role": "assistant", "content": [{"text": error_event.message}]}
 
                     if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
                         user_session_msg = SessionMessage.from_message(user_msg, 0)
@@ -460,12 +461,13 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
 
                 # Persist error messages to session
                 try:
+                    from strands.types.content import Message
                     from strands.types.session import SessionMessage
 
                     session_manager = SessionFactory.create_session_manager(session_id=request.session_id, user_id=user_id, caching_enabled=False)
 
-                    user_msg = {"role": "user", "content": [{"text": request.message}]}
-                    assistant_msg = {"role": "assistant", "content": [{"text": error_event.message}]}
+                    user_msg: Message = {"role": "user", "content": [{"text": request.message}]}
+                    assistant_msg: Message = {"role": "assistant", "content": [{"text": error_event.message}]}
 
                     if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
                         user_session_msg = SessionMessage.from_message(user_msg, 0)

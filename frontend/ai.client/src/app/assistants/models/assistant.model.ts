@@ -1,6 +1,7 @@
 export interface Assistant {
   assistantId: string;
   ownerId: string;
+  ownerName: string;
   name: string;
   description: string;
   instructions: string;
