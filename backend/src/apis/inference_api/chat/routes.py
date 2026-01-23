@@ -18,7 +18,7 @@ from fastapi.responses import StreamingResponse
 from agents.main_agent.session.session_factory import SessionFactory
 from apis.app_api.admin.services.managed_models import list_managed_models
 from apis.app_api.files.file_resolver import ResolvedFileContent, get_file_resolver
-from apis.shared.auth.dependencies import get_current_user
+from apis.shared.auth.dependencies import get_current_user, get_current_user_trusted
 from apis.shared.auth.models import User
 from apis.shared.errors import (
     ConversationalErrorEvent,
@@ -134,20 +134,21 @@ async def stream_conversational_message(
 
     # Save messages to session for persistence
     try:
+        from strands.types.content import Message
         from strands.types.session import SessionMessage
 
         session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
 
         # Save user message
-        user_message = {"role": "user", "content": [{"text": user_input}]}
+        user_message: Message = {"role": "user", "content": [{"text": user_input}]}
 
         # Save assistant message
-        assistant_message = {"role": "assistant", "content": [{"text": message}]}
+        assistant_message: Message = {"role": "assistant", "content": [{"text": message}]}
 
         # Use base_manager's create_message for persistence (AgentCore Memory)
         if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
-            user_session_msg = SessionMessage.from_message(user_message, 0)
-            assistant_session_msg = SessionMessage.from_message(assistant_message, 1)
+            user_session_msg = SessionMessage.from_message(user_message, index=0)
+            assistant_session_msg = SessionMessage.from_message(assistant_message, index=1)
 
             session_manager.base_manager.create_message(session_id, "default", user_session_msg)
             session_manager.base_manager.create_message(session_id, "default", assistant_session_msg)
@@ -169,7 +170,7 @@ async def ping():
 
 
 @router.post("/invocations")
-async def invocations(request: InvocationRequest, current_user: User = Depends(get_current_user)):
+async def invocations(request: InvocationRequest, current_user: User = Depends(get_current_user_trusted)):
     """
     AgentCore Runtime standard invocation endpoint (required)
 
@@ -389,36 +390,28 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 prefs_dict["assistant_id"] = input_data.assistant_id
                 preferences = SessionPreferences(**prefs_dict)
 
-                updated_metadata = SessionMetadata(
-                    session_id=existing_metadata.session_id,
-                    user_id=existing_metadata.user_id,
-                    title=existing_metadata.title,
-                    status=existing_metadata.status,
-                    created_at=existing_metadata.created_at,
-                    last_message_at=existing_metadata.last_message_at,
-                    message_count=existing_metadata.message_count,
-                    starred=existing_metadata.starred,
-                    tags=existing_metadata.tags,
-                    preferences=preferences,
-                )
+                updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.assistant_id})
+
             else:
                 # Create new metadata with assistant_id in preferences
                 from datetime import datetime, timezone
 
                 now = datetime.now(timezone.utc).isoformat()
-                preferences = SessionPreferences(assistant_id=input_data.assistant_id)
+                preferences = SessionPreferences(assistantId=input_data.assistant_id)
 
                 updated_metadata = SessionMetadata(
-                    session_id=input_data.session_id,
-                    user_id=user_id,
+                    sessionId=input_data.session_id,
+                    userId=user_id,
                     title="",
                     status="active",
-                    created_at=now,
-                    last_message_at=now,
-                    message_count=0,
+                    createdAt=now,
+                    lastMessageAt=now,
+                    messageCount=0,
                     starred=False,
                     tags=[],
                     preferences=preferences,
+                    deleted=None,
+                    deletedAt=None,
                 )
 
             await store_session_metadata(session_id=input_data.session_id, user_id=user_id, session_metadata=updated_metadata)

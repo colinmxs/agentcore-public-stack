@@ -69,13 +69,11 @@ jobs:
         run: |
           bash scripts/stack-gateway/install.sh
 
-      - name: Cache node_modules
-        uses: actions/cache@v4
+      - name: Save node_modules cache
+        uses: actions/cache/save@v4
         with:
           path: infrastructure/node_modules
           key: gateway-node-${{ hashFiles('infrastructure/package-lock.json') }}
-          restore-keys: |
-            gateway-node-
 
   build-cdk:
     name: Build CDK Code
@@ -86,12 +84,10 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Restore node_modules cache
-        uses: actions/cache@v4
+        uses: actions/cache/restore@v4
         with:
           path: infrastructure/node_modules
           key: gateway-node-${{ hashFiles('infrastructure/package-lock.json') }}
-          restore-keys: |
-            gateway-node-
 
       - name: Build CDK code
         run: |
