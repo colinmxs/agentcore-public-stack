@@ -4,6 +4,7 @@ import {
   input,
   output,
   signal,
+  computed,
   HostListener,
 } from '@angular/core';
 import { Assistant } from '../models/assistant.model';
@@ -26,6 +27,15 @@ export class AssistantListComponent {
 
   // Track which menu is open (by assistant ID)
   openMenuId = signal<string | null>(null);
+
+  // Computed signals to split assistants into sections
+  myAssistants = computed(() => {
+    return this.assistants().filter((a) => !a.isSharedWithMe);
+  });
+
+  sharedWithMe = computed(() => {
+    return this.assistants().filter((a) => a.isSharedWithMe);
+  });
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event): void {

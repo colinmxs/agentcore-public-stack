@@ -1,185 +1,33 @@
-<div class="space-y-3 pb-40">
-  @for (assistant of assistants(); track assistant.assistantId) {
-    <div
-      class="group relative w-full flex items-center gap-4 rounded-xs border border-gray-200 bg-white p-6 transition-all duration-200 hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-500"
-    >
-      <button
-        type="button"
-        (click)="onAssistantClick(assistant)"
-        class="flex-1 flex items-center gap-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
-      >
-        <!-- Icon / Image -->
-        <div
-          class="flex shrink-0 size-14 items-center justify-center rounded-xs border border-gray-200 bg-gray-50 overflow-hidden dark:border-gray-600 dark:bg-gray-700"
-        >
-          @if (assistant.imageUrl) {
-            <img
-              [src]="assistant.imageUrl"
-              [alt]="assistant.name + ' icon'"
-              class="size-full object-cover"
-            />
-          } @else {
-            <svg
-              class="size-7 text-gray-400 dark:text-gray-500"
-              fill="none"
-              viewBox="0 0 24 24"
-              stroke="currentColor"
-              stroke-width="1.5"
-              aria-hidden="true"
-            >
-              <path
-                stroke-linecap="round"
-                stroke-linejoin="round"
-                d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
-              />
-            </svg>
-          }
-        </div>
-
-        <!-- Content -->
-        <div class="flex-1 min-w-0">
-          <h3
-            class="text-base/6 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400 truncate"
+<div class="space-y-6 pb-40">
+  <!-- My Assistants Section -->
+  @if (myAssistants().length > 0) {
+    <div>
+      <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 px-1">
+        My Assistants
+      </h2>
+      <div class="space-y-3">
+        @for (assistant of myAssistants(); track assistant.assistantId) {
+          <div
+            class="group relative w-full flex items-center gap-4 rounded-xs border border-gray-200 bg-white p-6 transition-all duration-200 hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-500"
           >
-            {{ assistant.name }}
-          </h3>
-          @if (assistant.description) {
-            <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-400 line-clamp-2">
-              {{ assistant.description }}
-            </p>
-          }
-        </div>
-
-        <!-- Badges (hidden in readonly mode) -->
-        @if (!readonlyMode()) {
-          <div class="flex shrink-0 items-center gap-2">
-            <!-- Status Badge (only for DRAFT) -->
-            @if (assistant.status === 'DRAFT') {
-              <span [class]="getStatusBadgeClasses(assistant.status)">
-                {{ assistant.status }}
-              </span>
-            }
-
-            <!-- Visibility Badge -->
-            <span [class]="getVisibilityBadgeClasses(assistant.visibility)">
-              @switch (assistant.visibility) {
-                @case ('PUBLIC') {
-                  <svg
-                    class="mr-1.5 size-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    aria-hidden="true"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
-                    />
-                  </svg>
-                }
-                @case ('SHARED') {
-                  <svg
-                    class="mr-1.5 size-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    aria-hidden="true"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
-                    />
-                  </svg>
-                }
-                @case ('PRIVATE') {
-                  <svg
-                    class="mr-1.5 size-3.5"
-                    fill="none"
-                    viewBox="0 0 24 24"
-                    stroke="currentColor"
-                    stroke-width="2"
-                    aria-hidden="true"
-                  >
-                    <path
-                      stroke-linecap="round"
-                      stroke-linejoin="round"
-                      d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
-                    />
-                  </svg>
-                }
-              }
-              {{ assistant.visibility }}
-            </span>
-          </div>
-        }
-      </button>
-
-      <!-- Context Menu Button (hidden in readonly mode) -->
-      @if (!readonlyMode()) {
-        <div class="context-menu-container relative flex shrink-0">
-          <button
-            type="button"
-            (click)="onMenuToggle(assistant.assistantId, $event)"
-            class="flex items-center justify-center size-9 rounded-xs text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700"
-            [attr.aria-expanded]="isMenuOpen(assistant.assistantId)"
-            aria-haspopup="menu"
-            [attr.aria-label]="'Open menu for ' + assistant.name"
-          >
-            <svg class="size-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
-              <path
-                d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM10 8.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM11.5 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z"
-              />
-            </svg>
-          </button>
-
-          <!-- Context Menu Dropdown -->
-          @if (isMenuOpen(assistant.assistantId)) {
-            <div
-              class="absolute right-0 top-full mt-1 z-50 w-48 rounded-xs border border-gray-200 bg-white py-1 shadow-lg origin-top-right animate-in fade-in zoom-in-95 duration-100 dark:border-gray-700 dark:bg-gray-800"
-              role="menu"
-              aria-orientation="vertical"
+            <button
+              type="button"
+              (click)="onAssistantClick(assistant)"
+              class="flex-1 flex items-center gap-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
             >
-              <!-- Edit -->
-              <button
-                type="button"
-                (click)="onMenuAction(assistant, 'edit', $event)"
-                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
-                role="menuitem"
+              <!-- Icon / Image -->
+              <div
+                class="flex shrink-0 size-14 items-center justify-center rounded-xs border border-gray-200 bg-gray-50 overflow-hidden dark:border-gray-600 dark:bg-gray-700"
               >
-                <svg
-                  class="size-4 text-gray-400 dark:text-gray-500"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                @if (assistant.imageUrl) {
+                  <img
+                    [src]="assistant.imageUrl"
+                    [alt]="assistant.name + ' icon'"
+                    class="size-full object-cover"
                   />
-                </svg>
-                Edit
-              </button>
-
-              @if (assistant.status === 'COMPLETE') {
-                <!-- Divider -->
-                <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-
-                <!-- Share -->
-                <button
-                  type="button"
-                  (click)="onMenuAction(assistant, 'share', $event)"
-                  class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
-                  role="menuitem"
-                >
+                } @else {
                   <svg
-                    class="size-4 text-gray-400 dark:text-gray-500"
+                    class="size-7 text-gray-400 dark:text-gray-500"
                     fill="none"
                     viewBox="0 0 24 24"
                     stroke="currentColor"
@@ -189,94 +37,399 @@
                     <path
                       stroke-linecap="round"
                       stroke-linejoin="round"
-                      d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
                     />
                   </svg>
-                  Share
+                }
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <h3
+                  class="text-base/6 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400 truncate"
+                >
+                  {{ assistant.name }}
+                </h3>
+                @if (assistant.description) {
+                  <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-400 line-clamp-2">
+                    {{ assistant.description }}
+                  </p>
+                }
+              </div>
+
+              <!-- Badges (hidden in readonly mode) -->
+              @if (!readonlyMode()) {
+                <div class="flex shrink-0 items-center gap-2">
+                  <!-- Status Badge (only for DRAFT) -->
+                  @if (assistant.status === 'DRAFT') {
+                    <span [class]="getStatusBadgeClasses(assistant.status)">
+                      {{ assistant.status }}
+                    </span>
+                  }
+
+                  <!-- Visibility Badge -->
+                  <span [class]="getVisibilityBadgeClasses(assistant.visibility)">
+                    @switch (assistant.visibility) {
+                      @case ('PUBLIC') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                          />
+                        </svg>
+                      }
+                      @case ('SHARED') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+                          />
+                        </svg>
+                      }
+                      @case ('PRIVATE') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                          />
+                        </svg>
+                      }
+                    }
+                    {{ assistant.visibility }}
+                  </span>
+                </div>
+              }
+            </button>
+
+            <!-- Context Menu Button (hidden in readonly mode) -->
+            @if (!readonlyMode()) {
+              <div class="context-menu-container relative flex shrink-0">
+                <button
+                  type="button"
+                  (click)="onMenuToggle(assistant.assistantId, $event)"
+                  class="flex items-center justify-center size-9 rounded-xs text-gray-400 hover:text-gray-600 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:text-gray-500 dark:hover:text-gray-300 dark:hover:bg-gray-700"
+                  [attr.aria-expanded]="isMenuOpen(assistant.assistantId)"
+                  aria-haspopup="menu"
+                  [attr.aria-label]="'Open menu for ' + assistant.name"
+                >
+                  <svg class="size-5" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+                    <path
+                      d="M10 3a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM10 8.5a1.5 1.5 0 110 3 1.5 1.5 0 010-3zM11.5 15.5a1.5 1.5 0 10-3 0 1.5 1.5 0 003 0z"
+                    />
+                  </svg>
                 </button>
 
-                <!-- Make Public / Make Private -->
-                @if (assistant.visibility === 'PUBLIC') {
-                  <button
-                    type="button"
-                    (click)="onMenuAction(assistant, 'make-private', $event)"
-                    class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
-                    role="menuitem"
+                <!-- Context Menu Dropdown -->
+                @if (isMenuOpen(assistant.assistantId)) {
+                  <div
+                    class="absolute right-0 top-full mt-1 z-50 w-48 rounded-xs border border-gray-200 bg-white py-1 shadow-lg origin-top-right animate-in fade-in zoom-in-95 duration-100 dark:border-gray-700 dark:bg-gray-800"
+                    role="menu"
+                    aria-orientation="vertical"
                   >
-                    <svg
-                      class="size-4 text-gray-400 dark:text-gray-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      aria-hidden="true"
+                    <!-- Edit -->
+                    <button
+                      type="button"
+                      (click)="onMenuAction(assistant, 'edit', $event)"
+                      class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                      role="menuitem"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
-                      />
-                    </svg>
-                    Make Private
-                  </button>
-                } @else {
-                  <button
-                    type="button"
-                    (click)="onMenuAction(assistant, 'make-public', $event)"
-                    class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
-                    role="menuitem"
-                  >
-                    <svg
-                      class="size-4 text-gray-400 dark:text-gray-500"
-                      fill="none"
-                      viewBox="0 0 24 24"
-                      stroke="currentColor"
-                      stroke-width="1.5"
-                      aria-hidden="true"
+                      <svg
+                        class="size-4 text-gray-400 dark:text-gray-500"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M16.862 4.487l1.687-1.688a1.875 1.875 0 112.652 2.652L10.582 16.07a4.5 4.5 0 01-1.897 1.13L6 18l.8-2.685a4.5 4.5 0 011.13-1.897l8.932-8.931zm0 0L19.5 7.125M18 14v4.75A2.25 2.25 0 0115.75 21H5.25A2.25 2.25 0 013 18.75V8.25A2.25 2.25 0 015.25 6H10"
+                        />
+                      </svg>
+                      Edit
+                    </button>
+
+                    @if (assistant.status === 'COMPLETE') {
+                      <!-- Divider -->
+                      <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+
+                      <!-- Share -->
+                      <button
+                        type="button"
+                        (click)="onMenuAction(assistant, 'share', $event)"
+                        class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                        role="menuitem"
+                      >
+                        <svg
+                          class="size-4 text-gray-400 dark:text-gray-500"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="1.5"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M7.217 10.907a2.25 2.25 0 100 2.186m0-2.186c.18.324.283.696.283 1.093s-.103.77-.283 1.093m0-2.186l9.566-5.314m-9.566 7.5l9.566 5.314m0 0a2.25 2.25 0 103.935 2.186 2.25 2.25 0 00-3.935-2.186zm0-12.814a2.25 2.25 0 103.933-2.185 2.25 2.25 0 00-3.933 2.185z"
+                          />
+                        </svg>
+                        Share
+                      </button>
+
+                      <!-- Make Public / Make Private -->
+                      @if (assistant.visibility === 'PUBLIC') {
+                        <button
+                          type="button"
+                          (click)="onMenuAction(assistant, 'make-private', $event)"
+                          class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                          role="menuitem"
+                        >
+                          <svg
+                            class="size-4 text-gray-400 dark:text-gray-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            aria-hidden="true"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                            />
+                          </svg>
+                          Make Private
+                        </button>
+                      } @else {
+                        <button
+                          type="button"
+                          (click)="onMenuAction(assistant, 'make-public', $event)"
+                          class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-700/50"
+                          role="menuitem"
+                        >
+                          <svg
+                            class="size-4 text-gray-400 dark:text-gray-500"
+                            fill="none"
+                            viewBox="0 0 24 24"
+                            stroke="currentColor"
+                            stroke-width="1.5"
+                            aria-hidden="true"
+                          >
+                            <path
+                              stroke-linecap="round"
+                              stroke-linejoin="round"
+                              d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                            />
+                          </svg>
+                          Make Public
+                        </button>
+                      }
+
+                      <!-- Divider -->
+                      <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
+                    }
+
+                    <!-- Delete -->
+                    <button
+                      type="button"
+                      (click)="onMenuAction(assistant, 'delete', $event)"
+                      class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
+                      role="menuitem"
                     >
-                      <path
-                        stroke-linecap="round"
-                        stroke-linejoin="round"
-                        d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
-                      />
-                    </svg>
-                    Make Public
-                  </button>
+                      <svg
+                        class="size-4"
+                        fill="none"
+                        viewBox="0 0 24 24"
+                        stroke="currentColor"
+                        stroke-width="1.5"
+                        aria-hidden="true"
+                      >
+                        <path
+                          stroke-linecap="round"
+                          stroke-linejoin="round"
+                          d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
+                        />
+                      </svg>
+                      Delete
+                    </button>
+                  </div>
                 }
-
-                <!-- Divider -->
-                <div class="my-1 border-t border-gray-100 dark:border-gray-700"></div>
-              }
-
-              <!-- Delete -->
-              <button
-                type="button"
-                (click)="onMenuAction(assistant, 'delete', $event)"
-                class="flex w-full items-center gap-2 px-4 py-2 text-left text-sm/6 text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-900/20"
-                role="menuitem"
-              >
-                <svg
-                  class="size-4"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  stroke="currentColor"
-                  stroke-width="1.5"
-                  aria-hidden="true"
-                >
-                  <path
-                    stroke-linecap="round"
-                    stroke-linejoin="round"
-                    d="M14.74 9l-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 01-2.244 2.077H8.084a2.25 2.25 0 01-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 00-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 013.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 00-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 00-7.5 0"
-                  />
-                </svg>
-                Delete
-              </button>
-            </div>
-          }
-        </div>
-      }
+              </div>
+            }
+          </div>
+        }
+      </div>
     </div>
-  } @empty {
+  }
+
+  <!-- Shared with Me Section -->
+  @if (sharedWithMe().length > 0) {
+    <div>
+      <h2 class="text-sm font-semibold text-gray-500 dark:text-gray-400 mb-3 px-1">
+        Shared with Me
+      </h2>
+      <div class="space-y-3">
+        @for (assistant of sharedWithMe(); track assistant.assistantId) {
+          <div
+            class="group relative w-full flex items-center gap-4 rounded-xs border border-gray-200 bg-white p-6 transition-all duration-200 hover:border-blue-300 hover:shadow-md dark:border-gray-700 dark:bg-gray-800 dark:hover:border-blue-500"
+          >
+            <!-- New indicator -->
+            @if (!assistant.firstInteracted) {
+              <div
+                class="absolute -top-1 -left-1 size-3 rounded-full bg-blue-500 border-2 border-white dark:border-gray-900 z-10"
+                aria-label="New shared assistant"
+                title="New"
+              ></div>
+            }
+
+            <button
+              type="button"
+              (click)="onAssistantClick(assistant)"
+              class="flex-1 flex items-center gap-4 text-left focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500"
+            >
+              <!-- Icon / Image -->
+              <div
+                class="flex shrink-0 size-14 items-center justify-center rounded-xs border border-gray-200 bg-gray-50 overflow-hidden dark:border-gray-600 dark:bg-gray-700"
+              >
+                @if (assistant.imageUrl) {
+                  <img
+                    [src]="assistant.imageUrl"
+                    [alt]="assistant.name + ' icon'"
+                    class="size-full object-cover"
+                  />
+                } @else {
+                  <svg
+                    class="size-7 text-gray-400 dark:text-gray-500"
+                    fill="none"
+                    viewBox="0 0 24 24"
+                    stroke="currentColor"
+                    stroke-width="1.5"
+                    aria-hidden="true"
+                  >
+                    <path
+                      stroke-linecap="round"
+                      stroke-linejoin="round"
+                      d="M9.813 15.904L9 18.75l-.813-2.846a4.5 4.5 0 00-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 003.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 003.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 00-3.09 3.09zM18.259 8.715L18 9.75l-.259-1.035a3.375 3.375 0 00-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 002.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 002.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 00-2.456 2.456z"
+                    />
+                  </svg>
+                }
+              </div>
+
+              <!-- Content -->
+              <div class="flex-1 min-w-0">
+                <h3
+                  class="text-base/6 font-semibold text-gray-900 group-hover:text-blue-600 dark:text-white dark:group-hover:text-blue-400 truncate"
+                >
+                  {{ assistant.name }}
+                </h3>
+                @if (assistant.description) {
+                  <p class="mt-1 text-sm/5 text-gray-600 dark:text-gray-400 line-clamp-2">
+                    {{ assistant.description }}
+                  </p>
+                }
+              </div>
+
+              <!-- Badges (hidden in readonly mode) -->
+              @if (!readonlyMode()) {
+                <div class="flex shrink-0 items-center gap-2">
+                  <!-- Status Badge (only for DRAFT) -->
+                  @if (assistant.status === 'DRAFT') {
+                    <span [class]="getStatusBadgeClasses(assistant.status)">
+                      {{ assistant.status }}
+                    </span>
+                  }
+
+                  <!-- Visibility Badge -->
+                  <span [class]="getVisibilityBadgeClasses(assistant.visibility)">
+                    @switch (assistant.visibility) {
+                      @case ('PUBLIC') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M12 21a9.004 9.004 0 008.716-6.747M12 21a9.004 9.004 0 01-8.716-6.747M12 21c2.485 0 4.5-4.03 4.5-9S14.485 3 12 3m0 18c-2.485 0-4.5-4.03-4.5-9S9.515 3 12 3m0 0a8.997 8.997 0 017.843 4.582M12 3a8.997 8.997 0 00-7.843 4.582m15.686 0A11.953 11.953 0 0112 10.5c-2.998 0-5.74-1.1-7.843-2.918m15.686 0A8.959 8.959 0 0121 12c0 .778-.099 1.533-.284 2.253m0 0A17.919 17.919 0 0112 16.5c-3.162 0-6.133-.815-8.716-2.247m0 0A9.015 9.015 0 013 12c0-1.605.42-3.113 1.157-4.418"
+                          />
+                        </svg>
+                      }
+                      @case ('SHARED') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M15 19.128a9.38 9.38 0 002.625.372 9.337 9.337 0 004.121-.952 4.125 4.125 0 00-7.533-2.493M15 19.128v-.003c0-1.113-.285-2.16-.786-3.07M15 19.128v.106A12.318 12.318 0 018.624 21c-2.331 0-4.512-.645-6.374-1.766l-.001-.109a6.375 6.375 0 0111.964-3.07M12 6.375a3.375 3.375 0 11-6.75 0 3.375 3.375 0 016.75 0zm8.25 2.25a2.625 2.625 0 11-5.25 0 2.625 2.625 0 015.25 0z"
+                          />
+                        </svg>
+                      }
+                      @case ('PRIVATE') {
+                        <svg
+                          class="mr-1.5 size-3.5"
+                          fill="none"
+                          viewBox="0 0 24 24"
+                          stroke="currentColor"
+                          stroke-width="2"
+                          aria-hidden="true"
+                        >
+                          <path
+                            stroke-linecap="round"
+                            stroke-linejoin="round"
+                            d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+                          />
+                        </svg>
+                      }
+                    }
+                    {{ assistant.visibility }}
+                  </span>
+                </div>
+              }
+            </button>
+          </div>
+        }
+      </div>
+    </div>
+  }
+
+  <!-- Empty State (only show if no assistants at all) -->
+  @if (assistants().length === 0) {
     <div role="status" class="flex flex-col items-center justify-center py-16 text-center">
       <div
         class="flex size-16 items-center justify-center rounded-full bg-gray-100 dark:bg-gray-800"
