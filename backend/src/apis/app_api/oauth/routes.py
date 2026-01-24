@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import RedirectResponse
 
 from apis.shared.auth import User, get_current_user
+from apis.shared.rbac.service import AppRoleService, get_app_role_service
 
 from .models import (
     OAuthConnectionListResponse,
@@ -24,11 +25,6 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/oauth", tags=["oauth"])
 
 
-def get_user_roles(user: User) -> list[str]:
-    """Extract user's effective roles."""
-    return user.effective_app_roles if user.effective_app_roles else []
-
-
 # =============================================================================
 # Provider Discovery (filtered by user roles)
 # =============================================================================
@@ -38,18 +34,21 @@ def get_user_roles(user: User) -> list[str]:
 async def list_available_providers(
     current_user: User = Depends(get_current_user),
     provider_repo: OAuthProviderRepository = Depends(get_provider_repository),
+    role_service: AppRoleService = Depends(get_app_role_service),
 ):
     """
     List OAuth providers available to the current user.
 
-    Filters providers based on user's roles.
+    Filters providers based on user's application roles.
 
     Returns:
         OAuthProviderListResponse with available providers
     """
     logger.info(f"User {current_user.email} listing available OAuth providers")
 
-    user_roles = get_user_roles(current_user)
+    # Resolve user's application roles
+    permissions = await role_service.resolve_user_permissions(current_user)
+    user_roles = permissions.app_roles if permissions.app_roles else []
 
     # Get enabled providers
     providers = await provider_repo.list_providers(enabled_only=True)
@@ -77,6 +76,7 @@ async def list_available_providers(
 async def list_user_connections(
     current_user: User = Depends(get_current_user),
     oauth_service: OAuthService = Depends(get_oauth_service),
+    role_service: AppRoleService = Depends(get_app_role_service),
 ):
     """
     List the current user's OAuth connections.
@@ -88,7 +88,10 @@ async def list_user_connections(
     """
     logger.info(f"User {current_user.email} listing OAuth connections")
 
-    user_roles = get_user_roles(current_user)
+    # Resolve user's application roles
+    permissions = await role_service.resolve_user_permissions(current_user)
+    user_roles = permissions.app_roles if permissions.app_roles else []
+
     connections = await oauth_service.get_user_connections(
         user_id=current_user.user_id,
         user_roles=user_roles,
@@ -111,6 +114,7 @@ async def initiate_connection(
     ),
     current_user: User = Depends(get_current_user),
     oauth_service: OAuthService = Depends(get_oauth_service),
+    role_service: AppRoleService = Depends(get_app_role_service),
 ):
     """
     Initiate OAuth connection flow for a provider.
@@ -133,7 +137,9 @@ async def initiate_connection(
         f"User {current_user.email} initiating OAuth connection to {provider_id}"
     )
 
-    user_roles = get_user_roles(current_user)
+    # Resolve user's application roles
+    permissions = await role_service.resolve_user_permissions(current_user)
+    user_roles = permissions.app_roles if permissions.app_roles else []
 
     authorization_url = await oauth_service.initiate_connect(
         provider_id=provider_id,
@@ -170,14 +176,14 @@ async def oauth_callback(
     """
     # Get frontend base URL from environment
     frontend_url = os.getenv("FRONTEND_URL", "http://localhost:4200")
-    connections_path = "/settings/connections"
+    callback_path = "/settings/oauth/callback"
 
     # Handle error from provider
     if error:
         logger.warning(f"OAuth callback error: {error} - {error_description}")
         params = urlencode({"error": error, "error_description": error_description or ""})
         return RedirectResponse(
-            url=f"{frontend_url}{connections_path}?{params}",
+            url=f"{frontend_url}{callback_path}?{params}",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -186,7 +192,7 @@ async def oauth_callback(
         logger.warning("OAuth callback missing code or state")
         params = urlencode({"error": "missing_params"})
         return RedirectResponse(
-            url=f"{frontend_url}{connections_path}?{params}",
+            url=f"{frontend_url}{callback_path}?{params}",
             status_code=status.HTTP_302_FOUND,
         )
 
@@ -197,7 +203,7 @@ async def oauth_callback(
     )
 
     # Build redirect URL
-    redirect_base = frontend_redirect or f"{frontend_url}{connections_path}"
+    redirect_base = frontend_redirect or f"{frontend_url}{callback_path}"
 
     if callback_error:
         params = urlencode({"error": callback_error, "provider": provider_id})
