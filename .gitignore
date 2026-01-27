@@ -81,6 +81,14 @@ tmp/
 *.sublime-workspace
 *.sublime-project
 
+# Kiro - keep steering/hooks, exclude personal settings
+.kiro/settings/
+.kiro/cache/
+.kiro/**/*.local.*
+
+# Claude - exclude personal settings
+.claude/settings.local.json
+
 # OS generated files
 ehthumbs.db
 Icon?
