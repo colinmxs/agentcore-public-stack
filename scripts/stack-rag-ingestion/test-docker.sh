@@ -60,17 +60,35 @@ main() {
     # Verify Lambda handler exists in image
     log_info "Verifying Lambda handler exists..."
     if docker run --rm --platform linux/arm64 "${IMAGE_NAME}" ls /var/task/handler.py > /dev/null 2>&1; then
-        log_success "Lambda handler found in image"
+        log_success "Lambda handler found at /var/task/handler.py"
     else
-        log_info "Note: handler.py not found at /var/task/handler.py (may use different handler location)"
+        log_error "Lambda handler not found at /var/task/handler.py"
+        log_info "Checking handler module..."
+        if docker run --rm --platform linux/arm64 "${IMAGE_NAME}" python3 -c "import handler" 2>/dev/null; then
+            log_success "Handler module can be imported"
+        else
+            log_error "Handler module cannot be imported"
+            exit 1
+        fi
     fi
     
     # Verify Python packages are installed
     log_info "Verifying Python packages..."
-    if docker run --rm --platform linux/arm64 "${IMAGE_NAME}" python3 -c "import boto3; import langchain" 2>/dev/null; then
-        log_success "Required Python packages (boto3, langchain) are installed"
+    if docker run --rm --platform linux/arm64 "${IMAGE_NAME}" python3 -c "import boto3; import docling; import tiktoken; import transformers" 2>/dev/null; then
+        log_success "Required Python packages (boto3, docling, tiktoken, transformers) are installed"
     else
         log_error "Required Python packages are missing"
+        log_info "Attempting to identify missing packages..."
+        docker run --rm --platform linux/arm64 "${IMAGE_NAME}" python3 -c "
+import sys
+packages = ['boto3', 'docling', 'tiktoken', 'transformers']
+for pkg in packages:
+    try:
+        __import__(pkg)
+        print(f'✓ {pkg}')
+    except ImportError as e:
+        print(f'✗ {pkg}: {e}', file=sys.stderr)
+" || true
         exit 1
     fi
     
