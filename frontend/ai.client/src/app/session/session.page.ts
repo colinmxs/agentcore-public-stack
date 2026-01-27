@@ -18,6 +18,7 @@ import { ModelService } from './services/model/model.service';
 import { ModelSettings } from '../components/model-settings/model-settings';
 import { UserService } from '../auth/user.service';
 import { FileUploadService } from '../services/file-upload';
+import { ChatHttpService } from './services/chat/chat-http.service';
 import { StreamParserService } from './services/chat/stream-parser.service';
 import { AssistantService } from '../assistants/services/assistant.service';
 import { Assistant } from '../assistants/models/assistant.model';
@@ -43,6 +44,7 @@ export class ConversationPage implements OnDestroy {
   private modelService = inject(ModelService);
   private userService = inject(UserService);
   private fileUploadService = inject(FileUploadService);
+  private chatHttpService = inject(ChatHttpService);
   private streamParserService = inject(StreamParserService);
   private assistantService = inject(AssistantService);
   private router = inject(Router);
@@ -277,6 +279,10 @@ export class ConversationPage implements OnDestroy {
       const userId = user?.empl_id || 'anonymous';
       this.sessionService.addSessionToCache(newSessionId, userId);
     }
+  }
+
+  onMessageCancelled() {
+    this.chatHttpService.cancelChatRequest();
   }
 
   toggleSettings() {

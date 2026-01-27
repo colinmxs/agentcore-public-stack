@@ -5,9 +5,8 @@ import {
   heroPlus,
   heroAdjustmentsHorizontal,
   heroClock,
-  heroStop
 } from '@ng-icons/heroicons/outline';
-import { heroPaperAirplaneSolid } from '@ng-icons/heroicons/solid';
+import { heroPaperAirplaneSolid, heroStopSolid } from '@ng-icons/heroicons/solid';
 import { ChatStateService } from '../../services/chat/chat-state.service';
 import { ModelDropdownComponent } from '../../../components/model-dropdown/model-dropdown.component';
 import { QuotaWarningBannerComponent } from '../../../components/quota-warning-banner/quota-warning-banner.component';
@@ -38,7 +37,7 @@ interface Message {
       heroPlus,
       heroAdjustmentsHorizontal,
       heroClock,
-      heroStop,
+      heroStopSolid,
       heroPaperAirplaneSolid
     })
   ],
