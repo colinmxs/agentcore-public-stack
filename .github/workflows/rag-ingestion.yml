@@ -69,12 +69,6 @@ jobs:
         run: |
           bash scripts/stack-rag-ingestion/install.sh
 
-      - name: Save Python packages cache
-        uses: actions/cache/save@v4
-        with:
-          path: ~/.local/lib/python3.*/site-packages
-          key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
-
       - name: Save node_modules cache
         uses: actions/cache/save@v4
         with:
