@@ -111,6 +111,12 @@ if command -v aws &> /dev/null; then
             export AWS_PROFILE="$PROFILE_TO_USE"
         else
             echo "⚠️  AWS profile '$PROFILE_TO_USE' not found"
+            echo ""
+            echo "💡 To configure this profile, run one of:"
+            echo "   • For SSO: aws configure sso --profile $PROFILE_TO_USE"
+            echo "   • To refresh SSO: aws sso login --profile $PROFILE_TO_USE"
+            echo "   • For standard credentials: aws configure --profile $PROFILE_TO_USE"
+            echo ""
             echo "   Falling back to default AWS credentials"
             unset AWS_PROFILE
         fi
