@@ -136,7 +136,7 @@ async def store_embeddings_in_s3(
 
     # 2. Build the entries manually (The "Correct" way)
     for i, chunk in enumerate(chunks):
-        
+
         # Unique ID for this specific paragraph
         vector_key = f"{document_id}#{i}"
         vector_entry = {
@@ -145,10 +145,11 @@ async def store_embeddings_in_s3(
                 'float32': embeddings[i]  # Required wrapper
             },
             'metadata': {
-                'text': chunk, 
+                'text': chunk,
                 'document_id': document_id,
                 'assistant_id': assistant_id,
-                'source': metadata.get('filename', 'unknown')
+                'source': metadata.get('filename', 'unknown'),
+                's3_key': metadata.get('s3_key') or metadata.get('s3Key', ''),  # Store S3 key for citations
             }
         }
         vectors_payload.append(vector_entry)

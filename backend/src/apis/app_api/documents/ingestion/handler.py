@@ -133,6 +133,7 @@ async def async_lambda_handler(event: Dict[str, Any], context: Any) -> Dict[str,
             document_id=event_data["document_id"],
             filename=event_data["filename"],
             status_manager=status_manager,
+            s3_key=event_data["s3_key"],
         )
 
         return {
@@ -198,7 +199,7 @@ def _parse_s3_event(event: Dict[str, Any]) -> Dict[str, str]:
     filename = object_data.get("filename")
 
     if assistant_id and document_id and filename:
-        return {"bucket": bucket, "key": key, "assistant_id": assistant_id, "document_id": document_id, "filename": filename}
+        return {"bucket": bucket, "key": key, "s3_key": key, "assistant_id": assistant_id, "document_id": document_id, "filename": filename}
 
     # Real S3 event format - parse from key path
     key_parts = key.split("/")
@@ -217,10 +218,10 @@ def _parse_s3_event(event: Dict[str, Any]) -> Dict[str, str]:
     if not assistant_id or not document_id or not filename:
         raise ValueError(f"Missing metadata in S3 key: assistant_id={assistant_id}, document_id={document_id}")
 
-    return {"bucket": bucket, "key": key, "assistant_id": assistant_id, "document_id": document_id, "filename": filename}
+    return {"bucket": bucket, "key": key, "s3_key": key, "assistant_id": assistant_id, "document_id": document_id, "filename": filename}
 
 
-async def _process_document_pipeline(bucket: str, key: str, assistant_id: str, document_id: str, filename: str, status_manager) -> None:
+async def _process_document_pipeline(bucket: str, key: str, assistant_id: str, document_id: str, filename: str, status_manager, s3_key: str) -> None:
     """
     Execute the full document processing pipeline
     """
@@ -291,7 +292,7 @@ async def _process_document_pipeline(bucket: str, key: str, assistant_id: str, d
     logger.info(f"Embeddings generated for {len(embeddings)} chunks")
 
     # 5. Store in vector store
-    await store_embeddings_in_s3(assistant_id, document_id, chunks, embeddings, {"filename": filename})
+    await store_embeddings_in_s3(assistant_id, document_id, chunks, embeddings, {"filename": filename, "s3_key": key})
 
     # Get vector store identifier
     vector_store_id = os.environ.get("VECTOR_STORE_INDEX_NAME", "assistants-index")

@@ -258,6 +258,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     # Handle assistant RAG integration if assistant_id is provided
     # Import here to avoid circular import (app_api.assistants imports from inference_api.chat.routes)
     assistant = None
+    context_chunks = None
     augmented_message = input_data.message
     system_prompt = input_data.system_prompt  # Start with provided system prompt
 
@@ -450,6 +451,19 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             # Yield quota warning event first if applicable
             if quota_warning_event:
                 yield quota_warning_event.to_sse_format()
+
+            # Yield citation events BEFORE the agent stream starts
+            # This allows the UI to display sources immediately
+            if context_chunks:
+                for chunk in context_chunks:
+                    citation_event = {
+                        "type": "citation",
+                        "documentId": chunk.get("metadata", {}).get("document_id", ""),
+                        "fileName": chunk.get("metadata", {}).get("source", "Unknown Source"),
+                        "text": chunk.get("text", "")[:500],  # Limit excerpt length
+                        "s3Url": chunk.get("s3_url"),  # Presigned URL for document access
+                    }
+                    yield f"event: citation\ndata: {json.dumps(citation_event)}\n\n"
 
             # Then yield all agent stream events
             # Use augmented message if assistant RAG was applied
