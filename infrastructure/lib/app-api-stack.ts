@@ -1212,9 +1212,10 @@ export class AppApiStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['bedrock:InvokeModel'],
         resources: [
-          // Nova Micro for title generation
-          `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.nova-micro-v1:0`,
-          `arn:aws:bedrock:${config.awsRegion}:${config.awsAccount}:inference-profile/us.amazon.nova-micro-v1:0`,
+          // Nova Micro foundation model - allow in all regions for flexibility
+          `arn:aws:bedrock:*::foundation-model/amazon.nova-micro-v1:0`,
+          // Cross-region inference profile (us. prefix works from any region)
+          `arn:aws:bedrock:*:${config.awsAccount}:inference-profile/us.amazon.nova-micro-v1:0`,
         ],
       }),
     );
