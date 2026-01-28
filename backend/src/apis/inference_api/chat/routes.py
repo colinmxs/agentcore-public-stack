@@ -7,33 +7,35 @@ Implements AgentCore Runtime required endpoints:
 These endpoints are at the root level to comply with AWS Bedrock AgentCore Runtime requirements.
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.responses import StreamingResponse
-import logging
 import json
-from typing import AsyncGenerator, Union
+import logging
 from datetime import datetime, timezone
+from typing import AsyncGenerator, Union
 
-from .models import InvocationRequest, FileContent
-from .service import get_agent
-from apis.shared.auth.dependencies import get_current_user_trusted
-from apis.shared.auth.models import User
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+
+from agents.main_agent.session.session_factory import SessionFactory
 from apis.app_api.admin.services.managed_models import list_managed_models
-from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
+from apis.app_api.files.file_resolver import ResolvedFileContent, get_file_resolver
+from apis.shared.auth.dependencies import get_current_user, get_current_user_trusted
+from apis.shared.auth.models import User
 from apis.shared.errors import (
-    ErrorCode,
-    create_error_response,
     ConversationalErrorEvent,
+    ErrorCode,
     build_conversational_error_event,
+    create_error_response,
 )
 from apis.shared.quota import (
-    get_quota_checker,
-    is_quota_enforcement_enabled,
+    QuotaExceededEvent,
     build_quota_exceeded_event,
     build_quota_warning_event,
-    QuotaExceededEvent,
+    get_quota_checker,
+    is_quota_enforcement_enabled,
 )
-from agents.main_agent.session.session_factory import SessionFactory
+
+from .models import FileContent, InvocationRequest
+from .service import get_agent
 
 logger = logging.getLogger(__name__)
 
@@ -41,10 +43,7 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["agentcore-runtime"])
 
 
-async def _resolve_caching_enabled(
-    model_id: str | None,
-    explicit_caching_enabled: bool | None
-) -> bool | None:
+async def _resolve_caching_enabled(model_id: str | None, explicit_caching_enabled: bool | None) -> bool | None:
     """
     Resolve whether caching should be enabled for a request.
 
@@ -89,13 +88,14 @@ async def _resolve_caching_enabled(
 # Helper Functions for Streaming Error/Status Messages
 # ============================================================
 
+
 async def stream_conversational_message(
     message: str,
     stop_reason: str,
     metadata_event: Union[QuotaExceededEvent, ConversationalErrorEvent, None],
     session_id: str,
     user_id: str,
-    user_input: str
+    user_input: str,
 ) -> AsyncGenerator[str, None]:
     """Stream a message as an assistant response with optional metadata event.
 
@@ -134,30 +134,21 @@ async def stream_conversational_message(
 
     # Save messages to session for persistence
     try:
+        from strands.types.content import Message
         from strands.types.session import SessionMessage
 
-        session_manager = SessionFactory.create_session_manager(
-            session_id=session_id,
-            user_id=user_id,
-            caching_enabled=False
-        )
+        session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
 
         # Save user message
-        user_message = {
-            "role": "user",
-            "content": [{"text": user_input}]
-        }
+        user_message: Message = {"role": "user", "content": [{"text": user_input}]}
 
         # Save assistant message
-        assistant_message = {
-            "role": "assistant",
-            "content": [{"text": message}]
-        }
+        assistant_message: Message = {"role": "assistant", "content": [{"text": message}]}
 
         # Use base_manager's create_message for persistence (AgentCore Memory)
-        if hasattr(session_manager, 'base_manager') and hasattr(session_manager.base_manager, 'create_message'):
-            user_session_msg = SessionMessage.from_message(user_message, 0)
-            assistant_session_msg = SessionMessage.from_message(assistant_message, 1)
+        if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
+            user_session_msg = SessionMessage.from_message(user_message, index=0)
+            assistant_session_msg = SessionMessage.from_message(assistant_message, index=1)
 
             session_manager.base_manager.create_message(session_id, "default", user_session_msg)
             session_manager.base_manager.create_message(session_id, "default", assistant_session_msg)
@@ -171,6 +162,7 @@ async def stream_conversational_message(
 # AgentCore Runtime Standard Endpoints (REQUIRED)
 # ============================================================
 
+
 @router.get("/ping")
 async def ping():
     """Health check endpoint (required by AgentCore Runtime)"""
@@ -178,10 +170,7 @@ async def ping():
 
 
 @router.post("/invocations")
-async def invocations(
-    request: InvocationRequest,
-    current_user: User = Depends(get_current_user_trusted)
-):
+async def invocations(request: InvocationRequest, current_user: User = Depends(get_current_user_trusted)):
     """
     AgentCore Runtime standard invocation endpoint (required)
 
@@ -219,15 +208,11 @@ async def invocations(
             resolved_files = await file_resolver.resolve_files(
                 user_id=user_id,
                 upload_ids=input_data.file_upload_ids,
-                max_files=5  # Bedrock document limit
+                max_files=5,  # Bedrock document limit
             )
             # Convert ResolvedFileContent to FileContent
             for rf in resolved_files:
-                files_to_send.append(FileContent(
-                    filename=rf.filename,
-                    content_type=rf.content_type,
-                    bytes=rf.bytes
-                ))
+                files_to_send.append(FileContent(filename=rf.filename, content_type=rf.content_type, bytes=rf.bytes))
             logger.info(f"Resolved {len(resolved_files)} files from upload IDs")
         except Exception as e:
             logger.warning(f"Failed to resolve file upload IDs: {e}")
@@ -239,10 +224,7 @@ async def invocations(
     if is_quota_enforcement_enabled():
         try:
             quota_checker = get_quota_checker()
-            quota_result = await quota_checker.check_quota(
-                user=current_user,
-                session_id=input_data.session_id
-            )
+            quota_result = await quota_checker.check_quota(user=current_user, session_id=input_data.session_id)
 
             if not quota_result.allowed:
                 # Quota exceeded - stream as SSE instead of 429 for better UX
@@ -267,57 +249,60 @@ async def invocations(
                 metadata_event=quota_exceeded_event,
                 session_id=input_data.session_id,
                 user_id=user_id,
-                user_input=input_data.message
+                user_input=input_data.message,
             ),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": input_data.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": input_data.session_id},
         )
 
     # Handle assistant RAG integration if assistant_id is provided
     # Import here to avoid circular import (app_api.assistants imports from inference_api.chat.routes)
     assistant = None
+    context_chunks = None
     augmented_message = input_data.message
     system_prompt = input_data.system_prompt  # Start with provided system prompt
-    
-    logger.info(f"Invocation request - Session: {input_data.session_id}, Assistant ID: {input_data.assistant_id}, Message: {input_data.message[:50]}...")
-    
+
+    logger.info(
+        f"Invocation request - Session: {input_data.session_id}, Assistant ID: {input_data.assistant_id}, Message: {input_data.message[:50]}..."
+    )
+
     if input_data.assistant_id:
         # Local imports to avoid circular dependency
-        from apis.app_api.assistants.services.assistant_service import get_assistant_with_access_check
-        from apis.app_api.assistants.services.rag_service import (
-            search_assistant_knowledgebase_with_formatting,
-            augment_prompt_with_context,
+        from apis.app_api.assistants.services.assistant_service import (
+            get_assistant_with_access_check,
+            mark_share_as_interacted,
         )
-        from apis.app_api.sessions.services.metadata import (
-            get_session_metadata,
-            store_session_metadata,
+        from apis.app_api.assistants.services.rag_service import (
+            augment_prompt_with_context,
+            search_assistant_knowledgebase_with_formatting,
         )
         from apis.app_api.sessions.models import (
             SessionMetadata,
             SessionPreferences,
         )
         from apis.app_api.sessions.services.messages import get_messages
-        
+        from apis.app_api.sessions.services.metadata import (
+            get_session_metadata,
+            store_session_metadata,
+        )
+
         logger.info(f"Assistant RAG requested - Assistant: {input_data.assistant_id}, Session: {input_data.session_id}")
-        
+
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
         # If it doesn't, verify session has no messages (can only attach to new sessions)
         try:
             existing_metadata = await get_session_metadata(input_data.session_id, user_id)
             existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
-            
+
             if existing_assistant_id:
                 # Session already has an assistant - verify it's the same one
                 if existing_assistant_id != input_data.assistant_id:
-                    logger.warning(f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}")
+                    logger.warning(
+                        f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}"
+                    )
                     raise HTTPException(
-                        status_code=400,
-                        detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
+                        status_code=400, detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
                     )
                 # Same assistant - allow it to continue
                 logger.info(f"Continuing with existing assistant {input_data.assistant_id} in session {input_data.session_id}")
@@ -326,25 +311,26 @@ async def invocations(
                 messages_response = await get_messages(
                     session_id=input_data.session_id,
                     user_id=user_id,
-                    limit=1  # Only need to check if any messages exist
+                    limit=1,  # Only need to check if any messages exist
                 )
                 if messages_response.messages and len(messages_response.messages) > 0:
-                    logger.warning(f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages")
+                    logger.warning(
+                        f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages"
+                    )
                     raise HTTPException(
-                        status_code=400,
-                        detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
+                        status_code=400, detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
                     )
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error checking session state: {e}", exc_info=True)
             # Continue anyway - better to allow than block on error
-            
+
         # 2. Load assistant with access check
         assistant = await get_assistant_with_access_check(
             assistant_id=input_data.assistant_id,
             user_id=user_id,
-            user_email=current_user.email if current_user else None
+            user_email=current_user.email
         )
         
         if not assistant:
@@ -359,100 +345,95 @@ async def invocations(
                     detail=f"Assistant not found: {input_data.assistant_id}"
                 )
             else:
-                logger.warning(f"🔒 Access denied: user {user_id} ({current_user.email if current_user else 'no email'}) cannot access assistant {input_data.assistant_id} (403)")
+                logger.warning(f"🔒 Access denied: user {user_id} ({current_user.email}) cannot access assistant {input_data.assistant_id} (403)")
                 raise HTTPException(
                     status_code=403,
                     detail=f"Access denied: You do not have permission to access this assistant"
                 )
         
+        # Mark as viewed if this is a shared assistant (not owned)
+        if assistant.owner_id != user_id:
+            await mark_share_as_interacted(assistant_id=input_data.assistant_id, user_email=current_user.email)
+        
         # 3. Search assistant knowledge base
         try:
             logger.info(f"Searching knowledge base for assistant {input_data.assistant_id} with query: {input_data.message[:100]}...")
             context_chunks = await search_assistant_knowledgebase_with_formatting(
-                assistant_id=input_data.assistant_id,
-                query=input_data.message,
-                top_k=5
+                assistant_id=input_data.assistant_id, query=input_data.message, top_k=5
             )
             logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
-            
+
             # 4. Augment message with context
             if context_chunks:
-                augmented_message = augment_prompt_with_context(
-                    user_message=input_data.message,
-                    context_chunks=context_chunks
+                augmented_message = augment_prompt_with_context(user_message=input_data.message, context_chunks=context_chunks)
+                logger.info(
+                    f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(input_data.message)}, Augmented length: {len(augmented_message)}"
                 )
-                logger.info(f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(input_data.message)}, Augmented length: {len(augmented_message)}")
             else:
                 logger.info(f"⚠️ No context chunks found for assistant {input_data.assistant_id} - using original message without augmentation")
         except Exception as e:
             logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
             # Continue without RAG context rather than failing
-        
+
         # 5. Append assistant's instructions to the base system prompt (don't replace)
         if assistant.instructions:
             # Import here to avoid circular dependency
             from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
-            
+
             # Build the base prompt with date
             base_prompt_builder = SystemPromptBuilder()
             base_prompt = base_prompt_builder.build(include_date=True)
-            
+
             # Append assistant instructions to the base prompt
             system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{assistant.instructions}"
-            logger.info(f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})")
+            logger.info(
+                f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})"
+            )
         else:
             # No assistant instructions - use base prompt if no system_prompt provided
             if not system_prompt:
                 from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+
                 base_prompt_builder = SystemPromptBuilder()
                 system_prompt = base_prompt_builder.build(include_date=True)
-            logger.info(f"⚠️ Assistant {input_data.assistant_id} has no instructions - using {'provided' if system_prompt else 'default'} system prompt")
-        
+            logger.info(
+                f"⚠️ Assistant {input_data.assistant_id} has no instructions - using {'provided' if system_prompt else 'default'} system prompt"
+            )
+
         # 6. Save assistant_id to session preferences (persist for future loads)
         try:
             existing_metadata = await get_session_metadata(input_data.session_id, user_id)
             if existing_metadata:
                 # Update existing metadata with assistant_id in preferences
                 prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
-                prefs_dict['assistant_id'] = input_data.assistant_id
+                prefs_dict["assistant_id"] = input_data.assistant_id
                 preferences = SessionPreferences(**prefs_dict)
-                
-                updated_metadata = SessionMetadata(
-                    session_id=existing_metadata.session_id,
-                    user_id=existing_metadata.user_id,
-                    title=existing_metadata.title,
-                    status=existing_metadata.status,
-                    created_at=existing_metadata.created_at,
-                    last_message_at=existing_metadata.last_message_at,
-                    message_count=existing_metadata.message_count,
-                    starred=existing_metadata.starred,
-                    tags=existing_metadata.tags,
-                    preferences=preferences
-                )
+
+                updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.assistant_id})
+
             else:
                 # Create new metadata with assistant_id in preferences
                 from datetime import datetime, timezone
+
                 now = datetime.now(timezone.utc).isoformat()
-                preferences = SessionPreferences(assistant_id=input_data.assistant_id)
-                
+                preferences = SessionPreferences(assistantId=input_data.assistant_id)
+
                 updated_metadata = SessionMetadata(
-                    session_id=input_data.session_id,
-                    user_id=user_id,
+                    sessionId=input_data.session_id,
+                    userId=user_id,
                     title="",
                     status="active",
-                    created_at=now,
-                    last_message_at=now,
-                    message_count=0,
+                    createdAt=now,
+                    lastMessageAt=now,
+                    messageCount=0,
                     starred=False,
                     tags=[],
-                    preferences=preferences
+                    preferences=preferences,
+                    deleted=None,
+                    deletedAt=None,
                 )
-            
-            await store_session_metadata(
-                session_id=input_data.session_id,
-                user_id=user_id,
-                session_metadata=updated_metadata
-            )
+
+            await store_session_metadata(session_id=input_data.session_id, user_id=user_id, session_metadata=updated_metadata)
             logger.info(f"💾 Saved assistant_id {input_data.assistant_id} to session {input_data.session_id} preferences")
         except Exception as e:
             logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
@@ -461,10 +442,7 @@ async def invocations(
     try:
         # Resolve caching_enabled based on managed model configuration
         # This allows admins to disable caching for models that don't support it
-        caching_enabled = await _resolve_caching_enabled(
-            model_id=input_data.model_id,
-            explicit_caching_enabled=input_data.caching_enabled
-        )
+        caching_enabled = await _resolve_caching_enabled(model_id=input_data.model_id, explicit_caching_enabled=input_data.caching_enabled)
 
         if caching_enabled is False:
             logger.info(f"Prompt caching disabled for model {input_data.model_id}")
@@ -482,8 +460,21 @@ async def invocations(
             system_prompt=system_prompt,  # Use assistant's instructions if available
             caching_enabled=caching_enabled,
             provider=input_data.provider,
-            max_tokens=input_data.max_tokens
+            max_tokens=input_data.max_tokens,
         )
+
+        # Build citations list for persistence (convert context chunks to citation format)
+        citations_for_storage = []
+        if context_chunks:
+            for chunk in context_chunks:
+                citations_for_storage.append(
+                    {
+                        "assistantId": input_data.assistant_id,
+                        "documentId": chunk.get("metadata", {}).get("document_id", ""),
+                        "fileName": chunk.get("metadata", {}).get("source", "Unknown Source"),
+                        "text": chunk.get("text", "")[:500],  # Limit excerpt length
+                    }
+                )
 
         # Create stream with optional quota warning injection
         async def stream_with_quota_warning() -> AsyncGenerator[str, None]:
@@ -492,13 +483,20 @@ async def invocations(
             if quota_warning_event:
                 yield quota_warning_event.to_sse_format()
 
+            # Yield citation events BEFORE the agent stream starts
+            # This allows the UI to display sources immediately
+            if citations_for_storage:
+                for citation in citations_for_storage:
+                    yield f"event: citation\ndata: {json.dumps(citation)}\n\n"
+
             # Then yield all agent stream events
             # Use augmented message if assistant RAG was applied
             # Use resolved files (from S3) merged with any direct file content
             async for event in agent.stream_async(
                 augmented_message,  # Use augmented message if assistant RAG was applied
                 session_id=input_data.session_id,
-                files=files_to_send if files_to_send else None
+                files=files_to_send if files_to_send else None,
+                citations=citations_for_storage if citations_for_storage else None,  # Pass citations for persistence
             ):
                 yield event
 
@@ -507,11 +505,7 @@ async def invocations(
         return StreamingResponse(
             stream_with_quota_warning(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": input_data.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": input_data.session_id},
         )
 
     except HTTPException:
@@ -521,12 +515,7 @@ async def invocations(
         # Stream error as a conversational assistant message for better UX
         logger.error(f"Error in invocations: {e}", exc_info=True)
 
-        error_event = build_conversational_error_event(
-            code=ErrorCode.AGENT_ERROR,
-            error=e,
-            session_id=input_data.session_id,
-            recoverable=True
-        )
+        error_event = build_conversational_error_event(code=ErrorCode.AGENT_ERROR, error=e, session_id=input_data.session_id, recoverable=True)
 
         return StreamingResponse(
             stream_conversational_message(
@@ -535,13 +524,8 @@ async def invocations(
                 metadata_event=error_event,
                 session_id=input_data.session_id,
                 user_id=user_id,
-                user_input=input_data.message
+                user_input=input_data.message,
             ),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": input_data.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": input_data.session_id},
         )
-

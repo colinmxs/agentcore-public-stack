@@ -4,12 +4,13 @@ import { Message } from '../../services/models/message.model';
 import { UserMessageComponent } from './components/user-message.component';
 import { AssistantMessageComponent } from './components/assistant-message.component';
 import { MessageMetadataBadgesComponent } from './components/message-metadata-badges.component';
+import { CitationDisplayComponent } from '../citation-display/citation-display.component';
 import { PulsatingLoaderComponent } from '../../../components/pulsating-loader.component';
 import { JsonPipe } from '@angular/common';
 
 @Component({
   selector: 'app-message-list',
-  imports: [UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent, PulsatingLoaderComponent, JsonPipe],
+  imports: [UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent, CitationDisplayComponent, PulsatingLoaderComponent, JsonPipe],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.css',
 })

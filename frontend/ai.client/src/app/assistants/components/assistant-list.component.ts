@@ -4,8 +4,22 @@ import {
   input,
   output,
   signal,
+  computed,
   HostListener,
 } from '@angular/core';
+import { NgTemplateOutlet } from '@angular/common';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  heroSparkles,
+  heroEllipsisVertical,
+  heroPencilSquare,
+  heroShare,
+  heroGlobeAlt,
+  heroLockClosed,
+  heroTrash,
+  heroUserGroup,
+  heroUser,
+} from '@ng-icons/heroicons/outline';
 import { Assistant } from '../models/assistant.model';
 
 @Component({
@@ -13,10 +27,23 @@ import { Assistant } from '../models/assistant.model';
   templateUrl: './assistant-list.component.html',
   styleUrl: './assistant-list.component.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
+  imports: [NgIcon, NgTemplateOutlet],
+  providers: [
+    provideIcons({
+      heroSparkles,
+      heroEllipsisVertical,
+      heroPencilSquare,
+      heroShare,
+      heroGlobeAlt,
+      heroLockClosed,
+      heroTrash,
+      heroUserGroup,
+      heroUser,
+    }),
+  ],
 })
 export class AssistantListComponent {
   assistants = input.required<Assistant[]>();
-  readonlyMode = input<boolean>(false);
   assistantSelected = output<Assistant>();
   chatRequested = output<Assistant>();
   shareRequested = output<Assistant>();
@@ -26,6 +53,15 @@ export class AssistantListComponent {
 
   // Track which menu is open (by assistant ID)
   openMenuId = signal<string | null>(null);
+
+  // Computed signals to split assistants into sections
+  myAssistants = computed(() => {
+    return this.assistants().filter((a) => !a.isSharedWithMe);
+  });
+
+  sharedWithMe = computed(() => {
+    return this.assistants().filter((a) => a.isSharedWithMe);
+  });
 
   @HostListener('document:click', ['$event'])
   onDocumentClick(event: Event): void {
@@ -107,5 +143,22 @@ export class AssistantListComponent {
       default:
         return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
     }
+  }
+
+  getVisibilityIcon(visibility: Assistant['visibility']): string {
+    switch (visibility) {
+      case 'PUBLIC':
+        return 'heroGlobeAlt';
+      case 'SHARED':
+        return 'heroUserGroup';
+      case 'PRIVATE':
+        return 'heroLockClosed';
+      default:
+        return 'heroLockClosed';
+    }
+  }
+
+  getOwnerBadgeClasses(): string {
+    return 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium bg-indigo-100 text-indigo-800 dark:bg-indigo-900/30 dark:text-indigo-300';
   }
 }

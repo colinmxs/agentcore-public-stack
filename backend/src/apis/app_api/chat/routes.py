@@ -7,51 +7,41 @@ AgentCore Runtime API clean. These endpoints handle:
 - Multimodal chat input
 """
 
-from fastapi import APIRouter, HTTPException, Depends, status
-from fastapi.responses import StreamingResponse
-import logging
 import asyncio
 import json
+import logging
 from typing import AsyncGenerator
 
+from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi.responses import StreamingResponse
+
+from agents.main_agent.session.session_factory import SessionFactory
+from apis.app_api.admin.services import get_tool_access_service
+from apis.app_api.assistants.services.assistant_service import assistant_exists, get_assistant_with_access_check, mark_share_as_interacted
+from apis.app_api.assistants.services.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
+from apis.app_api.files.file_resolver import ResolvedFileContent, get_file_resolver
+from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
+from apis.app_api.sessions.services.messages import get_messages
+from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
+
 # Import models and services from inference_api (shared code)
-from apis.inference_api.chat.models import (
-    ChatRequest,
-    ChatEvent,
-    FileContent,
-    GenerateTitleRequest,
-    GenerateTitleResponse
-)
-from apis.inference_api.chat.service import get_agent, generate_conversation_title
+from apis.inference_api.chat.models import ChatEvent, ChatRequest, FileContent, GenerateTitleRequest, GenerateTitleResponse
 from apis.inference_api.chat.routes import stream_conversational_message
+from apis.inference_api.chat.service import generate_conversation_title, get_agent
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 from apis.shared.errors import (
-    StreamErrorEvent,
-    ErrorCode,
     ConversationalErrorEvent,
+    ErrorCode,
+    StreamErrorEvent,
     build_conversational_error_event,
 )
 from apis.shared.quota import (
-    get_quota_checker,
-    is_quota_enforcement_enabled,
     build_quota_exceeded_event,
     build_quota_warning_event,
+    get_quota_checker,
+    is_quota_enforcement_enabled,
 )
-from apis.app_api.admin.services import get_tool_access_service
-from apis.app_api.files.file_resolver import get_file_resolver, ResolvedFileContent
-from agents.main_agent.session.session_factory import SessionFactory
-from apis.app_api.assistants.services.assistant_service import (
-    get_assistant_with_access_check,
-    assistant_exists
-)
-from apis.app_api.assistants.services.rag_service import (
-    search_assistant_knowledgebase_with_formatting,
-    augment_prompt_with_context
-)
-from apis.app_api.sessions.services.messages import get_messages
-from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
-from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
 
 logger = logging.getLogger(__name__)
 
@@ -63,10 +53,7 @@ STREAM_TIMEOUT_SECONDS = 600  # 10 minutes
 
 
 @router.post("/generate-title")
-async def generate_title(
-    request: GenerateTitleRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def generate_title(request: GenerateTitleRequest, current_user: User = Depends(get_current_user)):
     """
     Generate a conversation title for a new session.
 
@@ -93,32 +80,19 @@ async def generate_title(
 
     try:
         # Generate title using Nova Micro
-        title = await generate_conversation_title(
-            session_id=request.session_id,
-            user_id=user_id,
-            user_input=request.input
-        )
+        title = await generate_conversation_title(session_id=request.session_id, user_id=user_id, user_input=request.input)
 
-        return GenerateTitleResponse(
-            title=title,
-            session_id=request.session_id
-        )
+        return GenerateTitleResponse(title=title, session_id=request.session_id)
 
     except Exception as e:
         logger.error(f"Error in generate_title endpoint: {e}")
         # Return fallback instead of raising exception
         # Title generation failures shouldn't break the user experience
-        return GenerateTitleResponse(
-            title="New Conversation",
-            session_id=request.session_id
-        )
+        return GenerateTitleResponse(title="New Conversation", session_id=request.session_id)
 
 
 @router.post("/stream")
-async def chat_stream(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def chat_stream(request: ChatRequest, current_user: User = Depends(get_current_user)):
     """
     Legacy chat stream endpoint (for backward compatibility)
     Uses default tools (all available) if enabled_tools not specified
@@ -143,7 +117,7 @@ async def chat_stream(
         authorized_tools, denied_tools = await tool_access_service.check_access_and_filter(
             user=current_user,
             requested_tools=request.enabled_tools,
-            strict=False  # Don't fail, just filter
+            strict=False,  # Don't fail, just filter
         )
         if denied_tools:
             logger.info(f"Filtered out unauthorized tools for user {user_id}: {denied_tools}")
@@ -157,10 +131,7 @@ async def chat_stream(
     if is_quota_enforcement_enabled():
         try:
             quota_checker = get_quota_checker()
-            quota_result = await quota_checker.check_quota(
-                user=current_user,
-                session_id=request.session_id
-            )
+            quota_result = await quota_checker.check_quota(user=current_user, session_id=request.session_id)
 
             if not quota_result.allowed:
                 # Quota exceeded - stream as SSE instead of 429 for better UX
@@ -185,21 +156,18 @@ async def chat_stream(
                 metadata_event=quota_exceeded_event,
                 session_id=request.session_id,
                 user_id=user_id,
-                user_input=request.message
+                user_input=request.message,
             ),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": request.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": request.session_id},
         )
 
     # Handle assistant RAG integration if assistant_id is provided
     assistant = None
     augmented_message = request.message
     system_prompt = None
-    
+    context_chunks = []  # RAG context chunks for citation events
+
     # Get assistant_id from request or session preferences (priority: request > preferences)
     assistant_id_to_use = request.assistant_id
     if not assistant_id_to_use:
@@ -213,26 +181,27 @@ async def chat_stream(
         except Exception as e:
             logger.error(f"Error checking session preferences for assistant: {e}", exc_info=True)
             # Continue without assistant if metadata check fails
-    
+
     logger.info(f"Chat request received - Session: {request.session_id}, Assistant ID: {assistant_id_to_use}, Message: {request.message[:50]}...")
-    
+
     if assistant_id_to_use:
         logger.info(f"Assistant RAG requested - Assistant: {assistant_id_to_use}, Session: {request.session_id}")
-        
+
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
         # If it doesn't, verify session has no messages (can only attach to new sessions)
         try:
             existing_metadata = await get_session_metadata(request.session_id, user_id)
             existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
-            
+
             if existing_assistant_id:
                 # Session already has an assistant - verify it's the same one (if request provided one)
                 if request.assistant_id and existing_assistant_id != request.assistant_id:
-                    logger.warning(f"Attempted to change assistant from {existing_assistant_id} to {request.assistant_id} in session {request.session_id}")
+                    logger.warning(
+                        f"Attempted to change assistant from {existing_assistant_id} to {request.assistant_id} in session {request.session_id}"
+                    )
                     raise HTTPException(
-                        status_code=400,
-                        detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
+                        status_code=400, detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
                     )
                 # Same assistant or using persisted one - allow it to continue
                 logger.info(f"Continuing with existing assistant {assistant_id_to_use} in session {request.session_id}")
@@ -243,89 +212,80 @@ async def chat_stream(
                     messages_response = await get_messages(
                         session_id=request.session_id,
                         user_id=user_id,
-                        limit=1  # Only need to check if any messages exist
+                        limit=1,  # Only need to check if any messages exist
                     )
                     if messages_response.messages and len(messages_response.messages) > 0:
                         logger.warning(f"Attempted to attach assistant {request.assistant_id} to session {request.session_id} with existing messages")
                         raise HTTPException(
-                            status_code=400,
-                            detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
+                            status_code=400, detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
                         )
         except HTTPException:
             raise
         except Exception as e:
             logger.error(f"Error checking session state: {e}", exc_info=True)
             # Continue anyway - better to allow than block on error
-            
-        
+
         # 2. Load assistant with access check
         # First check if assistant exists (without access check) to distinguish 404 from 403
         exists = await assistant_exists(assistant_id_to_use)
-        
+
         if not exists:
             # Assistant doesn't exist
             logger.warning(f"Assistant {assistant_id_to_use} not found for user {user_id}")
-            raise HTTPException(
-                status_code=404,
-                detail=f"Assistant not found: {assistant_id_to_use}"
-            )
-        
+            raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id_to_use}")
+
         # Assistant exists, now check access
-        assistant = await get_assistant_with_access_check(
-            assistant_id=assistant_id_to_use,
-            user_id=user_id
-        )
-        
+        assistant = await get_assistant_with_access_check(assistant_id=assistant_id_to_use, user_id=user_id, user_email=current_user.email)
+
         if not assistant:
             # Assistant exists but access denied (PRIVATE and not owner)
             logger.warning(f"Access denied: user {user_id} attempted to access PRIVATE assistant {assistant_id_to_use}")
-            raise HTTPException(
-                status_code=403,
-                detail=f"Access denied: You don't have permission to use this assistant"
-            )
-        
+            raise HTTPException(status_code=403, detail=f"Access denied: You don't have permission to use this assistant")
+
+        # Mark as viewed if this is a shared assistant (not owned)
+        if assistant.owner_id != user_id:
+            await mark_share_as_interacted(assistant_id=assistant_id_to_use, user_email=current_user.email)
+
         # 3. Search assistant knowledge base
         try:
             logger.info(f"Searching knowledge base for assistant {assistant_id_to_use} with query: {request.message[:100]}...")
-            context_chunks = await search_assistant_knowledgebase_with_formatting(
-                assistant_id=assistant_id_to_use,
-                query=request.message,
-                top_k=5
-            )
+            context_chunks = await search_assistant_knowledgebase_with_formatting(assistant_id=assistant_id_to_use, query=request.message, top_k=5)
             logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
-            
+
             # 4. Augment message with context
             if context_chunks:
-                augmented_message = augment_prompt_with_context(
-                    user_message=request.message,
-                    context_chunks=context_chunks
+                augmented_message = augment_prompt_with_context(user_message=request.message, context_chunks=context_chunks)
+                logger.info(
+                    f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(request.message)}, Augmented length: {len(augmented_message)}"
                 )
-                logger.info(f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(request.message)}, Augmented length: {len(augmented_message)}")
             else:
                 logger.info(f"⚠️ No context chunks found for assistant {assistant_id_to_use} - using original message without augmentation")
         except Exception as e:
             logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
             # Continue without RAG context rather than failing
-        
+
         # 5. Append assistant's instructions to the base system prompt (don't replace)
         if assistant.instructions:
             from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
-            
+
             # Build the base prompt with date
             base_prompt_builder = SystemPromptBuilder()
             base_prompt = base_prompt_builder.build(include_date=True)
-            
+
             # Append assistant instructions to the base prompt
             system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{assistant.instructions}"
-            logger.info(f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})")
+            logger.info(
+                f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})"
+            )
         else:
             # No assistant instructions - use base prompt if no system_prompt provided
             if not system_prompt:
                 from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+
                 base_prompt_builder = SystemPromptBuilder()
                 system_prompt = base_prompt_builder.build(include_date=True)
             logger.info(f"⚠️ Assistant {assistant_id_to_use} has no instructions - using {'provided' if system_prompt else 'default'} system prompt")
-        
+
         # 6. Save assistant_id to session preferences (persist for future loads)
         # Only save if it came from the request (not already persisted)
         if request.assistant_id:
@@ -334,9 +294,9 @@ async def chat_stream(
                 if existing_metadata:
                     # Update existing metadata with assistant_id in preferences
                     prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
-                    prefs_dict['assistant_id'] = assistant_id_to_use
+                    prefs_dict["assistant_id"] = assistant_id_to_use
                     preferences = SessionPreferences(**prefs_dict)
-                    
+
                     updated_metadata = SessionMetadata(
                         session_id=existing_metadata.session_id,
                         user_id=existing_metadata.user_id,
@@ -347,14 +307,15 @@ async def chat_stream(
                         message_count=existing_metadata.message_count,
                         starred=existing_metadata.starred,
                         tags=existing_metadata.tags,
-                        preferences=preferences
+                        preferences=preferences,
                     )
                 else:
                     # Create new metadata with assistant_id in preferences
                     from datetime import datetime, timezone
+
                     now = datetime.now(timezone.utc).isoformat()
                     preferences = SessionPreferences(assistant_id=assistant_id_to_use)
-                    
+
                     updated_metadata = SessionMetadata(
                         session_id=request.session_id,
                         user_id=user_id,
@@ -365,14 +326,10 @@ async def chat_stream(
                         message_count=0,  # Will be updated by stream coordinator
                         starred=False,
                         tags=[],
-                        preferences=preferences
+                        preferences=preferences,
                     )
-                
-                await store_session_metadata(
-                    session_id=request.session_id,
-                    user_id=user_id,
-                    session_metadata=updated_metadata
-                )
+
+                await store_session_metadata(session_id=request.session_id, user_id=user_id, session_metadata=updated_metadata)
                 logger.info(f"💾 Saved assistant_id {assistant_id_to_use} to session {request.session_id} preferences")
             except Exception as e:
                 logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
@@ -388,15 +345,11 @@ async def chat_stream(
             resolved_files = await file_resolver.resolve_files(
                 user_id=user_id,
                 upload_ids=request.file_upload_ids,
-                max_files=5  # Bedrock document limit
+                max_files=5,  # Bedrock document limit
             )
             # Convert ResolvedFileContent to FileContent
             for rf in resolved_files:
-                files_to_send.append(FileContent(
-                    filename=rf.filename,
-                    content_type=rf.content_type,
-                    bytes=rf.bytes
-                ))
+                files_to_send.append(FileContent(filename=rf.filename, content_type=rf.content_type, bytes=rf.bytes))
             logger.info(f"Resolved {len(resolved_files)} files from upload IDs")
         except Exception as e:
             logger.warning(f"Failed to resolve file upload IDs: {e}")
@@ -409,7 +362,7 @@ async def chat_stream(
             session_id=request.session_id,
             user_id=user_id,
             enabled_tools=authorized_tools,  # Filtered by RBAC (may be None for all allowed)
-            system_prompt=system_prompt  # Assistant instructions if assistant is attached
+            system_prompt=system_prompt,  # Assistant instructions if assistant is attached
         )
 
         # Wrap stream to ensure flush on disconnect and prevent further processing
@@ -417,12 +370,26 @@ async def chat_stream(
             # Yield quota warning event first if applicable
             if quota_warning_event:
                 yield quota_warning_event.to_sse_format()
+
+            # Yield citation events BEFORE the agent stream starts
+            # This allows the UI to display sources immediately
+            if context_chunks:
+                for chunk in context_chunks:
+                    citation_event = {
+                        "type": "citation",
+                        "assistantId": assistant_id_to_use,
+                        "documentId": chunk.get("metadata", {}).get("document_id", ""),
+                        "fileName": chunk.get("metadata", {}).get("source", "Unknown Source"),
+                        "text": chunk.get("text", "")[:500],  # Limit excerpt length
+                    }
+                    yield f"event: citation\ndata: {json.dumps(citation_event)}\n\n"
+
             # Pass resolved files (from S3) merged with any direct file content
             # Use augmented message if assistant RAG was applied
             stream_iterator = agent.stream_async(
                 augmented_message,  # Use augmented message if assistant RAG was applied
                 session_id=request.session_id,
-                files=files_to_send if files_to_send else None
+                files=files_to_send if files_to_send else None,
             )
 
             try:
@@ -433,42 +400,35 @@ async def chat_stream(
 
             except asyncio.TimeoutError:
                 # Stream exceeded timeout - send as conversational message
-                logger.error(
-                    f"⏱️ Stream timeout ({STREAM_TIMEOUT_SECONDS}s) for session {request.session_id}"
-                )
+                logger.error(f"⏱️ Stream timeout ({STREAM_TIMEOUT_SECONDS}s) for session {request.session_id}")
 
                 # Build conversational timeout error
                 timeout_error = Exception(f"Stream processing time exceeded {STREAM_TIMEOUT_SECONDS} seconds")
                 error_event = build_conversational_error_event(
-                    code=ErrorCode.TIMEOUT,
-                    error=timeout_error,
-                    session_id=request.session_id,
-                    recoverable=True
+                    code=ErrorCode.TIMEOUT, error=timeout_error, session_id=request.session_id, recoverable=True
                 )
 
                 # Stream timeout error as assistant message
-                yield f"event: message_start\ndata: {{\"role\": \"assistant\"}}\n\n"
-                yield f"event: content_block_start\ndata: {{\"contentBlockIndex\": 0, \"type\": \"text\"}}\n\n"
+                yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
+                yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
                 yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': error_event.message})}\n\n"
 
-                yield f"event: content_block_stop\ndata: {{\"contentBlockIndex\": 0}}\n\n"
-                yield f"event: message_stop\ndata: {{\"stopReason\": \"error\"}}\n\n"
+                yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
+                yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
                 yield error_event.to_sse_format()
                 yield "event: done\ndata: {}\n\n"
 
                 # Persist timeout error to session
                 try:
+                    from strands.types.content import Message
                     from strands.types.session import SessionMessage
-                    session_manager = SessionFactory.create_session_manager(
-                        session_id=request.session_id,
-                        user_id=user_id,
-                        caching_enabled=False
-                    )
 
-                    user_msg = {"role": "user", "content": [{"text": request.message}]}
-                    assistant_msg = {"role": "assistant", "content": [{"text": error_event.message}]}
+                    session_manager = SessionFactory.create_session_manager(session_id=request.session_id, user_id=user_id, caching_enabled=False)
 
-                    if hasattr(session_manager, 'base_manager') and hasattr(session_manager.base_manager, 'create_message'):
+                    user_msg: Message = {"role": "user", "content": [{"text": request.message}]}
+                    assistant_msg: Message = {"role": "assistant", "content": [{"text": error_event.message}]}
+
+                    if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
                         user_session_msg = SessionMessage.from_message(user_msg, 0)
                         assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
                         session_manager.base_manager.create_message(request.session_id, "default", user_session_msg)
@@ -484,16 +444,13 @@ async def chat_stream(
                 logger.warning(f"⚠️ Client disconnected during streaming for session {request.session_id}")
 
                 # Mark session manager as cancelled to prevent further tool execution
-                if hasattr(agent.session_manager, 'cancelled'):
+                if hasattr(agent.session_manager, "cancelled"):
                     agent.session_manager.cancelled = True
                     logger.info(f"🚫 Session manager marked as cancelled - will ignore further messages")
 
                 # Add final assistant message with stop reason
-                stop_message = {
-                    "role": "assistant",
-                    "content": [{"text": "Session stopped by user"}]
-                }
-                if hasattr(agent.session_manager, 'pending_messages'):
+                stop_message = {"role": "assistant", "content": [{"text": "Session stopped by user"}]}
+                if hasattr(agent.session_manager, "pending_messages"):
                     agent.session_manager.pending_messages.append(stop_message)
                     logger.info(f"📝 Added stop message to pending buffer")
 
@@ -505,36 +462,29 @@ async def chat_stream(
                 logger.error(f"Error during streaming for session {request.session_id}: {e}", exc_info=True)
 
                 # Build conversational error for better UX
-                error_event = build_conversational_error_event(
-                    code=ErrorCode.STREAM_ERROR,
-                    error=e,
-                    session_id=request.session_id,
-                    recoverable=True
-                )
+                error_event = build_conversational_error_event(code=ErrorCode.STREAM_ERROR, error=e, session_id=request.session_id, recoverable=True)
 
                 # Stream error as assistant message
-                yield f"event: message_start\ndata: {{\"role\": \"assistant\"}}\n\n"
-                yield f"event: content_block_start\ndata: {{\"contentBlockIndex\": 0, \"type\": \"text\"}}\n\n"
+                yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
+                yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
                 yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': error_event.message})}\n\n"
 
-                yield f"event: content_block_stop\ndata: {{\"contentBlockIndex\": 0}}\n\n"
-                yield f"event: message_stop\ndata: {{\"stopReason\": \"error\"}}\n\n"
+                yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
+                yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
                 yield error_event.to_sse_format()
                 yield "event: done\ndata: {}\n\n"
 
                 # Persist error messages to session
                 try:
+                    from strands.types.content import Message
                     from strands.types.session import SessionMessage
-                    session_manager = SessionFactory.create_session_manager(
-                        session_id=request.session_id,
-                        user_id=user_id,
-                        caching_enabled=False
-                    )
 
-                    user_msg = {"role": "user", "content": [{"text": request.message}]}
-                    assistant_msg = {"role": "assistant", "content": [{"text": error_event.message}]}
+                    session_manager = SessionFactory.create_session_manager(session_id=request.session_id, user_id=user_id, caching_enabled=False)
 
-                    if hasattr(session_manager, 'base_manager') and hasattr(session_manager.base_manager, 'create_message'):
+                    user_msg: Message = {"role": "user", "content": [{"text": request.message}]}
+                    assistant_msg: Message = {"role": "assistant", "content": [{"text": error_event.message}]}
+
+                    if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
                         user_session_msg = SessionMessage.from_message(user_msg, 0)
                         assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
                         session_manager.base_manager.create_message(request.session_id, "default", user_session_msg)
@@ -549,7 +499,7 @@ async def chat_stream(
             finally:
                 # Cleanup: Flush buffered messages and close stream iterator
                 # This runs on both success and error paths
-                if hasattr(agent.session_manager, 'flush'):
+                if hasattr(agent.session_manager, "flush"):
                     try:
                         agent.session_manager.flush()
                         logger.info(f"💾 Flushed buffered messages for session {request.session_id}")
@@ -557,7 +507,7 @@ async def chat_stream(
                         logger.error(f"Failed to flush session {request.session_id}: {flush_error}")
 
                 # Close the stream iterator if possible
-                if hasattr(stream_iterator, 'aclose'):
+                if hasattr(stream_iterator, "aclose"):
                     try:
                         await stream_iterator.aclose()
                     except Exception as close_error:
@@ -567,11 +517,7 @@ async def chat_stream(
         return StreamingResponse(
             stream_with_cleanup(),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": request.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": request.session_id},
         )
 
     except HTTPException:
@@ -581,12 +527,7 @@ async def chat_stream(
         # Stream error as a conversational assistant message for better UX
         logger.error(f"Error in chat_stream: {e}", exc_info=True)
 
-        error_event = build_conversational_error_event(
-            code=ErrorCode.STREAM_ERROR,
-            error=e,
-            session_id=request.session_id,
-            recoverable=True
-        )
+        error_event = build_conversational_error_event(code=ErrorCode.STREAM_ERROR, error=e, session_id=request.session_id, recoverable=True)
 
         return StreamingResponse(
             stream_conversational_message(
@@ -595,22 +536,15 @@ async def chat_stream(
                 metadata_event=error_event,
                 session_id=request.session_id,
                 user_id=user_id,
-                user_input=request.message
+                user_input=request.message,
             ),
             media_type="text/event-stream",
-            headers={
-                "Cache-Control": "no-cache",
-                "X-Accel-Buffering": "no",
-                "X-Session-ID": request.session_id
-            }
+            headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no", "X-Session-ID": request.session_id},
         )
 
 
 @router.post("/multimodal")
-async def chat_multimodal(
-    request: ChatRequest,
-    current_user: User = Depends(get_current_user)
-):
+async def chat_multimodal(request: ChatRequest, current_user: User = Depends(get_current_user)):
     """
     Stream chat response with multimodal input (files)
 
@@ -632,7 +566,7 @@ async def chat_multimodal(
             event = ChatEvent(
                 type="init",
                 content="Processing multimodal input",
-                metadata={"session_id": request.session_id, "file_count": len(request.files or [])}
+                metadata={"session_id": request.session_id, "file_count": len(request.files or [])},
             )
             yield f"data: {event.to_json()}\n\n"
             await asyncio.sleep(0.2)
@@ -644,34 +578,17 @@ async def chat_multimodal(
                 response_text += ", ".join([f.filename for f in request.files])
 
             for word in response_text.split():
-                event = ChatEvent(
-                    type="text",
-                    content=word + " "
-                )
+                event = ChatEvent(type="text", content=word + " ")
                 yield f"data: {event.to_json()}\n\n"
                 await asyncio.sleep(0.05)
 
             # Complete
-            event = ChatEvent(
-                type="complete",
-                content="Multimodal processing complete"
-            )
+            event = ChatEvent(type="complete", content="Multimodal processing complete")
             yield f"data: {event.to_json()}\n\n"
 
         except Exception as e:
             logger.error(f"Error in multimodal event_generator: {e}")
-            error_event = ChatEvent(
-                type="error",
-                content=str(e)
-            )
+            error_event = ChatEvent(type="error", content=str(e))
             yield f"data: {error_event.to_json()}\n\n"
 
-    return StreamingResponse(
-        event_generator(),
-        media_type="text/event-stream",
-        headers={
-            "Cache-Control": "no-cache",
-            "X-Accel-Buffering": "no"
-        }
-    )
-
+    return StreamingResponse(event_generator(), media_type="text/event-stream", headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"})

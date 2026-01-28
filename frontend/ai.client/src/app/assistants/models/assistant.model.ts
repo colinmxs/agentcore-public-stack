@@ -1,6 +1,7 @@
 export interface Assistant {
   assistantId: string;
   ownerId: string;
+  ownerName: string;
   name: string;
   description: string;
   instructions: string;
@@ -12,6 +13,10 @@ export interface Assistant {
   updatedAt: string;
   status: 'DRAFT' | 'COMPLETE' | 'ARCHIVED';
   imageUrl?: string;
+
+  // Share metadata (only present for shared assistants)
+  firstInteracted?: boolean;
+  isSharedWithMe?: boolean;
 }
 
 export interface CreateAssistantDraftRequest {
@@ -64,4 +69,3 @@ export interface UserSearchResult {
 export interface UserSearchResponse {
   users: UserSearchResult[];
 }
-
