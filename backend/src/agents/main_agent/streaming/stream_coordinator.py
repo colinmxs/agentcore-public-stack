@@ -1,16 +1,18 @@
 """
 Stream coordinator for managing agent streaming lifecycle
 """
-import logging
+
+import asyncio
 import json
+import logging
 import os
 import time
-import asyncio
 from datetime import datetime, timezone
-from typing import AsyncGenerator, Optional, Any, Union, List, Dict
+from typing import Any, AsyncGenerator, Dict, List, Optional, Union
+
+from apis.shared.errors import ConversationalErrorEvent, ErrorCode, StreamErrorEvent, build_conversational_error_event
 
 from .stream_processor import process_agent_stream
-from apis.shared.errors import StreamErrorEvent, ErrorCode, ConversationalErrorEvent, build_conversational_error_event
 
 logger = logging.getLogger(__name__)
 
@@ -34,7 +36,8 @@ class StreamCoordinator:
         session_manager: Any,
         session_id: str,
         user_id: str,
-        main_agent_wrapper: Any = None
+        main_agent_wrapper: Any = None,
+        citations: Optional[List] = None,
     ) -> AsyncGenerator[str, None]:
         """
         Stream agent responses with proper lifecycle management
@@ -49,23 +52,21 @@ class StreamCoordinator:
             session_id: Session identifier
             user_id: User identifier
             main_agent_wrapper: MainAgent wrapper instance (has model_config, enabled_tools, etc.)
+            citations: Optional list of citation dicts from RAG retrieval to persist with metadata
 
         Yields:
             str: SSE formatted events
         """
         # Set environment variables for browser session isolation
-        os.environ['SESSION_ID'] = session_id
-        os.environ['USER_ID'] = user_id
+        os.environ["SESSION_ID"] = session_id
+        os.environ["USER_ID"] = user_id
 
         # Track timing for latency metrics
         stream_start_time = time.time()
         first_token_time: Optional[float] = None
 
         # Accumulate metadata from stream
-        accumulated_metadata: Dict[str, Any] = {
-            "usage": {},
-            "metrics": {}
-        }
+        accumulated_metadata: Dict[str, Any] = {"usage": {}, "metrics": {}}
 
         # Track individual metadata per assistant message during streaming
         # Each entry contains: usage, metrics, timing info (start_time, first_token_time, end_time)
@@ -93,13 +94,15 @@ class StreamCoordinator:
                         current_assistant_message_index += 1
                         # Record the start time for this specific assistant message
                         # This enables accurate per-message latency calculation
-                        per_message_metadata.append({
-                            "usage": {},
-                            "metrics": {},
-                            "start_time": time.time(),  # When this message started
-                            "first_token_time": None,   # When first token was received
-                            "end_time": None            # When this message ended
-                        })
+                        per_message_metadata.append(
+                            {
+                                "usage": {},
+                                "metrics": {},
+                                "start_time": time.time(),  # When this message started
+                                "first_token_time": None,  # When first token was received
+                                "end_time": None,  # When this message ended
+                            }
+                        )
                         logger.debug(f"📝 Assistant message {current_assistant_message_index} started at {per_message_metadata[-1]['start_time']}")
 
                 # Track first token time per assistant message
@@ -113,7 +116,9 @@ class StreamCoordinator:
                         if current_assistant_message_index >= 0 and current_assistant_message_index < len(per_message_metadata):
                             if per_message_metadata[current_assistant_message_index]["first_token_time"] is None:
                                 per_message_metadata[current_assistant_message_index]["first_token_time"] = time.time()
-                                logger.info(f"📝 First TEXT token for assistant message {current_assistant_message_index} at {per_message_metadata[current_assistant_message_index]['first_token_time']:.3f}")
+                                logger.info(
+                                    f"📝 First TEXT token for assistant message {current_assistant_message_index} at {per_message_metadata[current_assistant_message_index]['first_token_time']:.3f}"
+                                )
                                 # Also update global first_token_time for the first message (backward compatibility)
                                 if current_assistant_message_index == 0 and first_token_time is None:
                                     first_token_time = per_message_metadata[0]["first_token_time"]
@@ -123,7 +128,7 @@ class StreamCoordinator:
                     if current_assistant_message_index >= 0 and current_assistant_message_index < len(per_message_metadata):
                         per_message_metadata[current_assistant_message_index]["end_time"] = time.time()
                         logger.debug(f"📝 Assistant message {current_assistant_message_index} ended")
-                
+
                 # Track individual metadata events (per assistant message)
                 if event.get("type") == "metadata":
                     event_data = event.get("data", {})
@@ -148,7 +153,9 @@ class StreamCoordinator:
                                 if calculated_ttft < 10 and provider_latency > 100:
                                     # Estimate TTFT as ~30% of total latency (typical for LLM calls)
                                     msg_meta["metrics"]["timeToFirstByteMs"] = int(provider_latency * 0.3)
-                                    logger.info(f"📊 Estimated TTFT for message {current_assistant_message_index}: {msg_meta['metrics']['timeToFirstByteMs']}ms (30% of {provider_latency}ms)")
+                                    logger.info(
+                                        f"📊 Estimated TTFT for message {current_assistant_message_index}: {msg_meta['metrics']['timeToFirstByteMs']}ms (30% of {provider_latency}ms)"
+                                    )
                                 elif calculated_ttft >= 10:
                                     msg_meta["metrics"]["timeToFirstByteMs"] = calculated_ttft
                                     logger.info(f"📊 Calculated TTFT for message {current_assistant_message_index}: {calculated_ttft}ms")
@@ -169,7 +176,7 @@ class StreamCoordinator:
                         accumulated_metadata["usage"].update(event_data["usage"])
                     if "metrics" in event_data:
                         accumulated_metadata["metrics"].update(event_data["metrics"])
-                
+
                 # Collect metadata_summary event (don't send to client as-is)
                 if event.get("type") == "metadata_summary":
                     event_data = event.get("data", {})
@@ -184,7 +191,7 @@ class StreamCoordinator:
                             per_message_metadata[0]["first_token_time"] = first_token_time
                     # Don't yield this event to the client (will send final metadata before done)
                     continue
-                
+
                 # Check if this is the "done" event - send final metadata before it
                 if event.get("type") == "done":
                     # Calculate end-to-end latency
@@ -200,10 +207,7 @@ class StreamCoordinator:
                     # Send final metadata event to client with calculated TTFT
                     # This ensures the client receives the final metadata with accurate TTFT calculation
                     if accumulated_metadata.get("usage") or accumulated_metadata.get("metrics") or time_to_first_token_ms:
-                        final_metadata = {
-                            "usage": accumulated_metadata.get("usage", {}),
-                            "metrics": {}
-                        }
+                        final_metadata = {"usage": accumulated_metadata.get("usage", {}), "metrics": {}}
 
                         # Include provider metrics if available
                         if accumulated_metadata.get("metrics"):
@@ -217,26 +221,22 @@ class StreamCoordinator:
                         final_metadata["metrics"]["latencyMs"] = int((stream_end_time - stream_start_time) * 1000)
 
                         # Calculate and add cost to metadata if we have usage and agent info
-                        if main_agent_wrapper and hasattr(main_agent_wrapper, 'model_config'):
+                        if main_agent_wrapper and hasattr(main_agent_wrapper, "model_config"):
                             model_id = main_agent_wrapper.model_config.model_id
                             usage_for_cost = accumulated_metadata.get("usage", {})
                             logger.info(f"💰 Cost calculation: model_id={model_id}, usage={usage_for_cost}")
                             try:
-                                cost = await self._calculate_streaming_cost(
-                                    model_id=model_id,
-                                    usage=usage_for_cost
-                                )
+                                cost = await self._calculate_streaming_cost(model_id=model_id, usage=usage_for_cost)
                                 if cost is not None:
                                     final_metadata["cost"] = cost
-                                    logger.info(f"💰 Calculated streaming cost: ${cost:.6f} for {usage_for_cost.get('inputTokens', 0)} input, {usage_for_cost.get('outputTokens', 0)} output tokens")
+                                    logger.info(
+                                        f"💰 Calculated streaming cost: ${cost:.6f} for {usage_for_cost.get('inputTokens', 0)} input, {usage_for_cost.get('outputTokens', 0)} output tokens"
+                                    )
                             except Exception as cost_error:
                                 logger.warning(f"Failed to calculate streaming cost: {cost_error}")
 
                         # Log cache metrics for performance monitoring
-                        self._log_cache_metrics(
-                            usage=final_metadata.get("usage", {}),
-                            session_id=session_id
-                        )
+                        self._log_cache_metrics(usage=final_metadata.get("usage", {}), session_id=session_id)
 
                         # Send final metadata event to client (before done event)
                         final_metadata_event = {"type": "metadata", "data": final_metadata}
@@ -261,46 +261,38 @@ class StreamCoordinator:
 
                     # Build conversational error event
                     conv_error_event = build_conversational_error_event(
-                        code=error_code,
-                        error=synthetic_error,
-                        session_id=session_id,
-                        recoverable=error_data.get("recoverable", False)
+                        code=error_code, error=synthetic_error, session_id=session_id, recoverable=error_data.get("recoverable", False)
                     )
 
                     # Emit message events so error appears in chat
-                    yield f"event: message_start\ndata: {{\"role\": \"assistant\"}}\n\n"
-                    yield f"event: content_block_start\ndata: {{\"contentBlockIndex\": 0, \"type\": \"text\"}}\n\n"
+                    yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
+                    yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
                     yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': conv_error_event.message})}\n\n"
-                    yield f"event: content_block_stop\ndata: {{\"contentBlockIndex\": 0}}\n\n"
-                    yield f"event: message_stop\ndata: {{\"stopReason\": \"error\"}}\n\n"
+                    yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
+                    yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
                     yield conv_error_event.to_sse_format()
                     yield "event: done\ndata: {}\n\n"
 
                     # Persist error messages to session
                     try:
+                        from strands.types.content import Message
                         from strands.types.session import SessionMessage
+
                         from agents.main_agent.session.session_factory import SessionFactory
 
-                        persist_session_manager = SessionFactory.create_session_manager(
-                            session_id=session_id,
-                            user_id=user_id,
-                            caching_enabled=False
-                        )
+                        persist_session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
 
                         # Extract user text from prompt (can be string or ContentBlock list)
                         if isinstance(prompt, str):
                             user_text = prompt
                         else:
                             # Extract text from ContentBlock list
-                            user_text = " ".join(
-                                block.get("text", "") for block in prompt
-                                if isinstance(block, dict) and "text" in block
-                            )
+                            user_text = " ".join(block.get("text", "") for block in prompt if isinstance(block, dict) and "text" in block)
 
-                        user_msg = {"role": "user", "content": [{"text": user_text}]}
-                        assistant_msg = {"role": "assistant", "content": [{"text": conv_error_event.message}]}
+                        user_msg: Message = {"role": "user", "content": [{"text": user_text}]}
+                        assistant_msg: Message = {"role": "assistant", "content": [{"text": conv_error_event.message}]}
 
-                        if hasattr(persist_session_manager, 'base_manager') and hasattr(persist_session_manager.base_manager, 'create_message'):
+                        if hasattr(persist_session_manager, "base_manager") and hasattr(persist_session_manager.base_manager, "create_message"):
                             user_session_msg = SessionMessage.from_message(user_msg, 0)
                             assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
                             persist_session_manager.base_manager.create_message(session_id, "default", user_session_msg)
@@ -351,7 +343,7 @@ class StreamCoordinator:
             ]
 
             # Get final count for logging
-            final_count = session_manager.message_count if hasattr(session_manager, 'message_count') else None
+            final_count = session_manager.message_count if hasattr(session_manager, "message_count") else None
 
             logger.info(
                 f"📊 Stream-based message tracking: "
@@ -383,7 +375,7 @@ class StreamCoordinator:
                 session_id=session_id,
                 user_id=user_id,
                 message_id=message_id,  # May be None if no assistant messages
-                agent=main_agent_wrapper  # Use wrapper instead of internal agent
+                agent=main_agent_wrapper,  # Use wrapper instead of internal agent
             )
 
             # Store message-level metadata for assistant messages created during this stream
@@ -418,11 +410,7 @@ class StreamCoordinator:
                             first_token_for_message = first_token_time
 
                         first_token_str = f"{first_token_for_message:.3f}" if first_token_for_message is not None else "None"
-                        logger.debug(
-                            f"📊 Message {idx} timing: start={msg_start_time:.3f}, "
-                            f"first_token={first_token_str}, "
-                            f"end={msg_end_time:.3f}"
-                        )
+                        logger.debug(f"📊 Message {idx} timing: start={msg_start_time:.3f}, first_token={first_token_str}, end={msg_end_time:.3f}")
                     else:
                         # Fallback to accumulated metadata and global timing (backward compatibility)
                         metadata_for_message = accumulated_metadata
@@ -431,6 +419,8 @@ class StreamCoordinator:
                         first_token_for_message = first_token_time if idx == 0 else None
 
                     logger.info(f"📊 Queuing message metadata for message_id={msg_id} (index {idx})")
+                    # Only attach citations to the first assistant message in the stream (RAG retrieval is for entire response)
+                    citations_for_message = citations if idx == 0 else None
                     metadata_tasks.append(
                         self._store_message_metadata(
                             session_id=session_id,
@@ -440,7 +430,8 @@ class StreamCoordinator:
                             stream_start_time=msg_start_time,
                             stream_end_time=msg_end_time,
                             first_token_time=first_token_for_message,
-                            agent=main_agent_wrapper  # Use wrapper instead of internal agent
+                            agent=main_agent_wrapper,  # Use wrapper instead of internal agent
+                            citations=citations_for_message,  # Pass citations for persistence
                         )
                     )
 
@@ -457,7 +448,7 @@ class StreamCoordinator:
 
             # Update compaction state if session manager supports it
             # This tracks input token usage and triggers compaction when threshold exceeded
-            if hasattr(session_manager, 'update_after_turn'):
+            if hasattr(session_manager, "update_after_turn"):
                 input_tokens = accumulated_metadata.get("usage", {}).get("inputTokens", 0)
                 # Also include cache tokens for accurate context size tracking
                 cache_read_tokens = accumulated_metadata.get("usage", {}).get("cacheReadInputTokens", 0)
@@ -475,53 +466,44 @@ class StreamCoordinator:
             # Handle errors with emergency flush
             logger.error(f"Error in stream_response: {e}")
             import traceback
+
             logger.error(f"Traceback: {traceback.format_exc()}")
 
             # Emergency flush: save buffered messages before losing them
             self._emergency_flush(session_manager)
 
             # Stream error as conversational assistant message for better UX
-            error_event = build_conversational_error_event(
-                code=ErrorCode.STREAM_ERROR,
-                error=e,
-                session_id=session_id,
-                recoverable=True
-            )
+            error_event = build_conversational_error_event(code=ErrorCode.STREAM_ERROR, error=e, session_id=session_id, recoverable=True)
 
             # Emit message events so error appears in chat
-            yield f"event: message_start\ndata: {{\"role\": \"assistant\"}}\n\n"
-            yield f"event: content_block_start\ndata: {{\"contentBlockIndex\": 0, \"type\": \"text\"}}\n\n"
+            yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
+            yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
             yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': error_event.message})}\n\n"
-            yield f"event: content_block_stop\ndata: {{\"contentBlockIndex\": 0}}\n\n"
-            yield f"event: message_stop\ndata: {{\"stopReason\": \"error\"}}\n\n"
+            yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
+            yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
             yield error_event.to_sse_format()
             yield "event: done\ndata: {}\n\n"
 
             # Persist error messages to session
             try:
+                from strands.types.content import Message
                 from strands.types.session import SessionMessage
+
                 from agents.main_agent.session.session_factory import SessionFactory
 
-                persist_session_manager = SessionFactory.create_session_manager(
-                    session_id=session_id,
-                    user_id=user_id,
-                    caching_enabled=False
-                )
+                persist_session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
 
                 # Extract user text from prompt (can be string or ContentBlock list)
                 if isinstance(prompt, str):
                     user_text = prompt
                 else:
                     # Extract text from ContentBlock list
-                    user_text = " ".join(
-                        block.get("text", "") for block in prompt
-                        if isinstance(block, dict) and "text" in block
-                    )
+                    user_text = " ".join(block.get("text", "") for block in prompt if isinstance(block, dict) and "text" in block)
 
-                user_msg = {"role": "user", "content": [{"text": user_text}]}
-                assistant_msg = {"role": "assistant", "content": [{"text": error_event.message}]}
+                user_msg: Message = {"role": "user", "content": [{"text": user_text}]}
+                assistant_msg: Message = {"role": "assistant", "content": [{"text": error_event.message}]}
 
-                if hasattr(persist_session_manager, 'base_manager') and hasattr(persist_session_manager.base_manager, 'create_message'):
+                if hasattr(persist_session_manager, "base_manager") and hasattr(persist_session_manager.base_manager, "create_message"):
                     user_session_msg = SessionMessage.from_message(user_msg, 0)
                     assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
                     persist_session_manager.base_manager.create_message(session_id, "default", user_session_msg)
@@ -598,10 +580,7 @@ class StreamCoordinator:
 
             # Log warning if cache write with no reads (first request or cache miss)
             if cache_write > 0 and cache_read == 0:
-                logger.debug(
-                    f"📦 Cache write only (new cache entry or miss) - "
-                    f"subsequent requests should see cache reads"
-                )
+                logger.debug(f"📦 Cache write only (new cache entry or miss) - subsequent requests should see cache reads")
         else:
             # No cache activity - might be non-Bedrock model or caching disabled
             if input_tokens > 0:
@@ -621,7 +600,7 @@ class StreamCoordinator:
         Returns:
             Message ID of the flushed message, or None if unavailable
         """
-        if hasattr(session_manager, 'flush'):
+        if hasattr(session_manager, "flush"):
             message_id = session_manager.flush()
             return message_id
         return None
@@ -647,31 +626,31 @@ class StreamCoordinator:
         """
         # For TurnBasedSessionManager (cloud mode): use the pre-initialized message_count
         # This was queried from AgentCore Memory when the session manager was created
-        if hasattr(session_manager, 'message_count'):
+        if hasattr(session_manager, "message_count"):
             count = session_manager.message_count
             logger.debug(f"Using TurnBasedSessionManager.message_count: {count}")
             return count
 
         # For LocalSessionBuffer: check the base manager
-        if hasattr(session_manager, 'base_manager'):
+        if hasattr(session_manager, "base_manager"):
             base_manager = session_manager.base_manager
 
             # Check if base manager has message_count (e.g., if it's also a TurnBasedSessionManager)
-            if hasattr(base_manager, 'message_count'):
+            if hasattr(base_manager, "message_count"):
                 count = base_manager.message_count
                 logger.debug(f"Using base_manager.message_count: {count}")
                 return count
 
             # For FileSessionManager: try to list messages
-            if hasattr(base_manager, 'list_messages'):
+            if hasattr(base_manager, "list_messages"):
                 try:
                     # Get session_id from config or session_manager
                     session_id = None
-                    if hasattr(base_manager, 'config'):
+                    if hasattr(base_manager, "config"):
                         session_id = base_manager.config.session_id
-                    elif hasattr(base_manager, 'session_id'):
+                    elif hasattr(base_manager, "session_id"):
                         session_id = base_manager.session_id
-                    elif hasattr(session_manager, 'session_id'):
+                    elif hasattr(session_manager, "session_id"):
                         session_id = session_manager.session_id
 
                     if session_id:
@@ -683,9 +662,9 @@ class StreamCoordinator:
                     logger.warning(f"Failed to get message count from base_manager: {e}")
 
         # Direct session manager with list_messages
-        if hasattr(session_manager, 'list_messages'):
+        if hasattr(session_manager, "list_messages"):
             try:
-                session_id = getattr(session_manager, 'session_id', None)
+                session_id = getattr(session_manager, "session_id", None)
                 if session_id:
                     messages = session_manager.list_messages(session_id, "default")
                     count = len(messages) if messages else 0
@@ -712,38 +691,38 @@ class StreamCoordinator:
             Latest message ID if available, or None
         """
         # Check if session manager has a method to get latest message ID without flushing
-        if hasattr(session_manager, '_get_latest_message_id'):
+        if hasattr(session_manager, "_get_latest_message_id"):
             try:
                 return session_manager._get_latest_message_id()
             except Exception:
                 pass
-        
+
         # For LocalSessionBuffer, check if base_manager has the method
-        if hasattr(session_manager, 'base_manager'):
+        if hasattr(session_manager, "base_manager"):
             base_manager = session_manager.base_manager
-            if hasattr(base_manager, '_get_latest_message_id'):
+            if hasattr(base_manager, "_get_latest_message_id"):
                 try:
                     return base_manager._get_latest_message_id()
                 except Exception:
                     pass
-        
+
         # Fallback: Try to get message count from session manager
         # This works for both TurnBasedSessionManager and LocalSessionBuffer
-        if hasattr(session_manager, 'base_manager'):
+        if hasattr(session_manager, "base_manager"):
             try:
-                from apis.app_api.storage.paths import get_messages_dir
                 from pathlib import Path
-                
+
+                from apis.app_api.storage.paths import get_messages_dir
+
                 # Get session_id from config
-                if hasattr(session_manager.base_manager, 'config'):
+                if hasattr(session_manager.base_manager, "config"):
                     session_id = session_manager.base_manager.config.session_id
                     messages_dir = get_messages_dir(session_id)
-                    
+
                     if messages_dir.exists():
                         # Get all message files sorted by number
                         message_files = sorted(
-                            messages_dir.glob("message_*.json"),
-                            key=lambda p: int(p.stem.split("_")[1]) if p.stem.split("_")[1].isdigit() else 0
+                            messages_dir.glob("message_*.json"), key=lambda p: int(p.stem.split("_")[1]) if p.stem.split("_")[1].isdigit() else 0
                         )
                         if message_files:
                             latest_file = message_files[-1]
@@ -751,7 +730,7 @@ class StreamCoordinator:
                             return message_num
             except Exception:
                 pass
-        
+
         return None
 
     def _emergency_flush(self, session_manager: Any) -> None:
@@ -761,7 +740,7 @@ class StreamCoordinator:
         Args:
             session_manager: Session manager instance
         """
-        if hasattr(session_manager, 'flush'):
+        if hasattr(session_manager, "flush"):
             try:
                 session_manager.flush()
             except Exception as flush_error:
@@ -778,12 +757,7 @@ class StreamCoordinator:
             str: SSE formatted error event
         """
         # Create structured error event
-        error_event = StreamErrorEvent(
-            error=error_message,
-            code=ErrorCode.STREAM_ERROR,
-            detail=None,
-            recoverable=False
-        )
+        error_event = StreamErrorEvent(error=error_message, code=ErrorCode.STREAM_ERROR, detail=None, recoverable=False)
         return f"event: error\ndata: {json.dumps(error_event.model_dump(exclude_none=True))}\n\n"
 
     async def _store_metadata_parallel(
@@ -795,7 +769,7 @@ class StreamCoordinator:
         stream_start_time: float,
         stream_end_time: float,
         first_token_time: Optional[float],
-        agent: Any = None
+        agent: Any = None,
     ) -> None:
         """
         Store message and session metadata in parallel for better performance
@@ -825,15 +799,10 @@ class StreamCoordinator:
                     stream_start_time=stream_start_time,
                     stream_end_time=stream_end_time,
                     first_token_time=first_token_time,
-                    agent=agent
+                    agent=agent,
                 ),
-                self._update_session_metadata(
-                    session_id=session_id,
-                    user_id=user_id,
-                    message_id=message_id,
-                    agent=agent
-                ),
-                return_exceptions=True  # Don't fail entire operation if one fails
+                self._update_session_metadata(session_id=session_id, user_id=user_id, message_id=message_id, agent=agent),
+                return_exceptions=True,  # Don't fail entire operation if one fails
             )
         except Exception as e:
             # Log but don't raise - metadata storage failures shouldn't break streaming
@@ -848,10 +817,11 @@ class StreamCoordinator:
         stream_start_time: float,
         stream_end_time: float,
         first_token_time: Optional[float],
-        agent: Any = None
+        agent: Any = None,
+        citations: Optional[List] = None,
     ) -> None:
         """
-        Store message-level metadata (token usage, latency, model info)
+        Store message-level metadata (token usage, latency, model info, citations)
 
         Args:
             session_id: Session identifier
@@ -862,12 +832,10 @@ class StreamCoordinator:
             stream_end_time: Timestamp when stream ended
             first_token_time: Timestamp of first token received
             agent: Agent instance for extracting model info
+            citations: Optional list of citation dicts from RAG retrieval
         """
         try:
-            from apis.app_api.messages.models import (
-                MessageMetadata, TokenUsage, LatencyMetrics,
-                ModelInfo, Attribution
-            )
+            from apis.app_api.messages.models import Attribution, LatencyMetrics, MessageMetadata, ModelInfo, TokenUsage
             from apis.app_api.sessions.services.metadata import store_message_metadata
 
             # Build TokenUsage if we have usage data
@@ -879,7 +847,7 @@ class StreamCoordinator:
                     output_tokens=usage_data.get("outputTokens", 0),
                     total_tokens=usage_data.get("totalTokens", 0),
                     cache_read_input_tokens=usage_data.get("cacheReadInputTokens"),
-                    cache_write_input_tokens=usage_data.get("cacheWriteInputTokens")
+                    cache_write_input_tokens=usage_data.get("cacheWriteInputTokens"),
                 )
 
             # Build LatencyMetrics if we have timing data
@@ -888,7 +856,9 @@ class StreamCoordinator:
             end_to_end_latency_ms = None
 
             # Log timing values for debugging
-            logger.info(f"📊 _store_message_metadata timing: first_token_time={first_token_time}, stream_start_time={stream_start_time}, stream_end_time={stream_end_time}")
+            logger.info(
+                f"📊 _store_message_metadata timing: first_token_time={first_token_time}, stream_start_time={stream_start_time}, stream_end_time={stream_end_time}"
+            )
             logger.info(f"📊 _store_message_metadata metrics: {accumulated_metadata.get('metrics', {})}")
 
             # Get end-to-end latency from provider metrics if available (most accurate)
@@ -922,23 +892,19 @@ class StreamCoordinator:
             # Create latency metrics if we have at least E2E latency
             if end_to_end_latency_ms is not None:
                 latency_metrics = LatencyMetrics(
-                    time_to_first_token=time_to_first_token_ms if time_to_first_token_ms is not None else 0,
-                    end_to_end_latency=end_to_end_latency_ms
+                    time_to_first_token=time_to_first_token_ms if time_to_first_token_ms is not None else 0, end_to_end_latency=end_to_end_latency_ms
                 )
                 logger.info(f"📊 Created LatencyMetrics: TTFT={time_to_first_token_ms}ms, E2E={end_to_end_latency_ms}ms")
             else:
                 # Log if we couldn't determine any latency
-                logger.warning(
-                    "Could not determine latency metrics - "
-                    "no latencyMs from provider and no timing data available"
-                )
+                logger.warning("Could not determine latency metrics - no latencyMs from provider and no timing data available")
 
             # Extract ModelInfo from agent and create pricing snapshot for cost tracking
             model_info = None
             pricing_snapshot = None
             cost = None
 
-            if agent and hasattr(agent, 'model_config'):
+            if agent and hasattr(agent, "model_config"):
                 model_id = agent.model_config.model_id
 
                 # Get pricing snapshot from managed models database
@@ -946,7 +912,7 @@ class StreamCoordinator:
 
                 # Extract provider from model config
                 provider = None
-                if hasattr(agent.model_config, 'get_provider'):
+                if hasattr(agent.model_config, "get_provider"):
                     provider = agent.model_config.get_provider().value
 
                 model_info = ModelInfo(
@@ -954,42 +920,35 @@ class StreamCoordinator:
                     model_name=self._extract_model_name(model_id),
                     model_version=self._extract_model_version(model_id),
                     provider=provider,
-                    pricing_snapshot=pricing_snapshot
+                    pricing_snapshot=pricing_snapshot,
                 )
 
                 # Calculate cost if we have both usage and pricing
                 if token_usage and pricing_snapshot:
-                    cost = self._calculate_message_cost(
-                        usage=accumulated_metadata.get("usage", {}),
-                        pricing=pricing_snapshot
-                    )
+                    cost = self._calculate_message_cost(usage=accumulated_metadata.get("usage", {}), pricing=pricing_snapshot)
 
             # Create Attribution for cost tracking foundation
             attribution = Attribution(
                 user_id=user_id,
                 session_id=session_id,
-                timestamp=datetime.now(timezone.utc).isoformat()
+                timestamp=datetime.now(timezone.utc).isoformat(),
                 # organization_id will be added when multi-tenant billing is implemented
                 # tags will be added for cost allocation features
             )
 
             # Create MessageMetadata
-            if token_usage or latency_metrics or model_info:
+            if token_usage or latency_metrics or model_info or citations:
                 message_metadata = MessageMetadata(
                     latency=latency_metrics,
                     token_usage=token_usage,
                     model_info=model_info,
                     attribution=attribution,
-                    cost=cost
+                    cost=cost,
+                    citations=citations,  # Include citations from RAG retrieval
                 )
 
                 # Store metadata
-                await store_message_metadata(
-                    session_id=session_id,
-                    user_id=user_id,
-                    message_id=message_id,
-                    message_metadata=message_metadata
-                )
+                await store_message_metadata(session_id=session_id, user_id=user_id, message_id=message_id, message_metadata=message_metadata)
 
         except Exception as e:
             # Log but don't raise - metadata storage failures shouldn't break streaming
@@ -1013,7 +972,7 @@ class StreamCoordinator:
             "claude-haiku-4-5": "Claude Haiku 4.5",
             "claude-3-5-sonnet": "Claude 3.5 Sonnet",
             "claude-3-opus": "Claude 3 Opus",
-            "claude-3-haiku": "Claude 3 Haiku"
+            "claude-3-haiku": "Claude 3 Haiku",
         }
 
         # Extract model name from ID
@@ -1070,11 +1029,7 @@ class StreamCoordinator:
             logger.error(f"Failed to get pricing snapshot for {model_id}: {e}")
             return None
 
-    def _calculate_message_cost(
-        self,
-        usage: Dict[str, Any],
-        pricing: Optional[Dict[str, Any]]
-    ) -> Optional[float]:
+    def _calculate_message_cost(self, usage: Dict[str, Any], pricing: Optional[Dict[str, Any]]) -> Optional[float]:
         """
         Calculate message cost from usage and pricing
 
@@ -1092,7 +1047,7 @@ class StreamCoordinator:
             from apis.app_api.costs.calculator import CostCalculator
 
             # Convert PricingSnapshot model to dict for calculator
-            if hasattr(pricing, 'model_dump'):
+            if hasattr(pricing, "model_dump"):
                 pricing_dict = pricing.model_dump(by_alias=True)
             else:
                 pricing_dict = pricing
@@ -1104,11 +1059,7 @@ class StreamCoordinator:
             logger.error(f"Failed to calculate message cost: {e}")
             return None
 
-    async def _calculate_streaming_cost(
-        self,
-        model_id: str,
-        usage: Dict[str, Any]
-    ) -> Optional[float]:
+    async def _calculate_streaming_cost(self, model_id: str, usage: Dict[str, Any]) -> Optional[float]:
         """
         Calculate cost for streaming response to send to client in real-time.
 
@@ -1134,11 +1085,13 @@ class StreamCoordinator:
                 return None
 
             # Log pricing for debugging
-            if hasattr(pricing, 'model_dump'):
+            if hasattr(pricing, "model_dump"):
                 pricing_dict = pricing.model_dump(by_alias=True)
             else:
                 pricing_dict = pricing
-            logger.info(f"💰 Pricing for {model_id}: input=${pricing_dict.get('inputPricePerMtok', 0)}/M, output=${pricing_dict.get('outputPricePerMtok', 0)}/M, cache_read=${pricing_dict.get('cacheReadPricePerMtok', 0)}/M")
+            logger.info(
+                f"💰 Pricing for {model_id}: input=${pricing_dict.get('inputPricePerMtok', 0)}/M, output=${pricing_dict.get('outputPricePerMtok', 0)}/M, cache_read=${pricing_dict.get('cacheReadPricePerMtok', 0)}/M"
+            )
 
             # Calculate cost using the calculator
             return self._calculate_message_cost(usage, pricing)
@@ -1147,13 +1100,7 @@ class StreamCoordinator:
             logger.warning(f"Failed to calculate streaming cost: {e}")
             return None
 
-    async def _update_session_metadata(
-        self,
-        session_id: str,
-        user_id: str,
-        message_id: int,
-        agent: Any = None
-    ) -> None:
+    async def _update_session_metadata(self, session_id: str, user_id: str, message_id: int, agent: Any = None) -> None:
         """
         Update session-level metadata after each message
 
@@ -1170,9 +1117,10 @@ class StreamCoordinator:
             agent: Agent instance for extracting model preferences
         """
         try:
-            from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
-            from apis.app_api.sessions.services.metadata import store_session_metadata, get_session_metadata
             import hashlib
+
+            from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
+            from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
 
             logger.info(f"🔍 _update_session_metadata called for session {session_id}, message_id {message_id}")
 
@@ -1207,26 +1155,24 @@ class StreamCoordinator:
             if not existing:
                 # First message - create session metadata
                 preferences = None
-                if agent and hasattr(agent, 'model_config'):
+                if agent and hasattr(agent, "model_config"):
                     logger.info(f"📦 Agent has model_config: model_id={agent.model_config.model_id}")
 
                     # Generate system prompt hash for tracking exact prompt version
                     # This hash represents the FINAL rendered system prompt (after date injection, etc.)
                     system_prompt_hash = None
-                    if hasattr(agent, 'system_prompt') and agent.system_prompt:
-                        system_prompt_hash = hashlib.md5(
-                            agent.system_prompt.encode()
-                        ).hexdigest()[:16]  # 16 char hash for uniqueness
+                    if hasattr(agent, "system_prompt") and agent.system_prompt:
+                        system_prompt_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]  # 16 char hash for uniqueness
                         logger.debug(f"Generated system_prompt_hash: {system_prompt_hash}")
 
                     # Extract enabled tools from agent
-                    enabled_tools = getattr(agent, 'enabled_tools', None)
+                    enabled_tools = getattr(agent, "enabled_tools", None)
 
                     preferences = SessionPreferences(
                         last_model=agent.model_config.model_id,
-                        last_temperature=getattr(agent.model_config, 'temperature', None),
+                        last_temperature=getattr(agent.model_config, "temperature", None),
                         enabled_tools=enabled_tools,
-                        system_prompt_hash=system_prompt_hash
+                        system_prompt_hash=system_prompt_hash,
                     )
                     logger.info(f"✨ Created new preferences: last_model={preferences.last_model}")
                 else:
@@ -1242,34 +1188,32 @@ class StreamCoordinator:
                     message_count=actual_message_count,
                     starred=False,
                     tags=[],
-                    preferences=preferences
+                    preferences=preferences,
                 )
             else:
                 # Update existing - only update what changed
                 preferences = existing.preferences
-                if agent and hasattr(agent, 'model_config'):
+                if agent and hasattr(agent, "model_config"):
                     logger.info(f"📦 Updating preferences with model_id={agent.model_config.model_id}")
 
                     # Update preferences if model/temperature/tools/system_prompt changed
                     prefs_dict = preferences.model_dump(by_alias=False) if preferences else {}
                     logger.info(f"📝 Existing prefs_dict: {prefs_dict}")
 
-                    prefs_dict['last_model'] = agent.model_config.model_id
-                    prefs_dict['last_temperature'] = getattr(agent.model_config, 'temperature', None)
+                    prefs_dict["last_model"] = agent.model_config.model_id
+                    prefs_dict["last_temperature"] = getattr(agent.model_config, "temperature", None)
 
                     # Update enabled_tools from agent
-                    prefs_dict['enabled_tools'] = getattr(agent, 'enabled_tools', None)
+                    prefs_dict["enabled_tools"] = getattr(agent, "enabled_tools", None)
 
                     # Update system_prompt_hash if system prompt changed
                     # This allows tracking when the prompt was modified during a conversation
-                    if hasattr(agent, 'system_prompt') and agent.system_prompt:
-                        new_hash = hashlib.md5(
-                            agent.system_prompt.encode()
-                        ).hexdigest()[:16]
+                    if hasattr(agent, "system_prompt") and agent.system_prompt:
+                        new_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]
                         # Only update if hash changed (prompt was modified)
-                        if prefs_dict.get('system_prompt_hash') != new_hash:
+                        if prefs_dict.get("system_prompt_hash") != new_hash:
                             logger.info(f"System prompt changed - updating hash from {prefs_dict.get('system_prompt_hash')} to {new_hash}")
-                            prefs_dict['system_prompt_hash'] = new_hash
+                            prefs_dict["system_prompt_hash"] = new_hash
 
                     preferences = SessionPreferences(**prefs_dict)
                     logger.info(f"✨ Updated preferences: last_model={preferences.last_model}")
@@ -1286,18 +1230,16 @@ class StreamCoordinator:
                     message_count=actual_message_count,
                     starred=existing.starred,
                     tags=existing.tags,
-                    preferences=preferences
+                    preferences=preferences,
                 )
 
             # Store updated metadata (uses deep merge in storage layer)
-            await store_session_metadata(
-                session_id=session_id,
-                user_id=user_id,
-                session_metadata=metadata
+            await store_session_metadata(session_id=session_id, user_id=user_id, session_metadata=metadata)
+
+            logger.info(
+                f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}"
             )
 
-            logger.info(f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}")
-            
             # Return message count for use as a fallback message_id
             return metadata.message_count
 

@@ -31,8 +31,7 @@ interface MessageMetadata {
     imports: [],
     template: `
         @if (hasMetadata()) {
-            <div class="mt-2 flex flex-wrap gap-2">
-                <!-- TTFT Badge -->
+            <!-- TTFT Badge -->
                 @if (ttft()) {
                     <div class="inline-flex items-center gap-1.5 rounded-full bg-blue-100 px-3 py-1 text-xs font-medium text-blue-700 dark:bg-blue-900/30 dark:text-blue-300">
                         <svg class="size-3.5" fill="none" viewBox="0 0 24 24" stroke-width="2" stroke="currentColor">
@@ -112,7 +111,6 @@ interface MessageMetadata {
                         <span>Cost: {{ formatCost(cost()) }}</span>
                     </div>
                 }
-            </div>
         }
     `,
     styles: `
@@ -120,7 +118,7 @@ interface MessageMetadata {
         @custom-variant dark (&:where(.dark, .dark *));
 
         :host {
-            display: block;
+            display: contents;
         }
     `,
 })

@@ -43,6 +43,21 @@ export interface FileAttachmentData {
 }
 
 /**
+ * Citation data from RAG retrieval.
+ * Sent as SSE events before the assistant response starts streaming.
+ */
+export interface Citation {
+  /** Assistant identifier (needed for download URL endpoint) */
+  assistantId: string;
+  /** Document identifier in the knowledge base */
+  documentId: string;
+  /** Original filename of the source document */
+  fileName: string;
+  /** Relevant text excerpt from the document */
+  text: string;
+}
+
+/**
  * Tool use data structure
  */
 export interface ToolUseData {
@@ -96,6 +111,8 @@ export interface Message {
   created_at?: string;
   /** Optional metadata associated with the message */
   metadata?: Record<string, unknown> | null;
+  /** RAG citations from knowledge base retrieval (assistant messages only) */
+  citations?: Citation[];
 }
 
 // ============================================================================
@@ -105,24 +122,37 @@ export interface Message {
 /**
  * Type guard to check if a content block is a text block
  */
-export function isTextContentBlock(block: ContentBlock): block is ContentBlock & { type: 'text'; text: string } {
+export function isTextContentBlock(
+  block: ContentBlock,
+): block is ContentBlock & { type: 'text'; text: string } {
   return block.type === 'text' && block.text !== null && block.text !== undefined;
 }
 
 /**
  * Type guard to check if a content block is a tool use block
  */
-export function isToolUseContentBlock(block: ContentBlock): block is ContentBlock & { type: 'toolUse' | 'tool_use'; toolUse: Record<string, unknown> } {
-  return (block.type === 'toolUse' || block.type === 'tool_use') && block.toolUse !== null && block.toolUse !== undefined;
+export function isToolUseContentBlock(
+  block: ContentBlock,
+): block is ContentBlock & { type: 'toolUse' | 'tool_use'; toolUse: Record<string, unknown> } {
+  return (
+    (block.type === 'toolUse' || block.type === 'tool_use') &&
+    block.toolUse !== null &&
+    block.toolUse !== undefined
+  );
 }
 
 /**
  * Type guard to check if a content block is a reasoning content block
  */
-export function isReasoningContentBlock(block: ContentBlock): block is ContentBlock & { type: 'reasoningContent'; reasoningContent: ReasoningContentData } {
-  return block.type === 'reasoningContent' && block.reasoningContent !== null && block.reasoningContent !== undefined;
+export function isReasoningContentBlock(
+  block: ContentBlock,
+): block is ContentBlock & { type: 'reasoningContent'; reasoningContent: ReasoningContentData } {
+  return (
+    block.type === 'reasoningContent' &&
+    block.reasoningContent !== null &&
+    block.reasoningContent !== undefined
+  );
 }
-
 
 // ============================================================================
 // SSE Event Types

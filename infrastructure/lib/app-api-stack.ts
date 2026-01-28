@@ -1131,60 +1131,10 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // ============================================================
-    // Grant permissions for NEW RAG resources (from RagIngestionStack)
-    // ============================================================
-    
-    // Import RAG resource identifiers from SSM
-    const ragDocumentsBucketName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/documents-bucket-name`
-    );
-    const ragDocumentsBucketArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/documents-bucket-arn`
-    );
-    const ragAssistantsTableName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/assistants-table-name`
-    );
-    const ragAssistantsTableArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/assistants-table-arn`
-    );
-    const ragVectorBucketName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/vector-bucket-name`
-    );
+    // Grant permissions for assistants documents bucket
+    assistantsDocumentsBucket.grantReadWrite(taskDefinition.taskRole);
 
-    // Import S3 bucket for permissions
-    const ragDocumentsBucket = s3.Bucket.fromBucketAttributes(this, "ImportedRagDocumentsBucket", {
-      bucketName: ragDocumentsBucketName,
-      bucketArn: ragDocumentsBucketArn,
-    });
-
-    // Import DynamoDB table for permissions
-    const ragAssistantsTable = dynamodb.Table.fromTableArn(this, "ImportedRagAssistantsTable", ragAssistantsTableArn);
-
-    // Grant permissions to ECS task role for RAG resources
-    ragDocumentsBucket.grantReadWrite(taskDefinition.taskRole);
-    ragAssistantsTable.grantReadWriteData(taskDefinition.taskRole);
-    
-    // Grant explicit permissions for GSI queries on RAG assistants table
-    taskDefinition.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'dynamodb:Query',
-          'dynamodb:Scan'
-        ],
-        resources: [
-          `${ragAssistantsTableArn}/index/*`
-        ],
-      })
-    );
-
-    // Grant S3 Vectors permissions for RAG vector store
+    // Grant S3 Vectors permissions for assistants vector store
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
         effect: iam.Effect.ALLOW,
@@ -1198,17 +1148,27 @@ export class AppApiStack extends cdk.Stack {
           "s3vectors:GetVector",
           "s3vectors:GetVectors",
           "s3vectors:DeleteVector",
+          "s3vectors:QueryVectors",
         ],
         resources: [
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${ragVectorBucketName}`,
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${ragVectorBucketName}/index/*`,
+          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}`,
+          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}/index/*`,
         ],
       })
     );
 
-    // ============================================================
-    // Other table permissions
-    // ============================================================
+    // Grant Bedrock permissions for Titan embeddings (used for RAG query embeddings)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockTitanEmbeddings',
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:InvokeModel'],
+        resources: [
+          `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.titan-embed-text-v2:0`,
+        ],
+      })
+    );
+
 
     // Grant permissions for quota management tables
     userQuotasTable.grantReadWriteData(taskDefinition.taskRole);
