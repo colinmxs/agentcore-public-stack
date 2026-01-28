@@ -2,10 +2,8 @@ import * as cdk from "aws-cdk-lib";
 import * as ec2 from "aws-cdk-lib/aws-ec2";
 import * as ecs from "aws-cdk-lib/aws-ecs";
 import * as ecr from "aws-cdk-lib/aws-ecr";
-import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as elbv2 from "aws-cdk-lib/aws-elasticloadbalancingv2";
 import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
-import * as s3n from "aws-cdk-lib/aws-s3-notifications";
 import * as s3 from "aws-cdk-lib/aws-s3";
 import * as rds from "aws-cdk-lib/aws-rds";
 import * as secretsmanager from "aws-cdk-lib/aws-secretsmanager";
@@ -16,11 +14,6 @@ import * as kms from "aws-cdk-lib/aws-kms";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags } from "./config";
-import * as path from "path";
-import { S3_GRANT_WRITE_WITHOUT_ACL } from "aws-cdk-lib/cx-api";
-
-// __dirname is available in CommonJS runtime, but TypeScript needs a declaration
-declare const __dirname: string;
 
 export interface AppApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -237,83 +230,7 @@ export class AppApiStack extends cdk.Stack {
     // Index depends on bucket
     assistantsVectorIndex.addDependency(assistantsVectorBucket);
 
-    // ============================================================
-    // Assistants Document Ingestion Lambda Function
-    // ============================================================
-
-    // Create Lambda function using container image
-    // Container images support up to 10GB (vs 250MB per layer limit)
-    // Dockerfile is in backend/ directory
-    // Build context is set to repo root so we can access backend/ directory
-    // __dirname is infrastructure/lib/, so go up 2 levels to get repo root
-    const repoRoot = path.join(__dirname, "../.."); // infrastructure/lib/ -> infrastructure/ -> repo root
-    const dockerfilePath = path.join(repoRoot, "backend", "Dockerfile.rag-ingestion");
-
-    const assistantsDocumentsIngestionlambdaFunction = new lambda.DockerImageFunction(this, "AssistantsDocumentsIngestionlambdaFunction", {
-      code: lambda.DockerImageCode.fromImageAsset(repoRoot, {
-        file: path.relative(repoRoot, dockerfilePath),
-      }),
-      architecture: lambda.Architecture.ARM_64, // ARM64 (Graviton2) is ~20% cheaper and better price/performance for Lambda
-      timeout: cdk.Duration.minutes(15),
-      memorySize: 10240, // Increased to max for heavy ML libraries and to speed up init/invoke
-      environment: {
-        ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
-        ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
-        ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
-        ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
-        BEDROCK_REGION: config.awsRegion,
-      },
-      description:
-        "Assistants document ingestion pipeline - processes documents from S3, extracts text, chunks, generates embeddings, stores in S3 vector store",
-    });
-
-    // ============================================================
-    // Assistants Permissions
-    // ============================================================
-
-    // Give the lambda function permission to read from the documents bucket
-    assistantsDocumentsBucket.grantRead(assistantsDocumentsIngestionlambdaFunction);
-    // Give the lambda function permission to write to the assistants table
-    assistantsTable.grantWriteData(assistantsDocumentsIngestionlambdaFunction);
-    // Give the lambda function permission to read from the assistants table
-    assistantsTable.grantReadData(assistantsDocumentsIngestionlambdaFunction);
-
-    // Give the lambda function full access to the vector bucket and index
-    assistantsDocumentsIngestionlambdaFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: [
-          "s3vectors:ListVectorBuckets",
-          "s3vectors:GetVectorBucket",
-          "s3vectors:GetIndex",
-          "s3vectors:PutVectors",
-          "s3vectors:ListVectors",
-          "s3vectors:ListIndexes",
-          "s3vectors:GetVector",
-          "s3vectors:GetVectors",
-          "s3vectors:DeleteVector",
-        ],
-        resources: [
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}`,
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}/index/${assistantsVectorIndexName}`,
-        ],
-      }),
-    );
-
-    // Give the lambda function permission to invoke the Bedrock model for embeddings
-    assistantsDocumentsIngestionlambdaFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["bedrock:InvokeModel"],
-        resources: [`arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.titan-embed-text-v2*`],
-      }),
-    );
-
-    // Configure S3 event trigger to trigger the lambda function when objects are created in the documents bucket with prefix "assistants/"
-    // Trigger Lambda when objects are created in documents bucket with prefix "assistants/"
-    assistantsDocumentsBucket.addEventNotification(s3.EventType.OBJECT_CREATED, new s3n.LambdaDestination(assistantsDocumentsIngestionlambdaFunction), {
-      prefix: "assistants/",
-    });
+    // Note: Lambda function for document ingestion is now created in RagIngestionStack
 
     // ============================================================
     // Quota Management Tables
@@ -1480,10 +1397,7 @@ export class AppApiStack extends cdk.Stack {
       exportName: `${config.projectPrefix}-UserFilesTableName`,
     });
 
-    new cdk.CfnOutput(this, "AssistantsDocumentsIngestionLambdaFunctionArn", {
-      value: assistantsDocumentsIngestionlambdaFunction.functionArn,
-      description: "ARN of the Assistants documents ingestion Lambda function",
-    });
+    // Note: Lambda function output is now in RagIngestionStack
 
     new cdk.CfnOutput(this, "AssistantsVectorStoreBucketName", {
       value: assistantsVectorStoreBucketName,
