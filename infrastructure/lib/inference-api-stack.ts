@@ -193,6 +193,28 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
+    // DynamoDB AppRoles Table permissions (imported from App API Stack)
+    // This table stores both RBAC roles AND tool catalog definitions
+    const appRolesTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rbac/app-roles-table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AppRolesTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        // Note: No write permissions - inference API only reads tool definitions and roles
+      ],
+      resources: [
+        appRolesTableArn,
+        `${appRolesTableArn}/index/*`, // GSI permissions
+      ],
+    }));
+
     // DynamoDB Assistants Table permissions (imported from RagIngestionStack)
     const assistantsTableArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -492,6 +514,10 @@ export class InferenceApiStack extends cdk.Stack {
         'DYNAMODB_USERS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/users/users-table-name`
+        ),
+        'DYNAMODB_APP_ROLES_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/rbac/app-roles-table-name`
         ),
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)
