@@ -1227,10 +1227,7 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // Import DynamoDB table for permissions
-    const ragAssistantsTable = dynamodb.Table.fromTableAttributes(this, "ImportedRagAssistantsTable", {
-      tableName: ragAssistantsTableName,
-      tableArn: ragAssistantsTableArn,
-    });
+    const ragAssistantsTable = dynamodb.Table.fromTableArn(this, "ImportedRagAssistantsTable", ragAssistantsTableArn);
 
     // Grant permissions to ECS task role for RAG resources
     ragDocumentsBucket.grantReadWrite(taskDefinition.taskRole);
