@@ -541,6 +541,10 @@ export class InferenceApiStack extends cdk.Stack {
         'CODE_INTERPRETER_ID': this.codeInterpreter.attrCodeInterpreterId,
         'BROWSER_ID': this.browser.attrBrowserId,
         
+        // AgentCore Memory Configuration (for session management)
+        'AGENTCORE_MEMORY_TYPE': 'dynamodb',  // Use AWS Bedrock AgentCore Memory
+        'AGENTCORE_MEMORY_ID': this.memory.attrMemoryId,  // Same as MEMORY_ID above
+        
         // AgentCore Gateway (optional - for MCP tools)
         'GATEWAY_URL': config.gateway.enabled
           ? ssm.StringParameter.valueForStringParameter(
