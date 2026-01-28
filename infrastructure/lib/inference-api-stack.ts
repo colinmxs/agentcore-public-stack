@@ -171,6 +171,28 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
     }));
 
+    // DynamoDB Users Table permissions (imported from App API Stack)
+    const usersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/users/users-table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'UsersTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        usersTableArn,
+        `${usersTableArn}/index/*`, // GSI permissions
+      ],
+    }));
+
     // ECR image access - scoped to specific repository
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'ECRImageAccess',
@@ -404,6 +426,12 @@ export class InferenceApiStack extends cdk.Stack {
         // AWS Configuration
         'AWS_REGION': config.awsRegion,
         'AWS_DEFAULT_REGION': config.awsRegion,
+        
+        // DynamoDB Tables (imported from App API Stack)
+        'DYNAMODB_USERS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/users/users-table-name`
+        ),
         
         // AgentCore Resources
         'MEMORY_ARN': this.memory.attrMemoryArn,
