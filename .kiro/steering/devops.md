@@ -1,5 +1,6 @@
 ---
-inclusion: always
+inclusion: manual
+keywords: ci/cd, github actions, infrastructure, scripting, iac, cdk, aws, cloudformation, deployment, pipeline, workflow, devops, terraform, docker, ecr, fargate, ecs, lambda, s3, cloudfront, alb, vpc, ssm
 ---
 # DevOps & Infrastructure Guide
 
