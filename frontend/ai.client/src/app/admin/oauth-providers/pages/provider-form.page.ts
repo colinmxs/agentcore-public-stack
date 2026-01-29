@@ -43,6 +43,7 @@ interface ProviderFormGroup {
   clientId: FormControl<string>;
   clientSecret: FormControl<string>;
   scopes: FormControl<string>;
+  authorizationParams: FormControl<string>;
   allowedRoles: FormControl<string[]>;
   grantAllRoles: FormControl<boolean>;
   enabled: FormControl<boolean>;
@@ -337,6 +338,23 @@ interface ProviderFormGroup {
                     Comma-separated list of OAuth scopes to request during authorization.
                   </p>
                 </div>
+
+                <!-- Authorization Params -->
+                <div>
+                  <label for="authorizationParams" class="mb-1.5 block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                    Authorization Parameters
+                  </label>
+                  <input
+                    type="text"
+                    id="authorizationParams"
+                    formControlName="authorizationParams"
+                    placeholder="access_type=offline, prompt=consent"
+                    class="block w-full rounded-sm border border-gray-300 bg-white px-3 py-2.5 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-500"
+                  />
+                  <p class="mt-1.5 text-xs/5 text-gray-500 dark:text-gray-400">
+                    Extra URL parameters for the authorization request. For Google, use "access_type=offline, prompt=consent" to enable refresh tokens.
+                  </p>
+                </div>
               </div>
             </div>
 
@@ -504,6 +522,7 @@ export class ProviderFormPage implements OnInit {
     }),
     clientSecret: this.fb.control('', { nonNullable: true }),
     scopes: this.fb.control('', { nonNullable: true }),
+    authorizationParams: this.fb.control('', { nonNullable: true }),
     allowedRoles: this.fb.control<string[]>(['*'], { nonNullable: true }),
     grantAllRoles: this.fb.control(true, { nonNullable: true }),
     enabled: this.fb.control(true, { nonNullable: true }),
@@ -538,6 +557,14 @@ export class ProviderFormPage implements OnInit {
     this.loading.set(true);
     try {
       const provider = await this.oauthProvidersService.fetchProvider(id);
+
+      // Convert authorizationParams object to "key=value, key=value" string
+      const authParamsString = provider.authorizationParams
+        ? Object.entries(provider.authorizationParams)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')
+        : '';
+
       this.providerForm.patchValue({
         providerId: provider.providerId,
         displayName: provider.displayName,
@@ -547,6 +574,7 @@ export class ProviderFormPage implements OnInit {
         clientId: provider.clientId,
         clientSecret: '', // Never returned from API
         scopes: provider.scopes.join(', '),
+        authorizationParams: authParamsString,
         allowedRoles: provider.allowedRoles.length > 0 ? provider.allowedRoles : ['*'],
         grantAllRoles: provider.allowedRoles.length === 0,
         enabled: provider.enabled,
@@ -566,12 +594,20 @@ export class ProviderFormPage implements OnInit {
   selectProviderType(type: OAuthProviderType): void {
     const preset = getProviderPreset(type);
     if (preset) {
+      // Convert authorizationParams object to "key=value, key=value" string
+      const authParamsString = preset.authorizationParams
+        ? Object.entries(preset.authorizationParams)
+            .map(([k, v]) => `${k}=${v}`)
+            .join(', ')
+        : '';
+
       this.providerForm.patchValue({
         providerType: type,
         displayName: preset.displayName,
         authorizationEndpoint: preset.authorizationEndpoint,
         tokenEndpoint: preset.tokenEndpoint,
         scopes: preset.defaultScopes.join(', '),
+        authorizationParams: authParamsString,
         iconName: preset.iconName,
       });
     }
@@ -643,6 +679,21 @@ export class ProviderFormPage implements OnInit {
             .filter((s: string) => s.length > 0)
         : [];
 
+      // Parse authorization params from "key=value, key=value" string
+      const authorizationParams: Record<string, string> = {};
+      if (formValue.authorizationParams) {
+        formValue.authorizationParams
+          .split(',')
+          .map((p: string) => p.trim())
+          .filter((p: string) => p.length > 0)
+          .forEach((p: string) => {
+            const [key, ...valueParts] = p.split('=');
+            if (key && valueParts.length > 0) {
+              authorizationParams[key.trim()] = valueParts.join('=').trim();
+            }
+          });
+      }
+
       // Normalize allowed roles
       const allowedRoles = formValue.grantAllRoles
         ? []
@@ -655,6 +706,7 @@ export class ProviderFormPage implements OnInit {
           tokenEndpoint: formValue.tokenEndpoint,
           clientId: formValue.clientId,
           scopes,
+          authorizationParams,
           allowedRoles,
           enabled: formValue.enabled,
           iconName: formValue.iconName,
@@ -674,6 +726,7 @@ export class ProviderFormPage implements OnInit {
           clientId: formValue.clientId!,
           clientSecret: formValue.clientSecret!,
           scopes,
+          authorizationParams,
           allowedRoles,
           enabled: formValue.enabled,
           iconName: formValue.iconName,

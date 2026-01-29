@@ -65,6 +65,7 @@ class OAuthProvider:
     userinfo_endpoint: Optional[str] = None  # Optional userinfo endpoint
     revocation_endpoint: Optional[str] = None  # Optional token revocation endpoint
     pkce_required: bool = True  # PKCE is required by default for security
+    authorization_params: Dict[str, str] = field(default_factory=dict)  # Extra params for auth URL (e.g., access_type=offline)
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
 
@@ -96,6 +97,7 @@ class OAuthProvider:
             "userinfoEndpoint": self.userinfo_endpoint,
             "revocationEndpoint": self.revocation_endpoint,
             "pkceRequired": self.pkce_required,
+            "authorizationParams": self.authorization_params,
             "createdAt": self.created_at,
             "updatedAt": self.updated_at,
         }
@@ -117,6 +119,7 @@ class OAuthProvider:
             userinfo_endpoint=item.get("userinfoEndpoint"),
             revocation_endpoint=item.get("revocationEndpoint"),
             pkce_required=item.get("pkceRequired", True),
+            authorization_params=item.get("authorizationParams", {}),
             created_at=item.get("createdAt", datetime.utcnow().isoformat() + "Z"),
             updated_at=item.get("updatedAt", datetime.utcnow().isoformat() + "Z"),
         )
@@ -212,6 +215,7 @@ class OAuthProviderCreate(BaseModel):
     userinfo_endpoint: Optional[str] = None
     revocation_endpoint: Optional[str] = None
     pkce_required: bool = True
+    authorization_params: Dict[str, str] = Field(default_factory=dict)
 
     class Config:
         json_schema_extra = {
@@ -228,6 +232,7 @@ class OAuthProviderCreate(BaseModel):
                 "enabled": True,
                 "icon_name": "heroCloud",
                 "pkce_required": True,
+                "authorization_params": {"access_type": "offline", "prompt": "consent"},
             }
         }
 
@@ -247,6 +252,7 @@ class OAuthProviderUpdate(BaseModel):
     userinfo_endpoint: Optional[str] = None
     revocation_endpoint: Optional[str] = None
     pkce_required: Optional[bool] = None
+    authorization_params: Optional[Dict[str, str]] = None
 
 
 class OAuthProviderResponse(BaseModel):
@@ -265,6 +271,7 @@ class OAuthProviderResponse(BaseModel):
     userinfo_endpoint: Optional[str] = None
     revocation_endpoint: Optional[str] = None
     pkce_required: bool
+    authorization_params: Dict[str, str]
     created_at: str
     updated_at: str
 
@@ -285,6 +292,7 @@ class OAuthProviderResponse(BaseModel):
             userinfo_endpoint=provider.userinfo_endpoint,
             revocation_endpoint=provider.revocation_endpoint,
             pkce_required=provider.pkce_required,
+            authorization_params=provider.authorization_params,
             created_at=provider.created_at,
             updated_at=provider.updated_at,
         )
