@@ -148,6 +148,18 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
+    // External MCP Lambda Function URL permissions (for external MCP tools with aws-iam auth)
+    // This allows the runtime to invoke Lambda Function URLs that require IAM authentication
+    // Scoped to mcp-* functions following the naming convention from mcp-servers repo
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ExternalMCPLambdaAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'lambda:InvokeFunctionUrl',
+      ],
+      resources: [`arn:aws:lambda:${config.awsRegion}:${config.awsAccount}:function:mcp-*`],
+    }));
+
     // AgentCore Gateway permissions (for MCP tool integration)
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'AgentCoreGatewayAccess',
