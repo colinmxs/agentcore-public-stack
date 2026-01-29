@@ -79,9 +79,13 @@ class ModelAccessService:
                     return True
 
             except Exception as e:
+                # JUSTIFICATION: AppRole permission resolution failures should not block access checks.
+                # We fall back to legacy JWT role checking to maintain system availability during
+                # the AppRole migration period. This ensures users can still access models even if
+                # the AppRole system has issues. We log the error for monitoring.
                 logger.warning(
-                    f"Error checking AppRole permissions for {user.email}: {e}. "
-                    "Falling back to JWT role check."
+                    f"Error checking AppRole permissions for {user.email} (falling back to JWT roles): {e}",
+                    exc_info=True
                 )
 
         # Check legacy JWT role-based access (deprecated)
@@ -117,9 +121,13 @@ class ModelAccessService:
             has_wildcard = "*" in permissions.models
             model_permissions = set(permissions.models)
         except Exception as e:
+            # JUSTIFICATION: AppRole permission resolution failures should not block model filtering.
+            # We fall back to legacy JWT role checking to maintain system availability during
+            # the AppRole migration period. This ensures users can still see accessible models
+            # even if the AppRole system has issues. We log the error for monitoring.
             logger.warning(
-                f"Error resolving AppRole permissions for {user.email}: {e}. "
-                "Using legacy JWT role check only."
+                f"Error resolving AppRole permissions for {user.email} (using JWT roles only): {e}",
+                exc_info=True
             )
             permissions = None
             has_wildcard = False

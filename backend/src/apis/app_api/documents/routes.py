@@ -5,7 +5,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
-from apis.app_api.assistants.services.assistant_service import get_assistant
+from apis.shared.assistants.service import get_assistant
 from apis.app_api.documents.models import CreateDocumentRequest, DocumentResponse, DocumentsListResponse, DownloadUrlResponse, UploadUrlResponse
 from apis.app_api.documents.services.document_service import _generate_document_id, create_document, list_assistant_documents
 from apis.app_api.documents.services.document_service import delete_document as delete_document_service

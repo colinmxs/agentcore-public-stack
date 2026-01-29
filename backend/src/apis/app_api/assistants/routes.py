@@ -18,8 +18,7 @@ from apis.inference_api.chat.service import get_agent
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 from apis.shared.errors import ErrorCode, build_conversational_error_event
-
-from .models import (
+from apis.shared.assistants.models import (
     AssistantResponse,
     AssistantSharesResponse,
     AssistantsListResponse,
@@ -30,7 +29,7 @@ from .models import (
     UnshareAssistantRequest,
     UpdateAssistantRequest,
 )
-from .services.assistant_service import (
+from apis.shared.assistants.service import (
     archive_assistant,
     assistant_exists,
     create_assistant,
@@ -45,7 +44,7 @@ from .services.assistant_service import (
     unshare_assistant,
     update_assistant,
 )
-from .services.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
+from apis.shared.assistants.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
 
 logger = logging.getLogger(__name__)
 

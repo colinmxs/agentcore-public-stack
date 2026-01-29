@@ -7,7 +7,7 @@ from fastapi import APIRouter, HTTPException, Depends, Query, Response, Backgrou
 from typing import Optional
 import logging
 from datetime import datetime
-from .models import (
+from apis.shared.sessions.models import (
     UpdateSessionMetadataRequest,
     SessionMetadataResponse,
     SessionMetadata,
@@ -15,11 +15,11 @@ from .models import (
     SessionsListResponse,
     BulkDeleteSessionsRequest,
     BulkDeleteSessionsResponse,
-    BulkDeleteSessionResult
+    BulkDeleteSessionResult,
+    MessagesListResponse
 )
-from apis.app_api.messages.models import MessagesListResponse
-from .services.messages import get_messages
-from .services.metadata import store_session_metadata, get_session_metadata, list_user_sessions
+from apis.shared.sessions.messages import get_messages
+from apis.shared.sessions.metadata import store_session_metadata, get_session_metadata, list_user_sessions
 from .services.session_service import SessionService
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User

@@ -15,8 +15,8 @@ import boto3
 
 # from agentcore.agent.agent import ChatbotAgent
 from agents.main_agent.main_agent import MainAgent
-from apis.app_api.sessions.models import SessionMetadata
-from apis.app_api.sessions.services.metadata import store_session_metadata
+from apis.shared.sessions.models import SessionMetadata
+from apis.shared.sessions.metadata import store_session_metadata
 
 logger = logging.getLogger(__name__)
 
@@ -297,7 +297,7 @@ async def generate_conversation_title(
         # not overwrite it. This function is called async after streaming completes,
         # so there's a race condition where we could overwrite the correct message_count
         # with 0 if we don't preserve existing values.
-        from apis.app_api.sessions.services.metadata import get_session_metadata
+        from apis.shared.sessions.metadata import get_session_metadata
 
         logger.info(f"📖 Title generation: Reading existing metadata for session {session_id}")
         existing_metadata = await get_session_metadata(session_id, user_id)
@@ -357,7 +357,7 @@ async def generate_conversation_title(
         # Still try to store metadata with fallback title
         # Same as above: preserve existing metadata to avoid race conditions
         try:
-            from apis.app_api.sessions.services.metadata import get_session_metadata
+            from apis.shared.sessions.metadata import get_session_metadata
 
             existing_metadata = await get_session_metadata(session_id, user_id)
 

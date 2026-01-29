@@ -17,12 +17,12 @@ from fastapi.responses import StreamingResponse
 
 from agents.main_agent.session.session_factory import SessionFactory
 from apis.app_api.admin.services import get_tool_access_service
-from apis.app_api.assistants.services.assistant_service import assistant_exists, get_assistant_with_access_check, mark_share_as_interacted
-from apis.app_api.assistants.services.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
-from apis.app_api.files.file_resolver import ResolvedFileContent, get_file_resolver
-from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
-from apis.app_api.sessions.services.messages import get_messages
-from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
+from apis.shared.assistants.service import assistant_exists, get_assistant_with_access_check, mark_share_as_interacted
+from apis.shared.assistants.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
+from apis.shared.files.file_resolver import ResolvedFileContent, get_file_resolver
+from apis.shared.sessions.models import SessionMetadata, SessionPreferences
+from apis.shared.sessions.messages import get_messages
+from apis.shared.sessions.metadata import get_session_metadata, store_session_metadata
 
 # Import models and services from inference_api (shared code)
 from apis.inference_api.chat.models import ChatEvent, ChatRequest, FileContent, GenerateTitleRequest, GenerateTitleResponse

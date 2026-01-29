@@ -15,7 +15,7 @@ from typing import List, Optional, TYPE_CHECKING
 import boto3
 from botocore.exceptions import ClientError
 
-from .service import get_file_upload_service
+from .repository import get_file_upload_repository
 from .models import FileStatus
 
 logger = logging.getLogger(__name__)
@@ -47,7 +47,7 @@ class FileResolver:
 
     def __init__(self, s3_client=None):
         self._s3_client = s3_client or boto3.client("s3")
-        self._file_service = get_file_upload_service()
+        self._file_repository = get_file_upload_repository()
 
     async def resolve_files(
         self,
@@ -91,7 +91,7 @@ class FileResolver:
         """Resolve a single file upload ID."""
 
         # Get file metadata
-        file_meta = await self._file_service.get_file(user_id, upload_id)
+        file_meta = await self._file_repository.get_file(user_id, upload_id)
 
         if not file_meta:
             logger.warning(f"File {upload_id} not found for user {user_id}")

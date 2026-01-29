@@ -20,7 +20,7 @@ from decimal import Decimal
 import boto3
 from botocore.exceptions import ClientError
 
-from apis.app_api.admin.models import ManagedModel, ManagedModelCreate, ManagedModelUpdate
+from .models import ManagedModel, ManagedModelCreate, ManagedModelUpdate
 
 logger = logging.getLogger(__name__)
 
@@ -89,7 +89,7 @@ def get_managed_models_dir() -> Path:
         return Path(models_dir)
 
     # Default: backend/src/managed_models
-    # Navigate from this file: admin/services/managed_models.py -> admin -> app_api -> apis -> src -> managed_models
+    # Navigate from this file: shared/models/managed_models.py -> models -> shared -> apis -> src -> managed_models
     return Path(__file__).parent.parent.parent.parent.parent / "managed_models"
 
 
@@ -471,6 +471,9 @@ async def _list_managed_models_local() -> List[ManagedModel]:
                 models.append(model)
 
             except Exception as e:
+                # JUSTIFICATION: When listing models, individual model parsing failures
+                # should not break the entire list operation. We skip corrupted models
+                # and continue processing others. This provides better UX than failing completely.
                 logger.warning(f"Failed to read model from {model_file}: {e}")
                 continue
 
@@ -481,8 +484,18 @@ async def _list_managed_models_local() -> List[ManagedModel]:
         return models
 
     except Exception as e:
-        logger.error(f"Failed to list managed models from local storage: {e}")
-        return []
+        logger.error(f"Failed to list managed models from local storage: {e}", exc_info=True)
+        # Propagate error - listing failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to list managed models",
+                detail=str(e)
+            )
+        )
 
 
 async def _list_managed_models_cloud(table_name: str) -> List[ManagedModel]:
@@ -536,6 +549,9 @@ async def _list_managed_models_cloud(table_name: str) -> List[ManagedModel]:
                 models.append(model)
 
             except Exception as e:
+                # JUSTIFICATION: When listing models from DynamoDB, individual model parsing
+                # failures should not break the entire list operation. We skip corrupted models
+                # and continue processing others. This provides better UX than failing completely.
                 logger.warning(f"Failed to parse model from DynamoDB: {e}")
                 continue
 
@@ -546,8 +562,18 @@ async def _list_managed_models_cloud(table_name: str) -> List[ManagedModel]:
         return models
 
     except ClientError as e:
-        logger.error(f"Failed to list managed models from DynamoDB: {e}")
-        return []
+        logger.error(f"Failed to list managed models from DynamoDB: {e}", exc_info=True)
+        # Propagate error - listing failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=503,
+            detail=create_error_response(
+                code=ErrorCode.SERVICE_UNAVAILABLE,
+                message="Failed to list managed models from database",
+                detail=str(e)
+            )
+        )
 
 
 async def update_managed_model(model_id: str, updates: ManagedModelUpdate) -> Optional[ManagedModel]:
@@ -624,11 +650,21 @@ async def _update_managed_model_local(model_id: str, updates: ManagedModelUpdate
         return updated_model
 
     except ValueError:
-        # Re-raise ValueError (duplicate modelId)
+        # Re-raise ValueError (duplicate modelId) - this is a user error
         raise
     except Exception as e:
-        logger.error(f"Failed to update managed model in local storage: {e}")
-        return None
+        logger.error(f"Failed to update managed model in local storage: {e}", exc_info=True)
+        # Propagate error - update failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to update managed model",
+                detail=str(e)
+            )
+        )
 
 
 async def _update_managed_model_cloud(model_id: str, updates: ManagedModelUpdate, table_name: str) -> Optional[ManagedModel]:
@@ -789,8 +825,18 @@ async def _delete_managed_model_local(model_id: str) -> bool:
         return True
 
     except Exception as e:
-        logger.error(f"Failed to delete managed model from local storage: {e}")
-        return False
+        logger.error(f"Failed to delete managed model from local storage: {e}", exc_info=True)
+        # Propagate error - delete failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to delete managed model",
+                detail=str(e)
+            )
+        )
 
 
 async def _delete_managed_model_cloud(model_id: str, table_name: str) -> bool:
@@ -824,6 +870,16 @@ async def _delete_managed_model_cloud(model_id: str, table_name: str) -> bool:
 
     except ClientError as e:
         if e.response['Error']['Code'] == 'ConditionalCheckFailedException':
-            return False  # Model not found
-        logger.error(f"Failed to delete managed model from DynamoDB: {e}")
-        return False
+            return False  # Model not found - this is expected
+        logger.error(f"Failed to delete managed model from DynamoDB: {e}", exc_info=True)
+        # Propagate error - delete failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=503,
+            detail=create_error_response(
+                code=ErrorCode.SERVICE_UNAVAILABLE,
+                message="Failed to delete managed model from database",
+                detail=str(e)
+            )
+        )

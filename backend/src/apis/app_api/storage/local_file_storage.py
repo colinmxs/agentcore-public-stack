@@ -216,7 +216,10 @@ class LocalFileStorage(MetadataStorage):
                         breakdown["cacheWriteTokens"] += token_usage.get("cacheWriteInputTokens", 0)
 
             except Exception as e:
-                # Log but don't fail on individual session errors
+                # JUSTIFICATION: When aggregating costs across multiple sessions, individual
+                # session processing failures should not break the entire aggregation.
+                # We skip corrupted sessions and continue, providing partial results.
+                # This is better UX than failing the entire cost summary request.
                 import logging
                 logging.warning(f"Error processing session {session_dir.name}: {e}")
                 continue
@@ -326,7 +329,10 @@ class LocalFileStorage(MetadataStorage):
                             continue
 
             except Exception as e:
-                # Log but don't fail on individual session errors
+                # JUSTIFICATION: When collecting messages across multiple sessions, individual
+                # session processing failures should not break the entire collection.
+                # We skip corrupted sessions and continue, providing partial results.
+                # This is better UX than failing the entire message collection request.
                 import logging
                 logging.warning(f"Error processing session {session_dir.name}: {e}")
                 continue

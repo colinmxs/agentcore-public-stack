@@ -148,6 +148,18 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
+    // External MCP Lambda Function URL permissions (for external MCP tools with aws-iam auth)
+    // This allows the runtime to invoke Lambda Function URLs that require IAM authentication
+    // Scoped to mcp-* functions following the naming convention from mcp-servers repo
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ExternalMCPLambdaAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'lambda:InvokeFunctionUrl',
+      ],
+      resources: ['*'],
+    }));
+
     // AgentCore Gateway permissions (for MCP tool integration)
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'AgentCoreGatewayAccess',
@@ -525,6 +537,17 @@ export class InferenceApiStack extends cdk.Stack {
         'DYNAMODB_APP_ROLES_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rbac/app-roles-table-name`
+        ),
+        
+        // OAuth/OIDC Configuration (imported from App API Stack)
+        // Note: Inference API doesn't use OAuth flows, but shared modules check for these
+        'DYNAMODB_OIDC_STATE_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/auth/oidc-state-table-name`
+        ),
+        'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/oauth/token-encryption-key-arn`
         ),
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)

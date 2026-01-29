@@ -29,9 +29,9 @@ from .models import (
     ManagedModelsListResponse,
 )
 from apis.shared.auth import User, require_admin, require_roles, has_any_role, get_current_user
-from apis.app_api.sessions.services.metadata import list_user_sessions, get_session_metadata
-from apis.app_api.sessions.services.messages import get_messages
-from apis.app_api.admin.services.managed_models import (
+from apis.shared.sessions.metadata import list_user_sessions, get_session_metadata
+from apis.shared.sessions.messages import get_messages
+from apis.shared.models.managed_models import (
     create_managed_model,
     get_managed_model,
     list_managed_models,

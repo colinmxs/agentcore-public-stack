@@ -117,7 +117,7 @@ async def get_document(
     try:
         import boto3
         from botocore.exceptions import ClientError
-        from apis.app_api.assistants.services.assistant_service import get_assistant
+        from apis.shared.assistants.service import get_assistant
     except ImportError:
         logger.error("boto3 is required for DynamoDB operations")
         return None
@@ -326,7 +326,7 @@ async def list_assistant_documents(
         import base64
         from boto3.dynamodb.conditions import Key
         from botocore.exceptions import ClientError
-        from apis.app_api.assistants.services.assistant_service import get_assistant
+        from apis.shared.assistants.service import get_assistant
     except ImportError:
         logger.error("boto3 is required for DynamoDB operations")
         return [], None
@@ -414,7 +414,7 @@ async def delete_document(
     try:
         import boto3
         from botocore.exceptions import ClientError
-        from apis.app_api.assistants.services.assistant_service import get_assistant
+        from apis.shared.assistants.service import get_assistant
     except ImportError:
         logger.error("boto3 is required for DynamoDB operations")
         return False

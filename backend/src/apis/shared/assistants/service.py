@@ -17,8 +17,8 @@ from datetime import datetime
 from pathlib import Path
 from typing import List, Optional, Tuple
 
-from apis.app_api.assistants.models import Assistant
-from apis.app_api.storage.paths import get_assistant_path, get_assistants_root
+from .models import Assistant
+from apis.shared.storage.paths import get_assistant_path, get_assistants_root
 
 logger = logging.getLogger(__name__)
 
@@ -302,18 +302,21 @@ async def assistant_exists(assistant_id: str) -> bool:
     return assistant is not None
 
 
-async def get_all_assistants() -> List[Assistant]:
-    """
-    Retrieve all assistants
-
-    Returns:
-        List of Assistant objects
-    """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
-    if assistants_table:
-        return await _get_all_assistants_cloud(assistants_table)
-    else:
-        return await _get_all_assistants_local()
+# NOTE: This function is not fully implemented - the helper functions
+# _get_all_assistants_local and _get_all_assistants_cloud don't exist
+# Commenting out to avoid import errors
+# async def get_all_assistants() -> List[Assistant]:
+#     """
+#     Retrieve all assistants
+#
+#     Returns:
+#         List of Assistant objects
+#     """
+#     assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+#     if assistants_table:
+#         return await _get_all_assistants_cloud(assistants_table)
+#     else:
+#         return await _get_all_assistants_local()
 
 
 async def _get_assistant_local(assistant_id: str, owner_id: str) -> Optional[Assistant]:

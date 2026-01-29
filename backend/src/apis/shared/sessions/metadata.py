@@ -16,7 +16,10 @@ from typing import Optional, Tuple, Any, Dict
 from pathlib import Path
 from decimal import Decimal
 
-from apis.shared.sessions.models import MessageMetadata, SessionMetadata
+# Relative imports from shared sessions module
+from .models import MessageMetadata, SessionMetadata
+
+# Absolute imports for storage (now in shared module)
 from apis.shared.storage.paths import get_message_path, get_session_metadata_path, get_sessions_root, get_message_metadata_path
 
 logger = logging.getLogger(__name__)
@@ -52,6 +55,7 @@ def _convert_decimal_to_float(obj: Any) -> Any:
         return [_convert_decimal_to_float(item) for item in obj]
     else:
         return obj
+
 
 
 async def store_message_metadata(
@@ -155,8 +159,19 @@ async def _store_message_metadata_local(
             )
 
     except Exception as e:
-        logger.error(f"Failed to store message metadata in local file: {e}")
-        # Don't raise - metadata storage failures shouldn't break the app
+        logger.error(f"Failed to store message metadata in local file: {e}", exc_info=True)
+        # Propagate error - metadata storage is critical for cost tracking and audit trail
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to store message metadata",
+                detail=str(e)
+            )
+        )
+
 
 
 async def _store_message_metadata_cloud(
@@ -269,7 +284,18 @@ async def _store_message_metadata_cloud(
 
     except Exception as e:
         logger.error(f"Failed to store message metadata in DynamoDB: {e}", exc_info=True)
-        # Don't raise - metadata storage failures shouldn't break the app
+        # Propagate error - metadata storage is critical for cost tracking and audit trail
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=503,
+            detail=create_error_response(
+                code=ErrorCode.SERVICE_UNAVAILABLE,
+                message="Failed to store message metadata in database",
+                detail=str(e)
+            )
+        )
+
 
 
 async def _update_cost_summary_async(
@@ -406,8 +432,13 @@ async def _update_cost_summary_async(
         )
 
     except Exception as e:
-        # Log but don't raise - cost summary updates shouldn't break the app
-        logger.error(f"Failed to update cost summary: {e}", exc_info=True)
+        # JUSTIFICATION: Cost summary updates are fire-and-forget background operations.
+        # They are called asynchronously after the main message storage completes.
+        # Failures here should not break the user's chat request, but we log for monitoring.
+        # The cost data is already stored in the primary cost record (C# prefix), so this
+        # is just updating pre-aggregated summaries for faster quota checks.
+        logger.error(f"Failed to update cost summary (non-critical): {e}", exc_info=True)
+
 
 
 async def _update_system_rollups_async(
@@ -502,8 +533,12 @@ async def _update_system_rollups_async(
         logger.debug(f"📈 Updated system rollups: date={date}, period={period}, new_today={is_new_today}, new_month={is_new_this_month}")
 
     except Exception as e:
-        # Log but don't raise - rollup updates are supplementary
-        logger.error(f"Failed to update system rollups: {e}", exc_info=True)
+        # JUSTIFICATION: System rollup updates are supplementary analytics for admin dashboard.
+        # They are fire-and-forget background operations that should not block user requests.
+        # The primary cost data is already stored in individual cost records (C# prefix).
+        # Rollup failures only affect admin dashboard aggregates, not user functionality.
+        logger.error(f"Failed to update system rollups (non-critical): {e}", exc_info=True)
+
 
 
 async def store_session_metadata(
@@ -602,8 +637,19 @@ async def _store_session_metadata_local(
         logger.info(f"💾 Stored session metadata in {session_file}")
 
     except Exception as e:
-        logger.error(f"Failed to store session metadata in local file: {e}")
-        # Don't raise - metadata storage failures shouldn't break the app
+        logger.error(f"Failed to store session metadata in local file: {e}", exc_info=True)
+        # Propagate error - session metadata storage is critical for session management
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to store session metadata",
+                detail=str(e)
+            )
+        )
+
 
 
 async def _store_session_metadata_cloud(
@@ -751,7 +797,17 @@ async def _store_session_metadata_cloud(
 
     except Exception as e:
         logger.error(f"Failed to store session metadata in DynamoDB: {e}", exc_info=True)
-        # Don't raise - metadata storage failures shouldn't break the app
+        # Propagate error - session metadata storage is critical for session management
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=503,
+            detail=create_error_response(
+                code=ErrorCode.SERVICE_UNAVAILABLE,
+                message="Failed to store session metadata in database",
+                detail=str(e)
+            )
+        )
 
 
 async def _get_session_by_gsi(session_id: str, user_id: str, table) -> Optional[dict]:
@@ -790,7 +846,10 @@ async def _get_session_by_gsi(session_id: str, user_id: str, table) -> Optional[
         return _convert_decimal_to_float(item)
 
     except Exception as e:
-        # GSI might not exist yet - fall back to None
+        # JUSTIFICATION: GSI lookup is a fallback mechanism for finding sessions.
+        # If the GSI doesn't exist yet (during initial deployment) or the query fails,
+        # we gracefully return None and let the caller handle it. This is not a critical
+        # failure - the session might not exist, or we're in a transitional state.
         logger.debug(f"GSI lookup failed (may not exist yet): {e}")
         return None
 
@@ -843,6 +902,7 @@ def _convert_single_value_to_dynamodb(value) -> dict:
         return {'S': str(value)}
 
 
+
 async def get_session_metadata(session_id: str, user_id: str) -> Optional[SessionMetadata]:
     """
     Retrieve session metadata
@@ -888,7 +948,7 @@ async def get_all_message_metadata(session_id: str, user_id: str) -> Dict[str, A
 
 async def _get_all_message_metadata_local(session_id: str) -> Dict[str, Any]:
     """Retrieve all message metadata from local file storage"""
-    from apis.shared.storage.paths import get_message_metadata_path
+    from apis.app_api.storage.paths import get_message_metadata_path
     metadata_file = get_message_metadata_path(session_id)
     if not metadata_file.exists():
         return {}
@@ -1061,6 +1121,7 @@ async def _get_session_metadata_cloud(
         return None
 
 
+
 def _apply_pagination(
     sessions: list[SessionMetadata],
     limit: Optional[int] = None,
@@ -1093,6 +1154,9 @@ def _apply_pagination(
                 # If no session found with timestamp < decoded, we've reached the end
                 start_index = len(sessions)
         except Exception as e:
+            # JUSTIFICATION: Invalid pagination tokens should not break the request.
+            # We fall back to starting from the beginning, which is a reasonable default.
+            # This handles cases where tokens are corrupted, expired, or malformed.
             logger.warning(f"Invalid next_token: {e}, starting from beginning")
             start_index = 0
     
@@ -1201,6 +1265,9 @@ async def _list_user_sessions_local(
                 sessions.append(metadata)
 
             except Exception as e:
+                # JUSTIFICATION: When listing sessions, individual session parsing failures
+                # should not break the entire list operation. We skip corrupted sessions
+                # and continue processing others. This provides better UX than failing completely.
                 logger.warning(f"Failed to read session metadata from {session_file}: {e}")
                 continue
 
@@ -1215,8 +1282,18 @@ async def _list_user_sessions_local(
         return paginated_sessions, next_page_token
 
     except Exception as e:
-        logger.error(f"Failed to list user sessions from local storage: {e}")
-        return [], None
+        logger.error(f"Failed to list user sessions from local storage: {e}", exc_info=True)
+        # Propagate error - session listing failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=500,
+            detail=create_error_response(
+                code=ErrorCode.INTERNAL_ERROR,
+                message="Failed to list user sessions",
+                detail=str(e)
+            )
+        )
 
 
 async def _list_user_sessions_cloud(
@@ -1263,6 +1340,9 @@ async def _list_user_sessions_cloud(
                 decoded = base64.b64decode(next_token).decode('utf-8')
                 exclusive_start_key = json.loads(decoded)
             except Exception as e:
+                # JUSTIFICATION: Invalid pagination tokens should not break the request.
+                # We fall back to no pagination, which is a reasonable default.
+                # This handles cases where tokens are corrupted, expired, or malformed.
                 logger.warning(f"Invalid next_token: {e}")
 
         # Build query parameters with new S#ACTIVE# prefix
@@ -1298,6 +1378,9 @@ async def _list_user_sessions_cloud(
                 metadata = SessionMetadata.model_validate(item)
                 sessions.append(metadata)
             except Exception as e:
+                # JUSTIFICATION: When listing sessions from DynamoDB, individual session parsing
+                # failures should not break the entire list operation. We skip corrupted sessions
+                # and continue processing others. This provides better UX than failing completely.
                 logger.warning(f"Failed to parse session item: {e}")
                 continue
 
@@ -1319,7 +1402,17 @@ async def _list_user_sessions_cloud(
 
     except Exception as e:
         logger.error(f"Failed to list user sessions from DynamoDB: {e}", exc_info=True)
-        return [], None
+        # Propagate error - session listing failures should be visible to the user
+        from fastapi import HTTPException
+        from apis.shared.errors import ErrorCode, create_error_response
+        raise HTTPException(
+            status_code=503,
+            detail=create_error_response(
+                code=ErrorCode.SERVICE_UNAVAILABLE,
+                message="Failed to list user sessions from database",
+                detail=str(e)
+            )
+        )
 
 
 def _deep_merge(base: dict, updates: dict) -> dict:
@@ -1347,4 +1440,3 @@ def _deep_merge(base: dict, updates: dict) -> dict:
             result[key] = value
 
     return result
-

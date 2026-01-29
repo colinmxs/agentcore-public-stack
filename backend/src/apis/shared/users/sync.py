@@ -88,8 +88,12 @@ class UserSyncService:
 
             return profile, is_new
         except Exception as e:
-            logger.error(f"Error syncing user {user_id} from JWT: {e}")
-            # Don't re-raise - sync failures shouldn't break the request
+            # JUSTIFICATION: User sync is a best-effort operation that keeps the DynamoDB
+            # user table up-to-date with JWT claims. Sync failures should not break authentication
+            # or block user requests. The user can still access the system with their JWT token.
+            # We log the error for monitoring and return None to indicate sync failed.
+            # Critical operations (auth, RBAC) use JWT claims directly, not the synced data.
+            logger.error(f"Error syncing user {user_id} from JWT (non-critical): {e}", exc_info=True)
             return None, False
 
     async def sync_from_user(
