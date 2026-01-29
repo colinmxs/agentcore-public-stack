@@ -183,6 +183,25 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
     }));
 
+    // Secrets Manager read permissions for OAuth client secrets (imported from App API Stack)
+    const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/client-secrets-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'OAuthClientSecretsAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [
+        oauthClientSecretsArn,
+        `${oauthClientSecretsArn}*`, // Include wildcard for random suffix
+      ],
+    }));
+
     // DynamoDB Users Table permissions (imported from App API Stack)
     const usersTableArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -549,6 +568,12 @@ export class InferenceApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/oauth/token-encryption-key-arn`
         ),
+        
+        // OAuth External MCP Configuration
+        // Client secrets ARN imported from App API Stack via SSM
+        'OAUTH_CLIENT_SECRETS_ARN': oauthClientSecretsArn,
+        // Callback URL from GitHub Variables
+        'OAUTH_CALLBACK_URL': config.inferenceApi.oauthCallbackUrl,
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)
         'ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
