@@ -55,17 +55,18 @@ class ModelConfig:
         Returns:
             dict: Configuration for BedrockModel initialization
         """
+        from strands.models import CacheConfig
+
         config = {
             "model_id": self.model_id,
             "temperature": self.temperature
         }
 
-        # NOTE: cache_prompt and cache_tools are deprecated in newer Strands versions
-        # The ConversationCachingHook handles all caching via cachePoint blocks in messages
-        # System prompt and tool caching should be handled by the hook or manually adding cachePoint
-        #
-        # If you see "cache_prompt is deprecated" warnings, the caching is still working
-        # but through the hook mechanism rather than the deprecated config parameters
+        # Use CacheConfig with strategy="auto" for automatic prompt caching
+        # This automatically injects cache points at the end of the last assistant message
+        # See: https://github.com/strands-agents/sdk-python/pull/1438
+        if self.caching_enabled:
+            config["cache_config"] = CacheConfig(strategy="auto")
 
         return config
 

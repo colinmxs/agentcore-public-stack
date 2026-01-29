@@ -161,7 +161,7 @@ tools, gateway_ids = filter.filter_tools(["calculator", "weather"])
 **Hooks** (`session/hooks/`)
 - Re-exports existing hooks from `agentcore.agent.hooks`
 - `StopHook`: Session cancellation support
-- `ConversationCachingHook`: Message history caching
+- Note: Prompt caching is handled by `CacheConfig(strategy="auto")` in the BedrockModel
 
 ### Tools Module
 

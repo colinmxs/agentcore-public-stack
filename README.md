@@ -212,26 +212,23 @@ agent = Agent(
 
 ### Token Optimization: Prompt Caching
 
-**Implementation:** `agent.py:67-142`
+**Implementation:** `model_config.py` via `CacheConfig(strategy="auto")`
 
-Two-level caching via Strands hooks:
+Automatic prompt caching via Strands SDK (v1.24+):
 
-1. **System Prompt Caching** (static)
-   ```python
-   system_content = [
-       {"text": system_prompt},
-       {"cachePoint": {"type": "default"}}  # Cache marker
-   ]
-   ```
+```python
+from strands.models import BedrockModel, CacheConfig
 
-2. **Conversation History Caching** (dynamic)
-   - `ConversationCachingHook` adds cache points to last 2 messages
-   - Removes cache points from previous messages
-   - Executes on `BeforeModelCallEvent`
+model = BedrockModel(
+    model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+    cache_config=CacheConfig(strategy="auto")
+)
+```
 
 **Cache Strategy:**
-- Max 4 cache points: system (1-2) + last 2 messages (2)
-- Cache points rotate as conversation progresses
+- Single cache point at end of last assistant message
+- Automatically injected before each model call
+- Covers system prompt, tools, and conversation history
 - Reduces input tokens for repeated content
 
 <img src="docs/images/prompt-caching.svg" alt="Prompt Caching Strategy" width="800">
