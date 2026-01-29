@@ -27,7 +27,7 @@ from agents.main_agent.multimodal import PromptBuilder
 
 # Session management
 from agents.main_agent.session import SessionFactory
-from agents.main_agent.session.hooks import ConversationCachingHook, StopHook
+from agents.main_agent.session.hooks import StopHook
 
 # Streaming coordination
 from agents.main_agent.streaming import StreamCoordinator
