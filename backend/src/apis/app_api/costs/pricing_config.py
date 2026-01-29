@@ -13,7 +13,7 @@ import logging
 from typing import Dict, Optional
 from datetime import datetime, timezone
 
-from apis.app_api.admin.services.managed_models import list_managed_models
+from apis.shared.models.managed_models import list_managed_models
 
 logger = logging.getLogger(__name__)
 

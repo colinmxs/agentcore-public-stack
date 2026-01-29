@@ -12,8 +12,7 @@ from fastapi import APIRouter, Depends, HTTPException, Query, status
 from fastapi.responses import Response
 
 from apis.shared.auth import User, get_current_user
-
-from .models import (
+from apis.shared.files.models import (
     PresignRequest,
     PresignResponse,
     CompleteUploadResponse,

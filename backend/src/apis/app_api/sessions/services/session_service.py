@@ -14,7 +14,7 @@ from typing import Optional
 from datetime import datetime, timezone
 from decimal import Decimal
 
-from apis.app_api.sessions.models import SessionMetadata
+from apis.shared.sessions.models import SessionMetadata
 from apis.app_api.files.service import get_file_upload_service
 
 logger = logging.getLogger(__name__)
@@ -162,7 +162,7 @@ class SessionService:
         """
         if not self._is_cloud_mode():
             # Fall back to local storage via metadata service
-            from apis.app_api.sessions.services.metadata import get_session_metadata
+            from apis.shared.sessions.metadata import get_session_metadata
             return await get_session_metadata(session_id, user_id)
 
         try:

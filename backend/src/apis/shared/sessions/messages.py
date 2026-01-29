@@ -10,7 +10,8 @@ import os
 from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
-from apis.shared.sessions.models import Message, MessageContent, MessageResponse, MessagesListResponse
+# Relative imports from shared sessions module
+from .models import Message, MessageContent, MessageResponse, MessagesListResponse, MessageMetadata, Citation
 
 logger = logging.getLogger(__name__)
 
@@ -224,8 +225,6 @@ def _convert_message_to_response(msg: Message, session_id: str, sequence_number:
             citations_data = metadata_dict.pop("citations")
             # Convert citation dicts to Citation objects for type validation
             if citations_data:
-                from apis.app_api.messages.models import Citation
-
                 try:
                     citations = [Citation(**c) for c in citations_data]
                 except Exception as e:
@@ -305,8 +304,6 @@ def _convert_message(msg: Any, metadata: Any = None) -> Message:
         content_blocks = [MessageContent(type="text", text=content)]
 
     # Convert metadata if present
-    from apis.app_api.messages.models import MessageMetadata
-
     message_metadata = None
     if metadata:
         if isinstance(metadata, dict):
@@ -405,7 +402,7 @@ async def get_messages_from_cloud(
 
         async def fetch_metadata():
             """Fetch metadata from DynamoDB"""
-            from apis.shared.sessions.metadata import get_all_message_metadata
+            from .metadata import get_all_message_metadata
 
             return await get_all_message_metadata(session_id, user_id)
 

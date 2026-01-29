@@ -14,7 +14,7 @@ import boto3
 from botocore.config import Config
 from botocore.exceptions import ClientError
 
-from .models import (
+from apis.shared.files.models import (
     FileMetadata,
     FileStatus,
     UserFileQuota,
@@ -27,7 +27,7 @@ from .models import (
     is_allowed_mime_type,
     ALLOWED_MIME_TYPES,
 )
-from .repository import FileUploadRepository, get_file_upload_repository
+from apis.shared.files.repository import FileUploadRepository, get_file_upload_repository
 
 logger = logging.getLogger(__name__)
 

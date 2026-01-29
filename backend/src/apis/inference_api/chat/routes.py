@@ -16,8 +16,8 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from agents.main_agent.session.session_factory import SessionFactory
-from apis.app_api.admin.services.managed_models import list_managed_models
-from apis.app_api.files.file_resolver import ResolvedFileContent, get_file_resolver
+from apis.shared.models.managed_models import list_managed_models
+from apis.shared.files.file_resolver import ResolvedFileContent, get_file_resolver
 from apis.shared.auth.dependencies import get_current_user, get_current_user_trusted
 from apis.shared.auth.models import User
 from apis.shared.errors import (
@@ -268,20 +268,20 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
 
     if input_data.assistant_id:
         # Local imports to avoid circular dependency
-        from apis.app_api.assistants.services.assistant_service import (
+        from apis.shared.assistants.service import (
             get_assistant_with_access_check,
             mark_share_as_interacted,
         )
-        from apis.app_api.assistants.services.rag_service import (
+        from apis.shared.assistants.rag_service import (
             augment_prompt_with_context,
             search_assistant_knowledgebase_with_formatting,
         )
-        from apis.app_api.sessions.models import (
+        from apis.shared.sessions.models import (
             SessionMetadata,
             SessionPreferences,
         )
-        from apis.app_api.sessions.services.messages import get_messages
-        from apis.app_api.sessions.services.metadata import (
+        from apis.shared.sessions.messages import get_messages
+        from apis.shared.sessions.metadata import (
             get_session_metadata,
             store_session_metadata,
         )
@@ -335,7 +335,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         
         if not assistant:
             # Check if assistant exists at all to provide better error message
-            from apis.app_api.assistants.services.assistant_service import assistant_exists
+            from apis.shared.assistants.service import assistant_exists
             exists = await assistant_exists(input_data.assistant_id)
             
             if not exists:

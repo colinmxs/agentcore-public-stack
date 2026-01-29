@@ -81,8 +81,12 @@ async def seed_system_roles(repository: AppRoleRepository = None):
             logger.info(f"Seeded system role: {role.role_id}")
 
         except Exception as e:
-            logger.error(f"Failed to seed role '{role.role_id}': {e}")
-            # Don't raise - continue seeding other roles
+            # JUSTIFICATION: Role seeding is a startup initialization task that should be
+            # resilient to individual role failures. If one role fails to seed (e.g., due to
+            # transient DynamoDB issues), we continue seeding other roles to maximize system
+            # availability. The application can still start and function with partial roles.
+            # Critical: system_admin role failure is logged and monitored for alerting.
+            logger.error(f"Failed to seed role '{role.role_id}' (non-critical): {e}", exc_info=True)
 
 
 async def ensure_system_roles():

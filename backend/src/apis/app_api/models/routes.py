@@ -9,7 +9,7 @@ import logging
 
 from apis.app_api.admin.models import ManagedModelsListResponse
 from apis.shared.auth import User, get_current_user
-from apis.app_api.admin.services.managed_models import list_all_managed_models
+from apis.shared.models.managed_models import list_all_managed_models
 from apis.app_api.admin.services.model_access import (
     ModelAccessService,
     get_model_access_service,
