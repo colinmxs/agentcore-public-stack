@@ -24,10 +24,10 @@ describe('CitationDisplayComponent', () => {
   it('should accept citations input', () => {
     const mockCitations: Citation[] = [
       {
+        assistantId: 'assistant-1',
         documentId: 'doc-1',
         fileName: 'test.pdf',
-        text: 'Test citation text',
-        s3Url: 'https://s3.example.com/test.pdf'
+        text: 'Test citation text'
       }
     ];
 
@@ -61,12 +61,13 @@ describe('CitationDisplayComponent', () => {
       fixture.componentRef.setInput('citations', []);
       fixture.detectChanges();
 
-      expect(component.citationCount).toBe(0);
+      expect(component.citationCount()).toBe(0);
     });
 
     it('should return correct citation count for single citation', () => {
       const mockCitations: Citation[] = [
         {
+          assistantId: 'assistant-1',
           documentId: 'doc-1',
           fileName: 'test.pdf',
           text: 'Test citation text'
@@ -76,22 +77,25 @@ describe('CitationDisplayComponent', () => {
       fixture.componentRef.setInput('citations', mockCitations);
       fixture.detectChanges();
 
-      expect(component.citationCount).toBe(1);
+      expect(component.citationCount()).toBe(1);
     });
 
     it('should return correct citation count for multiple citations', () => {
       const mockCitations: Citation[] = [
         {
+          assistantId: 'assistant-1',
           documentId: 'doc-1',
           fileName: 'test1.pdf',
           text: 'Test citation 1'
         },
         {
+          assistantId: 'assistant-1',
           documentId: 'doc-2',
           fileName: 'test2.pdf',
           text: 'Test citation 2'
         },
         {
+          assistantId: 'assistant-1',
           documentId: 'doc-3',
           fileName: 'test3.pdf',
           text: 'Test citation 3'
@@ -101,40 +105,7 @@ describe('CitationDisplayComponent', () => {
       fixture.componentRef.setInput('citations', mockCitations);
       fixture.detectChanges();
 
-      expect(component.citationCount).toBe(3);
-    });
-
-    it('should use documentId as trackBy identifier', () => {
-      const citation: Citation = {
-        documentId: 'doc-123',
-        fileName: 'test.pdf',
-        text: 'Test citation text'
-      };
-
-      const result = component.trackByCitation(0, citation);
-
-      expect(result).toBe('doc-123');
-    });
-
-    it('should return different identifiers for different citations', () => {
-      const citation1: Citation = {
-        documentId: 'doc-1',
-        fileName: 'test1.pdf',
-        text: 'Test citation 1'
-      };
-
-      const citation2: Citation = {
-        documentId: 'doc-2',
-        fileName: 'test2.pdf',
-        text: 'Test citation 2'
-      };
-
-      const result1 = component.trackByCitation(0, citation1);
-      const result2 = component.trackByCitation(1, citation2);
-
-      expect(result1).toBe('doc-1');
-      expect(result2).toBe('doc-2');
-      expect(result1).not.toBe(result2);
+      expect(component.citationCount()).toBe(3);
     });
   });
 
@@ -340,93 +311,6 @@ describe('CitationDisplayComponent', () => {
       expect(component.isExpanded()).toBe(false);
 
       vi.restoreAllMocks();
-    });
-  });
-
-  describe('Text Truncation', () => {
-    it('should return text unchanged when length is less than maxLength', () => {
-      const shortText = 'This is a short text';
-      const result = component.truncateText(shortText, 200);
-
-      expect(result).toBe(shortText);
-    });
-
-    it('should return text unchanged when length equals maxLength', () => {
-      const text = 'a'.repeat(200);
-      const result = component.truncateText(text, 200);
-
-      expect(result).toBe(text);
-    });
-
-    it('should truncate text and append "..." when length exceeds maxLength', () => {
-      const longText = 'a'.repeat(250);
-      const result = component.truncateText(longText, 200);
-
-      expect(result).toBe('a'.repeat(200) + '...');
-      expect(result.length).toBe(203); // 200 + 3 for "..."
-    });
-
-    it('should use default maxLength of 200 when not specified', () => {
-      const longText = 'a'.repeat(250);
-      const result = component.truncateText(longText);
-
-      expect(result).toBe('a'.repeat(200) + '...');
-      expect(result.length).toBe(203);
-    });
-
-    it('should handle empty string', () => {
-      const result = component.truncateText('', 200);
-
-      expect(result).toBe('');
-    });
-
-    it('should handle text with exactly 201 characters', () => {
-      const text = 'a'.repeat(201);
-      const result = component.truncateText(text, 200);
-
-      expect(result).toBe('a'.repeat(200) + '...');
-      expect(result.length).toBe(203);
-    });
-
-    it('should handle custom maxLength values', () => {
-      const text = 'This is a test text that is longer than 10 characters';
-      const result = component.truncateText(text, 10);
-
-      expect(result).toBe('This is a ...');
-      expect(result.length).toBe(13); // 10 + 3 for "..."
-    });
-
-    it('should preserve text content up to maxLength', () => {
-      const text = 'The quick brown fox jumps over the lazy dog';
-      const result = component.truncateText(text, 19);
-
-      expect(result).toBe('The quick brown fox...');
-      expect(result.startsWith('The quick brown fox')).toBe(true);
-    });
-
-    it('should handle text with special characters', () => {
-      const text = 'Special chars: @#$%^&*()[]{}|\\/<>?~`+=- ' + 'a'.repeat(180);
-      const result = component.truncateText(text, 200);
-
-      expect(result.length).toBe(203);
-      expect(result.endsWith('...')).toBe(true);
-    });
-
-    it('should handle text with unicode characters', () => {
-      const text = '🎉🎊🎈' + 'a'.repeat(200);
-      const result = component.truncateText(text, 200);
-
-      expect(result.length).toBe(203);
-      expect(result.endsWith('...')).toBe(true);
-    });
-
-    it('should handle text with newlines and spaces', () => {
-      const text = 'Line 1\nLine 2\nLine 3\n' + 'a'.repeat(180);
-      const result = component.truncateText(text, 200);
-
-      expect(result.length).toBe(203);
-      expect(result.endsWith('...')).toBe(true);
-      expect(result.substring(0, 200)).toBe(text.substring(0, 200));
     });
   });
 });
