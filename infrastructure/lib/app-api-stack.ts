@@ -1158,8 +1158,31 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // Grant permissions for assistants documents bucket
+    // Grant permissions for assistants documents bucket (local to this stack)
     assistantsDocumentsBucket.grantReadWrite(taskDefinition.taskRole);
+
+    // Grant permissions for RAG documents bucket (imported from RagIngestionStack)
+    const ragDocumentsBucketArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rag/documents-bucket-arn`
+    );
+    
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'RagDocumentsBucketAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          's3:GetObject',
+          's3:PutObject',
+          's3:DeleteObject',
+          's3:ListBucket',
+        ],
+        resources: [
+          ragDocumentsBucketArn,
+          `${ragDocumentsBucketArn}/*`,
+        ],
+      })
+    );
 
     // Grant S3 Vectors permissions for assistants vector store
     taskDefinition.taskRole.addToPrincipalPolicy(
