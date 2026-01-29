@@ -108,7 +108,7 @@ from apis.app_api.files.routes import router as files_router
 from apis.app_api.assistants.routes import router as assistants_router
 from apis.app_api.documents.routes import router as documents_router
 from apis.app_api.users.routes import router as users_router
-from apis.app_api.oauth.routes import router as oauth_router
+from apis.shared.oauth.routes import router as oauth_router
 
 # Include routers
 app.include_router(health_router)

@@ -117,14 +117,14 @@ class OAuthToolService:
     async def _get_oauth_service(self):
         """Lazy-load OAuth service to avoid circular imports."""
         if self._oauth_service is None:
-            from apis.app_api.oauth.service import get_oauth_service
+            from apis.shared.oauth.service import get_oauth_service
             self._oauth_service = get_oauth_service()
         return self._oauth_service
 
     async def _get_provider_repo(self):
         """Lazy-load provider repository."""
         if self._provider_repo is None:
-            from apis.app_api.oauth.provider_repository import get_provider_repository
+            from apis.shared.oauth.provider_repository import get_provider_repository
             self._provider_repo = get_provider_repository()
         return self._provider_repo
 
@@ -167,7 +167,7 @@ class OAuthToolService:
                 )
 
             # Check if user has a connection but needs re-auth
-            from apis.app_api.oauth.token_repository import get_token_repository
+            from apis.shared.oauth.token_repository import get_token_repository
             token_repo = get_token_repository()
             user_token = await token_repo.get_user_token(user_id, provider_id)
 

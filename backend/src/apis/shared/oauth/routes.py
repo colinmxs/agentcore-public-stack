@@ -11,14 +11,14 @@ from fastapi.responses import RedirectResponse
 from apis.shared.auth import User, get_current_user
 from apis.shared.rbac.service import AppRoleService, get_app_role_service
 
-from .models import (
+from apis.shared.oauth.models import (
     OAuthConnectionListResponse,
     OAuthConnectResponse,
     OAuthProviderListResponse,
     OAuthProviderResponse,
 )
-from .provider_repository import OAuthProviderRepository, get_provider_repository
-from .service import OAuthService, get_oauth_service
+from apis.shared.oauth.provider_repository import OAuthProviderRepository, get_provider_repository
+from apis.shared.oauth.service import OAuthService, get_oauth_service
 
 logger = logging.getLogger(__name__)
 
