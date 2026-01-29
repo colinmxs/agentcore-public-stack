@@ -157,7 +157,7 @@ export class InferenceApiStack extends cdk.Stack {
       actions: [
         'lambda:InvokeFunctionUrl',
       ],
-      resources: [`arn:aws:lambda:${config.awsRegion}:${config.awsAccount}:function:mcp-*`],
+      resources: ['*'],
     }));
 
     // AgentCore Gateway permissions (for MCP tool integration)
