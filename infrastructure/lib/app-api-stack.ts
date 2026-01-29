@@ -1114,7 +1114,7 @@ export class AppApiStack extends cdk.Stack {
       // This is a placeholder - actual permissions will be granted via IAM policy
     }
 
-    // Grant permissions for assistants base table
+    // Grant permissions for assistants base table (local to this stack)
     assistantsTable.grantReadWriteData(taskDefinition.taskRole);
     
     // Grant explicit permissions for GSI queries (grantReadWriteData doesn't include GSI Query permissions)
@@ -1127,6 +1127,33 @@ export class AppApiStack extends cdk.Stack {
         ],
         resources: [
           `${assistantsTable.tableArn}/index/*`
+        ],
+      })
+    );
+
+    // Grant permissions for RAG assistants table (imported from RagIngestionStack)
+    const ragAssistantsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rag/assistants-table-arn`
+    );
+    
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'RagAssistantsTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          ragAssistantsTableArn,
+          `${ragAssistantsTableArn}/index/*`,
         ],
       })
     );
