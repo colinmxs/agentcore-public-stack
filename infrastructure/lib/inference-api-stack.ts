@@ -527,6 +527,17 @@ export class InferenceApiStack extends cdk.Stack {
           `/${config.projectPrefix}/rbac/app-roles-table-name`
         ),
         
+        // OAuth/OIDC Configuration (imported from App API Stack)
+        // Note: Inference API doesn't use OAuth flows, but shared modules check for these
+        'DYNAMODB_OIDC_STATE_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/auth/oidc-state-table-name`
+        ),
+        'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/oauth/token-encryption-key-arn`
+        ),
+        
         // Assistants & RAG (imported from RagIngestionStack via SSM)
         'ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
           this,
