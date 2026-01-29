@@ -9,7 +9,18 @@ import logging
 from typing import AsyncGenerator, List, Optional
 
 # Core orchestration
-from agents.main_agent.core import AgentFactory, ModelConfig, SystemPromptBuilder
+from agents.main_agent.core import ModelConfig, SystemPromptBuilder, AgentFactory
+
+# Session management
+from agents.main_agent.session import SessionFactory
+from agents.main_agent.session.hooks import StopHook
+
+# Tool management
+from agents.main_agent.tools import (
+    create_default_registry,
+    ToolFilter,
+    GatewayIntegration
+)
 
 # Multimodal content
 from agents.main_agent.multimodal import PromptBuilder
@@ -239,17 +250,9 @@ class MainAgent:
         stop_hook = StopHook(self.session_manager)
         hooks.append(stop_hook)
 
-        # Add conversation caching hook if enabled (Bedrock only - other providers don't support cachePoint)
-        from agents.main_agent.core import ModelProvider
-
-        if self.model_config.caching_enabled and self.model_config.get_provider() == ModelProvider.BEDROCK:
-            conversation_hook = ConversationCachingHook(enabled=True)
-            hooks.append(conversation_hook)
-            logger.info(f"✅ ConversationCachingHook registered (caching_enabled={self.model_config.caching_enabled})")
-        else:
-            logger.info(
-                f"⚠️ ConversationCachingHook NOT registered (caching_enabled={self.model_config.caching_enabled}, provider={self.model_config.get_provider()})"
-            )
+        # NOTE: Prompt caching is now handled by CacheConfig(strategy="auto") passed to BedrockModel
+        # in model_config.py. The ConversationCachingHook has been removed in favor of the SDK's
+        # built-in automatic cache point injection. See: https://github.com/strands-agents/sdk-python/pull/1438
 
         return hooks
 

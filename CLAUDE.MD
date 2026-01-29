@@ -116,11 +116,10 @@ Messages are buffered within a turn to reduce AgentCore Memory API calls:
 
 ### Prompt Caching Strategy
 
-**Files:**
-- `backend/src/agents/main_agent/core/model_config.py`
-- `backend/src/agents/main_agent/session/hooks/conversation_caching.py`
+**File:** `backend/src/agents/main_agent/core/model_config.py`
 
-Three-level caching (Bedrock only): System Prompt → Tool Definitions → Conversation History
+Automatic prompt caching (Bedrock only) via `CacheConfig(strategy="auto")` passed to BedrockModel.
+The SDK automatically injects cache points at the end of the last assistant message.
 
 ### SSE Event Types
 
