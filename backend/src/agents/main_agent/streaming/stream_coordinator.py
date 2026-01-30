@@ -1119,8 +1119,8 @@ class StreamCoordinator:
         try:
             import hashlib
 
-            from apis.app_api.sessions.models import SessionMetadata, SessionPreferences
-            from apis.app_api.sessions.services.metadata import get_session_metadata, store_session_metadata
+            from apis.shared.sessions.models import SessionMetadata, SessionPreferences
+            from apis.shared.sessions.metadata import get_session_metadata, store_session_metadata
 
             logger.info(f"🔍 _update_session_metadata called for session {session_id}, message_id {message_id}")
 
