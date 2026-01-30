@@ -1,21 +1,8 @@
 ### Local Development
 
-Run the application locally with Docker Compose:
-
+README Coming soon.
 ```bash
-# 1. Clone repository
-git clone https://github.com/Boise-State-Development/agentcore-public-stack.git
-cd agentcore-public-stack
 
-# 2. Setup dependencies
-./setup.sh
-
-# 3. Configure AWS credentials
-cp backend/src/.env.example backend/src/.env
-# Edit .env with your AWS credentials and region
-
-# 4. Start all services
-./start.sh
 ```
 <!-- # AgentCore Public Stack
 
