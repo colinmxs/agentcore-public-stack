@@ -1,6 +1,6 @@
 ---
 inclusion: fileMatch
-fileMatchPattern: "**/*.{ts,html,css,component.ts,page.ts,service.ts}"
+fileMatchPattern: "frontend/*"
 ---
 
 # Angular 21 Best Practices
