@@ -17,6 +17,9 @@ export class ModelService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
 
+  // Session storage key for persisting model selection
+  private readonly SELECTED_MODEL_KEY = 'selectedModelId';
+
   // Default model used when no models are available (matches backend default)
   private readonly DEFAULT_MODEL: ManagedModel = {
     id: 'system-default',
@@ -36,6 +39,7 @@ export class ModelService {
     isReasoningModel: false,
     knowledgeCutoffDate: null,
     supportsCaching: true,
+    isDefault: false,
   };
 
   // Models fetched from API
@@ -99,10 +103,12 @@ export class ModelService {
 
       this.models.set(enabledModels);
 
-      // Set selected model:
-      // 1. Keep current selection if it still exists
-      // 2. Otherwise, select first model if available
-      // 3. If no models available, use system default
+      // Set selected model with priority:
+      // 1. Keep current in-memory selection if it still exists
+      // 2. Restore from sessionStorage if available and model exists
+      // 3. Select the admin-configured default model (isDefault: true)
+      // 4. Otherwise, select first model if available
+      // 5. If no models available, use system default
       if (selectedStillExists && currentSelected && !wasUsingDefault) {
         // Find and set the matching model (in case other fields changed)
         const matchingModel = enabledModels.find(m => m.modelId === currentSelected.modelId);
@@ -111,8 +117,20 @@ export class ModelService {
           this.usingDefaultModel.set(false);
         }
       } else if (enabledModels.length > 0) {
-        this._selectedModel.set(enabledModels[0]);
-        this.usingDefaultModel.set(false);
+        // Try to restore from sessionStorage first
+        const savedModelId = this.getSavedModelId();
+        const savedModel = savedModelId ? enabledModels.find(m => m.modelId === savedModelId) : null;
+
+        if (savedModel) {
+          // Restore previously selected model from session
+          this._selectedModel.set(savedModel);
+          this.usingDefaultModel.set(false);
+        } else {
+          // Find admin-configured default model, or fall back to first available
+          const defaultModel = enabledModels.find(m => m.isDefault);
+          this._selectedModel.set(defaultModel || enabledModels[0]);
+          this.usingDefaultModel.set(false);
+        }
       } else {
         // No models available, use system default
         this._selectedModel.set(this.DEFAULT_MODEL);
@@ -134,12 +152,14 @@ export class ModelService {
   }
 
   /**
-   * Sets the selected model
+   * Sets the selected model and persists to sessionStorage
    */
   setSelectedModel(model: ManagedModel): void {
     this._selectedModel.set(model);
     // Update flag to track if we're using the default model
     this.usingDefaultModel.set(model.id === this.DEFAULT_MODEL.id);
+    // Persist selection to sessionStorage
+    this.saveModelId(model.modelId);
   }
 
   /**
@@ -179,9 +199,36 @@ export class ModelService {
     if (model) {
       this._selectedModel.set(model);
       this.usingDefaultModel.set(false);
+      // Persist selection to sessionStorage
+      this.saveModelId(model.modelId);
       return true;
     }
 
     return false;
+  }
+
+  /**
+   * Saves the selected model ID to sessionStorage
+   */
+  private saveModelId(modelId: string): void {
+    try {
+      sessionStorage.setItem(this.SELECTED_MODEL_KEY, modelId);
+    } catch (e) {
+      // SessionStorage may be unavailable in some contexts (e.g., private browsing)
+      console.warn('Could not save model selection to sessionStorage:', e);
+    }
+  }
+
+  /**
+   * Retrieves the saved model ID from sessionStorage
+   */
+  private getSavedModelId(): string | null {
+    try {
+      return sessionStorage.getItem(this.SELECTED_MODEL_KEY);
+    } catch (e) {
+      // SessionStorage may be unavailable in some contexts
+      console.warn('Could not read model selection from sessionStorage:', e);
+      return null;
+    }
   }
 }
