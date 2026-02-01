@@ -1,181 +1,134 @@
-### Local Development
+# AgentCore Public Stack
 
-README Coming soon.
-```bash
-
-```
-<!-- # AgentCore Public Stack
-
-Production-ready multi-agent conversational AI system built with Bedrock AgentCore and Strands Agents.
-Supports RAG workflows, MCP-based tool integration, multimodal input/output, financial analysis tools,
-and deep research orchestration with prompt caching and multi-protocol tool execution.
+Production-ready multi-agent conversational AI system built with AWS Bedrock AgentCore and Strands Agents.
 
 ## Overview
 
-Combines Strands Agent orchestration with AWS Bedrock AgentCore services:
-- **Strands Agent**: Multi-turn conversation orchestration with tool execution
-- **AgentCore Runtime**: Containerized agent deployment as managed AWS service
-- **AgentCore Memory**: Persistent conversation storage with user preference retrieval
-- **AgentCore Gateway**: MCP tool integration with SigV4 authentication
-- **AgentCore Code Interpreter**: Built-in code execution for data analysis, visualization, and chart generation
-- **AgentCore Browser**: Web automation via headless browser with live view streaming
-- **Amazon Nova Act**: Agentic foundation model for browser automation with visual reasoning
+This reference architecture demonstrates building agentic workflows combining **Strands Agents** and **Amazon Bedrock AgentCore**. The system provides a full-stack chatbot application with tool execution, memory management, browser automation, and multi-protocol tool integration.
 
-**Quick Links:** [📸 UI Preview](#ui-preview) | [📹 Demo Videos](#demo-videos)
+### Core Capabilities
 
-## Architecture
+- Multi-turn conversation orchestration with Strands Agents
+- Integration with Bedrock AgentCore services (Runtime, Memory, Gateway, Code Interpreter, Browser)
+- 30+ tools across 4 protocols (Direct, AWS SDK, MCP, A2A)
+- Dynamic tool filtering with per-user customization
+- Token optimization via prompt caching
+- Multimodal input/output (images, documents, charts)
 
-<img src="docs/images/architecture-overview.svg"
-     alt="Architecture Overview"
-     width="1200">
+## Technology Stack
 
-### Core Components
+| Layer | Technologies |
+|-------|-------------|
+| **Frontend** | Angular v21, TypeScript, Tailwind CSS v4.1+ |
+| **Backend** | Python 3.13+, FastAPI |
+| **Agent Framework** | Strands Agents SDK |
+| **Cloud Services** | AWS Bedrock AgentCore (Runtime, Memory, Gateway, Code Interpreter, Browser) |
+| **Infrastructure** | AWS CDK (TypeScript), ECS Fargate, CloudFront, DynamoDB |
+| **Authentication** | OIDC (Entra ID, Cognito, Google) with PKCE |
 
-1. **Frontend** (Angular v21+)
-   - Server-side API routes as Backend-for-Frontend
-   - Cognito authentication with JWT validation
-   - SSE streaming from AgentCore Runtime
-   - Session management and file upload handling
+## Architecture Overview
 
-2. **AgentCore Runtime**
-   - Strands Agent with Bedrock Claude models
-   - Turn-based session manager (optimized message buffering)
-   - Uses AgentCore Memory for conversation persistence
-   - Integrates with AgentCore Gateway via SigV4
-   - Calls Built-in Tools via AWS API
-   - Communicates with other agents via A2A protocol (Work in Progress)
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              User Interface                                  │
+│                     Angular v21 + Tailwind CSS v4.1+                        │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ SSE Streaming
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              App API (FastAPI)                               │
+│              Authentication · Session Management · File Upload              │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │
+                                      ▼
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Inference API (Strands Agent)                        │
+│        Turn-based Session Manager · Dynamic Tool Filtering · Caching        │
+└───────┬─────────────────┬─────────────────┬─────────────────┬───────────────┘
+        │                 │                 │                 │
+        ▼                 ▼                 ▼                 ▼
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│  Local Tools  │ │ Built-in Tools│ │ Gateway Tools │ │ Runtime Tools │
+│  (Direct)     │ │ (AWS SDK)     │ │ (MCP+SigV4)   │ │ (A2A) 🚧      │
+│               │ │               │ │               │ │               │
+│ Calculator    │ │ Code Interp.  │ │ Wikipedia     │ │ Report Writer │
+│ Weather       │ │ Browser       │ │ ArXiv         │ │               │
+│ Web Search    │ │ (Nova Act)    │ │ Google Search │ │               │
+│ Visualization │ │               │ │ Tavily        │ │               │
+│ URL Fetcher   │ │               │ │ Finance       │ │               │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
+                                      │
+                                      ▼
+                          ┌───────────────────────┐
+                          │   AgentCore Memory    │
+                          │  Session History +    │
+                          │  User Preferences     │
+                          └───────────────────────┘
+```
 
-3. **AgentCore Gateway**
-   - MCP tool endpoints with SigV4 authentication
-   - Routes requests to 5 Lambda functions (12 tools total)
-   - Lambda functions use MCP protocol
-   - Tools: Wikipedia, ArXiv, Google Search, Tavily, Finance
+### System Components
 
-4. **AgentCore Memory**
-   - Persistent conversation storage
-   - Automatic history management across sessions
+1. **Frontend (Angular v21)**
+   - Signal-based state management
+   - OIDC authentication with PKCE flow
+   - SSE streaming for real-time responses
+   - Dynamic tool selection via sidebar
 
-5. **Tool Ecosystem**
-   - **Local Tools**: Weather, visualization, web search, URL fetcher (embedded in Runtime)
-   - **Built-in Tools**: AgentCore Code Interpreter for diagrams/charts, AgentCore Browser for automation (AWS SDK + WebSocket)
-   - **Gateway Tools**: Research, search, and finance data (via AgentCore Gateway + MCP)
-   - **Runtime Tools** (Work in Progress): Report Writer with A2A protocol
+2. **App API (FastAPI - Port 8000)**
+   - Session and conversation management
+   - User authentication and authorization
+   - File upload handling
+   - Admin endpoints for configuration
+
+3. **Inference API (FastAPI - Port 8001)**
+   - Strands Agent orchestration with Bedrock models
+   - Turn-based session manager for optimized API calls
+   - Dynamic tool filtering based on user selection
+   - Prompt caching for token optimization
+
+4. **AgentCore Services**
+   - **Memory**: Persistent conversation storage with user preference retrieval
+   - **Gateway**: MCP tool endpoints with SigV4 authentication
+   - **Code Interpreter**: Python execution for charts and analysis
+   - **Browser**: Web automation via Nova Act model
 
 ## Key Features
 
-- Amazon Bedrock AgentCore Runtime
-- Strands Agent Orchestration
-- MCP Gateway Tools (Wikipedia, ArXiv, Google, Tavily)
-- A2A Agent-to-Agent Protocol
-- Financial research tools (stock data, market news)
-- Multimodal I/O (Vision, Charts, Documents, Screenshots)
-
-## Use Cases
-- Financial research agent with stock analysis & SEC ingestion
-- Technical research assistant using multi-agent architecture
-- Web automation agent via AgentCore Browser + Nova Act
-- RAG-enabled chatbot using AgentCore Memory
-- Multi-protocol research assistant (MCP, A2A, AWS SDK)
-
-## UI Preview
-
-<img src="docs/images/home.svg" alt="Application Overview" width="900">
-
-*Interactive chatbot with dynamic tool filtering and multi-agent orchestration*
-
-## Demo Videos
-
-| Finance Assistant | Browser Automation | Academic Research |
-|:---:|:---:|:---:|
-| [<img src="docs/images/demo-finance.png" width="280">](https://drive.google.com/file/d/1QQyaBWwzNOiLWe5LKZrSZoN68t7gsJdO/view?usp=sharing) | [<img src="docs/images/demo-browser.png" width="280">](https://drive.google.com/file/d/1lPJGStD_YMWdF4a_k9ca_Kr-mah5yBnj/view?usp=sharing) | [<img src="docs/images/demo-academic.png" width="280">](https://drive.google.com/file/d/1FliAGRSMFBh41m5xZe2mNpSmLtu_T1yN/view?usp=sharing) |
-| *Stock analysis, market news* | *Web automation with Nova Act* | *Research papers via ArXiv & Wikipedia* |
-
-## Key Technical Features
-
-**1. Full-stack Web-based Chatbot Application**
-
-- **Frontend**: Angular v21, TypeScript, Tailwind CSS
-- **Backend**: Python FastAPI routes for SSE streaming, authentication, session management
-- **Agent Runtime**: Strands Agent orchestration on AgentCore Runtime (containerized)
-- **Persistence**: AgentCore Memory for conversation history and user context
-- **Authentication**: Multiple Providers (EntraId, Cognito, Google, Generic)
-- **Deployment**: TBD
-
-**2. Multi-Protocol Tool Architecture**
+### Multi-Protocol Tool Architecture
 
 Tools communicate via different protocols based on their characteristics:
 
-| Tool Type | Protocol | Count | Examples | Authentication |
-|-----------|----------|-------|----------|----------------|
-| **Local Tools** | Direct function calls | 5 | Weather, Web Search, Visualization | N/A |
-| **Built-in Tools** | AWS SDK + WebSocket | 4 | AgentCore Code Interpreter, Browser (Nova Act) | IAM |
-| **Gateway Tools** | MCP + SigV4 | 12 | Wikipedia, ArXiv, Finance (Lambda) | AWS SigV4 |
-| **Runtime Tools** | A2A protocol | 9 | Report Writer | AgentCore auth |
+| Protocol | Location | Examples | Authentication |
+|----------|----------|----------|----------------|
+| **Direct Call** | `agents/main_agent/tools/` | Calculator, Weather, Visualization | N/A |
+| **AWS SDK** | `agents/main_agent/tools/` | Code Interpreter, Browser | IAM |
+| **MCP + SigV4** | Cloud Lambda (Gateway) | Wikipedia, ArXiv, Finance | AWS SigV4 |
+| **A2A** | Cloud Runtime (WIP) | Report Writer | AgentCore auth |
 
-Status: 21 tools ✅ / 9 tools 🚧. See [Implementation Details](#multi-protocol-tool-architecture) for complete tool list.
-
-**3. Dynamic Tool Filtering**
-
-Users can enable/disable specific tools via UI sidebar, and the agent dynamically filters tool definitions before each invocation, sending only selected tools to the model to reduce prompt token count and optimize costs.
-
-**4. Token Optimization via Prompt Caching**
-
-Implements hooks-based caching strategy with system prompt caching and dynamic conversation history caching (last 2 messages), using rotating cache points (max 4 total) to significantly reduce input token costs across repeated API calls.
-
-**5. Multimodal Input/Output**
-
-Native support for visual and document content:
-- **Input**: Images (PNG, JPEG, GIF, WebP), Documents (PDF, CSV, DOCX, etc.)
-- **Output**: Charts from AgentCore Code Interpreter, screenshots from AgentCore Browser
-
-**6. Two-tier Memory System**
-
-Combines session-based conversation history (short-term) with namespaced user preferences and facts (long-term) stored in AgentCore Memory, enabling cross-session context retention with relevance-scored retrieval per user.
-
-## Implementation Details
-
-### Multi-Protocol Tool Architecture
-
-See [docs/TOOLS.md](docs/TOOLS.md) for detailed tool specifications.
-
-| Tool Name | Protocol | API Key | Status | Description |
-|-----------|----------|---------|--------|-------------|
-| **Local Tools** | | | | |
-| Calculator | Direct call | No | ✅ | Mathematical computations |
-| Weather Lookup | Direct call | No | ✅ | Current weather by city |
-| Visualization Creator | Direct call | No | ✅ | Interactive charts (Plotly) |
-| Web Search | Direct call | No | ✅ | DuckDuckGo search |
-| URL Fetcher | Direct call | No | ✅ | Web content extraction |
-| **Built-in Tools** | | | | |
-| Diagram Generator | AWS SDK | No | ✅ | Charts/diagrams via AgentCore Code Interpreter |
-| Browser Automation (3 tools) | AWS SDK + WebSocket | Yes | ✅ | Navigate, action, extract via AgentCore Browser (Nova Act) |
-| **Gateway Tools** | | | | |
-| Wikipedia (2 tools) | MCP + SigV4 | No | ✅ | Article search and retrieval |
-| ArXiv (2 tools) | MCP + SigV4 | No | ✅ | Scientific paper search |
-| Google Search (2 tools) | MCP + SigV4 | Yes | ✅ | Web and image search |
-| Tavily AI (2 tools) | MCP + SigV4 | Yes | ✅ | AI-powered search and extraction |
-| Financial Market (4 tools) | MCP + SigV4 | No | ✅ | Stock quotes, history, news, analysis (Yahoo Finance) |
-| **Runtime Tools** | | | | |
-| Report Writer (9 tools) | A2A | No | 🚧 | Multi-section research reports with charts |
-
-**Protocol Details:**
-- **Direct call**: Python function with `@tool` decorator, executed in runtime container
-- **AWS SDK**: Bedrock client API calls (AgentCore Code Interpreter, AgentCore Browser)
-- **WebSocket**: Real-time bidirectional communication for browser automation
-- **MCP + SigV4**: Model Context Protocol with AWS SigV4 authentication
-- **A2A**: Agent-to-Agent protocol for runtime-to-runtime communication
-
-**Total: 30 tools** (21 ✅ / 9 🚧)
+**Total: 30 tools** (21 active, 9 in progress)
 
 ### Dynamic Tool Filtering
 
-**Implementation:** `agent.py:277-318`
+Users can enable/disable specific tools via the UI sidebar. The agent dynamically filters tool definitions before each invocation, sending only selected tools to the model.
+
+**How it works:**
+
+1. **User Toggle**: User selects tools via UI sidebar
+2. **Enabled Tools**: Frontend sends enabled tool list to backend
+3. **Tool Filtering**: Strands Agent filters tools before model invocation
+4. **Reduced Tokens**: Model receives only enabled tool definitions
+
+**Benefits:**
+- Reduced token usage (fewer tool definitions sent to model)
+- Per-user customization without code changes
+- Real-time tool updates without redeployment
+
+**Implementation:** `backend/src/agents/main_agent/tools/tool_registry.py`
 
 ```python
-# User-selected tools from UI sidebar
+# Filter tools based on user selection
 enabled_tools = ["calculator", "gateway_wikipedia-search___wikipedia_search"]
 
-# Filters applied before agent creation
 agent = Agent(
     model=model,
     tools=get_filtered_tools(enabled_tools),  # Dynamic filtering
@@ -183,25 +136,61 @@ agent = Agent(
 )
 ```
 
-<img src="docs/images/tool-filtering-flow.svg" alt="Tool Filtering Flow" width="800">
+### Memory Architecture and Long-Context Management
 
-**Flow:**
-1. **User Toggle**: User selects tools via UI sidebar
-2. **Enabled Tools**: Frontend sends enabled tool list to AgentCore Runtime
-3. **Tool Filtering**: Strands Agent filters tools before model invocation
-4. **Invoke**: Model receives only enabled tool definitions
-5. **ToolCall**: Agent executes local or remote tools as needed
+The system implements a two-tier memory architecture combining short-term session history with long-term user preferences.
 
-**Benefits:**
-- Reduced token usage (only selected tool definitions sent to model)
-- Per-user customization
-- Real-time tool updates without redeployment
+**Memory Tiers:**
 
-### Token Optimization: Prompt Caching
+| Tier | Scope | Storage | Retrieval |
+|------|-------|---------|-----------|
+| **Short-term** | Session conversation history | AgentCore Memory | Automatic via session manager |
+| **Long-term** | User preferences and facts | AgentCore Memory (namespaced) | Vector retrieval with relevance scoring |
 
-**Implementation:** `model_config.py` via `CacheConfig(strategy="auto")`
+**Turn-based Session Manager:**
 
-Automatic prompt caching via Strands SDK (v1.24+):
+Buffers messages within a turn to reduce AgentCore Memory API calls:
+
+```
+Without buffering:                  With buffering:
+User message     → API call 1       User → Assistant → Tool → Result
+Assistant reply  → API call 2                    ↓
+Tool use         → API call 3       Single merged API call
+Tool result      → API call 4
+─────────────────────────────       ─────────────────────────────
+Total: 4 API calls per turn         Total: 1 API call (75% reduction)
+```
+
+**Long-term Memory Configuration:**
+
+```python
+AgentCoreMemoryConfig(
+    memory_id=memory_id,
+    session_id=session_id,
+    actor_id=user_id,
+    retrieval_config={
+        # User preferences (coding style, language, etc.)
+        f"/preferences/{user_id}": RetrievalConfig(top_k=5, relevance_score=0.7),
+        # User-specific facts (learned information)
+        f"/facts/{user_id}": RetrievalConfig(top_k=10, relevance_score=0.3),
+    }
+)
+```
+
+**Implementation:** `backend/src/agents/main_agent/session/turn_based_session_manager.py`
+
+### Token Optimization via Prompt Caching
+
+Implements automatic prompt caching via Strands SDK to significantly reduce input token costs across repeated API calls.
+
+**Cache Strategy:**
+
+- Single cache point at end of last assistant message
+- Automatically injected before each model call
+- Covers system prompt, tools, and conversation history
+- Reduces input tokens for repeated content
+
+**Implementation:** `backend/src/agents/main_agent/core/model_config.py`
 
 ```python
 from strands.models import BedrockModel, CacheConfig
@@ -212,92 +201,42 @@ model = BedrockModel(
 )
 ```
 
-**Cache Strategy:**
-- Single cache point at end of last assistant message
-- Automatically injected before each model call
-- Covers system prompt, tools, and conversation history
-- Reduces input tokens for repeated content
+**How caching works across turns:**
 
-<img src="docs/images/prompt-caching.svg" alt="Prompt Caching Strategy" width="800">
+| Turn | Action | Token Impact |
+|------|--------|--------------|
+| Turn 1 | Cache creation | Full token count (cache created) |
+| Turn 2+ | Cache read | Reduced tokens (reusing cached system prompt + history) |
 
-**Visual Explanation:**
-- 🟧 **Orange**: Cache creation (new content cached)
-- 🟦 **Blue**: Cache read (reusing cached content)
-- Event1 creates initial cache, Event2+ reuses and extends cached context
+The SDK automatically manages cache points, injecting them at the end of the last assistant message before each model call.
 
-### Turn-based Session Manager
+### Multimodal Input/Output
 
-**Implementation:** `turn_based_session_manager.py:15-188`
+Native support for visual and document content:
 
-Buffers messages within a turn to reduce AgentCore Memory API calls:
+**Input:**
+- Images: PNG, JPEG, GIF, WebP
+- Documents: PDF, CSV, DOCX, and more
 
-```
-Without buffering:
-User message     → API call 1
-Assistant reply  → API call 2
-Tool use         → API call 3
-Tool result      → API call 4
-Total: 4 API calls per turn
+**Output:**
+- Charts and diagrams from Code Interpreter
+- Screenshots from Browser automation
+- Generated documents (Excel, PowerPoint, Word)
 
-With buffering:
-User → Assistant → Tool → Result  → Single merged API call
-Total: 1 API call per turn (75% reduction)
-```
+## Demos
 
-**Key Methods:**
-- `append_message()`: Buffers messages instead of immediate persistence
-- `_should_flush_turn()`: Detects turn completion
-- `flush()`: Writes merged message to AgentCore Memory
+*Coming soon*
 
-### Multimodal I/O
+<!--
+| Demo | Description |
+|------|-------------|
+| **Finance Assistant** | Stock analysis with real-time quotes, charts, and Excel reports |
+| **Browser Automation** | Web navigation with Nova Act, screenshot capture |
+| **Academic Research** | Paper search via ArXiv and Wikipedia integration |
+| **Deep Research** | Multi-agent research with supervisor-worker pattern |
+-->
 
-**Input Processing** (`agent.py:483-549`):
-- Converts uploaded files to `ContentBlock` format
-- Supports images (PNG, JPEG, GIF, WebP) and documents (PDF, CSV, DOCX, etc.)
-- Files sent as raw bytes in message content array
-
-**Output Rendering**:
-- Tools return `ToolResult` with multimodal content
-- Images from AgentCore Code Interpreter and Browser rendered inline
-- Image bytes delivered as raw bytes (not base64)
-- Files downloadable from frontend
-
-**Example Tool Output:**
-```python
-return {
-    "content": [
-        {"text": "Chart generated successfully"},
-        {"image": {"format": "png", "source": {"bytes": image_bytes}}}
-    ],
-    "status": "success"
-}
-```
-
-### Two-tier Memory System
-
-**Implementation:** `agent.py:223-235`
-
-```python
-AgentCoreMemoryConfig(
-    memory_id=memory_id,
-    session_id=session_id,
-    actor_id=user_id,
-    retrieval_config={
-        # User preferences (coding style, language, etc.)
-        f"/preferences/{user_id}": RetrievalConfig(top_k=5, relevance_score=0.7),
-
-        # User-specific facts (learned information)
-        f"/facts/{user_id}": RetrievalConfig(top_k=10, relevance_score=0.3),
-    }
-)
-```
-
-**Memory Tiers:**
-- **Short-term**: Session conversation history (automatic via session manager)
-- **Long-term**: Namespaced key-value storage with vector retrieval
-- Cross-session persistence via `actor_id` (user identifier)
-
-## Quick Start
+## Deployment
 
 ### Prerequisites
 
@@ -309,171 +248,75 @@ AgentCoreMemoryConfig(
 
 ### Local Development
 
-Run the application locally with Docker Compose:
-
 ```bash
 # 1. Clone repository
-git clone https://github.com/Boise-State-Development/agentcore-public-stack.git
+git clone https://github.com/your-org/agentcore-public-stack.git
 cd agentcore-public-stack
 
 # 2. Setup dependencies
 ./setup.sh
 
-# 3. Configure AWS credentials
-cp backend/src/.env.example backend/src/.env
-# Edit .env with your AWS credentials and region
+# 3. Configure environment
+cp backend/.env.example backend/.env
+# Edit .env with your AWS credentials
 
 # 4. Start all services
-cd ../..
 ./start.sh
 ```
 
 **Services started:**
 - Frontend: http://localhost:4200
-- Agent Backend: http://localhost:8000
-- Local file-based session storage
+- App API: http://localhost:8000
+- Inference API: http://localhost:8001
 
 **What runs locally:**
-- ✅ Frontend (Angular v21)
-- ✅ AgentCore Runtime (Strands Agent)
-- ✅ Local Tools (5 tools)
-- ✅ Built-in Tools (Code Interpreter, Browser via AWS API)
-- ❌ AgentCore Gateway (requires cloud deployment)
-- ❌ AgentCore Memory (uses local file storage instead)
+- Frontend (Angular v21)
+- App API (FastAPI)
+- Inference API (Strands Agent)
+- Local Tools (5 tools)
+- Built-in Tools (Code Interpreter, Browser via AWS API)
 
-<!-- ### Cloud Deployment
+**Requires cloud deployment:**
+- AgentCore Gateway (MCP tools)
+- AgentCore Memory (uses local file storage locally)
 
-Deploy the full-stack application to AWS:
+### Cloud Deployment
 
+*Coming soon*
+
+<!--
 ```bash
-# Navigate to deployment directory
-cd agent-blueprint
-
-# Full deployment (all components)
-./deploy.sh
+cd infrastructure
+npm install
+npx cdk deploy --all
 ```
-
-**Deployment Components:**
-
-1. **Main Application Stack** (`chatbot-deployment/`)
-   - Frontend + BFF (Next.js on Fargate)
-   - AgentCore Runtime (Strands Agent)
-   - AgentCore Memory (conversation persistence)
-   - CloudFront, ALB, Cognito
-   - Deploy: `cd chatbot-deployment/infrastructure && ./scripts/deploy.sh`
-
-2. **AgentCore Gateway Stack** (`agentcore-gateway-stack/`)
-   - MCP tool endpoints with SigV4 authentication
-   - 5 Lambda functions (12 tools total)
-   - Wikipedia, ArXiv, Google Search, Tavily, Finance
-   - Deploy: `cd agentcore-gateway-stack && ./scripts/deploy.sh`
-
-3. **Report Writer Runtime** (Optional, `agentcore-runtime-a2a-stack/`)
-   - A2A protocol-based agent collaboration
-   - Multi-section research report generation
-   - Deploy: `cd agentcore-runtime-a2a-stack/report-writer && ./deploy.sh`
-
-## Deployment Architecture
-
-```
-User → CloudFront → ALB → Frontend+BFF (Fargate)
-                              ↓ HTTP
-                         AgentCore Runtime
-                         (Strands Agent container)
-                              ↓
-            ┌─────────────────┼─────────────────┐
-            │                 │                 │
-            ↓ SigV4           ↓ A2A             ↓ AWS SDK
-     AgentCore Gateway   Report Writer     Built-in Tools
-     (MCP endpoints)     Runtime 🚧        (Code Interpreter,
-            ↓                               Browser + Nova Act)
-     Lambda Functions (5x)
-     └─ Wikipedia, ArXiv,
-        Google, Tavily, Finance
-
-     AgentCore Memory
-     └─ Conversation history
-        User preferences & facts
-```
-
-## Technology Stack
-
-**Frontend & Backend:**
-- **Frontend**: Next.js, React, TypeScript, Tailwind CSS, shadcn/ui
-- **BFF**: Next.js API Routes (SSE streaming, authentication, session management)
-- **Deployment**: AWS Fargate (containerized)
-
-**AI & Agent:**
-- **Orchestration**: Strands Agents (Python)
-- **Models**: AWS Bedrock Claude (Haiku default, Sonnet available)
-- **Runtime**: AgentCore Runtime (containerized Strands Agent)
-
-**AgentCore Services:**
-- **Memory**: Conversation history with user preferences/facts retrieval
-- **Gateway**: MCP tool endpoints with SigV4 authentication
-- **Code Interpreter**: Python code execution for diagrams/charts
-- **Browser**: Web automation with Nova Act AI model
-
-**Tools & Integration:**
-- **Local Tools**: Direct Python function calls (5 tools)
-- **Built-in Tools**: AWS SDK + WebSocket (4 tools)
-- **Gateway Tools**: Lambda + MCP protocol (12 tools)
-- **Runtime Tools**: A2A protocol (9 tools, in progress)
-
-**Infrastructure:**
-- **IaC**: AWS CDK (TypeScript)
-- **Frontend CDN**: CloudFront
-- **Load Balancer**: Application Load Balancer
-- **Authentication**: AWS Cognito
-- **Compute**: Fargate containers
-
-
-## Iframe Embedding
-
-Embed the chatbot in external applications:
-
-```html
-<iframe
-  src="https://your-domain.com/embed"
-  width="100%"
-  height="600"
-  frameborder="0">
-</iframe>
-```
+-->
 
 ## Project Structure
 
 ```
-sample-strands-agent-chatbot/
-├── chatbot-app/
-│   ├── frontend/              # Next.js (Frontend + BFF)
-│   │   └── src/
-│   │       ├── app/api/       # API routes (BFF layer)
-│   │       ├── components/    # React components
-│   │       └── config/        # Tool configuration
-│   └── agentcore/             # AgentCore Runtime
-│       └── src/
-│           ├── agent/         # ChatbotAgent + session management
-│           ├── local_tools/   # Weather, visualization, etc.
-│           ├── builtin_tools/ # Code Interpreter tools
-│           └── routers/       # FastAPI routes
-│
-└── agent-blueprint/
-    ├── chatbot-deployment/    # Main app stack (Frontend+Runtime)
-    ├── agentcore-gateway-stack/   # Gateway + 5 Lambda functions
-    ├── agentcore-runtime-stack/   # Runtime deployment (shared)
-    └── agentcore-runtime-a2a-stack/   # Report Writer (optional)
+agentcore-public-stack/
+├── backend/
+│   └── src/
+│       ├── agents/main_agent/          # Core agent implementation
+│       │   ├── core/                   # Agent factory, model config, system prompt
+│       │   ├── session/                # Turn-based session management
+│       │   ├── streaming/              # SSE event processing
+│       │   └── tools/                  # Tool registry & local tools
+│       └── apis/
+│           ├── app_api/                # Main application API (port 8000)
+│           ├── inference_api/          # Bedrock inference (port 8001)
+│           └── shared/                 # Shared utilities
+├── frontend/ai.client/                 # Angular SPA
+│   └── src/app/
+│       ├── auth/                       # OIDC authentication
+│       ├── session/                    # Chat UI & services
+│       ├── admin/                      # Admin dashboard
+│       └── services/                   # State management
+└── infrastructure/                     # AWS CDK
+    └── lib/                            # Stack definitions
 ```
-
-## Documentation
-
-- [DEPLOYMENT.md](DEPLOYMENT.md): Detailed deployment instructions
-
-## Support
-
-- **Issues**: [GitHub Issues](https://github.com/aws-samples/sample-strands-agent-with-agentcore/issues)
-- **Troubleshooting**: [docs/guides/TROUBLESHOOTING.md](docs/guides/TROUBLESHOOTING.md)
 
 ## License
 
-MIT License - see LICENSE file for details. -->
+MIT License - see LICENSE file for details.
