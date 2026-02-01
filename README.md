@@ -268,49 +268,11 @@ Native support for visual and document content:
 
 ### Local Development
 
-```bash
-# 1. Clone repository
-git clone https://github.com/your-org/agentcore-public-stack.git
-cd agentcore-public-stack
-
-# 2. Setup dependencies
-./setup.sh
-
-# 3. Configure environment
-cp backend/.env.example backend/.env
-# Edit .env with your AWS credentials
-
-# 4. Start all services
-./start.sh
-```
-
-**Services started:**
-- Frontend: http://localhost:4200
-- App API: http://localhost:8000
-- Inference API: http://localhost:8001
-
-**What runs locally:**
-- Frontend (Angular v21)
-- App API (FastAPI)
-- Inference API (Strands Agent)
-- Local Tools (5 tools)
-- Built-in Tools (Code Interpreter, Browser via AWS API)
-
-**Requires cloud deployment:**
-- AgentCore Gateway (MCP tools)
-- AgentCore Memory (uses local file storage locally)
+*Detailed instructions coming soon.*
 
 ### Cloud Deployment
 
-*Coming soon*
-
-<!--
-```bash
-cd infrastructure
-npm install
-npx cdk deploy --all
-```
--->
+*Detailed instructions coming soon.*
 
 ## Project Structure
 
