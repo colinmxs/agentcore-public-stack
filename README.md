@@ -22,12 +22,12 @@ This reference architecture demonstrates building agentic workflows combining **
 
 ### Core Capabilities
 
-- Multi-turn conversation orchestration with Strands Agents
-- Integration with Bedrock AgentCore services (Runtime, Memory, Gateway, Code Interpreter, Browser)
-- 30+ tools across 4 protocols (Direct, AWS SDK, MCP, A2A)
-- Dynamic tool filtering with per-user customization
-- Token optimization via prompt caching
-- Multimodal input/output (images, documents, charts)
+- **Admin Dashboard** — Real-time cost analytics, model management, MCP tool configuration, and RBAC
+- **Multi-model Support** — Add models from Bedrock (Claude, Llama, Mistral) or external providers
+- **Extensible Tools** — Connect institutional systems via MCP servers without code changes
+- **Role-Based Access** — Granular control over quotas, models, and tools by user role
+- **Cost Optimization** — Token optimization via prompt caching and consumption-based billing
+- **Multimodal** — Images, documents, code execution, and browser automation
 
 ## Technology Stack
 
@@ -51,7 +51,7 @@ This reference architecture demonstrates building agentic workflows combining **
                                       ▼
 ┌─────────────────────────────────────────────────────────────────────────────┐
 │                              App API (FastAPI)                               │
-│              Authentication · Session Management · File Upload              │
+│         Authentication · Session Management · Admin Controls · RBAC         │
 └─────────────────────────────────────┬───────────────────────────────────────┘
                                       │
                                       ▼
@@ -62,14 +62,11 @@ This reference architecture demonstrates building agentic workflows combining **
         │                 │                 │                 │
         ▼                 ▼                 ▼                 ▼
 ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  Local Tools  │ │ Built-in Tools│ │ Gateway Tools │ │ Runtime Tools │
-│  (Direct)     │ │ (AWS SDK)     │ │ (MCP+SigV4)   │ │ (A2A) 🚧      │
+│  Local Tools  │ │ Built-in Tools│ │  MCP Tools    │ │ Runtime Tools │
+│  (Direct)     │ │ (AWS SDK)     │ │  (Gateway)    │ │ (A2A) 🚧      │
 │               │ │               │ │               │ │               │
-│ Calculator    │ │ Code Interp.  │ │ Wikipedia     │ │ Report Writer │
-│ Weather       │ │ Browser       │ │ ArXiv         │ │               │
-│ Web Search    │ │ (Nova Act)    │ │ Google Search │ │               │
-│ Visualization │ │               │ │ Tavily        │ │               │
-│ URL Fetcher   │ │               │ │ Finance       │ │               │
+│ Your custom   │ │ Code Interp.  │ │ Configurable  │ │ Multi-agent   │
+│ Python tools  │ │ Browser       │ │ via Admin UI  │ │ collaboration │
 └───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
                                       │
                                       ▼
@@ -108,47 +105,56 @@ This reference architecture demonstrates building agentic workflows combining **
 
 ## Key Features
 
+### Admin Dashboard
+
+A comprehensive admin interface enables institutional administrators to manage the platform without code changes:
+
+| Capability | Description |
+|------------|-------------|
+| **Real-time Cost Analytics** | Monitor token usage and costs per user, model, and time period. Track spending trends and identify optimization opportunities |
+| **Model Management** | Add, configure, and disable models from any provider — Bedrock models (Claude, Llama, Mistral), or external providers via API |
+| **MCP Tool Configuration** | Register and manage MCP servers through the UI. Connect institutional systems (Canvas, Google Workspace, PeopleSoft, etc.) without redeployment |
+| **Role-Based Access Control** | Create application roles with granular permissions for quotas, models, and tools. Assign roles to users or groups |
+| **Quota Management** | Set spending limits by role, department, or user. Configure soft warnings and hard limits |
+
+### Configurable MCP Tools
+
+MCP (Model Context Protocol) tools extend the agent's capabilities by connecting to external systems. Admins can add MCP servers via the dashboard — no code deployment required.
+
+**How it works:**
+
+1. **Admin registers MCP server** via Admin Dashboard (URL, auth, description)
+2. **Tools auto-discovered** from the MCP server's tool manifest
+3. **RBAC applied** — tools assigned to specific roles
+4. **Users see tools** based on their role permissions
+
+**Example institutional integrations:**
+- **Canvas LMS** — Access course materials, grades, assignments
+- **Google Workspace** — Search Drive, read Docs, manage Calendar
+- **PeopleSoft** — Student records, registration status
+- **Library Systems** — Research databases, catalog search
+- **Custom APIs** — Any system exposed via MCP
+
 ### Multi-Protocol Tool Architecture
 
-Tools communicate via different protocols based on their characteristics:
+Tools communicate via different protocols based on their deployment model:
 
-| Protocol | Location | Examples | Authentication |
-|----------|----------|----------|----------------|
-| **Direct Call** | `agents/main_agent/tools/` | Calculator, Weather, Visualization | N/A |
-| **AWS SDK** | `agents/main_agent/tools/` | Code Interpreter, Browser | IAM |
-| **MCP + SigV4** | Cloud Lambda (Gateway) | Wikipedia, ArXiv, Finance | AWS SigV4 |
-| **A2A** | Cloud Runtime (WIP) | Report Writer | AgentCore auth |
-
-**Total: 30 tools** (21 active, 9 in progress)
+| Protocol | Description | Use Case |
+|----------|-------------|----------|
+| **Direct Call** | Python functions in `agents/main_agent/tools/` | Custom institutional logic |
+| **AWS SDK** | Built-in AgentCore services | Code Interpreter, Browser automation |
+| **MCP + SigV4** | Remote MCP servers via AgentCore Gateway | Campus systems, third-party APIs |
+| **A2A** | Agent-to-agent collaboration (WIP) | Multi-agent workflows |
 
 ### Dynamic Tool Filtering
 
 Users can enable/disable specific tools via the UI sidebar. The agent dynamically filters tool definitions before each invocation, sending only selected tools to the model.
 
-**How it works:**
-
-1. **User Toggle**: User selects tools via UI sidebar
-2. **Enabled Tools**: Frontend sends enabled tool list to backend
-3. **Tool Filtering**: Strands Agent filters tools before model invocation
-4. **Reduced Tokens**: Model receives only enabled tool definitions
-
 **Benefits:**
-- Reduced token usage (fewer tool definitions sent to model)
-- Per-user customization without code changes
-- Real-time tool updates without redeployment
-
-**Implementation:** `backend/src/agents/main_agent/tools/tool_registry.py`
-
-```python
-# Filter tools based on user selection
-enabled_tools = ["calculator", "gateway_wikipedia-search___wikipedia_search"]
-
-agent = Agent(
-    model=model,
-    tools=get_filtered_tools(enabled_tools),  # Dynamic filtering
-    session_manager=session_manager
-)
-```
+- **Reduced token usage** — fewer tool definitions sent to model
+- **Per-user customization** — users choose their workflow
+- **Role-based defaults** — admins set tool availability by role
+- **Real-time updates** — no redeployment needed
 
 ### Memory Architecture and Long-Context Management
 
