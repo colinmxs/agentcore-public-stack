@@ -1,6 +1,20 @@
 # AgentCore Public Stack
 
-Production-ready multi-agent conversational AI system built with AWS Bedrock AgentCore and Strands Agents.
+This open-source repository is the working codebase behind [boisestate.ai](https://boisestate.ai) at Boise State University. It is a **production-ready, full-stack Generative AI application** built on AWS Bedrock AgentCore with a **consumption-based pricing model** (pay for what you use) rather than per-seat subscriptions.
+
+By open-sourcing this platform, Boise State enables other institutions to adopt a cost-effective, privacy-respecting AI solution while retaining the flexibility to integrate their own tools and MCP servers to meet institutional needs.
+
+## Why Boise State Built an Internal AI Platform
+
+| Challenge | Our Approach |
+|-----------|--------------|
+| **Vendor Lock-in** | Freedom to choose and swap best-fit models without long-term contracts or CapEx expenditure |
+| **Data Privacy** | Student and faculty data stays inside our controlled AWS account. Interactions with Bedrock models are never shared with model vendors |
+| **Cost Reality** | 30k subscriptions × $20/month = **$7.2M/year** — unsustainable at enterprise scale. Consumption-based pricing aligns cost with actual usage |
+| **Collaboration Gaps** | Unified platform bridges `boisestate.edu` and `u.boisestate.edu` identities, eliminating fragmented sharing in classroom use |
+| **Equitable Access** | Every student gets access to the same models — no "haves and have-nots" based on who can afford premium tiers |
+| **Campus Systems Integration** | Safely leverage institutional data via MCP servers (Canvas, Google Workspace, PeopleSoft, Library, etc.) |
+| **Risk/Reward** | Low risk, high reward — if it works, we've built lasting infrastructure; if not, we've learned and can pivot |
 
 ## Overview
 
