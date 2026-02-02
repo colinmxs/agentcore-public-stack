@@ -26,10 +26,10 @@ The App API (ECS Fargate service) uses these environment variables that point to
 
 ```typescript
 // Current (OLD) - Hardcoded to AppApiStack resources
-ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
-ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
-ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
-ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
+S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
+DYNAMODB_ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
+S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
+S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
 ```
 
 These need to be changed to import from SSM parameters exported by RagIngestionStack.
@@ -44,28 +44,28 @@ These need to be changed to import from SSM parameters exported by RagIngestionS
 
 **Change FROM:**
 ```typescript
-ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
-ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
-ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
-ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
+S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
+DYNAMODB_ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
+S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
+S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
 ```
 
 **Change TO:**
 ```typescript
 // Import RAG resource names from RagIngestionStack via SSM
-ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/documents-bucket-name`
 ),
-ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
+DYNAMODB_ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/assistants-table-name`
 ),
-ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/vector-bucket-name`
 ),
-ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/vector-index-name`
 ),
@@ -173,8 +173,8 @@ aws ecs describe-tasks --cluster ${PROJECT_PREFIX}-ecs-cluster --tasks <TASK_ARN
 ```
 
 Verify the environment variables point to the new resources:
-- `ASSISTANTS_DOCUMENTS_BUCKET_NAME` should be `${projectPrefix}-rag-documents`
-- `ASSISTANTS_TABLE_NAME` should be `${projectPrefix}-rag-assistants`
+- `S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME` should be `${projectPrefix}-rag-documents`
+- `DYNAMODB_ASSISTANTS_TABLE_NAME` should be `${projectPrefix}-rag-assistants`
 
 #### 4.2 Test RAG Functionality
 

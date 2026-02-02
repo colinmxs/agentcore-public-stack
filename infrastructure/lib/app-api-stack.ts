@@ -1057,19 +1057,19 @@ export class AppApiStack extends cdk.Stack {
         FILE_UPLOAD_MAX_FILES_PER_MESSAGE: String(config.fileUpload?.maxFilesPerMessage || 5),
         FILE_UPLOAD_USER_QUOTA_BYTES: String(config.fileUpload?.userQuotaBytes || 1073741824),
         // RAG resources - imported from RagIngestionStack via SSM
-        ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+        S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/documents-bucket-name`
         ),
-        ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
+        DYNAMODB_ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/assistants-table-name`
         ),
-        ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+        S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-bucket-name`
         ),
-        ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
+        S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-index-name`
         ),

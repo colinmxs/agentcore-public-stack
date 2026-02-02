@@ -357,10 +357,10 @@ env:
 **Environment Variables:**
 ```typescript
 environment: {
-  ASSISTANTS_DOCUMENTS_BUCKET_NAME: documentsBucket.bucketName,
-  ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
-  ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
-  ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
+  S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: documentsBucket.bucketName,
+  DYNAMODB_ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
+  S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
+  S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
   BEDROCK_REGION: config.awsRegion,
 }
 ```

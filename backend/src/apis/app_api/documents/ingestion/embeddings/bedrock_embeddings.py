@@ -13,22 +13,22 @@ from typing import Any, Dict, List
 import boto3
 
 # Module-level constants (read once at import time, but not validated until use)
-_VECTOR_STORE_BUCKET_NAME = os.environ.get("ASSISTANTS_VECTOR_STORE_BUCKET_NAME")
-_VECTOR_STORE_INDEX_NAME = os.environ.get("ASSISTANTS_VECTOR_STORE_INDEX_NAME")
+_VECTOR_STORE_BUCKET_NAME = os.environ.get("S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME")
+_VECTOR_STORE_INDEX_NAME = os.environ.get("S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME")
 AWS_REGION = os.environ.get("AWS_REGION", "us-west-2")
 
 
 def _get_vector_store_bucket() -> str:
     """Get vector store bucket name, validating if not set"""
     if not _VECTOR_STORE_BUCKET_NAME:
-        raise ValueError("ASSISTANTS_VECTOR_STORE_BUCKET_NAME environment variable is required")
+        raise ValueError("S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME environment variable is required")
     return _VECTOR_STORE_BUCKET_NAME
 
 
 def _get_vector_store_index() -> str:
     """Get vector store index name, validating if not set"""
     if not _VECTOR_STORE_INDEX_NAME:
-        raise ValueError("ASSISTANTS_VECTOR_STORE_INDEX_NAME environment variable is required")
+        raise ValueError("S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME environment variable is required")
     return _VECTOR_STORE_INDEX_NAME
 
 

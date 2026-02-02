@@ -121,7 +121,7 @@ async def create_assistant_endpoint(request: CreateAssistantRequest, current_use
 
     try:
         # Create complete assistant
-        # Note: vector_index_id is automatically set from ASSISTANTS_VECTOR_STORE_INDEX_NAME env var
+        # Note: vector_index_id is automatically set from S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME env var
         assistant = await create_assistant(
             owner_id=user_id,
             owner_name=current_user.name,

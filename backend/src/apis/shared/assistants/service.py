@@ -5,7 +5,7 @@ It supports both local file storage and cloud DynamoDB storage.
 
 Architecture:
 - Local: Stores assistants as individual JSON files in backend/src/assistants/
-- Cloud: Stores assistants in DynamoDB table specified by ASSISTANTS_TABLE_NAME
+- Cloud: Stores assistants in DynamoDB table specified by DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME
 """
 
 import base64
@@ -52,7 +52,7 @@ async def create_assistant_draft(owner_id: str, owner_name: str, name: Optional[
     assistant_id = _generate_assistant_id()
 
     # Get vector index name from environment (defaults to 'assistants-index' if not set)
-    vector_index_id = os.environ.get("ASSISTANTS_VECTOR_STORE_INDEX_NAME", "assistants-index")
+    vector_index_id = os.environ.get("S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME", "assistants-index")
 
     assistant = Assistant(
         assistant_id=assistant_id,
@@ -71,7 +71,7 @@ async def create_assistant_draft(owner_id: str, owner_name: str, name: Optional[
     )
 
     # Store the draft assistant
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         await _create_assistant_cloud(assistant, assistants_table)
@@ -100,7 +100,7 @@ async def create_assistant(
         name: Assistant display name
         description: Short summary for UI cards
         instructions: System prompt for the assistant
-        vector_index_id: Optional S3 vector index name (defaults to ASSISTANTS_VECTOR_STORE_INDEX_NAME from environment)
+        vector_index_id: Optional S3 vector index name (defaults to S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME from environment)
         visibility: Access control (PRIVATE, PUBLIC, SHARED)
         tags: Search keywords
 
@@ -112,7 +112,7 @@ async def create_assistant(
 
     # Get vector index name from environment
     if not vector_index_id:
-        vector_index_id = os.environ.get("ASSISTANTS_VECTOR_STORE_INDEX_NAME")
+        vector_index_id = os.environ.get("S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME")
 
     assistant = Assistant(
         assistant_id=assistant_id,
@@ -131,7 +131,7 @@ async def create_assistant(
     )
 
     # Store the assistant
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         await _create_assistant_cloud(assistant, assistants_table)
@@ -171,7 +171,7 @@ async def _create_assistant_cloud(assistant: Assistant, table_name: str) -> None
 
     Args:
         assistant: Assistant object to store
-        table_name: DynamoDB table name from ASSISTANTS_TABLE_NAME env var
+        table_name: DynamoDB table name from DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME env var
     """
     try:
         import boto3
@@ -217,7 +217,7 @@ async def get_assistant(assistant_id: str, owner_id: str) -> Optional[Assistant]
     Returns:
         Assistant object if found and owned by user, None otherwise
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         return await _get_assistant_cloud(assistant_id, owner_id, assistants_table)
@@ -245,7 +245,7 @@ async def get_assistant_with_access_check(assistant_id: str, user_id: str, user_
         - Assistant not found (404)
         - Access denied (403 for PRIVATE assistant not owned by user, or SHARED without share record)
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     # Get assistant without ownership check first
     if assistants_table:
@@ -292,7 +292,7 @@ async def assistant_exists(assistant_id: str) -> bool:
     Returns:
         True if assistant exists, False otherwise
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
@@ -312,7 +312,7 @@ async def assistant_exists(assistant_id: str) -> bool:
 #     Returns:
 #         List of Assistant objects
 #     """
-#     assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+#     assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 #     if assistants_table:
 #         return await _get_all_assistants_cloud(assistants_table)
 #     else:
@@ -533,7 +533,7 @@ async def update_assistant(
     updated_assistant = Assistant.model_validate(existing_dict)
 
     # Store updated assistant
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         await _update_assistant_cloud(updated_assistant, assistants_table)
@@ -696,7 +696,7 @@ async def list_user_assistants(
     # Force include_public to False as the feature is removed
     include_public = False
 
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         return await _list_user_assistants_cloud(
@@ -984,7 +984,7 @@ async def delete_assistant(assistant_id: str, owner_id: str) -> bool:
     if not existing:
         return False
 
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
 
     if assistants_table:
         return await _delete_assistant_cloud(assistant_id, assistants_table)
@@ -1076,9 +1076,9 @@ async def share_assistant(assistant_id: str, owner_id: str, emails: List[str]) -
         logger.warning(f"Cannot share assistant {assistant_id}: not found or not owned by {owner_id}")
         return False
 
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.error("Cannot share assistant: ASSISTANTS_TABLE_NAME not configured")
+        logger.error("Cannot share assistant: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
         return False
 
     try:
@@ -1142,9 +1142,9 @@ async def unshare_assistant(assistant_id: str, owner_id: str, emails: List[str])
         logger.warning(f"Cannot unshare assistant {assistant_id}: not found or not owned by {owner_id}")
         return False
 
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.error("Cannot unshare assistant: ASSISTANTS_TABLE_NAME not configured")
+        logger.error("Cannot unshare assistant: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
         return False
 
     try:
@@ -1196,9 +1196,9 @@ async def list_assistant_shares(assistant_id: str, owner_id: str) -> List[str]:
         logger.warning(f"Cannot list shares for assistant {assistant_id}: not found or not owned by {owner_id}")
         return []
 
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot list shares: ASSISTANTS_TABLE_NAME not configured")
+        logger.debug("Cannot list shares: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
         return []
 
     try:
@@ -1243,7 +1243,7 @@ async def check_share_access(assistant_id: str, user_email: str) -> bool:
     Raises:
         Exception: On DynamoDB errors (not ResourceNotFoundException)
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
         return False
 
@@ -1291,9 +1291,9 @@ async def mark_share_as_interacted(assistant_id: str, user_email: str) -> bool:
     Returns:
         True if updated successfully, False otherwise
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot mark share as interacted: ASSISTANTS_TABLE_NAME not configured")
+        logger.debug("Cannot mark share as interacted: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
         return False
 
     try:
@@ -1341,9 +1341,9 @@ async def list_shared_with_user(user_email: str) -> List[Assistant]:
     Returns:
         List of Assistant objects shared with this email
     """
-    assistants_table = os.environ.get("ASSISTANTS_TABLE_NAME")
+    assistants_table = os.environ.get("DYNAMODB_DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot list shared assistants: ASSISTANTS_TABLE_NAME not configured")
+        logger.debug("Cannot list shared assistants: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
         return []
 
     try:

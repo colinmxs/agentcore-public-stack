@@ -158,10 +158,10 @@ The Lambda function has the following IAM permissions:
 
 The Lambda function has all required environment variables:
 
-1. ✅ `ASSISTANTS_DOCUMENTS_BUCKET_NAME` - References RagDocumentsBucket
-2. ✅ `ASSISTANTS_TABLE_NAME` - References RagAssistantsTable
-3. ✅ `ASSISTANTS_VECTOR_STORE_BUCKET_NAME` - "bsu-agentcore-rag-vector-store-v1"
-4. ✅ `ASSISTANTS_VECTOR_STORE_INDEX_NAME` - "bsu-agentcore-rag-vector-index-v1"
+1. ✅ `S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME` - References RagDocumentsBucket
+2. ✅ `DYNAMODB_ASSISTANTS_TABLE_NAME` - References RagAssistantsTable
+3. ✅ `S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME` - "bsu-agentcore-rag-vector-store-v1"
+4. ✅ `S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME` - "bsu-agentcore-rag-vector-index-v1"
 5. ✅ `BEDROCK_REGION` - "us-west-2"
 
 ### ✅ 9. Resource Naming Convention

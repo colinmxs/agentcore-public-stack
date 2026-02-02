@@ -173,10 +173,10 @@ This document specifies the requirements for creating a new independent RAG (Ret
 2. THE Ingestion_Lambda SHALL use ARM64_Lambda architecture
 3. THE Ingestion_Lambda SHALL have 10GB memory allocation (10240 MB)
 4. THE Ingestion_Lambda SHALL have 15-minute timeout (900 seconds)
-5. THE Ingestion_Lambda SHALL have environment variable ASSISTANTS_DOCUMENTS_BUCKET_NAME
-6. THE Ingestion_Lambda SHALL have environment variable ASSISTANTS_TABLE_NAME
-7. THE Ingestion_Lambda SHALL have environment variable ASSISTANTS_VECTOR_STORE_BUCKET_NAME
-8. THE Ingestion_Lambda SHALL have environment variable ASSISTANTS_VECTOR_STORE_INDEX_NAME
+5. THE Ingestion_Lambda SHALL have environment variable S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME
+6. THE Ingestion_Lambda SHALL have environment variable DYNAMODB_ASSISTANTS_TABLE_NAME
+7. THE Ingestion_Lambda SHALL have environment variable S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME
+8. THE Ingestion_Lambda SHALL have environment variable S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME
 9. THE Ingestion_Lambda SHALL have environment variable BEDROCK_REGION
 10. THE Ingestion_Lambda SHALL have IAM permission to read from Documents_Bucket
 11. THE Ingestion_Lambda SHALL have IAM permission to read/write to Assistants_Table

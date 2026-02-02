@@ -8,28 +8,28 @@ I've successfully updated the AppApiStack to use the new RAG resources from RagI
 
 **Changed FROM** (hardcoded local resources):
 ```typescript
-ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
-ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
-ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
-ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
+S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: assistantsDocumentsBucket.bucketName,
+DYNAMODB_ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
+S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: assistantsVectorStoreBucketName,
+S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: assistantsVectorIndexName,
 ```
 
 **Changed TO** (imported from RagIngestionStack via SSM):
 ```typescript
 // RAG resources - imported from RagIngestionStack via SSM
-ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/documents-bucket-name`
 ),
-ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
+DYNAMODB_ASSISTANTS_TABLE_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/assistants-table-name`
 ),
-ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/vector-bucket-name`
 ),
-ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
+S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: ssm.StringParameter.valueForStringParameter(
   this,
   `/${config.projectPrefix}/rag/vector-index-name`
 ),
@@ -152,10 +152,10 @@ aws ecs describe-tasks \
 ```
 
 Look for these environment variables and verify they point to the new resources:
-- `ASSISTANTS_DOCUMENTS_BUCKET_NAME` should be `${PROJECT_PREFIX}-rag-documents`
-- `ASSISTANTS_TABLE_NAME` should be `${PROJECT_PREFIX}-rag-assistants`
-- `ASSISTANTS_VECTOR_STORE_BUCKET_NAME` should be `${PROJECT_PREFIX}-rag-vector-store-v1`
-- `ASSISTANTS_VECTOR_STORE_INDEX_NAME` should be `${PROJECT_PREFIX}-rag-vector-index-v1`
+- `S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME` should be `${PROJECT_PREFIX}-rag-documents`
+- `DYNAMODB_ASSISTANTS_TABLE_NAME` should be `${PROJECT_PREFIX}-rag-assistants`
+- `S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME` should be `${PROJECT_PREFIX}-rag-vector-store-v1`
+- `S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME` should be `${PROJECT_PREFIX}-rag-vector-index-v1`
 
 ### Step 3: Test RAG Functionality
 

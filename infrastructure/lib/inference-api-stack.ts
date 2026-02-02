@@ -646,16 +646,16 @@ export class InferenceApiStack extends cdk.Stack {
         'OAUTH_CALLBACK_URL': config.inferenceApi.oauthCallbackUrl,
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)
-        'ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+        'DYNAMODB_ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/assistants-table-name`
         ),
-        // Note: ASSISTANTS_DOCUMENTS_BUCKET_NAME not needed - inference API only queries vectors
-        'ASSISTANTS_VECTOR_STORE_BUCKET_NAME': ssm.StringParameter.valueForStringParameter(
+        // Note: S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME not needed - inference API only queries vectors
+        'S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-bucket-name`
         ),
-        'ASSISTANTS_VECTOR_STORE_INDEX_NAME': ssm.StringParameter.valueForStringParameter(
+        'S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-index-name`
         ),
