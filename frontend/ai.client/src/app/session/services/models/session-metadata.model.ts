@@ -1,6 +1,16 @@
 // Session Metadata Models
 // Matches backend SessionMetadata and SessionPreferences models
 
+/**
+ * Display state for a single promoted visual (inline tool result).
+ */
+export interface VisualDisplayState {
+  /** Whether the user has dismissed this visual */
+  dismissed: boolean;
+  /** Whether the visual is expanded (default: true) */
+  expanded: boolean;
+}
+
 export interface SessionPreferences {
   lastModel?: string;
   lastTemperature?: number;
@@ -8,6 +18,8 @@ export interface SessionPreferences {
   selectedPromptId?: string;
   customPromptText?: string;
   assistantId?: string;
+  /** Display state for promoted visuals, keyed by tool_use_id */
+  visualState?: Record<string, VisualDisplayState>;
 }
 
 export interface SessionMetadata {
