@@ -35,8 +35,8 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Synthesize the Infrastructure Stack
-log_info "Running CDK synth for ${CDK_PROJECT_PREFIX}-InfrastructureStack..."
-cdk synth ${CDK_PROJECT_PREFIX}-InfrastructureStack \
+log_info "Running CDK synth for InfrastructureStack..."
+cdk synth InfrastructureStack \
     --context projectPrefix="${CDK_PROJECT_PREFIX}" \
     --context awsAccount="${CDK_AWS_ACCOUNT}" \
     --context awsRegion="${CDK_AWS_REGION}" \

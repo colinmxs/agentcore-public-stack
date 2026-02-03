@@ -98,9 +98,9 @@ main() {
     REQUIRE_APPROVAL="${CDK_REQUIRE_APPROVAL:-never}"
     
     # Check if pre-synthesized templates exist
-    if [ -d "cdk.out" ] && [ -f "cdk.out/${CDK_PROJECT_PREFIX}-InferenceApiStack.template.json" ]; then
+    if [ -d "cdk.out" ] && [ -f "cdk.out/InferenceApiStack.template.json" ]; then
         log_info "Using pre-synthesized templates from cdk.out/"
-        cdk deploy ${CDK_PROJECT_PREFIX}-InferenceApiStack \
+        cdk deploy InferenceApiStack \
             --app "cdk.out/" \
             --require-approval ${REQUIRE_APPROVAL} \
             --outputs-file "${PROJECT_ROOT}/cdk-outputs-inference-api.json"
@@ -111,7 +111,7 @@ main() {
         CONTEXT_PARAMS=$(build_cdk_context_params)
         
         # Execute CDK deploy with context parameters
-        eval "cdk deploy ${CDK_PROJECT_PREFIX}-InferenceApiStack --require-approval ${REQUIRE_APPROVAL} ${CONTEXT_PARAMS} --outputs-file \"${PROJECT_ROOT}/cdk-outputs-inference-api.json\""
+        eval "cdk deploy InferenceApiStack --require-approval ${REQUIRE_APPROVAL} ${CONTEXT_PARAMS} --outputs-file \"${PROJECT_ROOT}/cdk-outputs-inference-api.json\""
     fi
     
     log_success "CDK deployment completed successfully"

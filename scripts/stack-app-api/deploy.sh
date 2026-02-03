@@ -83,7 +83,7 @@ main() {
     cd infrastructure/
     
     # Check if pre-synthesized template exists
-    if [ -d "cdk.out" ] && [ -f "cdk.out/${CDK_PROJECT_PREFIX}-AppApiStack.template.json" ]; then
+    if [ -d "cdk.out" ] && [ -f "cdk.out/AppApiStack.template.json" ]; then
         log_info "Using pre-synthesized CloudFormation template from cdk.out/"
         CDK_APP="cdk.out/"
     else
@@ -92,14 +92,14 @@ main() {
     fi
     
     # Deploy CDK stack
-    log_info "Deploying ${CDK_PROJECT_PREFIX}-AppApiStack with CDK..."
+    log_info "Deploying AppApiStack with CDK..."
     
     # Use CDK_REQUIRE_APPROVAL env var with fallback to never
     REQUIRE_APPROVAL="${CDK_REQUIRE_APPROVAL:-never}"
     
     if [ -n "${CDK_APP}" ]; then
         # Deploy using pre-synthesized template
-        npx cdk deploy ${CDK_PROJECT_PREFIX}-AppApiStack \
+        npx cdk deploy AppApiStack \
             --app "${CDK_APP}" \
             --require-approval ${REQUIRE_APPROVAL} \
             --outputs-file "${PROJECT_ROOT}/cdk-outputs-app-api.json"
@@ -109,7 +109,7 @@ main() {
         CONTEXT_PARAMS=$(build_cdk_context_params)
         
         # Execute CDK deploy with context parameters
-        eval "npx cdk deploy ${CDK_PROJECT_PREFIX}-AppApiStack --require-approval ${REQUIRE_APPROVAL} ${CONTEXT_PARAMS} --outputs-file \"${PROJECT_ROOT}/cdk-outputs-app-api.json\""
+        eval "npx cdk deploy AppApiStack --require-approval ${REQUIRE_APPROVAL} ${CONTEXT_PARAMS} --outputs-file \"${PROJECT_ROOT}/cdk-outputs-app-api.json\""
     fi
     
     log_success "CDK deployment completed successfully"
