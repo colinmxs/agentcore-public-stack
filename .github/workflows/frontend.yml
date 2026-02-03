@@ -49,7 +49,7 @@ env:
   # Environment is selected based on:
   #   - Manual: workflow_dispatch input
   #   - Automatic: main branch → production, develop branch → development
-  CDK_AWS_REGION: ${{ vars.CDK_AWS_REGION }}
+  CDK_AWS_REGION: ${{ vars.AWS_REGION }}
   # CDK Configuration - from GitHub Variables
   CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
   CDK_FRONTEND_DOMAIN_NAME: ${{ vars.CDK_FRONTEND_DOMAIN_NAME }}
