@@ -35,13 +35,13 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Synthesize the RAG Ingestion Stack
-log_info "Running CDK synth for RagIngestionStack..."
+log_info "Running CDK synth for ${CDK_PROJECT_PREFIX}-RagIngestionStack..."
 
 # Build context parameters using shared helper function
 CONTEXT_PARAMS=$(build_cdk_context_params)
 
 # Execute CDK synth with context parameters
-eval "cdk synth RagIngestionStack ${CONTEXT_PARAMS} --output \"${PROJECT_ROOT}/infrastructure/cdk.out\""
+eval "cdk synth ${CDK_PROJECT_PREFIX}-RagIngestionStack ${CONTEXT_PARAMS} --output \"${PROJECT_ROOT}/infrastructure/cdk.out\""
 
 log_success "RAG Ingestion Stack CloudFormation template synthesized successfully"
 log_info "Template output directory: infrastructure/cdk.out"

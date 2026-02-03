@@ -28,7 +28,7 @@ log_info "Validating synthesized CloudFormation template..."
 cd "${PROJECT_ROOT}/infrastructure"
 
 # Check if synthesized template exists
-if [ ! -d "cdk.out" ] || [ ! -f "cdk.out/RagIngestionStack.template.json" ]; then
+if [ ! -d "cdk.out" ] || [ ! -f "cdk.out/${CDK_PROJECT_PREFIX}-RagIngestionStack.template.json" ]; then
     log_error "Synthesized template not found. Run synth.sh first."
     exit 1
 fi
@@ -37,7 +37,7 @@ log_info "Running cdk diff to compare synthesized template with deployed stack..
 
 # Run cdk diff using the pre-synthesized template
 # This will show what would change if we deployed
-cdk diff RagIngestionStack \
+cdk diff ${CDK_PROJECT_PREFIX}-RagIngestionStack \
     --app "cdk.out/"
 
 log_success "CloudFormation template validation completed"

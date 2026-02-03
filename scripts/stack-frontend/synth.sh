@@ -35,8 +35,8 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Synthesize the Frontend Stack
-log_info "Running CDK synth for FrontendStack..."
-cdk synth FrontendStack \
+log_info "Running CDK synth for ${CDK_PROJECT_PREFIX}-FrontendStack..."
+cdk synth ${CDK_PROJECT_PREFIX}-FrontendStack \
     --context projectPrefix="${CDK_PROJECT_PREFIX}" \
     --context awsAccount="${CDK_AWS_ACCOUNT}" \
     --context awsRegion="${CDK_AWS_REGION}" \

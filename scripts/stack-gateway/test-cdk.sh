@@ -24,7 +24,7 @@ log_info "Testing Gateway Stack..."
 cd "${INFRASTRUCTURE_DIR}"
 
 # Check if synthesized template exists
-if [ ! -d "cdk.out" ] || [ ! -f "cdk.out/GatewayStack.template.json" ]; then
+if [ ! -d "cdk.out" ] || [ ! -f "cdk.out/${CDK_PROJECT_PREFIX}-GatewayStack.template.json" ]; then
     log_error "Synthesized template not found. Run synth.sh first."
     exit 1
 fi
@@ -33,7 +33,7 @@ log_info "Running cdk diff to compare synthesized template with deployed stack..
 
 # Run cdk diff using the pre-synthesized template
 # This will show what would change if we deployed
-cdk diff GatewayStack \
+cdk diff ${CDK_PROJECT_PREFIX}-GatewayStack \
     --app "cdk.out/"
 
 log_success "Gateway Stack validation complete"

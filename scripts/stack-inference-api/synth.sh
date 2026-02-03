@@ -35,13 +35,13 @@ if [ ! -d "node_modules" ]; then
 fi
 
 # Synthesize the Inference API Stack
-log_info "Running CDK synth for InferenceApiStack..."
+log_info "Running CDK synth for ${CDK_PROJECT_PREFIX}-InferenceApiStack..."
 
 # Build context parameters using shared helper function
 CONTEXT_PARAMS=$(build_cdk_context_params)
 
 # Execute CDK synth with context parameters
-eval "cdk synth InferenceApiStack ${CONTEXT_PARAMS} --output \"${PROJECT_ROOT}/infrastructure/cdk.out\""
+eval "cdk synth ${CDK_PROJECT_PREFIX}-InferenceApiStack ${CONTEXT_PARAMS} --output \"${PROJECT_ROOT}/infrastructure/cdk.out\""
 
 log_success "Inference API Stack CloudFormation template synthesized successfully"
 log_info "Template output directory: infrastructure/cdk.out"

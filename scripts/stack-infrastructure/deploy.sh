@@ -44,17 +44,17 @@ cd "${PROJECT_ROOT}/infrastructure"
 
 # Deploy the Infrastructure Stack
 # Check if pre-synthesized template exists (from CI/CD pipeline)
-if [ -d "${PROJECT_ROOT}/infrastructure/cdk.out" ] && [ -f "${PROJECT_ROOT}/infrastructure/cdk.out/InfrastructureStack.template.json" ]; then
+if [ -d "${PROJECT_ROOT}/infrastructure/cdk.out" ] && [ -f "${PROJECT_ROOT}/infrastructure/cdk.out/${CDK_PROJECT_PREFIX}-InfrastructureStack.template.json" ]; then
     log_info "Using pre-synthesized CloudFormation template from cdk.out/..."
-    log_info "Deploying InfrastructureStack from pre-synthesized template..."
-    cdk deploy InfrastructureStack \
+    log_info "Deploying ${CDK_PROJECT_PREFIX}-InfrastructureStack from pre-synthesized template..."
+    cdk deploy ${CDK_PROJECT_PREFIX}-InfrastructureStack \
         --app "cdk.out/" \
         --require-approval never \
         --outputs-file "${PROJECT_ROOT}/infrastructure/infrastructure-outputs.json"
 else
     log_info "No pre-synthesized template found. Synthesizing and deploying..."
-    log_info "Deploying InfrastructureStack..."
-    cdk deploy InfrastructureStack \
+    log_info "Deploying ${CDK_PROJECT_PREFIX}-InfrastructureStack..."
+    cdk deploy ${CDK_PROJECT_PREFIX}-InfrastructureStack \
         --context projectPrefix="${CDK_PROJECT_PREFIX}" \
         --context awsAccount="${CDK_AWS_ACCOUNT}" \
         --context awsRegion="${CDK_AWS_REGION}" \
