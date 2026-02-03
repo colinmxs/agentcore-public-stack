@@ -11,6 +11,15 @@ from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, ConfigDict, Field
 
 
+class VisualDisplayState(BaseModel):
+    """Display state for a single promoted visual (inline tool result)"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    dismissed: bool = Field(default=False, description="User dismissed this visual")
+    expanded: bool = Field(default=True, description="Visual is expanded vs collapsed")
+
+
 class SessionPreferences(BaseModel):
     """User preferences for a session"""
 
@@ -30,6 +39,14 @@ class SessionPreferences(BaseModel):
     # - Detect when two sessions used identical prompts even if they selected different templates
     # - Enable prompt A/B testing and version tracking
     system_prompt_hash: Optional[str] = Field(default=None, alias="systemPromptHash", description="MD5 hash of final rendered system prompt")
+
+    # Visual state for promoted tool results (charts, tables, etc.)
+    # Keyed by tool_use_id, stores whether each visual is dismissed or collapsed
+    visual_state: Optional[Dict[str, VisualDisplayState]] = Field(
+        default=None,
+        alias="visualState",
+        description="Display state for promoted visuals, keyed by tool_use_id"
+    )
 
 
 class SessionMetadata(BaseModel):

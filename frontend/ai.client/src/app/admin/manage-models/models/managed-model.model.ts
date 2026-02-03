@@ -56,6 +56,8 @@ export interface ManagedModel {
   knowledgeCutoffDate?: string | null;
   /** Whether this model supports prompt caching (Bedrock only) */
   supportsCaching: boolean;
+  /** Whether this is the default model for new sessions */
+  isDefault: boolean;
   /** Date the model was added to the system (ISO string from API) */
   createdAt?: string | Date;
   /** Date the model was last updated (ISO string from API) */
@@ -106,6 +108,8 @@ export interface ManagedModelFormData {
   knowledgeCutoffDate?: string | null;
   /** Whether this model supports prompt caching (Bedrock only) */
   supportsCaching?: boolean;
+  /** Whether this is the default model for new sessions */
+  isDefault: boolean;
 }
 
 /**

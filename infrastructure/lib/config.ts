@@ -69,6 +69,7 @@ export interface InferenceApiConfig {
   corsOrigins: string;
   tavilyApiKey: string;
   novaActApiKey: string;
+  oauthCallbackUrl: string;        // OAuth callback URL for external MCP tools
 }
 
 export interface GatewayConfig {
@@ -193,6 +194,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       corsOrigins: process.env.ENV_INFERENCE_API_CORS_ORIGINS || scope.node.tryGetContext('inferenceApi')?.corsOrigins,
       tavilyApiKey: process.env.ENV_INFERENCE_API_TAVILY_API_KEY || scope.node.tryGetContext('inferenceApi')?.tavilyApiKey,
       novaActApiKey: process.env.ENV_INFERENCE_API_NOVA_ACT_API_KEY || scope.node.tryGetContext('inferenceApi')?.novaActApiKey,
+      oauthCallbackUrl: process.env.ENV_INFERENCE_API_OAUTH_CALLBACK_URL || scope.node.tryGetContext('inferenceApi')?.oauthCallbackUrl || '',
     },
     gateway: {
       enabled: parseBooleanEnv(process.env.CDK_GATEWAY_ENABLED) ?? scope.node.tryGetContext('gateway')?.enabled,

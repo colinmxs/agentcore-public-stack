@@ -23,10 +23,12 @@ from .models import (
     GeminiModelSummary,
     OpenAIModelsResponse,
     OpenAIModelSummary,
+    ManagedModelsListResponse,
+)
+from apis.shared.models.models import (
     ManagedModelCreate,
     ManagedModelUpdate,
     ManagedModel,
-    ManagedModelsListResponse,
 )
 from apis.shared.auth import User, require_admin, require_roles, has_any_role, get_current_user
 from apis.shared.sessions.metadata import list_user_sessions, get_session_metadata
@@ -673,7 +675,7 @@ async def sync_model_roles(
                     granting_roles.append(role.role_id)
 
         # Update the model's allowed_app_roles
-        from apis.app_api.admin.models import ManagedModelUpdate
+        from apis.shared.models.models import ManagedModelUpdate
         updates = ManagedModelUpdate(allowed_app_roles=granting_roles)
         updated_model = await update_managed_model(model_id, updates)
 

@@ -82,6 +82,8 @@ env:
   # API Keys - from GitHub Secrets
   ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
   ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
+  # OAuth Configuration - from GitHub Secrets
+  ENV_INFERENCE_API_OAUTH_CALLBACK_URL: ${{ secrets.ENV_INFERENCE_API_OAUTH_CALLBACK_URL }}
 
 # Ensure only one deployment runs at a time
 concurrency:

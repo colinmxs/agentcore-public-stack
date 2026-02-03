@@ -237,7 +237,7 @@ class ExternalMCPIntegration:
             Decrypted access token or None if not connected
         """
         try:
-            from apis.app_api.oauth.service import get_oauth_service
+            from apis.shared.oauth.service import get_oauth_service
 
             oauth_service = get_oauth_service()
             token = await oauth_service.get_decrypted_token(user_id, provider_id)

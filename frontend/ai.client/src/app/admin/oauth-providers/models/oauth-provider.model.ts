@@ -27,6 +27,8 @@ export interface OAuthProvider {
   enabled: boolean;
   /** Icon name for UI display (heroicons) */
   iconName: string;
+  /** Additional authorization URL parameters (e.g., access_type=offline for Google) */
+  authorizationParams: Record<string, string>;
   /** ISO 8601 creation timestamp */
   createdAt: string;
   /** ISO 8601 update timestamp */
@@ -67,6 +69,8 @@ export interface OAuthProviderCreateRequest {
   enabled?: boolean;
   /** Icon name for UI display */
   iconName?: string;
+  /** Additional authorization URL parameters (e.g., access_type=offline for Google) */
+  authorizationParams?: Record<string, string>;
 }
 
 /**
@@ -92,6 +96,8 @@ export interface OAuthProviderUpdateRequest {
   enabled?: boolean;
   /** Icon name for UI display */
   iconName?: string;
+  /** Additional authorization URL parameters (e.g., access_type=offline for Google) */
+  authorizationParams?: Record<string, string>;
 }
 
 /**
@@ -109,6 +115,7 @@ export interface OAuthProviderFormData {
   allowedRoles: string[];
   enabled: boolean;
   iconName: string;
+  authorizationParams: string;
 }
 
 /**
@@ -121,6 +128,7 @@ export interface OAuthProviderPreset {
   tokenEndpoint: string;
   defaultScopes: string[];
   iconName: string;
+  authorizationParams?: Record<string, string>;
 }
 
 /**
@@ -134,6 +142,7 @@ export const OAUTH_PROVIDER_PRESETS: OAuthProviderPreset[] = [
     tokenEndpoint: 'https://oauth2.googleapis.com/token',
     defaultScopes: ['openid', 'email', 'profile'],
     iconName: 'heroCloud',
+    authorizationParams: { access_type: 'offline', prompt: 'consent' },
   },
   {
     type: 'microsoft',

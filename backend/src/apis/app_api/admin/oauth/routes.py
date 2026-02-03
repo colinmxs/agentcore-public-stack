@@ -5,21 +5,21 @@ import logging
 from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from apis.shared.auth import User, require_admin
-from apis.app_api.oauth.models import (
+from apis.shared.oauth.models import (
     OAuthProviderCreate,
     OAuthProviderListResponse,
     OAuthProviderResponse,
     OAuthProviderUpdate,
 )
-from apis.app_api.oauth.provider_repository import (
+from apis.shared.oauth.provider_repository import (
     OAuthProviderRepository,
     get_provider_repository,
 )
-from apis.app_api.oauth.token_repository import (
+from apis.shared.oauth.token_repository import (
     OAuthTokenRepository,
     get_token_repository,
 )
-from apis.app_api.oauth.token_cache import get_token_cache
+from apis.shared.oauth.token_cache import get_token_cache
 
 logger = logging.getLogger(__name__)
 

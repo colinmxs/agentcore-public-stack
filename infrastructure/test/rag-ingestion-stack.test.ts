@@ -64,6 +64,7 @@ describe('RagIngestionStack', () => {
         corsOrigins: 'http://localhost:3000',
         tavilyApiKey: 'test-key',
         novaActApiKey: 'test-key',
+        oauthCallbackUrl: 'http://localhost:8000/oauth/callback',
       },
       gateway: {
         enabled: true,

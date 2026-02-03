@@ -190,6 +190,10 @@ class OAuthService:
             params["code_challenge"] = code_challenge
             params["code_challenge_method"] = "S256"
 
+        # Add provider-specific authorization params (e.g., access_type=offline for Google)
+        if provider.authorization_params:
+            params.update(provider.authorization_params)
+
         # Build URL
         auth_url = f"{provider.authorization_endpoint}?"
         auth_url += "&".join(f"{k}={v}" for k, v in params.items())

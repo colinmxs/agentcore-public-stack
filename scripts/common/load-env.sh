@@ -173,6 +173,9 @@ build_cdk_context_params() {
     if [ -n "${ENV_INFERENCE_API_NOVA_ACT_API_KEY:-}" ]; then
         context_params="${context_params} --context inferenceApi.novaActApiKey=\"${ENV_INFERENCE_API_NOVA_ACT_API_KEY}\""
     fi
+    if [ -n "${ENV_INFERENCE_API_OAUTH_CALLBACK_URL:-}" ]; then
+        context_params="${context_params} --context inferenceApi.oauthCallbackUrl=\"${ENV_INFERENCE_API_OAUTH_CALLBACK_URL}\""
+    fi
     
     # Gateway optional parameters
     if [ -n "${CDK_GATEWAY_ENABLED:-}" ]; then

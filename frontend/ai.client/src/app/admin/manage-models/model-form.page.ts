@@ -19,6 +19,7 @@ interface ModelFormGroup {
   allowedAppRoles: FormControl<string[]>;
   availableToRoles: FormControl<string[]>;
   enabled: FormControl<boolean>;
+  isDefault: FormControl<boolean>;
   inputPricePerMillionTokens: FormControl<number>;
   outputPricePerMillionTokens: FormControl<number>;
   cacheWritePricePerMillionTokens: FormControl<number | null>;
@@ -69,6 +70,7 @@ export class ModelFormPage implements OnInit {
     allowedAppRoles: this.fb.control<string[]>([], { nonNullable: true, validators: [Validators.required] }),
     availableToRoles: this.fb.control<string[]>([], { nonNullable: true }),
     enabled: this.fb.control(true, { nonNullable: true }),
+    isDefault: this.fb.control(false, { nonNullable: true }),
     inputPricePerMillionTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(0)] }),
     outputPricePerMillionTokens: this.fb.control(0, { nonNullable: true, validators: [Validators.required, Validators.min(0)] }),
     cacheWritePricePerMillionTokens: this.fb.control<number | null>(null, { validators: [Validators.min(0)] }),
@@ -126,6 +128,7 @@ export class ModelFormPage implements OnInit {
         allowedAppRoles: model.allowedAppRoles ?? [],
         availableToRoles: model.availableToRoles ?? [],
         enabled: model.enabled,
+        isDefault: model.isDefault ?? false,
         inputPricePerMillionTokens: model.inputPricePerMillionTokens,
         outputPricePerMillionTokens: model.outputPricePerMillionTokens,
         cacheWritePricePerMillionTokens: model.cacheWritePricePerMillionTokens ?? null,

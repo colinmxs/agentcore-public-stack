@@ -47,6 +47,103 @@ def _resolve_supports_caching(supports_caching: Optional[bool], provider: str) -
 dynamodb = boto3.resource('dynamodb')
 
 
+async def _clear_existing_default_local(exclude_id: Optional[str] = None) -> None:
+    """
+    Clear isDefault flag from all models in local storage except the specified one.
+
+    Args:
+        exclude_id: Model ID to exclude from clearing (the new default)
+    """
+    models_dir = get_managed_models_dir()
+    if not models_dir.exists():
+        return
+
+    for model_file in models_dir.glob("*.json"):
+        try:
+            with open(model_file, 'r') as f:
+                data = json.load(f)
+
+            # Skip the excluded model
+            if exclude_id and data.get('id') == exclude_id:
+                continue
+
+            # If this model is currently default, clear it
+            if data.get('isDefault', False):
+                data['isDefault'] = False
+                data['updatedAt'] = datetime.now(timezone.utc).isoformat()
+                with open(model_file, 'w') as f:
+                    json.dump(data, f, indent=2, default=str)
+                logger.info(f"Cleared default flag from model: {data.get('modelName', data.get('id'))}")
+
+        except Exception as e:
+            logger.warning(f"Failed to process model file {model_file}: {e}")
+            continue
+
+
+async def _clear_existing_default_cloud(table_name: str, exclude_id: Optional[str] = None) -> None:
+    """
+    Clear isDefault flag from all models in DynamoDB except the specified one.
+
+    Args:
+        table_name: DynamoDB table name
+        exclude_id: Model ID to exclude from clearing (the new default)
+    """
+    table = dynamodb.Table(table_name)
+
+    try:
+        # Scan for all models
+        response = table.scan(
+            FilterExpression='begins_with(PK, :pk_prefix)',
+            ExpressionAttributeValues={
+                ':pk_prefix': 'MODEL#'
+            }
+        )
+
+        items = response.get('Items', [])
+
+        # Handle pagination
+        while 'LastEvaluatedKey' in response:
+            response = table.scan(
+                FilterExpression='begins_with(PK, :pk_prefix)',
+                ExpressionAttributeValues={
+                    ':pk_prefix': 'MODEL#'
+                },
+                ExclusiveStartKey=response['LastEvaluatedKey']
+            )
+            items.extend(response.get('Items', []))
+
+        # Update any models that have isDefault=True
+        for item in items:
+            model_id = item.get('id')
+
+            # Skip the excluded model
+            if exclude_id and model_id == exclude_id:
+                continue
+
+            # If this model is currently default, clear it
+            if item.get('isDefault', False):
+                table.update_item(
+                    Key={
+                        'PK': f'MODEL#{model_id}',
+                        'SK': f'MODEL#{model_id}'
+                    },
+                    UpdateExpression='SET #isDefault = :false, #updatedAt = :now',
+                    ExpressionAttributeNames={
+                        '#isDefault': 'isDefault',
+                        '#updatedAt': 'updatedAt'
+                    },
+                    ExpressionAttributeValues={
+                        ':false': False,
+                        ':now': datetime.now(timezone.utc).isoformat()
+                    }
+                )
+                logger.info(f"Cleared default flag from model: {item.get('modelName', model_id)}")
+
+    except ClientError as e:
+        logger.error(f"Failed to clear existing default in DynamoDB: {e}")
+        raise
+
+
 def _python_to_dynamodb(obj):
     """
     Convert Python objects to DynamoDB-compatible format.
@@ -148,6 +245,10 @@ async def _create_managed_model_local(model_data: ManagedModelCreate) -> Managed
         if model.model_id == model_data.model_id:
             raise ValueError(f"Model with modelId '{model_data.model_id}' already exists")
 
+    # If setting as default, clear any existing default first
+    if model_data.is_default:
+        await _clear_existing_default_local()
+
     # Generate unique ID
     model_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -173,6 +274,7 @@ async def _create_managed_model_local(model_data: ManagedModelCreate) -> Managed
         is_reasoning_model=model_data.is_reasoning_model,
         knowledge_cutoff_date=model_data.knowledge_cutoff_date,
         supports_caching=_resolve_supports_caching(model_data.supports_caching, model_data.provider),
+        is_default=model_data.is_default,
         created_at=now,
         updated_at=now,
     )
@@ -228,6 +330,10 @@ async def _create_managed_model_cloud(model_data: ManagedModelCreate, table_name
             logger.error(f"Error checking for existing model: {e}")
             raise
 
+    # If setting as default, clear any existing default first
+    if model_data.is_default:
+        await _clear_existing_default_cloud(table_name)
+
     # Generate unique ID and timestamps
     model_id = str(uuid.uuid4())
     now = datetime.now(timezone.utc)
@@ -253,6 +359,7 @@ async def _create_managed_model_cloud(model_data: ManagedModelCreate, table_name
         is_reasoning_model=model_data.is_reasoning_model,
         knowledge_cutoff_date=model_data.knowledge_cutoff_date,
         supports_caching=_resolve_supports_caching(model_data.supports_caching, model_data.provider),
+        is_default=model_data.is_default,
         created_at=now,
         updated_at=now,
     )
@@ -279,6 +386,7 @@ async def _create_managed_model_cloud(model_data: ManagedModelCreate, table_name
         'outputPricePerMillionTokens': model_data.output_price_per_million_tokens,
         'isReasoningModel': model_data.is_reasoning_model,
         'supportsCaching': _resolve_supports_caching(model_data.supports_caching, model_data.provider),
+        'isDefault': model_data.is_default,
         'createdAt': now.isoformat(),
         'updatedAt': now.isoformat(),
     }
@@ -628,6 +736,10 @@ async def _update_managed_model_local(model_id: str, updates: ManagedModelUpdate
                 if existing_model.id != model_id and existing_model.model_id == new_model_id:
                     raise ValueError(f"Model with modelId '{new_model_id}' already exists")
 
+    # If setting as default, clear any existing default first (exclude this model)
+    if update_data.get('isDefault', False):
+        await _clear_existing_default_local(exclude_id=model_id)
+
     model_dict = model.model_dump(by_alias=True)
 
     # Update fields
@@ -720,6 +832,10 @@ async def _update_managed_model_cloud(model_id: str, updates: ManagedModelUpdate
                 if e.response['Error']['Code'] != 'ResourceNotFoundException':
                     logger.error(f"Error checking for existing model: {e}")
                     raise
+
+    # If setting as default, clear any existing default first (exclude this model)
+    if update_data.get('isDefault', False):
+        await _clear_existing_default_cloud(table_name, exclude_id=model_id)
 
     # Build update expression
     update_expression_parts = []

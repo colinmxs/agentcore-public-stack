@@ -183,6 +183,25 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
     }));
 
+    // Secrets Manager read permissions for OAuth client secrets (imported from App API Stack)
+    const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/client-secrets-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'OAuthClientSecretsAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [
+        oauthClientSecretsArn,
+        `${oauthClientSecretsArn}*`, // Include wildcard for random suffix
+      ],
+    }));
+
     // DynamoDB Users Table permissions (imported from App API Stack)
     const usersTableArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -225,6 +244,68 @@ export class InferenceApiStack extends cdk.Stack {
         appRolesTableArn,
         `${appRolesTableArn}/index/*`, // GSI permissions
       ],
+    }));
+
+    // DynamoDB OAuth Providers Table permissions (imported from App API Stack)
+    const oauthProvidersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/providers-table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'OAuthProvidersTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        // Note: No write permissions - inference API only reads OAuth provider configs
+      ],
+      resources: [
+        oauthProvidersTableArn,
+        `${oauthProvidersTableArn}/index/*`, // GSI permissions
+      ],
+    }));
+
+    // DynamoDB OAuth User Tokens Table permissions (imported from App API Stack)
+    const oauthUserTokensTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/user-tokens-table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'OAuthUserTokensTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+        // Note: Inference API needs write access to store/update OAuth tokens
+      ],
+      resources: [
+        oauthUserTokensTableArn,
+        `${oauthUserTokensTableArn}/index/*`, // GSI permissions
+      ],
+    }));
+
+    // KMS Key permissions for OAuth token encryption/decryption
+    const oauthTokenEncryptionKeyArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/token-encryption-key-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'OAuthTokenEncryptionKeyAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'kms:Decrypt',
+        'kms:Encrypt',
+        'kms:GenerateDataKey',
+        'kms:DescribeKey',
+      ],
+      resources: [oauthTokenEncryptionKeyArn],
     }));
 
     // DynamoDB Assistants Table permissions (imported from RagIngestionStack)
@@ -544,10 +625,24 @@ export class InferenceApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/auth/oidc-state-table-name`
         ),
+        'DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/oauth/providers-table-name`
+        ),
+        'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/oauth/user-tokens-table-name`
+        ),
         'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/oauth/token-encryption-key-arn`
         ),
+        
+        // OAuth External MCP Configuration
+        // Client secrets ARN imported from App API Stack via SSM
+        'OAUTH_CLIENT_SECRETS_ARN': oauthClientSecretsArn,
+        // Callback URL from GitHub Variables
+        'OAUTH_CALLBACK_URL': config.inferenceApi.oauthCallbackUrl,
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)
         'ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
