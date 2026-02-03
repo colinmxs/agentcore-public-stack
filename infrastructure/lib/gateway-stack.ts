@@ -6,7 +6,7 @@ import * as logs from 'aws-cdk-lib/aws-logs';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from './config';
 
 export interface GatewayStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -50,7 +50,7 @@ export class GatewayStack extends cdk.Stack {
         api_key: cdk.SecretValue.unsafePlainText('REPLACE_WITH_YOUR_GOOGLE_API_KEY'),
         search_engine_id: cdk.SecretValue.unsafePlainText('REPLACE_WITH_YOUR_SEARCH_ENGINE_ID'),
       },
-      removalPolicy: cdk.RemovalPolicy.RETAIN, // Preserve secret on stack deletion
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // Brave Search Credentials Secret - Create with placeholder values
@@ -61,7 +61,7 @@ export class GatewayStack extends cdk.Stack {
       secretObjectValue: {
         api_key: cdk.SecretValue.unsafePlainText('REPLACE_WITH_YOUR_BRAVE_API_KEY'),
       },
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // ============================================================

@@ -8,7 +8,7 @@ import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from './config';
 
 export interface InfrastructureStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -125,9 +125,7 @@ export class InfrastructureStack extends cdk.Stack {
         includeSpace: false,
         passwordLength: 64,
       },
-      removalPolicy: config.environment === 'prod'
-        ? cdk.RemovalPolicy.RETAIN
-        : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // Export Authentication Secret ARN to SSM

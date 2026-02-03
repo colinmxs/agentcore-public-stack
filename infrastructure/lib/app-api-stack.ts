@@ -13,7 +13,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as kms from "aws-cdk-lib/aws-kms";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
-import { AppConfig, getResourceName, applyStandardTags } from "./config";
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
 
 export interface AppApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -127,7 +127,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -249,7 +249,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -322,7 +322,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -387,7 +387,7 @@ export class AppApiStack extends cdk.Stack {
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
       timeToLiveAttribute: "ttl",
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -435,7 +435,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -468,7 +468,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -532,7 +532,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       timeToLiveAttribute: "expiresAt",
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -568,7 +568,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -618,7 +618,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -704,7 +704,7 @@ export class AppApiStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -779,7 +779,7 @@ export class AppApiStack extends cdk.Stack {
       alias: getResourceName(config, "oauth-token-key"),
       description: "KMS key for encrypting OAuth user tokens at rest",
       enableKeyRotation: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // OAuth Providers Table - Admin-configured OAuth provider settings
@@ -789,7 +789,7 @@ export class AppApiStack extends cdk.Stack {
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -808,7 +808,7 @@ export class AppApiStack extends cdk.Stack {
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
       encryptionKey: oauthTokenEncryptionKey,
     });
@@ -875,12 +875,10 @@ export class AppApiStack extends cdk.Stack {
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
-    // Determine allowed CORS origins based on environment
+    // Determine allowed CORS origins from configuration
     const fileUploadCorsOrigins = config.fileUpload?.corsOrigins
       ? config.fileUpload.corsOrigins.split(",").map((o) => o.trim())
-      : config.environment === "prod"
-        ? ["https://boisestate.ai", "https://*.boisestate.ai"]
-        : ["http://localhost:4200", "http://localhost:8000"];
+      : ["http://localhost:4200"];
 
     // S3 Bucket for user file uploads
     const userFilesBucket = new s3.Bucket(this, "UserFilesBucket", {
@@ -893,9 +891,9 @@ export class AppApiStack extends cdk.Stack {
       enforceSSL: true,
       versioned: false,
 
-      // Retain in prod, allow destroy in dev
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
-      autoDeleteObjects: config.environment !== "prod",
+      // Removal policy based on retention configuration
+      removalPolicy: getRemovalPolicy(config),
+      autoDeleteObjects: getAutoDeleteObjects(config),
 
       // CORS for browser-based pre-signed URL uploads
       cors: [
@@ -961,7 +959,7 @@ export class AppApiStack extends cdk.Stack {
       timeToLiveAttribute: "ttl",
       stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
-      removalPolicy: config.environment === "prod" ? cdk.RemovalPolicy.RETAIN : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // GSI1: SessionIndex - Query files by conversation/session

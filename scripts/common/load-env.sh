@@ -14,6 +14,7 @@ CONTEXT_FILE="${CDK_DIR}/cdk.context.json"
 RED='\033[0;31m'
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
 # Logging functions
@@ -27,6 +28,10 @@ log_warn() {
 
 log_error() {
     echo -e "${RED}[ERROR]${NC} $1"
+}
+
+log_config() {
+    echo -e "${BLUE}[CONFIG]${NC} $1"
 }
 
 # Check if context file exists
@@ -79,7 +84,6 @@ build_cdk_context_params() {
     local context_params=""
     
     # Required parameters - always include (will fail validation if empty)
-    context_params="${context_params} --context environment=\"${DEPLOY_ENVIRONMENT}\""
     context_params="${context_params} --context projectPrefix=\"${CDK_PROJECT_PREFIX}\""
     context_params="${context_params} --context awsAccount=\"${CDK_AWS_ACCOUNT}\""
     context_params="${context_params} --context awsRegion=\"${CDK_AWS_REGION}\""
@@ -236,18 +240,55 @@ build_cdk_context_params() {
     echo "${context_params}"
 }
 
+# Validate required CDK_* variables
+validate_required_vars() {
+    local errors=0
+    
+    if [ -z "${CDK_PROJECT_PREFIX:-}" ]; then
+        log_error "CDK_PROJECT_PREFIX is required"
+        log_error "  Set this environment variable to your desired resource name prefix"
+        log_error "  Example: export CDK_PROJECT_PREFIX='mycompany-agentcore'"
+        errors=$((errors + 1))
+    fi
+    
+    if [ -z "${CDK_AWS_ACCOUNT:-}" ]; then
+        log_error "CDK_AWS_ACCOUNT is required"
+        log_error "  Set this to your 12-digit AWS account ID"
+        log_error "  Example: export CDK_AWS_ACCOUNT='123456789012'"
+        errors=$((errors + 1))
+    fi
+    
+    if [ -z "${CDK_AWS_REGION:-}" ]; then
+        log_error "CDK_AWS_REGION is required"
+        log_error "  Set this to your target AWS region"
+        log_error "  Example: export CDK_AWS_REGION='us-west-2'"
+        errors=$((errors + 1))
+    fi
+    
+    if [ $errors -gt 0 ]; then
+        log_error "Configuration validation failed with ${errors} error(s)"
+        return 1
+    fi
+    
+    return 0
+}
 
-# Default to 'prod' environment if not set
-export DEPLOY_ENVIRONMENT="${DEPLOY_ENVIRONMENT:-prod}"
-
-# Export core configuration
-# Priority: Environment variables > cdk.context.json
-export CDK_AWS_REGION="${CDK_AWS_REGION:-$(get_json_value "awsRegion" "${CONTEXT_FILE}")}"
+# Export core configuration with defaults
+# Priority: Environment variables > cdk.context.json > defaults
 export CDK_PROJECT_PREFIX="${CDK_PROJECT_PREFIX:-$(get_json_value "projectPrefix" "${CONTEXT_FILE}")}"
+export CDK_AWS_REGION="${CDK_AWS_REGION:-$(get_json_value "awsRegion" "${CONTEXT_FILE}")}"
 export CDK_VPC_CIDR="${CDK_VPC_CIDR:-$(get_json_value "vpcCidr" "${CONTEXT_FILE}")}"
 export CDK_HOSTED_ZONE_DOMAIN="${CDK_HOSTED_ZONE_DOMAIN:-$(get_json_value "infrastructureHostedZoneDomain" "${CONTEXT_FILE}")}"
 export CDK_ALB_SUBDOMAIN="${CDK_ALB_SUBDOMAIN:-$(get_json_value "albSubdomain" "${CONTEXT_FILE}")}"
 export CDK_CERTIFICATE_ARN="${CDK_CERTIFICATE_ARN:-$(get_json_value "certificateArn" "${CONTEXT_FILE}")}"
+
+# Behavior flags with defaults
+export CDK_RETAIN_DATA_ON_DELETE="${CDK_RETAIN_DATA_ON_DELETE:-true}"
+export CDK_ENABLE_AUTHENTICATION="${CDK_ENABLE_AUTHENTICATION:-true}"
+
+# File upload configuration with defaults
+export CDK_FILE_UPLOAD_CORS_ORIGINS="${CDK_FILE_UPLOAD_CORS_ORIGINS:-http://localhost:4200}"
+export CDK_FILE_UPLOAD_MAX_SIZE_MB="${CDK_FILE_UPLOAD_MAX_SIZE_MB:-10}"
 
 # RAG Ingestion configuration
 export CDK_RAG_ENABLED="${CDK_RAG_ENABLED:-$(get_json_value "ragIngestion.enabled" "${CONTEXT_FILE}")}"
@@ -264,21 +305,31 @@ export CDK_DEFAULT_ACCOUNT="${CDK_AWS_ACCOUNT}"
 export CDK_DEFAULT_REGION="${CDK_AWS_REGION}"
 
 # Validate required configuration
+if ! validate_required_vars; then
+    return 1 2>/dev/null || exit 1
+fi
+
+# Validate configuration
 validate_config() {
     local errors=0
     
-    if [ -z "${CDK_PROJECT_PREFIX}" ]; then
-        log_error "projectPrefix is required in cdk.context.json"
+    # Validate AWS Account ID format (12 digits)
+    if [ -n "${CDK_AWS_ACCOUNT}" ] && ! [[ "${CDK_AWS_ACCOUNT}" =~ ^[0-9]{12}$ ]]; then
+        log_error "Invalid AWS account ID: '${CDK_AWS_ACCOUNT}'"
+        log_error "  Expected a 12-digit number"
         errors=$((errors + 1))
     fi
     
-    if [ -z "${CDK_AWS_REGION}" ]; then
-        log_error "awsRegion is required in cdk.context.json"
+    # Validate boolean flags
+    if [ -n "${CDK_RETAIN_DATA_ON_DELETE}" ] && ! [[ "${CDK_RETAIN_DATA_ON_DELETE}" =~ ^(true|false|1|0)$ ]]; then
+        log_error "Invalid CDK_RETAIN_DATA_ON_DELETE value: '${CDK_RETAIN_DATA_ON_DELETE}'"
+        log_error "  Expected 'true', 'false', '1', or '0'"
         errors=$((errors + 1))
     fi
     
-    if [ -z "${CDK_AWS_ACCOUNT}" ]; then
-        log_error "AWS Account ID is required. Set it in cdk.context.json, CDK_DEFAULT_ACCOUNT, or AWS_ACCOUNT_ID"
+    if [ -n "${CDK_ENABLE_AUTHENTICATION}" ] && ! [[ "${CDK_ENABLE_AUTHENTICATION}" =~ ^(true|false|1|0)$ ]]; then
+        log_error "Invalid CDK_ENABLE_AUTHENTICATION value: '${CDK_ENABLE_AUTHENTICATION}'"
+        log_error "  Expected 'true', 'false', '1', or '0'"
         errors=$((errors + 1))
     fi
     
@@ -296,24 +347,25 @@ if ! validate_config; then
 fi
 
 # Display loaded configuration
-log_info "Configuration loaded successfully:"
-log_info "  Environment:    ${DEPLOY_ENVIRONMENT}"
-log_info "  Project Prefix: ${CDK_PROJECT_PREFIX}"
-log_info "  AWS Account:    ${CDK_AWS_ACCOUNT}"
-log_info "  AWS Region:     ${CDK_AWS_REGION}"
-log_info "  VPC CIDR:       ${CDK_VPC_CIDR}"
+log_info "📋 Configuration loaded successfully:"
+log_config "  Project Prefix: ${CDK_PROJECT_PREFIX}"
+log_config "  AWS Account:    ${CDK_AWS_ACCOUNT}"
+log_config "  AWS Region:     ${CDK_AWS_REGION}"
+log_config "  VPC CIDR:       ${CDK_VPC_CIDR:-<not set>}"
+log_config "  Retain Data:    ${CDK_RETAIN_DATA_ON_DELETE}"
+log_config "  CORS Origins:   ${CDK_FILE_UPLOAD_CORS_ORIGINS}"
 
 if [ -n "${CDK_HOSTED_ZONE_DOMAIN:-}" ]; then
-    log_info "  Hosted Zone:    ${CDK_HOSTED_ZONE_DOMAIN}"
+    log_config "  Hosted Zone:    ${CDK_HOSTED_ZONE_DOMAIN}"
 fi
 
 if [ -n "${CDK_ALB_SUBDOMAIN:-}" ]; then
-    log_info "  ALB Subdomain:  ${CDK_ALB_SUBDOMAIN}.${CDK_HOSTED_ZONE_DOMAIN}"
+    log_config "  ALB Subdomain:  ${CDK_ALB_SUBDOMAIN}.${CDK_HOSTED_ZONE_DOMAIN}"
 fi
 
 if [ -n "${CDK_CERTIFICATE_ARN:-}" ]; then
-    log_info "  Certificate:    ${CDK_CERTIFICATE_ARN:0:50}..." # Truncate for display
-    log_info "  HTTPS Enabled:  Yes"
+    log_config "  Certificate:    ${CDK_CERTIFICATE_ARN:0:50}..." # Truncate for display
+    log_config "  HTTPS Enabled:  Yes"
 fi
 
 # Check AWS credentials
@@ -325,8 +377,8 @@ else
     if [ "${CALLER_IDENTITY}" != "${CDK_AWS_ACCOUNT}" ] && [ "${CALLER_IDENTITY}" != "unknown" ]; then
         log_warn "AWS credentials account (${CALLER_IDENTITY}) does not match configured account (${CDK_AWS_ACCOUNT})"
     else
-        log_info "  AWS Identity:   ${CALLER_IDENTITY}"
+        log_config "  AWS Identity:   ${CALLER_IDENTITY}"
     fi
 fi
 
-log_info "Environment variables exported and ready for deployment"
+log_info "✅ Environment variables exported and ready for deployment"

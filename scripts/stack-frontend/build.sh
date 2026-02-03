@@ -1,12 +1,23 @@
 #!/bin/bash
 # Frontend build script - Build Angular application for production
 # This script builds the Angular application using production configuration
+#
+# For local development:
+#   - No environment variables needed
+#   - Uses localhost defaults from environment.ts
+#
+# For production deployment:
+#   - Set APP_API_URL (required)
+#   - Set INFERENCE_API_URL (required)
+#   - Set PRODUCTION (optional, defaults to true)
+#   - Set ENABLE_AUTHENTICATION (optional, defaults to true)
 
 set -euo pipefail
 
 # Get the repository root directory
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 FRONTEND_DIR="${REPO_ROOT}/frontend/ai.client"
+ENV_FILE="${FRONTEND_DIR}/src/environments/environment.ts"
 
 # Colors for output
 RED='\033[0;31m'
@@ -40,6 +51,66 @@ if [ ! -d "${FRONTEND_DIR}/node_modules" ]; then
     exit 1
 fi
 
+# Get build configuration from environment or use default
+BUILD_CONFIG="${BUILD_CONFIG:-production}"
+log_info "Build configuration: ${BUILD_CONFIG}"
+
+# Determine if this is a production deployment build
+IS_DEPLOYMENT_BUILD=false
+if [ -n "${APP_API_URL:-}" ] || [ -n "${INFERENCE_API_URL:-}" ]; then
+    IS_DEPLOYMENT_BUILD=true
+fi
+
+# Set default values for environment variables
+# For local development builds, use localhost defaults (no injection needed)
+# For deployment builds, validate required variables and inject values
+if [ "${IS_DEPLOYMENT_BUILD}" = true ]; then
+    log_info "Deployment build detected - validating environment variables..."
+    
+    # Validate required variables for production deployment
+    if [ -z "${APP_API_URL:-}" ]; then
+        log_error "APP_API_URL is required for production deployment builds"
+        log_error "Example: export APP_API_URL='https://api.example.com'"
+        exit 1
+    fi
+    
+    if [ -z "${INFERENCE_API_URL:-}" ]; then
+        log_error "INFERENCE_API_URL is required for production deployment builds"
+        log_error "Example: export INFERENCE_API_URL='https://inference.example.com'"
+        exit 1
+    fi
+    
+    # Set optional variables with defaults
+    PRODUCTION="${PRODUCTION:-true}"
+    ENABLE_AUTHENTICATION="${ENABLE_AUTHENTICATION:-true}"
+    
+    log_info "Environment configuration:"
+    log_info "  APP_API_URL: ${APP_API_URL}"
+    log_info "  INFERENCE_API_URL: ${INFERENCE_API_URL}"
+    log_info "  PRODUCTION: ${PRODUCTION}"
+    log_info "  ENABLE_AUTHENTICATION: ${ENABLE_AUTHENTICATION}"
+    
+    # Backup original environment file
+    if [ ! -f "${ENV_FILE}.backup" ]; then
+        log_info "Creating backup of environment.ts..."
+        cp "${ENV_FILE}" "${ENV_FILE}.backup"
+    fi
+    
+    # Inject environment-specific values using sed
+    log_info "Injecting environment-specific values into environment.ts..."
+    
+    # Create a temporary file with injected values
+    sed -e "s|production: false|production: ${PRODUCTION}|g" \
+        -e "s|appApiUrl: 'http://localhost:8000'|appApiUrl: '${APP_API_URL}'|g" \
+        -e "s|inferenceApiUrl: 'http://localhost:8001'|inferenceApiUrl: '${INFERENCE_API_URL}'|g" \
+        -e "s|enableAuthentication: true|enableAuthentication: ${ENABLE_AUTHENTICATION}|g" \
+        "${ENV_FILE}.backup" > "${ENV_FILE}"
+    
+    log_info "Environment values injected successfully"
+else
+    log_info "Local development build - using localhost defaults from environment.ts"
+fi
+
 log_info "Building frontend application..."
 log_info "Frontend directory: ${FRONTEND_DIR}"
 
@@ -52,8 +123,6 @@ if [ ! -f "node_modules/.bin/ng" ]; then
     exit 1
 fi
 
-# Get build configuration from environment or use default
-BUILD_CONFIG="${BUILD_CONFIG:-production}"
 log_info "Build configuration: ${BUILD_CONFIG}"
 
 # Clean previous build output (optional, but recommended)
@@ -65,6 +134,12 @@ fi
 # Build the Angular application
 log_info "Running: ng build --configuration ${BUILD_CONFIG}"
 ./node_modules/.bin/ng build --configuration "${BUILD_CONFIG}"
+
+# Restore original environment file if we modified it
+if [ "${IS_DEPLOYMENT_BUILD}" = true ] && [ -f "${ENV_FILE}.backup" ]; then
+    log_info "Restoring original environment.ts..."
+    mv "${ENV_FILE}.backup" "${ENV_FILE}"
+fi
 
 # Verify build output
 if [ ! -d "dist" ]; then

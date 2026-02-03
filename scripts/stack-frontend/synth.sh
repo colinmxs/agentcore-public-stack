@@ -37,7 +37,6 @@ fi
 # Synthesize the Frontend Stack
 log_info "Running CDK synth for FrontendStack..."
 cdk synth FrontendStack \
-    --context environment="${DEPLOY_ENVIRONMENT}" \
     --context projectPrefix="${CDK_PROJECT_PREFIX}" \
     --context awsAccount="${CDK_AWS_ACCOUNT}" \
     --context awsRegion="${CDK_AWS_REGION}" \

@@ -523,7 +523,6 @@ export class InferenceApiStack extends cdk.Stack {
         // AgentCore Runtime configuration
         'LOG_LEVEL': config.inferenceApi.logLevel,
         'PROJECT_NAME': config.projectPrefix,
-        'ENVIRONMENT': config.environment || 'production',
         
         // AWS Configuration
         'AWS_REGION': config.awsRegion,

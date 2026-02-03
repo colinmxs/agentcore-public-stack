@@ -1,10 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 
 export interface AppConfig {
-  environment: string; // 'prod', 'dev', 'test', etc.
   projectPrefix: string;
   awsAccount: string;
   awsRegion: string;
+  retainDataOnDelete: boolean;
   vpcCidr: string;  
   infrastructureHostedZoneDomain?: string;
   albSubdomain?: string; // Subdomain for ALB (e.g., 'api' for api.yourdomain.com)
@@ -105,28 +105,50 @@ export interface RagIngestionConfig {
  * @returns Validated AppConfig object
  */
 export function loadConfig(scope: cdk.App): AppConfig {
-  // Load configuration from context
-  const projectPrefix = getRequiredContext(scope, 'projectPrefix');
-  const awsRegion = getRequiredContext(scope, 'awsRegion');
+  // Load required configuration from environment variables or context
+  const projectPrefix = process.env.CDK_PROJECT_PREFIX || scope.node.tryGetContext('projectPrefix');
+  const awsRegion = process.env.CDK_AWS_REGION || scope.node.tryGetContext('awsRegion');
   
-  // AWS Account can come from context or environment variable
-  const awsAccount = scope.node.tryGetContext('awsAccount') || 
+  // Validate required variables
+  if (!projectPrefix) {
+    throw new Error(
+      'CDK_PROJECT_PREFIX is required. ' +
+      'Set this environment variable to your desired resource name prefix ' +
+      '(e.g., "mycompany-agentcore" or "mycompany-agentcore-prod")'
+    );
+  }
+  
+  if (!awsRegion) {
+    throw new Error(
+      'CDK_AWS_REGION is required. ' +
+      'Set this environment variable to your target AWS region ' +
+      '(e.g., "us-east-1", "us-west-2", "eu-west-1")'
+    );
+  }
+  
+  // AWS Account can come from environment variable or context
+  const awsAccount = process.env.CDK_AWS_ACCOUNT ||
+                     scope.node.tryGetContext('awsAccount') || 
                      process.env.CDK_DEFAULT_ACCOUNT ||
                      process.env.AWS_ACCOUNT_ID;
   
   if (!awsAccount) {
     throw new Error(
-      'AWS Account ID is required. Set it in cdk.context.json or via CDK_DEFAULT_ACCOUNT/AWS_ACCOUNT_ID environment variable.'
+      'CDK_AWS_ACCOUNT is required. ' +
+      'Set this environment variable to your AWS account ID ' +
+      '(e.g., "123456789012")'
     );
   }
 
-  const environment = scope.node.tryGetContext('environment') || process.env.DEPLOY_ENVIRONMENT || 'prod';
+  // Validate AWS account and region
+  validateAwsAccount(awsAccount);
+  validateAwsRegion(awsRegion);
 
   const config: AppConfig = {
-    environment,
     projectPrefix,
     awsAccount,
     awsRegion,
+    retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE, true),
     vpcCidr: scope.node.tryGetContext('vpcCidr'),    
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     albSubdomain: process.env.CDK_ALB_SUBDOMAIN || scope.node.tryGetContext('albSubdomain'),
@@ -202,12 +224,23 @@ export function loadConfig(scope: cdk.App): AppConfig {
       vectorDistanceMetric: process.env.CDK_RAG_DISTANCE_METRIC || scope.node.tryGetContext('ragIngestion')?.vectorDistanceMetric || 'cosine',
     },
     tags: {
-      Environment: environment,
       Project: projectPrefix,
       ManagedBy: 'CDK',
       ...scope.node.tryGetContext('tags'),
     },
   };
+
+  // Log loaded configuration for debugging
+  console.log('📋 Loaded CDK Configuration:');
+  console.log(`   Project Prefix: ${config.projectPrefix}`);
+  console.log(`   AWS Account: ${config.awsAccount}`);
+  console.log(`   AWS Region: ${config.awsRegion}`);
+  console.log(`   Retain Data on Delete: ${config.retainDataOnDelete}`);
+  console.log(`   File Upload CORS Origins: ${config.fileUpload.corsOrigins || '(not set)'}`);
+  console.log(`   Frontend Enabled: ${config.frontend.enabled}`);
+  console.log(`   App API Enabled: ${config.appApi.enabled}`);
+  console.log(`   Inference API Enabled: ${config.inferenceApi.enabled}`);
+  console.log(`   Gateway Enabled: ${config.gateway.enabled}`);
 
   // Validate configuration
   validateConfig(config);
@@ -216,27 +249,29 @@ export function loadConfig(scope: cdk.App): AppConfig {
 }
 
 /**
- * Get required context value or throw error
+ * Parse boolean environment variable with validation
+ * @param value The environment variable value to parse
+ * @param defaultValue The default value to use if undefined
+ * @returns The parsed boolean value
+ * @throws Error if the value is invalid
  */
-function getRequiredContext(scope: cdk.App, key: string): string {
-  const value = scope.node.tryGetContext(key);
-  if (!value) {
-    throw new Error(
-      `Required context value '${key}' is missing. Please set it in cdk.context.json.`
-    );
-  }
-  return value;
-}
-
-/**
- * Parse boolean environment variable
- * Returns undefined if the value is not set, allowing for fallback logic
- */
-function parseBooleanEnv(value: string | undefined): boolean | undefined {
+export function parseBooleanEnv(value: string | undefined, defaultValue: boolean = false): boolean {
   if (value === undefined || value === '') {
-    return undefined;
+    return defaultValue;
   }
-  return value.toLowerCase() === 'true';
+  
+  const normalized = value.toLowerCase();
+  if (normalized === 'true' || normalized === '1') {
+    return true;
+  }
+  if (normalized === 'false' || normalized === '0') {
+    return false;
+  }
+  
+  throw new Error(
+    `Invalid boolean value: "${value}". ` +
+    `Expected "true", "false", "1", or "0".`
+  );
 }
 
 /**
@@ -249,6 +284,46 @@ function parseIntEnv(value: string | undefined): number | undefined {
   }
   const parsed = parseInt(value, 10);
   return isNaN(parsed) ? undefined : parsed;
+}
+
+/**
+ * Validate AWS account ID format
+ * @param account The AWS account ID to validate
+ * @throws Error if the account ID is invalid
+ */
+export function validateAwsAccount(account: string): void {
+  if (!/^\d{12}$/.test(account)) {
+    throw new Error(
+      `Invalid AWS account ID: "${account}". ` +
+      `Expected a 12-digit number.`
+    );
+  }
+}
+
+/**
+ * Validate AWS region code
+ * @param region The AWS region to validate
+ * @throws Error if the region is invalid
+ */
+export function validateAwsRegion(region: string): void {
+  const validRegions = [
+    'us-east-1', 'us-east-2', 'us-west-1', 'us-west-2',
+    'ca-central-1',
+    'eu-west-1', 'eu-west-2', 'eu-west-3', 'eu-central-1', 'eu-north-1',
+    'ap-northeast-1', 'ap-northeast-2', 'ap-northeast-3',
+    'ap-southeast-1', 'ap-southeast-2', 'ap-southeast-3',
+    'ap-south-1', 'ap-east-1',
+    'sa-east-1',
+    'me-south-1',
+    'af-south-1',
+  ];
+  
+  if (!validRegions.includes(region)) {
+    throw new Error(
+      `Invalid AWS region: "${region}". ` +
+      `Expected one of: ${validRegions.join(', ')}`
+    );
+  }
 }
 
 /**
@@ -347,13 +422,31 @@ export function getStackEnv(config: AppConfig): cdk.Environment {
 }
 
 /**
- * Generate a standardized resource name with environment suffix for non-prod
+ * Generate a standardized resource name
  */
 export function getResourceName(config: AppConfig, ...parts: string[]): string {
-  // Add environment suffix for non-prod environments
-  const envSuffix = config.environment === 'prod' ? '' : `-${config.environment}`;
-  const allParts = [config.projectPrefix + envSuffix, ...parts];
+  const allParts = [config.projectPrefix, ...parts];
   return allParts.join('-');
+}
+
+/**
+ * Get the removal policy based on retention configuration
+ * @param config The application configuration
+ * @returns RETAIN when retainDataOnDelete is true, DESTROY when false
+ */
+export function getRemovalPolicy(config: AppConfig): cdk.RemovalPolicy {
+  return config.retainDataOnDelete 
+    ? cdk.RemovalPolicy.RETAIN 
+    : cdk.RemovalPolicy.DESTROY;
+}
+
+/**
+ * Get the autoDeleteObjects setting for S3 buckets based on retention configuration
+ * @param config The application configuration
+ * @returns false when retainDataOnDelete is true, true when false
+ */
+export function getAutoDeleteObjects(config: AppConfig): boolean {
+  return !config.retainDataOnDelete;
 }
 
 /**

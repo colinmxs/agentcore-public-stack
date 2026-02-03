@@ -7,7 +7,7 @@ import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
 
 export interface FrontendStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -56,9 +56,9 @@ export class FrontendStack extends cdk.Stack {
           enabled: true,
         },
       ],
-      // Removal policy - be careful with DESTROY in production
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
+      // Removal policy based on retention configuration
+      removalPolicy: getRemovalPolicy(config),
+      autoDeleteObjects: getAutoDeleteObjects(config),
     });
 
     // Create Origin Access Control (OAC) for CloudFront

@@ -1,6 +1,47 @@
+## Quick Start
+
+### Single-Environment Deployment
+
+Deploy the application to AWS with minimal configuration:
+
+```bash
+# 1. Clone repository
+git clone https://github.com/Boise-State-Development/agentcore-public-stack.git
+cd agentcore-public-stack
+
+# 2. Configure GitHub Variables and Secrets
+# Go to: Settings → Secrets and variables → Actions → Variables
+# Add the following variables (see Configuration Reference below)
+```
+
+**Required GitHub Variables:**
+- `CDK_PROJECT_PREFIX` - Resource name prefix (e.g., "mycompany-agentcore")
+- `CDK_AWS_REGION` - AWS region (e.g., "us-west-2")
+- `CDK_FILE_UPLOAD_CORS_ORIGINS` - Allowed CORS origins (e.g., "https://app.example.com")
+- `APP_API_URL` - App API URL for frontend (e.g., "https://api.example.com")
+- `INFERENCE_API_URL` - Inference API URL for frontend (e.g., "https://inference.example.com")
+
+**Required GitHub Secrets:**
+- `AWS_ROLE_ARN` - AWS IAM role ARN for deployment (e.g., "arn:aws:iam::123456789012:role/deploy-role")
+- `CDK_AWS_ACCOUNT` - AWS account ID (12-digit number)
+
+**Optional GitHub Variables (with defaults):**
+- `CDK_RETAIN_DATA_ON_DELETE` - Retain data on stack deletion (default: "true")
+- `CDK_ENABLE_AUTHENTICATION` - Enable authentication (default: "true")
+- `CDK_APP_API_DESIRED_COUNT` - App API task count (default: "2")
+- `CDK_APP_API_MAX_CAPACITY` - App API max tasks (default: "10")
+- `CDK_INFERENCE_API_DESIRED_COUNT` - Inference API task count (default: "2")
+- `CDK_INFERENCE_API_MAX_CAPACITY` - Inference API max tasks (default: "10")
+
+```bash
+# 3. Deploy via GitHub Actions
+# Push to main branch or manually trigger workflow
+git push origin main
+```
+
 ### Local Development
 
-Run the application locally with Docker Compose:
+Run the application locally without any configuration:
 
 ```bash
 # 1. Clone repository
@@ -16,6 +57,267 @@ cp backend/src/.env.example backend/src/.env
 
 # 4. Start all services
 ./start.sh
+```
+
+**Local Development Notes:**
+- No configuration variables needed - uses localhost defaults
+- Frontend automatically connects to `http://localhost:8000` (App API) and `http://localhost:8001` (Inference API)
+- Authentication is enabled by default
+- All data is stored locally (no cloud resources required for basic functionality)
+
+## Configuration Reference
+
+The application is fully configuration-driven. All environment-specific behavior is controlled through GitHub Variables and Secrets (for deployment) or environment variables (for local development).
+
+### Core Configuration
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_PROJECT_PREFIX` | string | ✅ Yes | - | Resource name prefix for all AWS resources. Use different prefixes for multiple environments (e.g., "myapp-prod", "myapp-dev"). |
+| `CDK_AWS_ACCOUNT` | secret | ✅ Yes | - | AWS account ID (12-digit number). Store as GitHub Secret. |
+| `CDK_AWS_REGION` | string | ✅ Yes | - | AWS region code (e.g., "us-west-2", "us-east-1"). |
+| `AWS_ROLE_ARN` | secret | ✅ Yes | - | AWS IAM role ARN for GitHub Actions deployment. Store as GitHub Secret. |
+
+**Example:**
+```bash
+CDK_PROJECT_PREFIX="mycompany-agentcore"
+CDK_AWS_ACCOUNT="123456789012"  # Secret
+CDK_AWS_REGION="us-west-2"
+AWS_ROLE_ARN="arn:aws:iam::123456789012:role/github-deploy"  # Secret
+```
+
+### Resource Behavior
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_RETAIN_DATA_ON_DELETE` | boolean | No | `true` | Controls data retention when stacks are deleted. Set to `"true"` to retain DynamoDB tables and S3 buckets (recommended for production). Set to `"false"` to automatically delete data resources. |
+
+**Example:**
+```bash
+# Production: Retain data for safety
+CDK_RETAIN_DATA_ON_DELETE="true"
+
+# Development: Auto-delete for easy cleanup
+CDK_RETAIN_DATA_ON_DELETE="false"
+```
+
+**Impact:**
+- `true`: DynamoDB tables and S3 buckets use `RETAIN` removal policy. Resources persist after stack deletion.
+- `false`: Resources use `DESTROY` removal policy with `autoDeleteObjects` enabled for S3. All data is deleted with the stack.
+
+### Frontend Configuration
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `APP_API_URL` | string | ✅ Yes* | `http://localhost:8000` | App API endpoint URL. Required for production builds. |
+| `INFERENCE_API_URL` | string | ✅ Yes* | `http://localhost:8001` | Inference API endpoint URL. Required for production builds. |
+| `PRODUCTION` | boolean | No | `false` | Enable production mode in frontend. Set to `"true"` for production deployments. |
+| `ENABLE_AUTHENTICATION` | boolean | No | `true` | Enable/disable authentication in frontend. |
+
+*Required for production deployments, optional for local development (uses localhost defaults).
+
+**Example:**
+```bash
+# Production deployment
+APP_API_URL="https://api.mycompany.com"
+INFERENCE_API_URL="https://inference.mycompany.com"
+PRODUCTION="true"
+ENABLE_AUTHENTICATION="true"
+
+# Local development (defaults)
+APP_API_URL="http://localhost:8000"
+INFERENCE_API_URL="http://localhost:8001"
+PRODUCTION="false"
+ENABLE_AUTHENTICATION="true"
+```
+
+### CORS Configuration
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_FILE_UPLOAD_CORS_ORIGINS` | string | No | `http://localhost:4200` | Comma-separated list of allowed CORS origins for file upload API. |
+| `CDK_FILE_UPLOAD_MAX_SIZE_MB` | number | No | `10` | Maximum file upload size in megabytes. |
+
+**Example:**
+```bash
+# Single origin
+CDK_FILE_UPLOAD_CORS_ORIGINS="https://app.mycompany.com"
+
+# Multiple origins
+CDK_FILE_UPLOAD_CORS_ORIGINS="https://app.mycompany.com,https://app-staging.mycompany.com"
+
+# Local development
+CDK_FILE_UPLOAD_CORS_ORIGINS="http://localhost:4200"
+```
+
+### Service Scaling Configuration
+
+#### App API (Main Application Backend)
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_APP_API_DESIRED_COUNT` | number | No | `2` | Desired number of ECS tasks for App API. |
+| `CDK_APP_API_MAX_CAPACITY` | number | No | `10` | Maximum number of tasks for auto-scaling. |
+| `CDK_APP_API_CPU` | number | No | `1024` | CPU units (1024 = 1 vCPU). |
+| `CDK_APP_API_MEMORY` | number | No | `2048` | Memory in MB. |
+
+**Example:**
+```bash
+# Production: Higher capacity
+CDK_APP_API_DESIRED_COUNT="3"
+CDK_APP_API_MAX_CAPACITY="20"
+CDK_APP_API_CPU="2048"
+CDK_APP_API_MEMORY="4096"
+
+# Development: Minimal capacity
+CDK_APP_API_DESIRED_COUNT="1"
+CDK_APP_API_MAX_CAPACITY="5"
+CDK_APP_API_CPU="1024"
+CDK_APP_API_MEMORY="2048"
+```
+
+#### Inference API (AI Model Inference)
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_INFERENCE_API_DESIRED_COUNT` | number | No | `2` | Desired number of ECS tasks for Inference API. |
+| `CDK_INFERENCE_API_MAX_CAPACITY` | number | No | `10` | Maximum number of tasks for auto-scaling. |
+| `CDK_INFERENCE_API_CPU` | number | No | `1024` | CPU units (1024 = 1 vCPU). |
+| `CDK_INFERENCE_API_MEMORY` | number | No | `2048` | Memory in MB. |
+
+**Example:**
+```bash
+# Production: Higher capacity
+CDK_INFERENCE_API_DESIRED_COUNT="3"
+CDK_INFERENCE_API_MAX_CAPACITY="20"
+CDK_INFERENCE_API_CPU="2048"
+CDK_INFERENCE_API_MEMORY="4096"
+
+# Development: Minimal capacity
+CDK_INFERENCE_API_DESIRED_COUNT="1"
+CDK_INFERENCE_API_MAX_CAPACITY="5"
+CDK_INFERENCE_API_CPU="1024"
+CDK_INFERENCE_API_MEMORY="2048"
+```
+
+### Authentication Configuration
+
+| Variable | Type | Required | Default | Description |
+|----------|------|----------|---------|-------------|
+| `CDK_ENABLE_AUTHENTICATION` | boolean | No | `true` | Enable/disable authentication for the entire application. |
+
+**Example:**
+```bash
+# Production: Authentication required
+CDK_ENABLE_AUTHENTICATION="true"
+
+# Development/Testing: Authentication optional
+CDK_ENABLE_AUTHENTICATION="false"
+```
+
+### Configuration Examples
+
+#### Production Environment
+
+```bash
+# Core
+CDK_PROJECT_PREFIX="mycompany-agentcore-prod"
+CDK_AWS_ACCOUNT="123456789012"  # Secret
+CDK_AWS_REGION="us-west-2"
+AWS_ROLE_ARN="arn:aws:iam::123456789012:role/prod-deploy"  # Secret
+
+# Behavior
+CDK_RETAIN_DATA_ON_DELETE="true"
+
+# Frontend
+APP_API_URL="https://api.mycompany.com"
+INFERENCE_API_URL="https://inference.mycompany.com"
+PRODUCTION="true"
+ENABLE_AUTHENTICATION="true"
+
+# CORS
+CDK_FILE_UPLOAD_CORS_ORIGINS="https://app.mycompany.com"
+
+# Scaling
+CDK_APP_API_DESIRED_COUNT="3"
+CDK_APP_API_MAX_CAPACITY="20"
+CDK_INFERENCE_API_DESIRED_COUNT="3"
+CDK_INFERENCE_API_MAX_CAPACITY="20"
+```
+
+#### Development Environment
+
+```bash
+# Core
+CDK_PROJECT_PREFIX="mycompany-agentcore-dev"
+CDK_AWS_ACCOUNT="987654321098"  # Secret (different account)
+CDK_AWS_REGION="us-west-2"
+AWS_ROLE_ARN="arn:aws:iam::987654321098:role/dev-deploy"  # Secret
+
+# Behavior
+CDK_RETAIN_DATA_ON_DELETE="false"  # Auto-delete for easy cleanup
+
+# Frontend
+APP_API_URL="https://dev-api.mycompany.com"
+INFERENCE_API_URL="https://dev-inference.mycompany.com"
+PRODUCTION="false"
+ENABLE_AUTHENTICATION="true"
+
+# CORS
+CDK_FILE_UPLOAD_CORS_ORIGINS="https://dev-app.mycompany.com,http://localhost:4200"
+
+# Scaling (minimal)
+CDK_APP_API_DESIRED_COUNT="1"
+CDK_APP_API_MAX_CAPACITY="5"
+CDK_INFERENCE_API_DESIRED_COUNT="1"
+CDK_INFERENCE_API_MAX_CAPACITY="5"
+```
+
+### Setting Configuration in GitHub
+
+#### For Single-Environment Deployment
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Secrets and variables** → **Actions**
+3. Click **Variables** tab and add each variable
+4. Click **Secrets** tab and add sensitive values (AWS_ROLE_ARN, CDK_AWS_ACCOUNT)
+
+#### For Multi-Environment Deployment (Advanced)
+
+Use GitHub Environments to manage separate configurations for dev/staging/prod:
+
+1. Go to **Settings** → **Environments**
+2. Create environments: `development`, `staging`, `production`
+3. For each environment, add environment-specific variables and secrets
+4. Optionally add protection rules (required reviewers, wait timers) for production
+
+See [docs/GITHUB_ENVIRONMENTS.md](docs/GITHUB_ENVIRONMENTS.md) for detailed setup instructions.
+
+### Resource Naming
+
+All AWS resources are named using the pattern: `{CDK_PROJECT_PREFIX}-{resource-type}`
+
+**Examples:**
+- VPC: `mycompany-agentcore-prod-vpc`
+- DynamoDB Table: `mycompany-agentcore-prod-user-quotas`
+- S3 Bucket: `mycompany-agentcore-prod-user-files`
+
+**Important:** Use different `CDK_PROJECT_PREFIX` values when deploying multiple environments to the same AWS account to avoid resource name conflicts.
+
+### Validation
+
+The application validates configuration at deployment time:
+
+- **Missing required variables**: Deployment fails with clear error message listing missing variables
+- **Invalid boolean values**: Must be "true", "false", "1", or "0"
+- **Invalid AWS account ID**: Must be 12-digit number
+- **Invalid AWS region**: Must be valid AWS region code
+
+**Example error:**
+```
+Error: CDK_PROJECT_PREFIX is required.
+Set this environment variable to your desired resource name prefix
+(e.g., "mycompany-agentcore" or "mycompany-agentcore-prod")
 ```
 <!-- # AgentCore Public Stack
 
@@ -309,50 +611,6 @@ AgentCoreMemoryConfig(
 - **Short-term**: Session conversation history (automatic via session manager)
 - **Long-term**: Namespaced key-value storage with vector retrieval
 - Cross-session persistence via `actor_id` (user identifier)
-
-## Quick Start
-
-### Prerequisites
-
-- **AWS Account** with Bedrock access (Claude models)
-- **AWS CLI** configured with credentials
-- **Docker** installed and running
-- **Node.js** 18+ and **Python** 3.13+
-- **AgentCore** enabled in your AWS account region
-
-### Local Development
-
-Run the application locally with Docker Compose:
-
-```bash
-# 1. Clone repository
-git clone https://github.com/Boise-State-Development/agentcore-public-stack.git
-cd agentcore-public-stack
-
-# 2. Setup dependencies
-./setup.sh
-
-# 3. Configure AWS credentials
-cp backend/src/.env.example backend/src/.env
-# Edit .env with your AWS credentials and region
-
-# 4. Start all services
-cd ../..
-./start.sh
-```
-
-**Services started:**
-- Frontend: http://localhost:4200
-- Agent Backend: http://localhost:8000
-- Local file-based session storage
-
-**What runs locally:**
-- ✅ Frontend (Angular v21)
-- ✅ AgentCore Runtime (Strands Agent)
-- ✅ Local Tools (5 tools)
-- ✅ Built-in Tools (Code Interpreter, Browser via AWS API)
-- ❌ AgentCore Gateway (requires cloud deployment)
-- ❌ AgentCore Memory (uses local file storage instead)
 
 <!-- ### Cloud Deployment
 
