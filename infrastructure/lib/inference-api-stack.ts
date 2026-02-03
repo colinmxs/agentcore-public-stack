@@ -758,6 +758,7 @@ export class InferenceApiStack extends cdk.Stack {
     // CloudFormation Outputs
     // ============================================================
     
+
     new cdk.CfnOutput(this, 'InferenceApiRuntimeArn', {
       value: this.runtime.attrAgentRuntimeArn,
       description: 'Inference API AgentCore Runtime ARN',
@@ -798,6 +799,13 @@ export class InferenceApiStack extends cdk.Stack {
       value: ecrRepository.repositoryUri,
       description: 'Inference API ECR Repository URI',
       exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
+    });
+
+    // AgentCore Runtime Endpoint URL (with URL-encoded ARN)
+    new cdk.CfnOutput(this, 'InferenceApiRuntimeEndpointUrl', {
+      value: `https://bedrock-agentcore.${config.awsRegion}.amazonaws.com/runtimes/${encodeURIComponent(this.runtime.attrAgentRuntimeArn)}`,
+      description: 'Inference API AgentCore Runtime Endpoint URL (ARN is URL-encoded)',
+      exportName: `${config.projectPrefix}-InferenceApiRuntimeEndpointUrl`,
     });
    }
 }

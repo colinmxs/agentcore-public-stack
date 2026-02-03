@@ -293,7 +293,7 @@ export class InfrastructureStack extends cdk.Stack {
     // ============================================================
     // Route53 Hosted Zone (Optional)
     // ============================================================
-    if (config.infrastructureHostedZoneDomain) {
+    if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
       const hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
         zoneName: config.infrastructureHostedZoneDomain,
         comment: `Hosted zone for ${config.projectPrefix}`,
