@@ -1499,12 +1499,5 @@ export class AppApiStack extends cdk.Stack {
       description: "Secrets Manager ARN for OAuth client secrets",
       exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
     });
-
-    // App API URL from config
-    new cdk.CfnOutput(this, "AppApiUrl", {
-      value: config.inferenceApi.apiUrl,
-      description: "App API URL from configuration",
-      exportName: `${config.projectPrefix}-AppApiUrl`,
-    });
   }
 }
