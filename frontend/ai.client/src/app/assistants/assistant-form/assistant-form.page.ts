@@ -1,31 +1,34 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
-import { TestChatComponent } from './components/test-chat.component';
+import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroArrowLeft } from '@ng-icons/heroicons/outline';
+import { heroArrowLeft, heroChevronRight } from '@ng-icons/heroicons/outline';
+import { SidenavService } from '../../services/sidenav/sidenav.service';
 
 @Component({
   selector: 'app-assistant-form-page',
   templateUrl: './assistant-form.page.html',
   styleUrl: './assistant-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, TestChatComponent, NgIcon, RouterLink],
-  providers:[
+  imports: [ReactiveFormsModule, AssistantPreviewComponent, NgIcon, RouterLink],
+  providers: [
     provideIcons({
-      heroArrowLeft
+      heroArrowLeft,
+      heroChevronRight
     })
   ]
 })
-export class AssistantFormPage implements OnInit {
+export class AssistantFormPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private assistantService = inject(AssistantService);
   private documentService = inject(DocumentService);
+  readonly sidenavService = inject(SidenavService);
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => 
@@ -45,6 +48,9 @@ export class AssistantFormPage implements OnInit {
   form!: FormGroup;
 
   ngOnInit(): void {
+    // Hide sidenav when entering the form page
+    this.sidenavService.hide();
+
     // Check if we're editing an existing assistant
     const id = this.route.snapshot.paramMap.get('id');
     this.assistantId.set(id);
@@ -65,6 +71,11 @@ export class AssistantFormPage implements OnInit {
       this.loadAssistant(id);
       this.loadDocuments();
     }
+  }
+
+  ngOnDestroy(): void {
+    // Show sidenav when leaving the form page
+    this.sidenavService.show();
   }
 
   async loadAssistant(id: string): Promise<void> {
@@ -353,6 +364,22 @@ export class AssistantFormPage implements OnInit {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  }
+
+  getStatusBadgeClasses(): string {
+    const status = this.form?.get('status')?.value || 'DRAFT';
+    const baseClasses = 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium';
+
+    switch (status) {
+      case 'COMPLETE':
+        return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300`;
+      case 'DRAFT':
+        return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300`;
+      case 'ARCHIVED':
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
+    }
   }
 }
 

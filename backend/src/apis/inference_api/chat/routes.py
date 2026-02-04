@@ -42,6 +42,22 @@ logger = logging.getLogger(__name__)
 # Router with no prefix - endpoints will be at root level
 router = APIRouter(tags=["agentcore-runtime"])
 
+# ============================================================
+# Preview Session Detection
+# ============================================================
+
+# Preview session prefix - sessions with this prefix skip persistence
+PREVIEW_SESSION_PREFIX = "preview-"
+
+
+def is_preview_session(session_id: str) -> bool:
+    """Check if a session ID is a preview session (should skip persistence).
+
+    Preview sessions are used for assistant testing in the form builder.
+    They allow full agent functionality but don't save to user's conversation history.
+    """
+    return session_id.startswith(PREVIEW_SESSION_PREFIX)
+
 
 async def _resolve_caching_enabled(model_id: str | None, explicit_caching_enabled: bool | None) -> bool | None:
     """
@@ -131,6 +147,11 @@ async def stream_conversational_message(
 
     # Emit done event
     yield "event: done\ndata: {}\n\n"
+
+    # Skip persistence for preview sessions
+    if is_preview_session(session_id):
+        logger.info(f"🔍 Preview session {session_id} - skipping message persistence")
+        return
 
     # Save messages to session for persistence
     try:
@@ -291,40 +312,44 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
         # If it doesn't, verify session has no messages (can only attach to new sessions)
-        try:
-            existing_metadata = await get_session_metadata(input_data.session_id, user_id)
-            existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
+        # Skip validation for preview sessions (they don't persist state)
+        if not is_preview_session(input_data.session_id):
+            try:
+                existing_metadata = await get_session_metadata(input_data.session_id, user_id)
+                existing_assistant_id = existing_metadata.preferences.assistant_id if existing_metadata and existing_metadata.preferences else None
 
-            if existing_assistant_id:
-                # Session already has an assistant - verify it's the same one
-                if existing_assistant_id != input_data.assistant_id:
-                    logger.warning(
-                        f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}"
+                if existing_assistant_id:
+                    # Session already has an assistant - verify it's the same one
+                    if existing_assistant_id != input_data.assistant_id:
+                        logger.warning(
+                            f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}"
+                        )
+                        raise HTTPException(
+                            status_code=400, detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
+                        )
+                    # Same assistant - allow it to continue
+                    logger.info(f"Continuing with existing assistant {input_data.assistant_id} in session {input_data.session_id}")
+                else:
+                    # No assistant attached - verify session has no messages (can only attach to new sessions)
+                    messages_response = await get_messages(
+                        session_id=input_data.session_id,
+                        user_id=user_id,
+                        limit=1,  # Only need to check if any messages exist
                     )
-                    raise HTTPException(
-                        status_code=400, detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
-                    )
-                # Same assistant - allow it to continue
-                logger.info(f"Continuing with existing assistant {input_data.assistant_id} in session {input_data.session_id}")
-            else:
-                # No assistant attached - verify session has no messages (can only attach to new sessions)
-                messages_response = await get_messages(
-                    session_id=input_data.session_id,
-                    user_id=user_id,
-                    limit=1,  # Only need to check if any messages exist
-                )
-                if messages_response.messages and len(messages_response.messages) > 0:
-                    logger.warning(
-                        f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages"
-                    )
-                    raise HTTPException(
-                        status_code=400, detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
-                    )
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Error checking session state: {e}", exc_info=True)
-            # Continue anyway - better to allow than block on error
+                    if messages_response.messages and len(messages_response.messages) > 0:
+                        logger.warning(
+                            f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages"
+                        )
+                        raise HTTPException(
+                            status_code=400, detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
+                        )
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Error checking session state: {e}", exc_info=True)
+                # Continue anyway - better to allow than block on error
+        else:
+            logger.info(f"🔍 Preview session - skipping session state validation")
 
         # 2. Load assistant with access check
         assistant = await get_assistant_with_access_check(
@@ -401,43 +426,47 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             )
 
         # 6. Save assistant_id to session preferences (persist for future loads)
-        try:
-            existing_metadata = await get_session_metadata(input_data.session_id, user_id)
-            if existing_metadata:
-                # Update existing metadata with assistant_id in preferences
-                prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
-                prefs_dict["assistant_id"] = input_data.assistant_id
-                preferences = SessionPreferences(**prefs_dict)
+        # Skip persistence for preview sessions
+        if not is_preview_session(input_data.session_id):
+            try:
+                existing_metadata = await get_session_metadata(input_data.session_id, user_id)
+                if existing_metadata:
+                    # Update existing metadata with assistant_id in preferences
+                    prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
+                    prefs_dict["assistant_id"] = input_data.assistant_id
+                    preferences = SessionPreferences(**prefs_dict)
 
-                updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.assistant_id})
+                    updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.assistant_id})
 
-            else:
-                # Create new metadata with assistant_id in preferences
-                from datetime import datetime, timezone
+                else:
+                    # Create new metadata with assistant_id in preferences
+                    from datetime import datetime, timezone
 
-                now = datetime.now(timezone.utc).isoformat()
-                preferences = SessionPreferences(assistantId=input_data.assistant_id)
+                    now = datetime.now(timezone.utc).isoformat()
+                    preferences = SessionPreferences(assistantId=input_data.assistant_id)
 
-                updated_metadata = SessionMetadata(
-                    sessionId=input_data.session_id,
-                    userId=user_id,
-                    title="",
-                    status="active",
-                    createdAt=now,
-                    lastMessageAt=now,
-                    messageCount=0,
-                    starred=False,
-                    tags=[],
-                    preferences=preferences,
-                    deleted=None,
-                    deletedAt=None,
-                )
+                    updated_metadata = SessionMetadata(
+                        sessionId=input_data.session_id,
+                        userId=user_id,
+                        title="",
+                        status="active",
+                        createdAt=now,
+                        lastMessageAt=now,
+                        messageCount=0,
+                        starred=False,
+                        tags=[],
+                        preferences=preferences,
+                        deleted=None,
+                        deletedAt=None,
+                    )
 
-            await store_session_metadata(session_id=input_data.session_id, user_id=user_id, session_metadata=updated_metadata)
-            logger.info(f"💾 Saved assistant_id {input_data.assistant_id} to session {input_data.session_id} preferences")
-        except Exception as e:
-            logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
-            # Continue - not critical if metadata save fails
+                await store_session_metadata(session_id=input_data.session_id, user_id=user_id, session_metadata=updated_metadata)
+                logger.info(f"💾 Saved assistant_id {input_data.assistant_id} to session {input_data.session_id} preferences")
+            except Exception as e:
+                logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
+                # Continue - not critical if metadata save fails
+        else:
+            logger.info(f"🔍 Preview session - skipping assistant_id persistence")
 
     try:
         # Resolve caching_enabled based on managed model configuration
