@@ -70,9 +70,12 @@ export class ConfigService {
   
   /**
    * Computed signal for Inference API URL
-   * Returns empty string if config not loaded
+   * Returns URI-encoded URL or empty string if config not loaded
    */
-  readonly inferenceApiUrl = computed(() => this.config()?.inferenceApiUrl ?? '');
+  readonly inferenceApiUrl = computed(() => {
+    const url = this.config()?.inferenceApiUrl ?? '';
+    return url ? encodeURI(url) : '';
+  });
   
   /**
    * Computed signal for authentication flag
