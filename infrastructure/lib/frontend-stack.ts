@@ -101,7 +101,7 @@ export class FrontendStack extends cdk.Stack {
 
     const runtimeConfig = {
       appApiUrl: appApiUrl,
-      inferenceApiUrl: inferenceApiUrl,
+      inferenceApiUrl: encodeURIComponent(inferenceApiUrl),
       enableAuthentication: true,
       environment: config.production ? 'production' : 'development',
     };
