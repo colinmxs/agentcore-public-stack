@@ -7,8 +7,10 @@ import {
   effect,
 } from '@angular/core';
 import { ChatContainerComponent, ChatContainerConfig } from '../../../session/components/chat-container/chat-container.component';
+import { ChatInputComponent } from '../../../session/components/chat-input/chat-input.component';
 import { PreviewChatService } from '../services/preview-chat.service';
 import { Assistant } from '../../models/assistant.model';
+import { AssistantCardComponent } from '../../components/assistant-card.component';
 
 /**
  * Component that wraps ChatContainerComponent for assistant preview functionality.
@@ -25,7 +27,7 @@ import { Assistant } from '../../models/assistant.model';
 @Component({
   selector: 'app-assistant-preview',
   standalone: true,
-  imports: [ChatContainerComponent],
+  imports: [ChatContainerComponent, AssistantCardComponent, ChatInputComponent],
   providers: [PreviewChatService], // Component-scoped: manages preview-specific state
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
@@ -49,18 +51,43 @@ import { Assistant } from '../../models/assistant.model';
         </div>
 
         <!-- Chat Container (fills remaining space) -->
-        <div class="flex-1 min-h-0 relative">
-          <app-chat-container
-            [messages]="previewChatService.messages()"
-            [sessionId]="previewChatService.sessionId()"
-            [assistant]="builtAssistant()"
-            [isChatLoading]="previewChatService.isLoading()"
-            [streamingMessageId]="previewChatService.streamingMessageId()"
-            [greetingMessage]="greetingMessage()"
-            [config]="chatConfig"
-            (messageSubmitted)="onMessageSubmitted($event)"
-            (messageCancelled)="onMessageCancelled()"
-          />
+        <div class="flex-1 min-h-0 relative flex flex-col">
+          @if (!hasMessages()) {
+            <!-- Show assistant card when no messages -->
+            <div class="flex-1 flex items-center justify-center p-6 overflow-y-auto bg-gray-800 dark:bg-gray-800">
+              <app-assistant-card
+                [name]="name()"
+                [description]="description()"
+                [emoji]="emoji()"
+                [starters]="starters()"
+                (starterSelected)="onStarterSelected($event)"
+              />
+            </div>
+            <!-- Chat input at bottom when showing card -->
+            <div class="shrink-0 border-t border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800 p-4">
+              <app-chat-input
+                [sessionId]="previewChatService.sessionId()"
+                [isChatLoading]="previewChatService.isLoading()"
+                [showFileControls]="false"
+                (messageSubmitted)="onMessageSubmitted($event)"
+                (messageCancelled)="onMessageCancelled()"
+              />
+            </div>
+          } @else {
+            <!-- Chat container handles both messages and input in embedded mode -->
+            <app-chat-container
+              class="h-full"
+              [messages]="previewChatService.messages()"
+              [sessionId]="previewChatService.sessionId()"
+              [assistant]="null"
+              [isChatLoading]="previewChatService.isLoading()"
+              [streamingMessageId]="previewChatService.streamingMessageId()"
+              [greetingMessage]="greetingMessage()"
+              [config]="chatConfigMessagesOnly"
+              (messageSubmitted)="onMessageSubmitted($event)"
+              (messageCancelled)="onMessageCancelled()"
+            />
+          }
         </div>
       </div>
     } @else {
@@ -94,6 +121,7 @@ export class AssistantPreviewComponent {
   readonly name = input<string>('');
   readonly description = input<string>('');
   readonly instructions = input<string>('');
+  readonly emoji = input<string>('');
   readonly starters = input<string[]>([]);
 
   // Chat container configuration for embedded mode
@@ -104,6 +132,16 @@ export class AssistantPreviewComponent {
     showEmptyState: true,
     allowCloseAssistant: false, // Don't allow closing in preview
     showFileControls: false, // No file uploads in preview
+  };
+
+  // Chat container configuration for messages-only mode (no input, used when we render input separately)
+  readonly chatConfigMessagesOnly: Partial<ChatContainerConfig> = {
+    embeddedMode: true,
+    fullPageMode: false,
+    showTopnav: false,
+    showEmptyState: false,
+    allowCloseAssistant: false,
+    showFileControls: false,
   };
 
   // Computed: build an Assistant-like object from form inputs
@@ -178,5 +216,16 @@ export class AssistantPreviewComponent {
    */
   clearChat(): void {
     this.previewChatService.clearMessages();
+  }
+
+  /**
+   * Handle starter selection from assistant card
+   */
+  onStarterSelected(starter: string): void {
+    const assistantId = this.assistantId();
+    if (!assistantId || !starter.trim()) {
+      return;
+    }
+    this.previewChatService.sendMessage(starter, assistantId);
   }
 }

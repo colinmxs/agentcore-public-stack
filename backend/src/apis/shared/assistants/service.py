@@ -92,6 +92,7 @@ async def create_assistant(
     visibility: str = "PRIVATE",
     tags: Optional[List[str]] = None,
     starters: Optional[List[str]] = None,
+    emoji: Optional[str] = None,
 ) -> Assistant:
     """
     Create a complete assistant with all required fields
@@ -128,6 +129,7 @@ async def create_assistant(
         visibility=visibility,
         tags=tags or [],
         starters=starters or [],
+        emoji=emoji,
         usage_count=0,
         created_at=now,
         updated_at=now,
@@ -482,6 +484,7 @@ async def update_assistant(
     visibility: Optional[str] = None,
     tags: Optional[List[str]] = None,
     starters: Optional[List[str]] = None,
+    emoji: Optional[str] = None,
     status: Optional[str] = None,
     image_url: Optional[str] = None,
 ) -> Optional[Assistant]:
@@ -526,6 +529,8 @@ async def update_assistant(
         updates["tags"] = tags
     if starters is not None:
         updates["starters"] = starters
+    if emoji is not None:
+        updates["emoji"] = emoji
     if status is not None:
         updates["status"] = status
     if image_url is not None:

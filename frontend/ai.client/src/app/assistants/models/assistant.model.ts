@@ -9,6 +9,7 @@ export interface Assistant {
   visibility: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags: string[];
   starters: string[];
+  emoji?: string;
   usageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -32,6 +33,7 @@ export interface CreateAssistantRequest {
   visibility?: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags?: string[];
   starters?: string[];
+  emoji?: string;
 }
 
 export interface UpdateAssistantRequest {
@@ -42,6 +44,7 @@ export interface UpdateAssistantRequest {
   visibility?: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags?: string[];
   starters?: string[];
+  emoji?: string;
   status?: 'DRAFT' | 'COMPLETE' | 'ARCHIVED';
 }
 

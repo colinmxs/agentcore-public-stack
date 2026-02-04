@@ -50,25 +50,90 @@
     <div class="flex-1 overflow-y-auto border-r border-gray-200 dark:border-gray-700">
       <div class="p-6 lg:p-8">
         <form [formGroup]="form" class="space-y-6 max-w-2xl">
-          <!-- Name Field -->
-          <div>
-            <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-              Name <span class="text-red-500">*</span>
-            </label>
-            <input
-              type="text"
-              id="name"
-              formControlName="name"
-              class="block w-full px-3 py-2 bg-white dark:bg-gray-800 border rounded-md shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
-              [class.border-red-500]="form.get('name')?.touched && form.get('name')?.invalid"
-              [class.border-gray-300]="!form.get('name')?.touched || form.get('name')?.valid"
-              [class.dark:border-red-500]="form.get('name')?.touched && form.get('name')?.invalid"
-              [class.dark:border-gray-600]="!form.get('name')?.touched || form.get('name')?.valid"
-              placeholder="Enter assistant name"
-            />
-            @if (getFieldError('name'); as error) {
-              <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
-            }
+          <!-- Name and Emoji Fields -->
+          <div class="flex gap-4">
+            <!-- Emoji Field -->
+            <div class="shrink-0">
+              <label class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Emoji
+              </label>
+              <div class="relative">
+                <button
+                  type="button"
+                  cdkOverlayOrigin
+                  #emojiTrigger="cdkOverlayOrigin"
+                  (click)="toggleEmojiPicker()"
+                  class="flex size-10 items-center justify-center rounded-md border border-gray-300 dark:border-gray-600 bg-white dark:bg-gray-800 hover:bg-gray-50 dark:hover:bg-gray-700 focus:outline-none focus:ring-2 focus:ring-blue-500 text-xl"
+                >
+                  @if (form.get('emoji')?.value) {
+                    <span>{{ form.get('emoji')?.value }}</span>
+                  } @else {
+                    <ng-icon name="heroFaceSmile" class="size-5 text-gray-400" />
+                  }
+                </button>
+
+                <ng-template
+                  cdkConnectedOverlay
+                  [cdkConnectedOverlayOrigin]="emojiTrigger"
+                  [cdkConnectedOverlayOpen]="isEmojiPickerOpen()"
+                  [cdkConnectedOverlayPositions]="emojiPickerPositions"
+                  [cdkConnectedOverlayHasBackdrop]="true"
+                  cdkConnectedOverlayBackdropClass="cdk-overlay-transparent-backdrop"
+                  (backdropClick)="closeEmojiPicker()"
+                  (detach)="closeEmojiPicker()"
+                >
+                  <div class="rounded-lg shadow-lg ring-1 ring-black/5 dark:ring-white/10 overflow-hidden">
+                    <div class="flex items-center justify-between px-3 py-2 border-b border-gray-200 dark:border-gray-700 bg-white dark:bg-gray-800">
+                      <span class="text-sm font-medium text-gray-700 dark:text-gray-300">Select Emoji</span>
+                      <button
+                        type="button"
+                        (click)="closeEmojiPicker()"
+                        class="p-1 text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 rounded-sm hover:bg-gray-100 dark:hover:bg-gray-700"
+                      >
+                        <ng-icon name="heroXMark" class="size-4" />
+                      </button>
+                    </div>
+                    <emoji-mart
+                      [darkMode]="isDarkMode() === 'dark'"
+                      [perLine]="8"
+                      [emojiSize]="24"
+                      [showPreview]="false"
+                      (emojiSelect)="onEmojiSelect($event)"
+                    />
+                  </div>
+                </ng-template>
+              </div>
+              @if (form.get('emoji')?.value) {
+                <button
+                  type="button"
+                  (click)="clearEmoji()"
+                  class="mt-1 text-xs text-gray-500 hover:text-gray-700 dark:text-gray-400 dark:hover:text-gray-200"
+                >
+                  Clear
+                </button>
+              }
+            </div>
+
+            <!-- Name Field -->
+            <div class="flex-1">
+              <label for="name" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+                Name <span class="text-red-500">*</span>
+              </label>
+              <input
+                type="text"
+                id="name"
+                formControlName="name"
+                class="block w-full px-3 py-2 bg-white dark:bg-gray-800 border rounded-md shadow-xs focus:outline-none focus:ring-2 focus:ring-blue-500 text-gray-900 dark:text-gray-100"
+                [class.border-red-500]="form.get('name')?.touched && form.get('name')?.invalid"
+                [class.border-gray-300]="!form.get('name')?.touched || form.get('name')?.valid"
+                [class.dark:border-red-500]="form.get('name')?.touched && form.get('name')?.invalid"
+                [class.dark:border-gray-600]="!form.get('name')?.touched || form.get('name')?.valid"
+                placeholder="Enter assistant name"
+              />
+              @if (getFieldError('name'); as error) {
+                <p class="mt-1 text-sm text-red-600 dark:text-red-400">{{ error }}</p>
+              }
+            </div>
           </div>
 
           <!-- Description Field -->
@@ -333,6 +398,7 @@
         [name]="form.get('name')?.value || ''"
         [description]="form.get('description')?.value || ''"
         [instructions]="form.get('instructions')?.value || ''"
+        [emoji]="form.get('emoji')?.value || ''"
         [starters]="starters.value"
       />
     </div>

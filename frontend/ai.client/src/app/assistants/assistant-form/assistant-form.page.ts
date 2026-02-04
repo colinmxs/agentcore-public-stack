@@ -6,19 +6,25 @@ import { DocumentService, DocumentUploadError } from '../services/document.servi
 import { Document } from '../models/document.model';
 import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroArrowLeft, heroChevronRight } from '@ng-icons/heroicons/outline';
+import { heroArrowLeft, heroChevronRight, heroFaceSmile, heroXMark } from '@ng-icons/heroicons/outline';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
+import { PickerComponent } from '@ctrl/ngx-emoji-mart';
+import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
+import { ThemeService } from '../../components/topnav/components/theme-toggle/theme.service';
+
 
 @Component({
   selector: 'app-assistant-form-page',
   templateUrl: './assistant-form.page.html',
   styleUrl: './assistant-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, AssistantPreviewComponent, NgIcon, RouterLink],
+  imports: [ReactiveFormsModule, AssistantPreviewComponent, NgIcon, RouterLink, PickerComponent, CdkOverlayOrigin, CdkConnectedOverlay],
   providers: [
     provideIcons({
       heroArrowLeft,
-      heroChevronRight
+      heroChevronRight,
+      heroFaceSmile,
+      heroXMark
     })
   ]
 })
@@ -29,6 +35,13 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   private assistantService = inject(AssistantService);
   private documentService = inject(DocumentService);
   readonly sidenavService = inject(SidenavService);
+  private readonly themeService = inject(ThemeService);
+
+  // Emoji picker popover state
+  readonly isEmojiPickerOpen = signal(false);
+
+  // Expose theme for emoji picker dark mode
+  readonly isDarkMode = this.themeService.theme;
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => 
@@ -46,6 +59,24 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   readonly pollingDocuments = signal<Set<string>>(new Set());
 
   form!: FormGroup;
+
+  // Emoji picker positioning - opens below and to the right
+  readonly emojiPickerPositions: ConnectedPosition[] = [
+    {
+      originX: 'start',
+      originY: 'bottom',
+      overlayX: 'start',
+      overlayY: 'top',
+      offsetY: 8
+    },
+    {
+      originX: 'start',
+      originY: 'top',
+      overlayX: 'start',
+      overlayY: 'bottom',
+      offsetY: -8
+    }
+  ];
 
   get starters(): FormArray {
     return this.form.get('starters') as FormArray;
@@ -68,6 +99,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       visibility: ['PRIVATE'],
       tags: [[]],
       starters: this.fb.array([]),
+      emoji: [''],
       status: ['DRAFT']
     });
 
@@ -102,6 +134,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           vectorIndexId: assistant.vectorIndexId,
           visibility: assistant.visibility,
           tags: assistant.tags,
+          emoji: assistant.emoji || '',
           status: assistant.status
         });
 
@@ -177,6 +210,23 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     }
 
     return null;
+  }
+
+  toggleEmojiPicker(): void {
+    this.isEmojiPickerOpen.update(open => !open);
+  }
+
+  closeEmojiPicker(): void {
+    this.isEmojiPickerOpen.set(false);
+  }
+
+  onEmojiSelect(event: { emoji: { native: string } }): void {
+    this.form.patchValue({ emoji: event.emoji.native });
+    this.closeEmojiPicker();
+  }
+
+  clearEmoji(): void {
+    this.form.patchValue({ emoji: '' });
   }
 
   async onFileSelected(event: Event): Promise<void> {
