@@ -26,6 +26,7 @@ describe('RagIngestionStack', () => {
       projectPrefix: 'test-project',
       awsAccount: '123456789012',
       awsRegion: 'us-east-1',
+      production: false, // Test environment
       retainDataOnDelete: false,
       vpcCidr: '10.0.0.0/16',
       entraClientId: 'test-client-id',

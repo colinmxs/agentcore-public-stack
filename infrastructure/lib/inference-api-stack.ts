@@ -754,6 +754,19 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Construct the full endpoint URL for the runtime
+    const runtimeEndpointUrl = cdk.Fn.sub(
+      'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
+      { RuntimeArn: this.runtime.attrAgentRuntimeArn }
+    );
+
+    new ssm.StringParameter(this, 'InferenceApiRuntimeEndpointUrlParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-endpoint-url`,
+      stringValue: runtimeEndpointUrl,
+      description: 'Inference API AgentCore Runtime Endpoint URL (ARN not URL-encoded)',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // ============================================================
     // CloudFormation Outputs
     // ============================================================
@@ -804,10 +817,7 @@ export class InferenceApiStack extends cdk.Stack {
     // AgentCore Runtime Endpoint URL
     // Note: ARN will be URL-encoded at runtime by the consuming service
     new cdk.CfnOutput(this, 'InferenceApiRuntimeEndpointUrl', {
-      value: cdk.Fn.sub(
-        'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
-        { RuntimeArn: this.runtime.attrAgentRuntimeArn }
-      ),
+      value: runtimeEndpointUrl,
       description: 'Inference API AgentCore Runtime Endpoint URL (ARN needs URL encoding by consumer)',
       exportName: `${config.projectPrefix}-InferenceApiRuntimeEndpointUrl`,
     });

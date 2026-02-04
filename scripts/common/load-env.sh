@@ -89,6 +89,10 @@ build_cdk_context_params() {
     context_params="${context_params} --context awsRegion=\"${CDK_AWS_REGION}\""
     
     # Optional parameters - only include if set
+    if [ -n "${CDK_PRODUCTION:-}" ]; then
+        context_params="${context_params} --context production=\"${CDK_PRODUCTION}\""
+    fi
+    
     if [ -n "${CDK_VPC_CIDR:-}" ]; then
         context_params="${context_params} --context vpcCidr=\"${CDK_VPC_CIDR}\""
     fi
@@ -280,6 +284,7 @@ validate_required_vars() {
 # Priority: Environment variables > cdk.context.json > defaults
 export CDK_PROJECT_PREFIX="${CDK_PROJECT_PREFIX:-$(get_json_value "projectPrefix" "${CONTEXT_FILE}")}"
 export CDK_AWS_REGION="${CDK_AWS_REGION:-$(get_json_value "awsRegion" "${CONTEXT_FILE}")}"
+export CDK_PRODUCTION="${CDK_PRODUCTION:-$(get_json_value "production" "${CONTEXT_FILE}")}"
 export CDK_VPC_CIDR="${CDK_VPC_CIDR:-$(get_json_value "vpcCidr" "${CONTEXT_FILE}")}"
 export CDK_HOSTED_ZONE_DOMAIN="${CDK_HOSTED_ZONE_DOMAIN:-$(get_json_value "infrastructureHostedZoneDomain" "${CONTEXT_FILE}")}"
 export CDK_ALB_SUBDOMAIN="${CDK_ALB_SUBDOMAIN:-$(get_json_value "albSubdomain" "${CONTEXT_FILE}")}"
@@ -354,6 +359,7 @@ log_info "📋 Configuration loaded successfully:"
 log_config "  Project Prefix: ${CDK_PROJECT_PREFIX}"
 log_config "  AWS Account:    ${CDK_AWS_ACCOUNT}"
 log_config "  AWS Region:     ${CDK_AWS_REGION}"
+log_config "  Production:     ${CDK_PRODUCTION:-true}"
 log_config "  VPC CIDR:       ${CDK_VPC_CIDR:-<not set>}"
 log_config "  Retain Data:    ${CDK_RETAIN_DATA_ON_DELETE}"
 log_config "  CORS Origins:   ${CDK_FILE_UPLOAD_CORS_ORIGINS}"

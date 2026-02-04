@@ -1,7 +1,7 @@
-import { Injectable, inject, signal, resource } from '@angular/core';
+import { Injectable, inject, signal, resource, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   OpenAIModelsResponse,
@@ -20,6 +20,8 @@ import {
 export class OpenAIModelsService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/admin/openai/models`);
 
   /**
    * Signal for filter parameters used by the models resource.
@@ -117,7 +119,7 @@ export class OpenAIModelsService {
     try {
       const response = await firstValueFrom(
         this.http.get<OpenAIModelsResponse>(
-          `${environment.appApiUrl}/admin/openai/models`,
+          this.baseUrl(),
           { params: httpParams }
         )
       );

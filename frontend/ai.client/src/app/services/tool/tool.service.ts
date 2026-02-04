@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../config.service';
 import { AuthService } from '../../auth/auth.service';
 
 /**
@@ -74,8 +74,9 @@ export interface ToolPreferencesRequest {
 export class ToolService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/tools`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/tools`);
 
   // Internal state signals
   private _tools = signal<Tool[]>([]);
@@ -139,7 +140,7 @@ export class ToolService {
       await this.authService.ensureAuthenticated();
 
       const response = await firstValueFrom(
-        this.http.get<ToolsResponse>(`${this.baseUrl}/`)
+        this.http.get<ToolsResponse>(`${this.baseUrl()}/`)
       );
 
       this._tools.set(response.tools);
@@ -214,7 +215,7 @@ export class ToolService {
     await this.authService.ensureAuthenticated();
 
     await firstValueFrom(
-      this.http.put(`${this.baseUrl}/preferences`, { preferences })
+      this.http.put(`${this.baseUrl()}/preferences`, { preferences })
     );
 
     // Update local state

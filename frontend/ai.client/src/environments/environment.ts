@@ -1,20 +1,26 @@
 /**
- * Environment Configuration
+ * Environment Configuration - Local Development
  * 
  * This file contains localhost defaults for local development.
- * For production deployments, values are injected at build time via environment variables.
  * 
- * Local Development (no configuration needed):
- * - appApiUrl: http://localhost:8000
- * - inferenceApiUrl: http://localhost:8001
- * - production: false
- * - enableAuthentication: true
+ * RUNTIME CONFIGURATION:
+ * In production, the application loads configuration from /config.json at startup.
+ * These values serve as FALLBACK only if config.json cannot be loaded.
  * 
- * Production Deployment (values injected by build script):
- * - Set APP_API_URL environment variable
- * - Set INFERENCE_API_URL environment variable
- * - Set PRODUCTION environment variable
- * - Set ENABLE_AUTHENTICATION environment variable
+ * Local Development Setup:
+ * Option 1 (Recommended): Create public/config.json with local backend URLs
+ * Option 2 (Fallback): Use these environment.ts values (config.json fetch will fail)
+ * 
+ * Fallback Behavior:
+ * - If /config.json fetch fails, ConfigService automatically uses these values
+ * - Allows local development without AWS infrastructure
+ * - No configuration needed for typical local development workflow
+ * 
+ * Local Development Values:
+ * - appApiUrl: http://localhost:8000 (App API backend)
+ * - inferenceApiUrl: http://localhost:8001 (Inference API backend)
+ * - production: false (development mode)
+ * - enableAuthentication: true (auth enabled by default)
  */
 export const environment = {
     production: false,

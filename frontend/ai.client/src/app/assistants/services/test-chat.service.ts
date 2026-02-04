@@ -1,6 +1,6 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { AuthService } from '../../auth/auth.service';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 
 export interface TestChatMessage {
@@ -19,6 +19,8 @@ export interface TestChatRequest {
 })
 export class TestChatService {
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/assistants`);
 
   /**
    * Get bearer token for streaming responses (with refresh if needed)
@@ -53,7 +55,7 @@ export class TestChatService {
     onEvent?: (event: string, data: any) => void
   ): AsyncGenerator<{ event: string; data: any }, void, unknown> {
     const token = await this.getBearerTokenForStreamingResponse();
-    const url = `${environment.appApiUrl}/assistants/${assistantId}/test-chat`;
+    const url = `${this.baseUrl()}/${assistantId}/test-chat`;
 
     const requestBody: TestChatRequest = {
       message,
@@ -116,7 +118,7 @@ export class TestChatService {
     sessionId?: string
   ): Promise<void> {
     const token = await this.getBearerTokenForStreamingResponse();
-    const url = `${environment.appApiUrl}/assistants/${assistantId}/test-chat`;
+    const url = `${this.baseUrl()}/${assistantId}/test-chat`;
 
     const requestBody: TestChatRequest = {
       message,

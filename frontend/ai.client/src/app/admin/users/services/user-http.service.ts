@@ -1,7 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import {
   UserListResponse,
   UserDetailResponse,
@@ -17,7 +17,8 @@ import {
 })
 export class UserHttpService {
   private http = inject(HttpClient);
-  private baseUrl = `${environment.appApiUrl}/admin/users`;
+  private config = inject(ConfigService);
+  private baseUrl = computed(() => `${this.config.appApiUrl()}/admin/users`);
 
   /**
    * List users with optional filters and pagination.
@@ -41,7 +42,7 @@ export class UserHttpService {
       params = params.set('cursor', options.cursor);
     }
 
-    return this.http.get<UserListResponse>(this.baseUrl, { params });
+    return this.http.get<UserListResponse>(this.baseUrl(), { params });
   }
 
   /**
@@ -52,7 +53,7 @@ export class UserHttpService {
    */
   searchByEmail(email: string): Observable<UserListResponse> {
     const params = new HttpParams().set('email', email);
-    return this.http.get<UserListResponse>(`${this.baseUrl}/search`, { params });
+    return this.http.get<UserListResponse>(`${this.baseUrl()}/search`, { params });
   }
 
   /**
@@ -63,7 +64,7 @@ export class UserHttpService {
    * @returns Observable of user detail
    */
   getUserDetail(userId: string): Observable<UserDetailResponse> {
-    return this.http.get<UserDetailResponse>(`${this.baseUrl}/${encodeURIComponent(userId)}`);
+    return this.http.get<UserDetailResponse>(`${this.baseUrl()}/${encodeURIComponent(userId)}`);
   }
 
   /**
@@ -75,6 +76,6 @@ export class UserHttpService {
    */
   listDomains(limit: number = 50): Observable<string[]> {
     const params = new HttpParams().set('limit', limit.toString());
-    return this.http.get<string[]>(`${this.baseUrl}/domains/list`, { params });
+    return this.http.get<string[]>(`${this.baseUrl()}/domains/list`, { params });
   }
 }

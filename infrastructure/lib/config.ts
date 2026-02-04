@@ -4,6 +4,7 @@ export interface AppConfig {
   projectPrefix: string;
   awsAccount: string;
   awsRegion: string;
+  production: boolean; // Production environment flag (default: true)
   retainDataOnDelete: boolean;
   vpcCidr: string;  
   infrastructureHostedZoneDomain?: string;
@@ -149,6 +150,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
     projectPrefix,
     awsAccount,
     awsRegion,
+    production: parseBooleanEnv(process.env.CDK_PRODUCTION, true), // Default: true (production mode)
     retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE, true),
     vpcCidr: scope.node.tryGetContext('vpcCidr'),    
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
@@ -237,6 +239,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
   console.log(`   Project Prefix: ${config.projectPrefix}`);
   console.log(`   AWS Account: ${config.awsAccount}`);
   console.log(`   AWS Region: ${config.awsRegion}`);
+  console.log(`   Production: ${config.production}`);
   console.log(`   Retain Data on Delete: ${config.retainDataOnDelete}`);
   console.log(`   File Upload CORS Origins: ${config.fileUpload.corsOrigins || '(not set)'}`);
   console.log(`   Frontend Enabled: ${config.frontend.enabled}`);

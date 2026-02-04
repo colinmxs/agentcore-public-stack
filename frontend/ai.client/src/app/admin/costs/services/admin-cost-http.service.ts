@@ -1,7 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import {
   AdminCostDashboard,
   TopUserCost,
@@ -23,7 +23,8 @@ import {
 })
 export class AdminCostHttpService {
   private http = inject(HttpClient);
-  private baseUrl = `${environment.appApiUrl}/admin/costs`;
+  private config = inject(ConfigService);
+  private baseUrl = computed(() => `${this.config.appApiUrl()}/admin/costs`);
 
   // ========== Dashboard Endpoints ==========
 
@@ -44,7 +45,7 @@ export class AdminCostHttpService {
       params = params.set('includeTrends', options.includeTrends);
     }
 
-    return this.http.get<AdminCostDashboard>(`${this.baseUrl}/dashboard`, { params });
+    return this.http.get<AdminCostDashboard>(`${this.baseUrl()}/dashboard`, { params });
   }
 
   /**
@@ -67,7 +68,7 @@ export class AdminCostHttpService {
       params = params.set('tierId', options.tierId);
     }
 
-    return this.http.get<TopUserCost[]>(`${this.baseUrl}/top-users`, { params });
+    return this.http.get<TopUserCost[]>(`${this.baseUrl()}/top-users`, { params });
   }
 
   /**
@@ -84,7 +85,7 @@ export class AdminCostHttpService {
       params = params.set('period', period);
     }
 
-    return this.http.get<SystemCostSummary>(`${this.baseUrl}/system-summary`, { params });
+    return this.http.get<SystemCostSummary>(`${this.baseUrl()}/system-summary`, { params });
   }
 
   /**
@@ -98,7 +99,7 @@ export class AdminCostHttpService {
       params = params.set('period', period);
     }
 
-    return this.http.get<ModelUsageSummary[]>(`${this.baseUrl}/by-model`, { params });
+    return this.http.get<ModelUsageSummary[]>(`${this.baseUrl()}/by-model`, { params });
   }
 
   /**
@@ -112,7 +113,7 @@ export class AdminCostHttpService {
       params = params.set('period', period);
     }
 
-    return this.http.get<TierUsageSummary[]>(`${this.baseUrl}/by-tier`, { params });
+    return this.http.get<TierUsageSummary[]>(`${this.baseUrl()}/by-tier`, { params });
   }
 
   /**
@@ -124,7 +125,7 @@ export class AdminCostHttpService {
       .set('startDate', options.startDate)
       .set('endDate', options.endDate);
 
-    return this.http.get<CostTrend[]>(`${this.baseUrl}/trends`, { params });
+    return this.http.get<CostTrend[]>(`${this.baseUrl()}/trends`, { params });
   }
 
   /**
@@ -138,7 +139,7 @@ export class AdminCostHttpService {
       params = params.set('period', period);
     }
 
-    return this.http.get(`${this.baseUrl}/export`, {
+    return this.http.get(`${this.baseUrl()}/export`, {
       params,
       responseType: 'blob',
     });

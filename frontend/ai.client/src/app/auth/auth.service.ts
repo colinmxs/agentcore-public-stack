@@ -1,7 +1,7 @@
-import { inject, Injectable } from '@angular/core';
+import { inject, Injectable, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../environments/environment';
+import { ConfigService } from '../services/config.service';
 
 export interface TokenRefreshRequest {
   refresh_token: string;
@@ -30,11 +30,15 @@ export interface LogoutResponse {
 })
 export class AuthService {
   private http = inject(HttpClient);
+  private config = inject(ConfigService);
   private readonly tokenKey = 'access_token';
   private readonly refreshTokenKey = 'refresh_token';
   private readonly tokenExpiryKey = 'token_expiry';
   private readonly stateKey = 'auth_state';
   private readonly returnUrlKey = 'auth_return_url';
+
+  // Computed signal for reactive base URL
+  private readonly baseUrl = computed(() => this.config.appApiUrl());
 
   /**
    * Get the current access token from localStorage.
@@ -75,7 +79,7 @@ export class AuthService {
    * @returns True if authentication is enabled, false otherwise
    */
   isAuthenticationEnabled(): boolean {
-    return environment.enableAuthentication;
+    return this.config.enableAuthentication();
   }
 
   /**
@@ -84,7 +88,7 @@ export class AuthService {
    */
   isAuthenticated(): boolean {
     // If authentication is disabled, always return true
-    if (!environment.enableAuthentication) {
+    if (!this.config.enableAuthentication()) {
       return true;
     }
     
@@ -112,7 +116,7 @@ export class AuthService {
 
       const response = await firstValueFrom(
         this.http.post<TokenRefreshResponse>(
-          `${environment.appApiUrl}/auth/refresh`,
+          `${this.baseUrl()}/auth/refresh`,
           request
         )
       );
@@ -213,7 +217,7 @@ export class AuthService {
       params.set('prompt', prompt);
 
       const queryString = params.toString();
-      const url = `${environment.appApiUrl}/auth/login${queryString ? `?${queryString}` : ''}`;
+      const url = `${this.baseUrl()}/auth/login${queryString ? `?${queryString}` : ''}`;
 
       const response = await firstValueFrom(
         this.http.get<LoginResponse>(url)
@@ -296,7 +300,7 @@ export class AuthService {
    */
   async ensureAuthenticated(): Promise<void> {
     // If authentication is disabled, skip all checks
-    if (!environment.enableAuthentication) {
+    if (!this.config.enableAuthentication()) {
       return;
     }
 
@@ -337,7 +341,7 @@ export class AuthService {
    */
   async logout(postLogoutRedirectUri?: string): Promise<void> {
     // If authentication is disabled, just clear tokens and redirect home
-    if (!environment.enableAuthentication) {
+    if (!this.config.enableAuthentication()) {
       this.clearTokens();
       window.location.href = '/';
       return;
@@ -351,7 +355,7 @@ export class AuthService {
       }
 
       const queryString = params.toString();
-      const url = `${environment.appApiUrl}/auth/logout${queryString ? `?${queryString}` : ''}`;
+      const url = `${this.baseUrl()}/auth/logout${queryString ? `?${queryString}` : ''}`;
 
       const response = await firstValueFrom(
         this.http.get<LogoutResponse>(url)

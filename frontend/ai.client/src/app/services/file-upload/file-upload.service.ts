@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../config.service';
 import { AuthService } from '../../auth/auth.service';
 
 /**
@@ -207,8 +207,9 @@ export function getFileExtension(filename: string): string {
 export class FileUploadService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/files`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/files`);
 
   // State signals
   private _pendingUploads = signal<Map<string, PendingUpload>>(new Map());
@@ -315,7 +316,7 @@ export class FileUploadService {
     let presignResponse: PresignResponse;
     try {
       presignResponse = await firstValueFrom(
-        this.http.post<PresignResponse>(`${this.baseUrl}/presign`, presignRequest)
+        this.http.post<PresignResponse>(`${this.baseUrl()}/presign`, presignRequest)
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to get upload URL');
@@ -453,7 +454,7 @@ export class FileUploadService {
 
     try {
       return await firstValueFrom(
-        this.http.post<CompleteUploadResponse>(`${this.baseUrl}/${uploadId}/complete`, {})
+        this.http.post<CompleteUploadResponse>(`${this.baseUrl()}/${uploadId}/complete`, {})
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to complete upload');
@@ -468,7 +469,7 @@ export class FileUploadService {
 
     try {
       await firstValueFrom(
-        this.http.delete(`${this.baseUrl}/${uploadId}`)
+        this.http.delete(`${this.baseUrl()}/${uploadId}`)
       );
 
       // Remove from pending uploads
@@ -490,7 +491,7 @@ export class FileUploadService {
 
     try {
       const response = await firstValueFrom(
-        this.http.get<FileListResponse>(`${this.baseUrl}`, {
+        this.http.get<FileListResponse>(`${this.baseUrl()}`, {
           params: { sessionId }
         })
       );
@@ -531,7 +532,7 @@ export class FileUploadService {
       }
 
       const response = await firstValueFrom(
-        this.http.get<FileListResponse>(`${this.baseUrl}`, { params })
+        this.http.get<FileListResponse>(`${this.baseUrl()}`, { params })
       );
       return response;
     } catch (err) {
@@ -569,7 +570,7 @@ export class FileUploadService {
 
     try {
       const response = await firstValueFrom(
-        this.http.get<QuotaResponse>(`${this.baseUrl}/quota`)
+        this.http.get<QuotaResponse>(`${this.baseUrl()}/quota`)
       );
       this._quota.set(response);
       return response;

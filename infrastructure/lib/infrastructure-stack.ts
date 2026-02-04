@@ -344,21 +344,6 @@ export class InfrastructureStack extends cdk.Stack {
           comment: `A record for ALB - points ${albRecordName} to load balancer`,
         });
 
-        // Export ALB URL to SSM (with correct protocol)
-        new ssm.StringParameter(this, 'AlbUrlParameter', {
-          parameterName: `/${config.projectPrefix}/network/alb-url`,
-          stringValue: `${protocol}://${albRecordName}`,
-          description: 'Application Load Balancer Custom URL',
-          tier: ssm.ParameterTier.STANDARD,
-        });
-
-        // CloudFormation Output for ALB URL
-        new cdk.CfnOutput(this, 'AlbUrl', {
-          value: `${protocol}://${albRecordName}`,
-          description: `Application Load Balancer Custom URL (${protocol.toUpperCase()})`,
-          exportName: `${config.projectPrefix}-alb-url`,
-        });
-
         // Additional HTTPS URL output when certificate is provided
         if (config.certificateArn) {
           new cdk.CfnOutput(this, 'AlbUrlHttps', {
@@ -369,6 +354,42 @@ export class InfrastructureStack extends cdk.Stack {
         }
       }
     }
+
+    // ============================================================
+    // ALB URL Export (Always)
+    // ============================================================
+    // Determine the ALB URL to export
+    // Priority: Custom domain (if configured) > ALB DNS name
+    let albUrl: string;
+    let albUrlDescription: string;
+    
+    if (config.infrastructureHostedZoneDomain && config.albSubdomain) {
+      // Use custom domain URL
+      const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
+      const protocol = config.certificateArn ? 'https' : 'http';
+      albUrl = `${protocol}://${albRecordName}`;
+      albUrlDescription = 'Application Load Balancer Custom Domain URL';
+    } else {
+      // Use ALB DNS name as fallback
+      const protocol = config.certificateArn ? 'https' : 'http';
+      albUrl = `${protocol}://${this.alb.loadBalancerDnsName}`;
+      albUrlDescription = 'Application Load Balancer URL (DNS name)';
+    }
+    
+    // Export ALB URL to SSM - used by frontend stack for runtime config
+    new ssm.StringParameter(this, 'AlbUrlParameter', {
+      parameterName: `/${config.projectPrefix}/network/alb-url`,
+      stringValue: albUrl,
+      description: albUrlDescription,
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // CloudFormation Output for ALB URL
+    new cdk.CfnOutput(this, 'AlbUrl', {
+      value: albUrl,
+      description: albUrlDescription,
+      exportName: `${config.projectPrefix}-alb-url`,
+    });
 
     // ============================================================
     // CloudFormation Outputs
