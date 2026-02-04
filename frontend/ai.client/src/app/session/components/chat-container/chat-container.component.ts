@@ -5,6 +5,7 @@ import {
   input,
   output,
   computed,
+  viewChild,
 } from '@angular/core';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import { heroXMark } from '@ng-icons/heroicons/outline';
@@ -63,6 +64,9 @@ export class ChatContainerComponent {
   // Inject sidenav service for full-page mode positioning
   protected sidenavService = inject(SidenavService);
 
+  // Child component reference for scroll functionality
+  private messageListComponent = viewChild(MessageListComponent);
+
   // Required inputs
   messages = input.required<Message[]>();
   sessionId = input<string | null>(null);
@@ -113,6 +117,11 @@ export class ChatContainerComponent {
   // Event handlers
   onMessageSubmitted(event: { content: string; timestamp: Date; fileUploadIds?: string[] }) {
     this.messageSubmitted.emit(event);
+
+    // Wait for DOM to update (user message to be added) then scroll to it
+    setTimeout(() => {
+      this.messageListComponent()?.scrollToLastUserMessage();
+    }, 100);
   }
 
   onMessageCancelled() {
