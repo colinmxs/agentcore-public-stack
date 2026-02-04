@@ -70,12 +70,10 @@ export class ConfigService {
   
   /**
    * Computed signal for Inference API URL
-   * Returns URI-encoded URL or empty string if config not loaded
+   * Returns empty string if config not loaded
+   * Note: URL is stored in encoded form, no additional encoding needed on access
    */
-  readonly inferenceApiUrl = computed(() => {
-    const url = this.config()?.inferenceApiUrl ?? '';
-    return url ? encodeURI(url) : '';
-  });
+  readonly inferenceApiUrl = computed(() => this.config()?.inferenceApiUrl ?? '');
   
   /**
    * Computed signal for authentication flag
@@ -125,8 +123,14 @@ export class ConfigService {
       // Validate configuration structure
       this.validateConfig(config);
       
+      // URI-encode the path portion of inferenceApiUrl (handles ARNs with colons)
+      const encodedConfig = {
+        ...config,
+        inferenceApiUrl: this.encodeUrlPath(config.inferenceApiUrl)
+      };
+      
       // Store validated configuration
-      this.config.set(config);
+      this.config.set(encodedConfig);
       this.isLoaded.set(true);
       this.loadError.set(null);
       
@@ -143,7 +147,7 @@ export class ConfigService {
       // Fallback to environment.ts for local development
       const fallbackConfig: RuntimeConfig = {
         appApiUrl: environment.appApiUrl || 'http://localhost:8000',
-        inferenceApiUrl: environment.inferenceApiUrl || 'http://localhost:8001',
+        inferenceApiUrl: this.encodeUrlPath(environment.inferenceApiUrl || 'http://localhost:8001'),
         enableAuthentication: environment.enableAuthentication ?? true,
         environment: environment.production ? 'production' : 'development',
       };
@@ -156,6 +160,42 @@ export class ConfigService {
       this.config.set(fallbackConfig);
       this.isLoaded.set(true);
       this.loadError.set(errorMessage);
+    }
+  }
+  
+  /**
+   * Encode the path portion of a URL to handle special characters like colons and slashes in ARNs
+   * For AgentCore Runtime URLs, the ARN after /runtimes/ needs to be fully encoded
+   * 
+   * @param url - Full URL to encode
+   * @returns URL with encoded path
+   */
+  private encodeUrlPath(url: string): string {
+    try {
+      const urlObj = new URL(url);
+      
+      // Special handling for AgentCore Runtime URLs with ARNs
+      // Pattern: /runtimes/arn:aws:bedrock-agentcore:region:account:runtime/name
+      if (urlObj.pathname.includes('/runtimes/')) {
+        const [beforeArn, ...arnParts] = urlObj.pathname.split('/runtimes/');
+        if (arnParts.length > 0) {
+          const arn = arnParts.join('/runtimes/'); // Rejoin in case there are multiple occurrences
+          const encodedArn = encodeURIComponent(arn);
+          return `${urlObj.protocol}//${urlObj.host}${beforeArn}/runtimes/${encodedArn}`;
+        }
+      }
+      
+      // Fallback: encode each path segment separately
+      const encodedPath = urlObj.pathname
+        .split('/')
+        .map(segment => encodeURIComponent(segment))
+        .join('/');
+      
+      return `${urlObj.protocol}//${urlObj.host}${encodedPath}`;
+    } catch (error) {
+      // If URL parsing fails, return original
+      console.warn('Failed to encode URL path:', url, error);
+      return url;
     }
   }
   
