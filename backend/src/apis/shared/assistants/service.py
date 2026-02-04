@@ -64,6 +64,7 @@ async def create_assistant_draft(owner_id: str, owner_name: str, name: Optional[
         vector_index_id=vector_index_id,
         visibility="PRIVATE",
         tags=[],
+        starters=[],
         usage_count=0,
         created_at=now,
         updated_at=now,
@@ -90,6 +91,7 @@ async def create_assistant(
     vector_index_id: Optional[str] = None,
     visibility: str = "PRIVATE",
     tags: Optional[List[str]] = None,
+    starters: Optional[List[str]] = None,
 ) -> Assistant:
     """
     Create a complete assistant with all required fields
@@ -103,6 +105,7 @@ async def create_assistant(
         vector_index_id: Optional S3 vector index name (defaults to S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME from environment)
         visibility: Access control (PRIVATE, PUBLIC, SHARED)
         tags: Search keywords
+        starters: Conversation starter prompts
 
     Returns:
         Assistant object with status=COMPLETE
@@ -124,6 +127,7 @@ async def create_assistant(
         vector_index_id=vector_index_id,
         visibility=visibility,
         tags=tags or [],
+        starters=starters or [],
         usage_count=0,
         created_at=now,
         updated_at=now,
@@ -477,6 +481,7 @@ async def update_assistant(
     instructions: Optional[str] = None,
     visibility: Optional[str] = None,
     tags: Optional[List[str]] = None,
+    starters: Optional[List[str]] = None,
     status: Optional[str] = None,
     image_url: Optional[str] = None,
 ) -> Optional[Assistant]:
@@ -494,6 +499,7 @@ async def update_assistant(
         instructions: Optional new instructions
         visibility: Optional new visibility
         tags: Optional new tags
+        starters: Optional new conversation starters
         status: Optional new status
         image_url: Optional new image URL
 
@@ -518,6 +524,8 @@ async def update_assistant(
         updates["visibility"] = visibility
     if tags is not None:
         updates["tags"] = tags
+    if starters is not None:
+        updates["starters"] = starters
     if status is not None:
         updates["status"] = status
     if image_url is not None:

@@ -130,6 +130,7 @@ async def create_assistant_endpoint(request: CreateAssistantRequest, current_use
             instructions=request.instructions,
             visibility=request.visibility,
             tags=request.tags,
+            starters=request.starters,
         )
 
         # Convert to response model (excludes owner_id for privacy)
@@ -332,6 +333,7 @@ async def update_assistant_endpoint(assistant_id: str, request: UpdateAssistantR
             instructions=request.instructions,
             visibility=request.visibility,
             tags=request.tags,
+            starters=request.starters,
             status=request.status,
             image_url=request.image_url,
         )

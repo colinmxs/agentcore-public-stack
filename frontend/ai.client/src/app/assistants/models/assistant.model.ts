@@ -8,6 +8,7 @@ export interface Assistant {
   vectorIndexId: string;
   visibility: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags: string[];
+  starters: string[];
   usageCount: number;
   createdAt: string;
   updatedAt: string;
@@ -30,6 +31,7 @@ export interface CreateAssistantRequest {
   vectorIndexId: string;
   visibility?: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags?: string[];
+  starters?: string[];
 }
 
 export interface UpdateAssistantRequest {
@@ -39,6 +41,7 @@ export interface UpdateAssistantRequest {
   vectorIndexId?: string;
   visibility?: 'PRIVATE' | 'PUBLIC' | 'SHARED';
   tags?: string[];
+  starters?: string[];
   status?: 'DRAFT' | 'COMPLETE' | 'ARCHIVED';
 }
 

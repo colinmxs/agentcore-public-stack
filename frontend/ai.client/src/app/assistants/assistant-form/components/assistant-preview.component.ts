@@ -94,6 +94,7 @@ export class AssistantPreviewComponent {
   readonly name = input<string>('');
   readonly description = input<string>('');
   readonly instructions = input<string>('');
+  readonly starters = input<string[]>([]);
 
   // Chat container configuration for embedded mode
   readonly chatConfig: Partial<ChatContainerConfig> = {
@@ -121,6 +122,7 @@ export class AssistantPreviewComponent {
       vectorIndexId: '',
       visibility: 'PRIVATE',
       tags: [],
+      starters: this.starters(),
       usageCount: 0,
       createdAt: new Date().toISOString(),
       updatedAt: new Date().toISOString(),

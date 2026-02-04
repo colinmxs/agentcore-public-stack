@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, FormControl, Validators } from '@angular/forms';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
@@ -47,6 +47,10 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   form!: FormGroup;
 
+  get starters(): FormArray {
+    return this.form.get('starters') as FormArray;
+  }
+
   ngOnInit(): void {
     // Hide sidenav when entering the form page
     this.sidenavService.hide();
@@ -63,6 +67,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       vectorIndexId: ['idx_assistants', [Validators.required]],
       visibility: ['PRIVATE'],
       tags: [[]],
+      starters: this.fb.array([]),
       status: ['DRAFT']
     });
 
@@ -99,6 +104,14 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           tags: assistant.tags,
           status: assistant.status
         });
+
+        // Populate starters FormArray
+        this.starters.clear();
+        if (assistant.starters && assistant.starters.length > 0) {
+          assistant.starters.forEach(starter => {
+            this.starters.push(new FormControl(starter, Validators.required));
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading assistant:', error);
@@ -139,6 +152,14 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   onCancel(): void {
     this.router.navigate(['/assistants']);
+  }
+
+  addStarter(): void {
+    this.starters.push(new FormControl('', Validators.required));
+  }
+
+  removeStarter(index: number): void {
+    this.starters.removeAt(index);
   }
 
   getFieldError(fieldName: string): string | null {
