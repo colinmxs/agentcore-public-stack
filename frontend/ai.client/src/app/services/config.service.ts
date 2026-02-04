@@ -181,7 +181,10 @@ export class ConfigService {
         if (arnParts.length > 0) {
           const arn = arnParts.join('/runtimes/'); // Rejoin in case there are multiple occurrences
           const encodedArn = encodeURIComponent(arn);
-          return `${urlObj.protocol}//${urlObj.host}${beforeArn}/runtimes/${encodedArn}`;
+          const encodedPath = `${beforeArn}/runtimes/${encodedArn}`;
+          // Remove trailing slash if original didn't have one
+          const finalPath = url.endsWith('/') ? encodedPath : encodedPath.replace(/\/$/, '');
+          return `${urlObj.protocol}//${urlObj.host}${finalPath}`;
         }
       }
       
@@ -191,7 +194,9 @@ export class ConfigService {
         .map(segment => encodeURIComponent(segment))
         .join('/');
       
-      return `${urlObj.protocol}//${urlObj.host}${encodedPath}`;
+      // Remove trailing slash if original didn't have one
+      const finalPath = url.endsWith('/') ? encodedPath : encodedPath.replace(/\/$/, '');
+      return `${urlObj.protocol}//${urlObj.host}${finalPath}`;
     } catch (error) {
       // If URL parsing fails, return original
       console.warn('Failed to encode URL path:', url, error);
