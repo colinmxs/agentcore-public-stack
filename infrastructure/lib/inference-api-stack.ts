@@ -801,10 +801,14 @@ export class InferenceApiStack extends cdk.Stack {
       exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
     });
 
-    // AgentCore Runtime Endpoint URL (with URL-encoded ARN)
+    // AgentCore Runtime Endpoint URL
+    // Note: ARN will be URL-encoded at runtime by the consuming service
     new cdk.CfnOutput(this, 'InferenceApiRuntimeEndpointUrl', {
-      value: `https://bedrock-agentcore.${config.awsRegion}.amazonaws.com/runtimes/${encodeURIComponent(this.runtime.attrAgentRuntimeArn)}`,
-      description: 'Inference API AgentCore Runtime Endpoint URL (ARN is URL-encoded)',
+      value: cdk.Fn.sub(
+        'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
+        { RuntimeArn: this.runtime.attrAgentRuntimeArn }
+      ),
+      description: 'Inference API AgentCore Runtime Endpoint URL (ARN needs URL encoding by consumer)',
       exportName: `${config.projectPrefix}-InferenceApiRuntimeEndpointUrl`,
     });
    }
