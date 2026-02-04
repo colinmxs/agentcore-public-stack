@@ -16,6 +16,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from agents.main_agent.session.session_factory import SessionFactory
+from agents.main_agent.session.preview_session_manager import is_preview_session
 from apis.app_api.admin.services import get_tool_access_service
 from apis.shared.assistants.service import assistant_exists, get_assistant_with_access_check, mark_share_as_interacted
 from apis.shared.assistants.rag_service import augment_prompt_with_context, search_assistant_knowledgebase_with_formatting
@@ -288,7 +289,8 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
 
         # 6. Save assistant_id to session preferences (persist for future loads)
         # Only save if it came from the request (not already persisted)
-        if request.assistant_id:
+        # Skip for preview sessions - they should not persist metadata
+        if request.assistant_id and not is_preview_session(request.session_id):
             try:
                 existing_metadata = await get_session_metadata(request.session_id, user_id)
                 if existing_metadata:

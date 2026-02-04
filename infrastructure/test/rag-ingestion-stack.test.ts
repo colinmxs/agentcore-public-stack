@@ -418,10 +418,10 @@ describe('RagIngestionStack', () => {
         FunctionName: 'test-project-test-rag-ingestion',
         Environment: {
           Variables: {
-            ASSISTANTS_DOCUMENTS_BUCKET_NAME: Match.anyValue(),
-            ASSISTANTS_TABLE_NAME: Match.anyValue(),
-            ASSISTANTS_VECTOR_STORE_BUCKET_NAME: 'test-project-test-rag-vector-store-v1',
-            ASSISTANTS_VECTOR_STORE_INDEX_NAME: 'test-project-test-rag-vector-index-v1',
+            S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: Match.anyValue(),
+            DYNAMODB_ASSISTANTS_TABLE_NAME: Match.anyValue(),
+            S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: 'test-project-test-rag-vector-store-v1',
+            S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: 'test-project-test-rag-vector-index-v1',
             BEDROCK_REGION: 'us-east-1',
           },
         },

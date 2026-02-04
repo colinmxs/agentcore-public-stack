@@ -89,7 +89,7 @@ Import the `AssistantsPage` component in your routes configuration:
 ### Prerequisites
 1. Backend server running on `http://localhost:8000`
 2. Valid JWT token (logged in user)
-3. No `ASSISTANTS_TABLE_NAME` env var set (uses local file storage)
+3. No `DYNAMODB_ASSISTANTS_TABLE_NAME` env var set (uses local file storage)
 
 ### Test Flow
 

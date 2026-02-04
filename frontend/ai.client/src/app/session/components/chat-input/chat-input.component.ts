@@ -7,7 +7,6 @@ import {
   heroClock,
 } from '@ng-icons/heroicons/outline';
 import { heroPaperAirplaneSolid, heroStopSolid } from '@ng-icons/heroicons/solid';
-import { ChatStateService } from '../../services/chat/chat-state.service';
 import { ModelDropdownComponent } from '../../../components/model-dropdown/model-dropdown.component';
 import { QuotaWarningBannerComponent } from '../../../components/quota-warning-banner/quota-warning-banner.component';
 import { TooltipDirective } from '../../../components/tooltip';
@@ -46,12 +45,20 @@ interface Message {
 })
 export class ChatInputComponent {
   // Service injection
-  readonly chatState = inject(ChatStateService);
   private readonly fileUploadService = inject(FileUploadService);
   private readonly toastService = inject(ToastService);
 
   // Input: session ID for file uploads
   readonly sessionId = input<string | null>(null);
+
+  // Input: loading state (required - parent must provide this)
+  readonly isChatLoading = input<boolean>(false);
+
+  // Input: show file attachment controls (defaults to true)
+  readonly showFileControls = input<boolean>(true);
+
+  // Use the input directly - parent controls loading state
+  protected readonly isLoading = computed(() => this.isChatLoading());
 
   // Signals for state management
   userInput = signal('');
@@ -88,7 +95,7 @@ export class ChatInputComponent {
   readonly acceptedFileTypes = ALLOWED_EXTENSIONS.join(',');
 
   onSubmit() {
-    if(this.chatState.isChatLoading()) {
+    if (this.isLoading()) {
       this.cancelChatRequest();
     } else {
       this.submitChatRequest();
@@ -110,7 +117,7 @@ export class ChatInputComponent {
       return;
     }
 
-    this.chatState.setChatLoading(true);
+    // Emit the message - parent is responsible for managing loading state
     this.messageSubmitted.emit({
       content,
       timestamp: new Date(),

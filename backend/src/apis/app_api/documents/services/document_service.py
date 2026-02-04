@@ -61,9 +61,9 @@ async def create_document(
         logger.error("boto3 is required for DynamoDB operations")
         raise
     
-    table_name = os.environ.get('ASSISTANTS_TABLE_NAME')
+    table_name = os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
     if not table_name:
-        raise ValueError("ASSISTANTS_TABLE_NAME environment variable not set")
+        raise ValueError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable not set")
     
     if not document_id:
         document_id = _generate_document_id()
@@ -128,9 +128,9 @@ async def get_document(
         logger.warning(f"Access denied: assistant {assistant_id} not owned by user {owner_id}")
         return None
     
-    table_name = os.environ.get('ASSISTANTS_TABLE_NAME')
+    table_name = os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
     if not table_name:
-        logger.error("ASSISTANTS_TABLE_NAME environment variable not set")
+        logger.error("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable not set")
         return None
     
     dynamodb = boto3.resource('dynamodb')
@@ -190,7 +190,7 @@ async def update_document_status(
         chunk_count: Optional number of chunks created
         error_message: Optional user-friendly error message if status='failed'
         error_details: Optional technical error details if status='failed'
-        table_name: Optional DynamoDB table name (defaults to ASSISTANTS_TABLE_NAME env var)
+        table_name: Optional DynamoDB table name (defaults to DYNAMODB_ASSISTANTS_TABLE_NAME env var)
     
     Returns:
         Updated Document object if found, None otherwise
@@ -204,9 +204,9 @@ async def update_document_status(
     
     # Get table name from parameter or environment
     if not table_name:
-        table_name = os.environ.get('ASSISTANTS_TABLE_NAME')
+        table_name = os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
         if not table_name:
-            logger.error("ASSISTANTS_TABLE_NAME environment variable not set")
+            logger.error("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable not set")
             return None
     
     # Initialize DynamoDB resource
@@ -337,9 +337,9 @@ async def list_assistant_documents(
         logger.warning(f"Access denied: assistant {assistant_id} not owned by user {owner_id}")
         return [], None
     
-    table_name = os.environ.get('ASSISTANTS_TABLE_NAME')
+    table_name = os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
     if not table_name:
-        logger.error("ASSISTANTS_TABLE_NAME environment variable not set")
+        logger.error("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable not set")
         return [], None
     
     dynamodb = boto3.resource('dynamodb')
@@ -425,9 +425,9 @@ async def delete_document(
         logger.warning(f"Access denied: assistant {assistant_id} not owned by user {owner_id}")
         return False
     
-    table_name = os.environ.get('ASSISTANTS_TABLE_NAME')
+    table_name = os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
     if not table_name:
-        logger.error("ASSISTANTS_TABLE_NAME environment variable not set")
+        logger.error("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable not set")
         return False
     
     dynamodb = boto3.resource('dynamodb')

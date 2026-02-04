@@ -1,31 +1,47 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, FormGroup, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, FormControl, Validators } from '@angular/forms';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
-import { TestChatComponent } from './components/test-chat.component';
+import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroArrowLeft } from '@ng-icons/heroicons/outline';
+import { heroArrowLeft, heroChevronRight, heroFaceSmile, heroXMark } from '@ng-icons/heroicons/outline';
+import { SidenavService } from '../../services/sidenav/sidenav.service';
+import { PickerComponent } from '@ctrl/ngx-emoji-mart';
+import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
+import { ThemeService } from '../../components/topnav/components/theme-toggle/theme.service';
+
 
 @Component({
   selector: 'app-assistant-form-page',
   templateUrl: './assistant-form.page.html',
   styleUrl: './assistant-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, TestChatComponent, NgIcon, RouterLink],
-  providers:[
+  imports: [ReactiveFormsModule, AssistantPreviewComponent, NgIcon, RouterLink, PickerComponent, CdkOverlayOrigin, CdkConnectedOverlay],
+  providers: [
     provideIcons({
-      heroArrowLeft
+      heroArrowLeft,
+      heroChevronRight,
+      heroFaceSmile,
+      heroXMark
     })
   ]
 })
-export class AssistantFormPage implements OnInit {
+export class AssistantFormPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
   private router = inject(Router);
   private fb = inject(FormBuilder);
   private assistantService = inject(AssistantService);
   private documentService = inject(DocumentService);
+  readonly sidenavService = inject(SidenavService);
+  private readonly themeService = inject(ThemeService);
+
+  // Emoji picker popover state
+  readonly isEmojiPickerOpen = signal(false);
+
+  // Expose theme for emoji picker dark mode
+  readonly isDarkMode = this.themeService.theme;
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => 
@@ -44,7 +60,32 @@ export class AssistantFormPage implements OnInit {
 
   form!: FormGroup;
 
+  // Emoji picker positioning - opens below and to the right
+  readonly emojiPickerPositions: ConnectedPosition[] = [
+    {
+      originX: 'start',
+      originY: 'bottom',
+      overlayX: 'start',
+      overlayY: 'top',
+      offsetY: 8
+    },
+    {
+      originX: 'start',
+      originY: 'top',
+      overlayX: 'start',
+      overlayY: 'bottom',
+      offsetY: -8
+    }
+  ];
+
+  get starters(): FormArray {
+    return this.form.get('starters') as FormArray;
+  }
+
   ngOnInit(): void {
+    // Hide sidenav when entering the form page
+    this.sidenavService.hide();
+
     // Check if we're editing an existing assistant
     const id = this.route.snapshot.paramMap.get('id');
     this.assistantId.set(id);
@@ -57,6 +98,8 @@ export class AssistantFormPage implements OnInit {
       vectorIndexId: ['idx_assistants', [Validators.required]],
       visibility: ['PRIVATE'],
       tags: [[]],
+      starters: this.fb.array([]),
+      emoji: [''],
       status: ['DRAFT']
     });
 
@@ -65,6 +108,11 @@ export class AssistantFormPage implements OnInit {
       this.loadAssistant(id);
       this.loadDocuments();
     }
+  }
+
+  ngOnDestroy(): void {
+    // Show sidenav when leaving the form page
+    this.sidenavService.show();
   }
 
   async loadAssistant(id: string): Promise<void> {
@@ -86,8 +134,17 @@ export class AssistantFormPage implements OnInit {
           vectorIndexId: assistant.vectorIndexId,
           visibility: assistant.visibility,
           tags: assistant.tags,
+          emoji: assistant.emoji || '',
           status: assistant.status
         });
+
+        // Populate starters FormArray
+        this.starters.clear();
+        if (assistant.starters && assistant.starters.length > 0) {
+          assistant.starters.forEach(starter => {
+            this.starters.push(new FormControl(starter, Validators.required));
+          });
+        }
       }
     } catch (error) {
       console.error('Error loading assistant:', error);
@@ -130,6 +187,14 @@ export class AssistantFormPage implements OnInit {
     this.router.navigate(['/assistants']);
   }
 
+  addStarter(): void {
+    this.starters.push(new FormControl('', Validators.required));
+  }
+
+  removeStarter(index: number): void {
+    this.starters.removeAt(index);
+  }
+
   getFieldError(fieldName: string): string | null {
     const field = this.form.get(fieldName);
     if (!field || !field.touched || !field.errors) {
@@ -145,6 +210,23 @@ export class AssistantFormPage implements OnInit {
     }
 
     return null;
+  }
+
+  toggleEmojiPicker(): void {
+    this.isEmojiPickerOpen.update(open => !open);
+  }
+
+  closeEmojiPicker(): void {
+    this.isEmojiPickerOpen.set(false);
+  }
+
+  onEmojiSelect(event: { emoji: { native: string } }): void {
+    this.form.patchValue({ emoji: event.emoji.native });
+    this.closeEmojiPicker();
+  }
+
+  clearEmoji(): void {
+    this.form.patchValue({ emoji: '' });
   }
 
   async onFileSelected(event: Event): Promise<void> {
@@ -353,6 +435,22 @@ export class AssistantFormPage implements OnInit {
     const sizes = ['B', 'KB', 'MB', 'GB'];
     const i = Math.floor(Math.log(bytes) / Math.log(k));
     return `${parseFloat((bytes / Math.pow(k, i)).toFixed(1))} ${sizes[i]}`;
+  }
+
+  getStatusBadgeClasses(): string {
+    const status = this.form?.get('status')?.value || 'DRAFT';
+    const baseClasses = 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium';
+
+    switch (status) {
+      case 'COMPLETE':
+        return `${baseClasses} bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300`;
+      case 'DRAFT':
+        return `${baseClasses} bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300`;
+      case 'ARCHIVED':
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
+      default:
+        return `${baseClasses} bg-gray-100 text-gray-800 dark:bg-gray-700 dark:text-gray-300`;
+    }
   }
 }
 

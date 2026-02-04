@@ -22,6 +22,9 @@ from .models import MessageMetadata, SessionMetadata
 # Absolute imports for storage (now in shared module)
 from apis.shared.storage.paths import get_message_path, get_session_metadata_path, get_sessions_root, get_message_metadata_path
 
+# Import preview session helper
+from agents.main_agent.session.preview_session_manager import is_preview_session
+
 logger = logging.getLogger(__name__)
 
 
@@ -1247,6 +1250,10 @@ async def _list_user_sessions_local(
             # Extract session_id from directory name (session_<id>)
             session_id = session_dir.name.replace('session_', '', 1)
 
+            # Skip preview sessions - they should not appear in user's session list
+            if is_preview_session(session_id):
+                continue
+
             # Read session metadata file
             session_file = get_session_metadata_path(session_id)
             if not session_file.exists():
@@ -1364,7 +1371,7 @@ async def _list_user_sessions_cloud(
         # Execute query
         response = table.query(**query_params)
 
-        # Parse items - no filtering needed, all items are active sessions
+        # Parse items - filter out preview sessions
         sessions = []
         for item in response['Items']:
             try:
@@ -1374,6 +1381,11 @@ async def _list_user_sessions_cloud(
                 # Remove DynamoDB keys
                 for key in ['PK', 'SK', 'GSI_PK', 'GSI_SK']:
                     item.pop(key, None)
+
+                # Skip preview sessions - they should not appear in user's session list
+                session_id = item.get('sessionId', '')
+                if is_preview_session(session_id):
+                    continue
 
                 metadata = SessionMetadata.model_validate(item)
                 sessions.append(metadata)

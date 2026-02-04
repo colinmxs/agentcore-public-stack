@@ -59,6 +59,7 @@ class MainAgent:
         caching_enabled: Optional[bool] = None,
         provider: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        skip_persistence: bool = False,
     ):
         """
         Initialize Main Agent with modular architecture and multi-provider support
@@ -77,6 +78,7 @@ class MainAgent:
             provider: LLM provider ("bedrock", "openai", or "gemini"). If not specified,
                      will auto-detect from model_id
             max_tokens: Maximum tokens to generate (optional)
+            skip_persistence: If True, don't persist messages (for preview sessions)
         """
         # Basic state
         self.session_id = session_id

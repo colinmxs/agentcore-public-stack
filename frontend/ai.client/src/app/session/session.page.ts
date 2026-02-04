@@ -1,35 +1,26 @@
-import { Component, inject, effect, Signal, signal, computed, OnDestroy, viewChild, Input, input } from '@angular/core';
-import { ActivatedRoute } from '@angular/router';
+import { Component, inject, effect, Signal, signal, computed, OnDestroy } from '@angular/core';
+import { ActivatedRoute, Router } from '@angular/router';
 import { Subscription } from 'rxjs';
 import { v4 as uuidv4 } from 'uuid';
-import { MessageListComponent } from './components/message-list/message-list.component';
 import { ChatRequestService } from './services/chat/chat-request.service';
 import { MessageMapService } from './services/session/message-map.service';
 import { Message } from './services/models/message.model';
-import { ChatInputComponent } from './components/chat-input/chat-input.component';
 import { SessionService } from './services/session/session.service';
 import { ChatStateService } from './services/chat/chat-state.service';
-import { AnimatedTextComponent } from '../components/animated-text';
-import { Topnav } from '../components/topnav/topnav';
 import { SidenavService } from '../services/sidenav/sidenav.service';
 import { HeaderService } from '../services/header/header.service';
-import { ParagraphSkeletonComponent } from '../components/paragraph-skeleton';
 import { ModelService } from './services/model/model.service';
 import { ModelSettings } from '../components/model-settings/model-settings';
 import { UserService } from '../auth/user.service';
-import { FileUploadService } from '../services/file-upload';
 import { ChatHttpService } from './services/chat/chat-http.service';
 import { StreamParserService } from './services/chat/stream-parser.service';
 import { AssistantService } from '../assistants/services/assistant.service';
 import { Assistant } from '../assistants/models/assistant.model';
-import { Router } from '@angular/router';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroXMark } from '@ng-icons/heroicons/outline';
+import { ChatContainerComponent, ChatContainerConfig } from './components/chat-container/chat-container.component';
 
 @Component({
   selector: 'app-session-page',
-  imports: [ChatInputComponent, MessageListComponent, AnimatedTextComponent, Topnav, ParagraphSkeletonComponent, ModelSettings, NgIcon],
-  providers: [provideIcons({ heroXMark })],
+  imports: [ChatContainerComponent, ModelSettings],
   templateUrl: './session.page.html',
   styleUrl: './session.page.css',
 })
@@ -43,7 +34,6 @@ export class ConversationPage implements OnDestroy {
   private headerService = inject(HeaderService);
   private modelService = inject(ModelService);
   private userService = inject(UserService);
-  private fileUploadService = inject(FileUploadService);
   private chatHttpService = inject(ChatHttpService);
   private streamParserService = inject(StreamParserService);
   private assistantService = inject(AssistantService);
@@ -121,11 +111,18 @@ export class ConversationPage implements OnDestroy {
   readonly isLoadingSession = this.messageMapService.isLoadingSession;
   readonly streamingMessageId = this.streamParserService.streamingMessageId;
 
-  // Get reference to MessageListComponent
-  private messageListComponent = viewChild(MessageListComponent);
-
   // Computed signal to check if session has messages
   readonly hasMessages = computed(() => this.messages().length > 0);
+
+  // Chat container configuration for full-page mode
+  readonly chatConfig: Partial<ChatContainerConfig> = {
+    fullPageMode: true,
+    showTopnav: true,
+    showEmptyState: true,
+    allowCloseAssistant: true,
+    showFileControls: true,
+    embeddedMode: false,
+  };
 
   // Computed signal to determine if assistant can be closed
   // Only allow closing if: no messages exist AND assistant is from query param (not session preferences)
@@ -242,6 +239,9 @@ export class ConversationPage implements OnDestroy {
     const sessionAssistantId = this.sessionConversation()?.preferences?.assistantId;
     const assistantIdToUse = queryAssistantId || sessionAssistantId || undefined;
 
+    // Set loading state before submitting
+    this.chatStateService.setChatLoading(true);
+
     // Submit the chat request with file upload IDs and assistant ID if present
     this.chatRequestService.submitChatRequest(
       message.content,
@@ -256,11 +256,6 @@ export class ConversationPage implements OnDestroy {
     if (this.stagedSessionId()) {
       this.stagedSessionId.set(null);
     }
-
-    // Wait for DOM to update (user message to be added) then scroll to it
-    setTimeout(() => {
-      this.messageListComponent()?.scrollToLastUserMessage();
-    }, 100);
   }
 
   /**

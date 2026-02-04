@@ -26,6 +26,7 @@ export class MessageListComponent implements OnDestroy {
   messages = input.required<Message[]>();
   isChatLoading = input<boolean>(false);
   streamingMessageId = input<string | null>(null);
+  embeddedMode = input<boolean>(false);
 
   // Calculate the spacer height dynamically
   // This creates space at the bottom so user messages can scroll to the top
@@ -74,6 +75,7 @@ export class MessageListComponent implements OnDestroy {
   /**
    * Scrolls to a specific message by ID
    * Call this explicitly when user submits a message
+   * Works in both full-page mode (window scroll) and embedded mode (container scroll)
    */
   scrollToMessage(messageId: string): void {
     if (!this.isBrowser) return;
@@ -81,18 +83,20 @@ export class MessageListComponent implements OnDestroy {
     const element = document.getElementById(`message-${messageId}`);
     if (!element) return;
 
-    // Get the element's position
-    const elementRect = element.getBoundingClientRect();
-    const absoluteElementTop = elementRect.top + window.scrollY;
+    if (this.embeddedMode()) {
+      // In embedded mode, use scrollIntoView which works with any scroll container
+      element.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    } else {
+      // In full-page mode, use window scroll with offset for fixed header
+      const elementRect = element.getBoundingClientRect();
+      const absoluteElementTop = elementRect.top + window.scrollY;
+      const offset = this.HEADER_HEIGHT + this.SCROLL_PADDING;
 
-    // Calculate offset (header + padding)
-    const offset = this.HEADER_HEIGHT + this.SCROLL_PADDING;
-
-    // Scroll to position with offset
-    window.scrollTo({
-      top: absoluteElementTop - offset,
-      behavior: 'smooth'
-    });
+      window.scrollTo({
+        top: absoluteElementTop - offset,
+        behavior: 'smooth'
+      });
+    }
   }
 
   /**

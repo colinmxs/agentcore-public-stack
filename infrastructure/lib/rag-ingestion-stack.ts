@@ -232,10 +232,10 @@ export class RagIngestionStack extends cdk.Stack {
         timeout: cdk.Duration.seconds(config.ragIngestion.lambdaTimeout),
         memorySize: config.ragIngestion.lambdaMemorySize,
         environment: {
-          ASSISTANTS_DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
-          ASSISTANTS_TABLE_NAME: this.assistantsTable.tableName,
-          ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
-          ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
+          S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
+          DYNAMODB_ASSISTANTS_TABLE_NAME: this.assistantsTable.tableName,
+          S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
+          S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
           BEDROCK_REGION: config.awsRegion,
         },
         description:
