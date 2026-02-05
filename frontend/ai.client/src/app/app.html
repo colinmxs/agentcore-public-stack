@@ -1,9 +1,5 @@
-<!-- Configuration Error Display -->
-@if (configValidator.validationErrors().length > 0) {
-  <app-config-error [errors]="configValidator.validationErrors()" />
-} @else {
-  <!-- Mobile sidenav overlay -->
-  @if (sidenavService.isVisible() && !sidenavService.isHidden()) {
+<!-- Mobile sidenav overlay -->
+@if (sidenavService.isVisible() && !sidenavService.isHidden()) {
     <div class="relative z-50 lg:hidden" role="dialog" aria-modal="true">
       <!-- Backdrop -->
       <div
@@ -124,4 +120,3 @@
 
   <!-- Global toast notifications -->
   <app-toast />
-}

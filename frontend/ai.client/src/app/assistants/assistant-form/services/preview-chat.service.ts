@@ -2,7 +2,7 @@ import { Injectable, inject, signal, computed } from '@angular/core';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 import { AuthService } from '../../../auth/auth.service';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { Message } from '../../../session/services/models/message.model';
 import { PREVIEW_SESSION_PREFIX } from '../../../shared/constants/session.constants';
 import {
@@ -27,6 +27,7 @@ import {
 @Injectable()
 export class PreviewChatService {
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
   // Local state signals (isolated from global ChatStateService)
   private readonly messagesSignal = signal<Message[]>([]);
@@ -186,7 +187,7 @@ export class PreviewChatService {
 
     try {
       const token = await this.getBearerTokenForStreamingResponse();
-      const url = `${environment.inferenceApiUrl}/invocations?qualifier=DEFAULT`;
+      const url = `${this.config.inferenceApiUrl()}/invocations?qualifier=DEFAULT`;
 
       const requestBody = {
         message: userMessage,

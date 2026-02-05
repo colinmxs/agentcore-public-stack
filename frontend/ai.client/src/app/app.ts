@@ -6,8 +6,6 @@ import { ToastComponent } from './components/toast';
 import { SidenavService } from './services/sidenav/sidenav.service';
 import { HeaderService } from './services/header/header.service';
 import { TooltipDirective } from './components/tooltip/tooltip.directive';
-import { ConfigValidatorService } from './services/config-validator.service';
-import { ConfigErrorComponent } from './components/config-error/config-error.component';
 
 @Component({
   selector: 'app-root',
@@ -16,8 +14,7 @@ import { ConfigErrorComponent } from './components/config-error/config-error.com
     Sidenav, 
     ErrorToastComponent, 
     ToastComponent, 
-    TooltipDirective,
-    ConfigErrorComponent
+    TooltipDirective
   ],
   templateUrl: './app.html',
   styleUrl: './app.css',
@@ -26,7 +23,6 @@ export class App {
   protected readonly title = signal('boisestate.ai');
   protected sidenavService = inject(SidenavService);
   protected headerService = inject(HeaderService);
-  protected configValidator = inject(ConfigValidatorService);
   private router = inject(Router);
 
   newChat() {
