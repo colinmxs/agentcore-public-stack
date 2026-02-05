@@ -6,11 +6,10 @@ import { AssistantMessageComponent } from './components/assistant-message.compon
 import { MessageMetadataBadgesComponent } from './components/message-metadata-badges.component';
 import { CitationDisplayComponent } from '../citation-display/citation-display.component';
 import { PulsatingLoaderComponent } from '../../../components/pulsating-loader.component';
-import { JsonPipe } from '@angular/common';
 
 @Component({
   selector: 'app-message-list',
-  imports: [UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent, CitationDisplayComponent, PulsatingLoaderComponent, JsonPipe],
+  imports: [UserMessageComponent, AssistantMessageComponent, MessageMetadataBadgesComponent, CitationDisplayComponent, PulsatingLoaderComponent],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.css',
 })

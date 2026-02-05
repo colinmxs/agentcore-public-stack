@@ -49,7 +49,7 @@ import {
       <!-- Conversation Starters -->
       @if (starters().length > 0) {
         <div class="mt-6 w-full max-w-md">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-400 dark:text-gray-500 mb-3">
+          <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
             Example Conversation Starters
           </p>
           <div class="flex flex-col gap-2">
@@ -57,7 +57,7 @@ import {
               <button
                 type="button"
                 (click)="onStarterClick(starter)"
-                class="w-full rounded-lg bg-gray-700 dark:bg-gray-700 px-4 py-3 text-left text-sm text-gray-100 dark:text-gray-200 hover:bg-gray-600 dark:hover:bg-gray-600 transition-colors"
+                class="w-full rounded-xl bg-white dark:bg-slate-800 border border-gray-300 dark:border-white/10 px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
               >
                 {{ starter }}
               </button>
