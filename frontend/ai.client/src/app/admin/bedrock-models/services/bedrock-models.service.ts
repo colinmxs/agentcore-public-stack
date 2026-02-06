@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, resource } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   BedrockModelsResponse,
@@ -20,6 +20,7 @@ import {
 export class BedrockModelsService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
   /**
    * Signal for filter parameters used by the models resource.
@@ -147,7 +148,7 @@ export class BedrockModelsService {
     try {
       const response = await firstValueFrom(
         this.http.get<BedrockModelsResponse>(
-          `${environment.appApiUrl}/admin/bedrock/models`,
+          `${this.config.appApiUrl()}/admin/bedrock/models`,
           { params: httpParams }
         )
       );

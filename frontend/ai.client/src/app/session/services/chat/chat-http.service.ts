@@ -4,7 +4,7 @@ import { StreamParserService } from './stream-parser.service';
 import { ChatStateService } from './chat-state.service';
 import { MessageMapService } from '../session/message-map.service';
 import { AuthService } from '../../../auth/auth.service';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { firstValueFrom } from 'rxjs';
 import { HttpClient } from '@angular/common/http';
 import { SessionService } from '../session/session.service';
@@ -42,6 +42,7 @@ export class ChatHttpService {
     private chatStateService = inject(ChatStateService);
     private messageMapService = inject(MessageMapService);
     private authService = inject(AuthService);
+    private config = inject(ConfigService);
     private http = inject(HttpClient);
     private sessionService = inject(SessionService);
     private errorService = inject(ErrorService);
@@ -52,7 +53,7 @@ export class ChatHttpService {
 
         const token = await this.getBearerTokenForStreamingResponse();
 
-        return fetchEventSource(`${environment.inferenceApiUrl}/invocations?qualifier=DEFAULT`, {
+        return fetchEventSource(`${this.config.inferenceApiUrl()}/invocations?qualifier=DEFAULT`, {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
@@ -206,7 +207,7 @@ export class ChatHttpService {
         try {
             const response = await firstValueFrom(
                 this.http.post<GenerateTitleResponse>(
-                    `${environment.appApiUrl}/chat/generate-title`,
+                    `${this.config.appApiUrl()}/chat/generate-title`,
                     requestBody
                 )
             );

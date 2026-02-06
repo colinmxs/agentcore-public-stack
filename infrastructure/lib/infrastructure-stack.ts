@@ -8,7 +8,7 @@ import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from './config';
 
 export interface InfrastructureStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -125,9 +125,7 @@ export class InfrastructureStack extends cdk.Stack {
         includeSpace: false,
         passwordLength: 64,
       },
-      removalPolicy: config.environment === 'prod'
-        ? cdk.RemovalPolicy.RETAIN
-        : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // Export Authentication Secret ARN to SSM
@@ -295,7 +293,7 @@ export class InfrastructureStack extends cdk.Stack {
     // ============================================================
     // Route53 Hosted Zone (Optional)
     // ============================================================
-    if (config.infrastructureHostedZoneDomain) {
+    if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
       const hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
         zoneName: config.infrastructureHostedZoneDomain,
         comment: `Hosted zone for ${config.projectPrefix}`,
@@ -346,21 +344,6 @@ export class InfrastructureStack extends cdk.Stack {
           comment: `A record for ALB - points ${albRecordName} to load balancer`,
         });
 
-        // Export ALB URL to SSM (with correct protocol)
-        new ssm.StringParameter(this, 'AlbUrlParameter', {
-          parameterName: `/${config.projectPrefix}/network/alb-url`,
-          stringValue: `${protocol}://${albRecordName}`,
-          description: 'Application Load Balancer Custom URL',
-          tier: ssm.ParameterTier.STANDARD,
-        });
-
-        // CloudFormation Output for ALB URL
-        new cdk.CfnOutput(this, 'AlbUrl', {
-          value: `${protocol}://${albRecordName}`,
-          description: `Application Load Balancer Custom URL (${protocol.toUpperCase()})`,
-          exportName: `${config.projectPrefix}-alb-url`,
-        });
-
         // Additional HTTPS URL output when certificate is provided
         if (config.certificateArn) {
           new cdk.CfnOutput(this, 'AlbUrlHttps', {
@@ -371,6 +354,42 @@ export class InfrastructureStack extends cdk.Stack {
         }
       }
     }
+
+    // ============================================================
+    // ALB URL Export (Always)
+    // ============================================================
+    // Determine the ALB URL to export
+    // Priority: Custom domain (if configured) > ALB DNS name
+    let albUrl: string;
+    let albUrlDescription: string;
+    
+    if (config.infrastructureHostedZoneDomain && config.albSubdomain) {
+      // Use custom domain URL
+      const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
+      const protocol = config.certificateArn ? 'https' : 'http';
+      albUrl = `${protocol}://${albRecordName}`;
+      albUrlDescription = 'Application Load Balancer Custom Domain URL';
+    } else {
+      // Use ALB DNS name as fallback
+      const protocol = config.certificateArn ? 'https' : 'http';
+      albUrl = `${protocol}://${this.alb.loadBalancerDnsName}`;
+      albUrlDescription = 'Application Load Balancer URL (DNS name)';
+    }
+    
+    // Export ALB URL to SSM - used by frontend stack for runtime config
+    new ssm.StringParameter(this, 'AlbUrlParameter', {
+      parameterName: `/${config.projectPrefix}/network/alb-url`,
+      stringValue: albUrl,
+      description: albUrlDescription,
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // CloudFormation Output for ALB URL
+    new cdk.CfnOutput(this, 'AlbUrl', {
+      value: albUrl,
+      description: albUrlDescription,
+      exportName: `${config.projectPrefix}-alb-url`,
+    });
 
     // ============================================================
     // CloudFormation Outputs

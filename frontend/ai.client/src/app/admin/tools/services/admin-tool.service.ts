@@ -1,7 +1,7 @@
-import { Injectable, inject, resource, signal } from '@angular/core';
+import { Injectable, inject, resource, signal, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   AdminTool,
@@ -25,8 +25,9 @@ import {
 export class AdminToolService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/admin/tools`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/admin/tools`);
 
   // Signals for local state
   private _loading = signal(false);
@@ -63,7 +64,7 @@ export class AdminToolService {
    * Fetch all tools from the API.
    */
   async fetchTools(status?: string): Promise<AdminToolListResponse> {
-    let url = `${this.baseUrl}/`;
+    let url = `${this.baseUrl()}/`;
     if (status) {
       url += `?status=${status}`;
     }
@@ -78,7 +79,7 @@ export class AdminToolService {
    */
   async fetchTool(toolId: string): Promise<AdminTool> {
     const response = await firstValueFrom(
-      this.http.get<AdminTool>(`${this.baseUrl}/${toolId}`)
+      this.http.get<AdminTool>(`${this.baseUrl()}/${toolId}`)
     );
     return response;
   }
@@ -92,7 +93,7 @@ export class AdminToolService {
 
     try {
       const response = await firstValueFrom(
-        this.http.post<AdminTool>(`${this.baseUrl}/`, toolData)
+        this.http.post<AdminTool>(`${this.baseUrl()}/`, toolData)
       );
       this.toolsResource.reload();
       return response;
@@ -114,7 +115,7 @@ export class AdminToolService {
 
     try {
       const response = await firstValueFrom(
-        this.http.put<AdminTool>(`${this.baseUrl}/${toolId}`, updates)
+        this.http.put<AdminTool>(`${this.baseUrl()}/${toolId}`, updates)
       );
       this.toolsResource.reload();
       return response;
@@ -136,7 +137,7 @@ export class AdminToolService {
 
     try {
       await firstValueFrom(
-        this.http.delete<void>(`${this.baseUrl}/${toolId}?hard=${hard}`)
+        this.http.delete<void>(`${this.baseUrl()}/${toolId}?hard=${hard}`)
       );
       this.toolsResource.reload();
     } catch (err: unknown) {
@@ -153,7 +154,7 @@ export class AdminToolService {
    */
   async getToolRoles(toolId: string): Promise<ToolRoleAssignment[]> {
     const response = await firstValueFrom(
-      this.http.get<ToolRolesResponse>(`${this.baseUrl}/${toolId}/roles`)
+      this.http.get<ToolRolesResponse>(`${this.baseUrl()}/${toolId}/roles`)
     );
     return response.roles;
   }
@@ -167,7 +168,7 @@ export class AdminToolService {
 
     try {
       await firstValueFrom(
-        this.http.put(`${this.baseUrl}/${toolId}/roles`, { appRoleIds: roleIds })
+        this.http.put(`${this.baseUrl()}/${toolId}/roles`, { appRoleIds: roleIds })
       );
       this.toolsResource.reload();
     } catch (err: unknown) {
@@ -184,7 +185,7 @@ export class AdminToolService {
    */
   async addRolesToTool(toolId: string, roleIds: string[]): Promise<void> {
     await firstValueFrom(
-      this.http.post(`${this.baseUrl}/${toolId}/roles/add`, { appRoleIds: roleIds })
+      this.http.post(`${this.baseUrl()}/${toolId}/roles/add`, { appRoleIds: roleIds })
     );
     this.toolsResource.reload();
   }
@@ -194,7 +195,7 @@ export class AdminToolService {
    */
   async removeRolesFromTool(toolId: string, roleIds: string[]): Promise<void> {
     await firstValueFrom(
-      this.http.post(`${this.baseUrl}/${toolId}/roles/remove`, { appRoleIds: roleIds })
+      this.http.post(`${this.baseUrl()}/${toolId}/roles/remove`, { appRoleIds: roleIds })
     );
     this.toolsResource.reload();
   }
@@ -208,7 +209,7 @@ export class AdminToolService {
 
     try {
       const response = await firstValueFrom(
-        this.http.post<SyncResult>(`${this.baseUrl}/sync?dry_run=${dryRun}`, {})
+        this.http.post<SyncResult>(`${this.baseUrl()}/sync?dry_run=${dryRun}`, {})
       );
       if (!dryRun) {
         this.toolsResource.reload();

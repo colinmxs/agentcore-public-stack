@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
 import { AuthService } from '../../auth/auth.service';
 import { UserCostSummary } from '../models/cost-summary.model';
 
@@ -18,6 +18,8 @@ import { UserCostSummary } from '../models/cost-summary.model';
 export class CostService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/costs`);
 
   /**
    * Reactive resource for fetching current month cost summary.
@@ -47,8 +49,8 @@ export class CostService {
   async fetchCostSummary(period?: string): Promise<UserCostSummary> {
     try {
       const url = period
-        ? `${environment.appApiUrl}/costs/summary?period=${period}`
-        : `${environment.appApiUrl}/costs/summary`;
+        ? `${this.baseUrl()}/summary?period=${period}`
+        : `${this.baseUrl()}/summary`;
 
       const response = await firstValueFrom(
         this.http.get<UserCostSummary>(url)
@@ -75,7 +77,7 @@ export class CostService {
     try {
       const response = await firstValueFrom(
         this.http.get<UserCostSummary>(
-          `${environment.appApiUrl}/costs/detailed-report?start_date=${startDate}&end_date=${endDate}`
+          `${this.baseUrl()}/detailed-report?start_date=${startDate}&end_date=${endDate}`
         )
       );
 

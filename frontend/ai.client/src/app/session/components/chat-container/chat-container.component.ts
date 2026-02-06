@@ -17,6 +17,8 @@ import { ParagraphSkeletonComponent } from '../../../components/paragraph-skelet
 import { Topnav } from '../../../components/topnav/topnav';
 import { SidenavService } from '../../../services/sidenav/sidenav.service';
 import { Assistant } from '../../../assistants/models/assistant.model';
+import { AssistantCardComponent } from '../../../assistants/components/assistant-card.component';
+import { AssistantIndicatorComponent } from '../assistant-indicator/assistant-indicator.component';
 
 /**
  * Configuration options for ChatContainerComponent.
@@ -54,6 +56,8 @@ export interface ChatContainerConfig {
     ParagraphSkeletonComponent,
     Topnav,
     NgIcon,
+    AssistantCardComponent,
+    AssistantIndicatorComponent,
   ],
   providers: [provideIcons({ heroXMark })],
   changeDetection: ChangeDetectionStrategy.OnPush,
@@ -98,6 +102,8 @@ export class ChatContainerComponent {
   fileAttached = output<File>();
   settingsToggled = output<void>();
   assistantClosed = output<void>();
+  starterSelected = output<string>();
+  assistantIndicatorClicked = output<void>();
 
   // Computed signals
   protected readonly hasMessages = computed(() => this.messages().length > 0);
@@ -138,5 +144,15 @@ export class ChatContainerComponent {
 
   onAssistantClosed() {
     this.assistantClosed.emit();
+  }
+
+  onStarterSelected(starter: string) {
+    this.starterSelected.emit(starter);
+    // Submit the starter as a message
+    this.onMessageSubmitted({ content: starter, timestamp: new Date() });
+  }
+
+  onAssistantIndicatorClicked() {
+    this.assistantIndicatorClicked.emit();
   }
 }

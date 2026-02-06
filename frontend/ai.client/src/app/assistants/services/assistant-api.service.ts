@@ -1,4 +1,4 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
 import { 
@@ -15,21 +15,22 @@ import {
   CreateDocumentRequest,
   UploadUrlResponse
 } from '../models/document.model';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
 
 @Injectable({
   providedIn: 'root'
 })
 export class AssistantApiService {
   private http = inject(HttpClient);
-  private readonly baseUrl = `${environment.appApiUrl}/assistants`;
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/assistants`);
 
   createDraft(request: CreateAssistantDraftRequest = {}): Observable<Assistant> {
-    return this.http.post<Assistant>(`${this.baseUrl}/draft`, request);
+    return this.http.post<Assistant>(`${this.baseUrl()}/draft`, request);
   }
 
   createAssistant(request: CreateAssistantRequest): Observable<Assistant> {
-    return this.http.post<Assistant>(this.baseUrl, request);
+    return this.http.post<Assistant>(this.baseUrl(), request);
   }
 
   getAssistants(params?: {
@@ -56,23 +57,23 @@ export class AssistantApiService {
       httpParams = httpParams.set('include_public', params.includePublic.toString());
     }
 
-    return this.http.get<AssistantsListResponse>(this.baseUrl, { params: httpParams });
+    return this.http.get<AssistantsListResponse>(this.baseUrl(), { params: httpParams });
   }
 
   getAssistant(id: string): Observable<Assistant> {
-    return this.http.get<Assistant>(`${this.baseUrl}/${id}`);
+    return this.http.get<Assistant>(`${this.baseUrl()}/${id}`);
   }
 
   updateAssistant(id: string, request: UpdateAssistantRequest): Observable<Assistant> {
-    return this.http.put<Assistant>(`${this.baseUrl}/${id}`, request);
+    return this.http.put<Assistant>(`${this.baseUrl()}/${id}`, request);
   }
 
   archiveAssistant(id: string): Observable<Assistant> {
-    return this.http.post<Assistant>(`${this.baseUrl}/${id}/archive`, {});
+    return this.http.post<Assistant>(`${this.baseUrl()}/${id}/archive`, {});
   }
 
   deleteAssistant(id: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/${id}`);
+    return this.http.delete<void>(`${this.baseUrl()}/${id}`);
   }
 
   /**
@@ -87,20 +88,20 @@ export class AssistantApiService {
     request: CreateDocumentRequest
   ): Observable<UploadUrlResponse> {
     return this.http.post<UploadUrlResponse>(
-      `${this.baseUrl}/${assistantId}/documents/upload-url`,
+      `${this.baseUrl()}/${assistantId}/documents/upload-url`,
       request
     );
   }
 
   shareAssistant(id: string, request: ShareAssistantRequest): Observable<AssistantSharesResponse> {
-    return this.http.post<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`, request);
+    return this.http.post<AssistantSharesResponse>(`${this.baseUrl()}/${id}/shares`, request);
   }
 
   unshareAssistant(id: string, request: UnshareAssistantRequest): Observable<AssistantSharesResponse> {
-    return this.http.delete<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`, { body: request });
+    return this.http.delete<AssistantSharesResponse>(`${this.baseUrl()}/${id}/shares`, { body: request });
   }
 
   getAssistantShares(id: string): Observable<AssistantSharesResponse> {
-    return this.http.get<AssistantSharesResponse>(`${this.baseUrl}/${id}/shares`);
+    return this.http.get<AssistantSharesResponse>(`${this.baseUrl()}/${id}/shares`);
   }
 }

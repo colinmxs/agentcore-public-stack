@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   OAuthConnection,
@@ -35,8 +35,9 @@ function toCamelCase(obj: Record<string, any>): Record<string, any> {
 export class ConnectionsService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/oauth`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/oauth`);
 
   /**
    * Reactive resource for fetching user's OAuth connections.
@@ -84,7 +85,7 @@ export class ConnectionsService {
    */
   async fetchConnections(): Promise<OAuthConnectionListResponse> {
     const response = await firstValueFrom(
-      this.http.get<any>(`${this.baseUrl}/connections`)
+      this.http.get<any>(`${this.baseUrl()}/connections`)
     );
     return {
       connections: response.connections.map((c: any) => toCamelCase(c) as OAuthConnection),
@@ -96,7 +97,7 @@ export class ConnectionsService {
    */
   async fetchProviders(): Promise<OAuthProviderListResponse> {
     const response = await firstValueFrom(
-      this.http.get<any>(`${this.baseUrl}/providers`)
+      this.http.get<any>(`${this.baseUrl()}/providers`)
     );
     return {
       providers: response.providers.map((p: any) => toCamelCase(p) as OAuthProvider),
@@ -111,7 +112,7 @@ export class ConnectionsService {
   async connect(providerId: string, redirectUrl?: string): Promise<string> {
     const params = redirectUrl ? `?redirect=${encodeURIComponent(redirectUrl)}` : '';
     const response = await firstValueFrom(
-      this.http.get<any>(`${this.baseUrl}/connect/${providerId}${params}`)
+      this.http.get<any>(`${this.baseUrl()}/connect/${providerId}${params}`)
     );
     return response.authorization_url;
   }
@@ -121,7 +122,7 @@ export class ConnectionsService {
    */
   async disconnect(providerId: string): Promise<void> {
     await firstValueFrom(
-      this.http.delete<void>(`${this.baseUrl}/connections/${providerId}`)
+      this.http.delete<void>(`${this.baseUrl()}/connections/${providerId}`)
     );
     this.connectionsResource.reload();
   }

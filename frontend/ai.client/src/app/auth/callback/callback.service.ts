@@ -4,7 +4,8 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../auth.service';
 import { UserService } from '../user.service';
 import { SessionService } from '../../session/services/session/session.service';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
+
 export interface TokenExchangeRequest {
   code: string;
   state: string;
@@ -28,6 +29,7 @@ export class CallbackService {
   private authService = inject(AuthService);
   private userService = inject(UserService);
   private sessionService = inject(SessionService);
+  private config = inject(ConfigService);
 
   async exchangeCodeForTokens(code: string, state: string, redirectUri?: string): Promise<TokenExchangeResponse> {
     // Retrieve stored state token from sessionStorage for CSRF validation
@@ -52,7 +54,7 @@ export class CallbackService {
 
     try {
       const response = await firstValueFrom(
-        this.http.post<TokenExchangeResponse>(`${environment.appApiUrl}/auth/token`, request)
+        this.http.post<TokenExchangeResponse>(`${this.config.appApiUrl()}/auth/token`, request)
       );
 
       if (!response || !response.access_token) {

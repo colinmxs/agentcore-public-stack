@@ -55,7 +55,6 @@ else
     log_info "No pre-synthesized template found. Synthesizing and deploying..."
     log_info "Deploying InfrastructureStack..."
     cdk deploy InfrastructureStack \
-        --context environment="${DEPLOY_ENVIRONMENT}" \
         --context projectPrefix="${CDK_PROJECT_PREFIX}" \
         --context awsAccount="${CDK_AWS_ACCOUNT}" \
         --context awsRegion="${CDK_AWS_REGION}" \

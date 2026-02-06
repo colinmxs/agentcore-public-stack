@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed, resource } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import { ManagedModel, ManagedModelFormData } from '../models/managed-model.model';
 
@@ -24,6 +24,8 @@ export interface ManagedModelsListResponse {
 export class ManagedModelsService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/admin/managed-models`);
 
   /**
    * Reactive resource for fetching managed models.
@@ -71,7 +73,7 @@ export class ManagedModelsService {
     try {
       const response = await firstValueFrom(
         this.http.get<ManagedModelsListResponse>(
-          `${environment.appApiUrl}/admin/managed-models`
+          this.baseUrl()
         )
       );
 
@@ -92,7 +94,7 @@ export class ManagedModelsService {
     try {
       const response = await firstValueFrom(
         this.http.post<ManagedModel>(
-          `${environment.appApiUrl}/admin/managed-models`,
+          this.baseUrl(),
           modelData
         )
       );
@@ -117,7 +119,7 @@ export class ManagedModelsService {
     try {
       const response = await firstValueFrom(
         this.http.get<ManagedModel>(
-          `${environment.appApiUrl}/admin/managed-models/${modelId}`
+          `${this.baseUrl()}/${modelId}`
         )
       );
 
@@ -139,7 +141,7 @@ export class ManagedModelsService {
     try {
       const response = await firstValueFrom(
         this.http.put<ManagedModel>(
-          `${environment.appApiUrl}/admin/managed-models/${modelId}`,
+          `${this.baseUrl()}/${modelId}`,
           updates
         )
       );
@@ -164,7 +166,7 @@ export class ManagedModelsService {
     try {
       await firstValueFrom(
         this.http.delete<void>(
-          `${environment.appApiUrl}/admin/managed-models/${modelId}`
+          `${this.baseUrl()}/${modelId}`
         )
       );
 

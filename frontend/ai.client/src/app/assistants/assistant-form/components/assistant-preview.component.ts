@@ -54,7 +54,7 @@ import { AssistantCardComponent } from '../../components/assistant-card.componen
         <div class="flex-1 min-h-0 relative flex flex-col">
           @if (!hasMessages()) {
             <!-- Show assistant card when no messages -->
-            <div class="flex-1 flex items-center justify-center p-6 overflow-y-auto bg-gray-800 dark:bg-gray-800">
+            <div class="flex-1 flex items-center justify-center p-6 overflow-y-auto bg-white dark:bg-gray-800">
               <app-assistant-card
                 [name]="name()"
                 [description]="description()"

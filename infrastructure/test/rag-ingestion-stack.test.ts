@@ -23,10 +23,11 @@ describe('RagIngestionStack', () => {
 
     // Create test configuration
     config = {
-      environment: 'test',
       projectPrefix: 'test-project',
       awsAccount: '123456789012',
       awsRegion: 'us-east-1',
+      production: false, // Test environment
+      retainDataOnDelete: false,
       vpcCidr: '10.0.0.0/16',
       entraClientId: 'test-client-id',
       entraTenantId: 'test-tenant-id',
@@ -94,7 +95,6 @@ describe('RagIngestionStack', () => {
         vectorDistanceMetric: 'cosine',
       },
       tags: {
-        Environment: 'test',
         Project: 'test-project',
         ManagedBy: 'CDK',
       },
@@ -125,7 +125,7 @@ describe('RagIngestionStack', () => {
   describe('S3 Documents Bucket', () => {
     test('creates S3 bucket with correct name', () => {
       template.hasResourceProperties('AWS::S3::Bucket', {
-        BucketName: 'test-project-test-rag-documents',
+        BucketName: 'test-project-rag-documents',
       });
     });
 
@@ -186,14 +186,14 @@ describe('RagIngestionStack', () => {
   describe('S3 Vectors Bucket and Index', () => {
     test('creates S3 Vectors bucket with correct name', () => {
       template.hasResourceProperties('AWS::S3Vectors::VectorBucket', {
-        VectorBucketName: 'test-project-test-rag-vector-store-v1',
+        VectorBucketName: 'test-project-rag-vector-store-v1',
       });
     });
 
     test('creates vector index with correct configuration', () => {
       template.hasResourceProperties('AWS::S3Vectors::Index', {
-        VectorBucketName: 'test-project-test-rag-vector-store-v1',
-        IndexName: 'test-project-test-rag-vector-index-v1',
+        VectorBucketName: 'test-project-rag-vector-store-v1',
+        IndexName: 'test-project-rag-vector-index-v1',
         DataType: 'float32',
         Dimension: 1024,
         DistanceMetric: 'cosine',
@@ -344,8 +344,8 @@ describe('RagIngestionStack', () => {
       });
     });
 
-    test('sets DESTROY removal policy for non-prod environment', () => {
-      // In test environment, should be DESTROY
+    test('sets DESTROY removal policy when retainDataOnDelete is false', () => {
+      // In test environment with retainDataOnDelete: false, should be DESTROY
       const resources = template.toJSON().Resources;
       const table = Object.values(resources).find(
         (r: any) => r.Type === 'AWS::DynamoDB::Table'
@@ -354,10 +354,10 @@ describe('RagIngestionStack', () => {
       expect(table.DeletionPolicy).toBe('Delete');
     });
 
-    test('sets RETAIN removal policy for prod environment', () => {
-      // Create a new app and stack with prod environment
+    test('sets RETAIN removal policy when retainDataOnDelete is true', () => {
+      // Create a new app and stack with retainDataOnDelete enabled
       const prodApp = new cdk.App();
-      const prodConfig = { ...config, environment: 'prod' };
+      const prodConfig = { ...config, retainDataOnDelete: true };
       
       // Mock SSM parameters for prod stack
       prodApp.node.setContext(`ssm:account=${prodConfig.awsAccount}:parameterName=/${prodConfig.projectPrefix}/network/vpc-id:region=${prodConfig.awsRegion}`, 'vpc-12345');
