@@ -84,8 +84,14 @@ jobs:
     runs-on: ubuntu-latest
     needs: install
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     outputs:
       image-tag: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+    
+    env:
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
