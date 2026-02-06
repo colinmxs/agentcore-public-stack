@@ -156,8 +156,12 @@ jobs:
     needs: build-docker
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
