@@ -22,6 +22,14 @@ on:
       - '.github/workflows/rag-ingestion.yml'
   workflow_dispatch:
     inputs:
+      environment:
+        description: 'Deployment environment'
+        required: true
+        type: choice
+        options:
+          - development
+          - staging
+          - production
       skip_tests:
         description: 'Skip tests'
         required: false
@@ -32,20 +40,7 @@ on:
         default: 'false'
 
 env:
-  CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-  # CDK Configuration - from GitHub Variables
-  CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-  CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
-  CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
-  CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
-  
-  # CDK Secrets - from GitHub Secrets
-  CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
-  # AWS Authentication
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  # Build and Deploy Configuration
+  # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
 
 # Ensure only one deployment runs at a time
@@ -80,8 +75,14 @@ jobs:
     runs-on: ubuntu-24.04-arm  # Use ARM64-native runner for ARM64 Lambda builds
     needs: install
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     outputs:
       image-tag: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+    
+    env:
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
@@ -137,8 +138,12 @@ jobs:
     needs: build-docker
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
@@ -164,9 +169,27 @@ jobs:
     runs-on: ubuntu-24.04-arm  # Use ARM64-native runner for ARM64 Lambda builds
     needs: build-cdk
     
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
+      CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -211,9 +234,27 @@ jobs:
     needs: synth-cdk
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
+      CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -254,6 +295,11 @@ jobs:
     needs: [build-docker, test-docker]
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     permissions:
       id-token: write
       contents: read
@@ -263,6 +309,13 @@ jobs:
     
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -302,12 +355,28 @@ jobs:
       (github.event_name == 'push' || github.event_name == 'workflow_dispatch') &&
       (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_deploy != 'true')
     
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     permissions:
       id-token: write
       contents: read
     
     env:
       IMAGE_TAG: ${{ needs.push-to-ecr.outputs.image-tag }}
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
+      CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -361,9 +430,12 @@ jobs:
       - name: Deployment summary
         if: success()
         run: | 
+          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
+          
           echo "## RAG Ingestion Stack Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
           echo "" >> $GITHUB_STEP_SUMMARY
           echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
+          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
           echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
           echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
           echo "- **Stack**: RagIngestionStack" >> $GITHUB_STEP_SUMMARY
