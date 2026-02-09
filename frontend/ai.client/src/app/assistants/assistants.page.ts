@@ -1,6 +1,5 @@
 import { Component, ChangeDetectionStrategy, inject, OnInit, signal, computed } from '@angular/core';
-import { Router, RouterLink } from '@angular/router';
-import { FormsModule } from '@angular/forms';
+import { Router } from '@angular/router';
 import { Dialog } from '@angular/cdk/dialog';
 import { firstValueFrom } from 'rxjs';
 import { AssistantService } from './services/assistant.service';
@@ -9,20 +8,13 @@ import { Assistant } from './models/assistant.model';
 import { UserService } from '../auth/user.service';
 import { ConfirmationDialogComponent, ConfirmationDialogData } from '../components/confirmation-dialog/confirmation-dialog.component';
 import { ShareAssistantDialogComponent, ShareAssistantDialogData } from './components/share-assistant-dialog.component';
-import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroArrowLeft } from '@ng-icons/heroicons/outline';
 
 @Component({
   selector: 'app-assistants',
   templateUrl: './assistants.page.html',
   styleUrl: './assistants.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [AssistantListComponent, FormsModule, NgIcon, RouterLink],
-  providers:[
-    provideIcons({
-      heroArrowLeft
-    })
-  ]
+  imports: [AssistantListComponent],
 })
 export class AssistantsPage implements OnInit {
   private router = inject(Router);
