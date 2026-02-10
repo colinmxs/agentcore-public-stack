@@ -516,42 +516,6 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
-    // OIDC State Management Table
-    // ============================================================
-
-    // OidcState Table - Distributed state storage for OIDC authentication
-    const oidcStateTable = new dynamodb.Table(this, "OidcStateTable", {
-      tableName: getResourceName(config, "oidc-state"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      timeToLiveAttribute: "expiresAt",
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // Store OIDC state table name in SSM
-    new ssm.StringParameter(this, "OidcStateTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-name`,
-      stringValue: oidcStateTable.tableName,
-      description: "OIDC state table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OidcStateTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-arn`,
-      stringValue: oidcStateTable.tableArn,
-      description: "OIDC state table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
     // Managed Models Table
     // ============================================================
 
@@ -602,274 +566,65 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
-    // Users Table (User Admin)
+    // Import Core Tables from Infrastructure Stack
     // ============================================================
+    // OAuth, RBAC, and Users tables are created in Infrastructure Stack
+    // to avoid circular dependencies. Import their ARNs/names via SSM.
 
-    // Users Table - User profiles synced from JWT for admin lookup
-    const usersTable = new dynamodb.Table(this, "UsersTable", {
-      tableName: getResourceName(config, "users"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
+    const oidcStateTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/oidc-state-table-name`
+    );
+    const oidcStateTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/oidc-state-table-arn`
+    );
 
-    // UserIdIndex - O(1) lookup by userId for admin deep links
-    usersTable.addGlobalSecondaryIndex({
-      indexName: "UserIdIndex",
-      partitionKey: {
-        name: "userId",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
+    const usersTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/users/users-table-name`
+    );
+    const usersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/users/users-table-arn`
+    );
 
-    // EmailIndex - O(1) lookup by email for search
-    usersTable.addGlobalSecondaryIndex({
-      indexName: "EmailIndex",
-      partitionKey: {
-        name: "email",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
+    const appRolesTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rbac/app-roles-table-name`
+    );
+    const appRolesTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rbac/app-roles-table-arn`
+    );
 
-    // EmailDomainIndex - Browse users by company/domain, sorted by last login
-    usersTable.addGlobalSecondaryIndex({
-      indexName: "EmailDomainIndex",
-      partitionKey: {
-        name: "GSI2PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI2SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["userId", "email", "name", "status"],
-    });
+    const oauthProvidersTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/providers-table-name`
+    );
+    const oauthProvidersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/providers-table-arn`
+    );
 
-    // StatusLoginIndex - Browse users by status, sorted by last login
-    usersTable.addGlobalSecondaryIndex({
-      indexName: "StatusLoginIndex",
-      partitionKey: {
-        name: "GSI3PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI3SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["userId", "email", "name", "emailDomain"],
-    });
+    const oauthUserTokensTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/user-tokens-table-name`
+    );
+    const oauthUserTokensTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/user-tokens-table-arn`
+    );
 
-    // Store users table name in SSM
-    new ssm.StringParameter(this, "UsersTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/users/users-table-name`,
-      stringValue: usersTable.tableName,
-      description: "Users table name for admin user lookup",
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    const oauthTokenEncryptionKeyArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/token-encryption-key-arn`
+    );
 
-    new ssm.StringParameter(this, "UsersTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/users/users-table-arn`,
-      stringValue: usersTable.tableArn,
-      description: "Users table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
-    // AppRoles Table (RBAC)
-    // ============================================================
-
-    // AppRoles Table - Role definitions and permission mappings
-    const appRolesTable = new dynamodb.Table(this, "AppRolesTable", {
-      tableName: getResourceName(config, "app-roles"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI1: JwtRoleMappingIndex - Fast lookup: "Given JWT role X, what AppRoles apply?"
-    // This is the critical index for authorization performance
-    appRolesTable.addGlobalSecondaryIndex({
-      indexName: "JwtRoleMappingIndex",
-      partitionKey: {
-        name: "GSI1PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI1SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // GSI2: ToolRoleMappingIndex - Reverse lookup: "What AppRoles grant access to tool X?"
-    // Used for bidirectional sync when updating tool permissions
-    appRolesTable.addGlobalSecondaryIndex({
-      indexName: "ToolRoleMappingIndex",
-      partitionKey: {
-        name: "GSI2PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI2SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["roleId", "displayName", "enabled"],
-    });
-
-    // GSI3: ModelRoleMappingIndex - Reverse lookup: "What AppRoles grant access to model X?"
-    // Used for bidirectional sync when updating model permissions
-    appRolesTable.addGlobalSecondaryIndex({
-      indexName: "ModelRoleMappingIndex",
-      partitionKey: {
-        name: "GSI3PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI3SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["roleId", "displayName", "enabled"],
-    });
-
-    // Store AppRoles table name in SSM
-    new ssm.StringParameter(this, "AppRolesTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/rbac/app-roles-table-name`,
-      stringValue: appRolesTable.tableName,
-      description: "AppRoles table name for RBAC",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "AppRolesTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/rbac/app-roles-table-arn`,
-      stringValue: appRolesTable.tableArn,
-      description: "AppRoles table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
-    // OAuth Provider Management
-    // ============================================================
-
-    // KMS Key for encrypting OAuth user tokens at rest
-    const oauthTokenEncryptionKey = new kms.Key(this, "OAuthTokenEncryptionKey", {
-      alias: getResourceName(config, "oauth-token-key"),
-      description: "KMS key for encrypting OAuth user tokens at rest",
-      enableKeyRotation: true,
-      removalPolicy: getRemovalPolicy(config),
-    });
-
-    // OAuth Providers Table - Admin-configured OAuth provider settings
-    const oauthProvidersTable = new dynamodb.Table(this, "OAuthProvidersTable", {
-      tableName: getResourceName(config, "oauth-providers"),
-      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI1: EnabledProvidersIndex - Query enabled providers for user display
-    oauthProvidersTable.addGlobalSecondaryIndex({
-      indexName: "EnabledProvidersIndex",
-      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // OAuth User Tokens Table - User-connected OAuth tokens (KMS encrypted)
-    const oauthUserTokensTable = new dynamodb.Table(this, "OAuthUserTokensTable", {
-      tableName: getResourceName(config, "oauth-user-tokens"),
-      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
-      encryptionKey: oauthTokenEncryptionKey,
-    });
-
-    // GSI1: ProviderUsersIndex - List users connected to a provider (admin view)
-    oauthUserTokensTable.addGlobalSecondaryIndex({
-      indexName: "ProviderUsersIndex",
-      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // Secrets Manager for OAuth client secrets
-    const oauthClientSecretsSecret = new secretsmanager.Secret(this, "OAuthClientSecretsSecret", {
-      secretName: getResourceName(config, "oauth-client-secrets"),
-      description: "OAuth provider client secrets (JSON: {provider_id: secret})",
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
-
-    // Store OAuth resource names in SSM
-    new ssm.StringParameter(this, "OAuthProvidersTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/providers-table-name`,
-      stringValue: oauthProvidersTable.tableName,
-      description: "OAuth providers table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OAuthProvidersTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/providers-table-arn`,
-      stringValue: oauthProvidersTable.tableArn,
-      description: "OAuth providers table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OAuthUserTokensTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-name`,
-      stringValue: oauthUserTokensTable.tableName,
-      description: "OAuth user tokens table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OAuthUserTokensTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-arn`,
-      stringValue: oauthUserTokensTable.tableArn,
-      description: "OAuth user tokens table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OAuthTokenEncryptionKeyArnParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/token-encryption-key-arn`,
-      stringValue: oauthTokenEncryptionKey.keyArn,
-      description: "KMS key ARN for OAuth token encryption",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "OAuthClientSecretsArnParameter", {
-      parameterName: `/${config.projectPrefix}/oauth/client-secrets-arn`,
-      stringValue: oauthClientSecretsSecret.secretArn,
-      description: "Secrets Manager ARN for OAuth client secrets",
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/oauth/client-secrets-arn`
+    );
 
     // ============================================================
     // File Upload Storage (S3 + DynamoDB)
@@ -1042,13 +797,13 @@ export class AppApiStack extends cdk.Stack {
         PROJECT_PREFIX: config.projectPrefix,
         DYNAMODB_QUOTA_TABLE: userQuotasTable.tableName,
         DYNAMODB_EVENTS_TABLE: quotaEventsTable.tableName,
-        DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTable.tableName,
+        DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,
         DYNAMODB_MANAGED_MODELS_TABLE_NAME: managedModelsTable.tableName,
         DYNAMODB_SESSIONS_METADATA_TABLE_NAME: sessionsMetadataTable.tableName,
         DYNAMODB_COST_SUMMARY_TABLE_NAME: userCostSummaryTable.tableName,
         DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME: systemCostRollupTable.tableName,
-        DYNAMODB_USERS_TABLE_NAME: usersTable.tableName,
-        DYNAMODB_APP_ROLES_TABLE_NAME: appRolesTable.tableName,
+        DYNAMODB_USERS_TABLE_NAME: usersTableName,
+        DYNAMODB_APP_ROLES_TABLE_NAME: appRolesTableName,
         DYNAMODB_USER_FILES_TABLE_NAME: userFilesTable.tableName,
         S3_USER_FILES_BUCKET_NAME: userFilesBucket.bucketName,
         FILE_UPLOAD_MAX_SIZE_BYTES: String(config.fileUpload?.maxFileSizeBytes || 4194304),
@@ -1080,10 +835,10 @@ export class AppApiStack extends cdk.Stack {
         ENTRA_CLIENT_ID: config.entraClientId,
         ENTRA_TENANT_ID: config.entraTenantId,
         ENTRA_REDIRECT_URI: config.appApi.entraRedirectUri,
-        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTable.tableName,
-        DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTable.tableName,
-        OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKey.keyArn,
-        OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsSecret.secretArn,
+        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTableName,
+        DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTableName,
+        OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
+        OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -1222,8 +977,22 @@ export class AppApiStack extends cdk.Stack {
     userQuotasTable.grantReadWriteData(taskDefinition.taskRole);
     quotaEventsTable.grantReadWriteData(taskDefinition.taskRole);
 
-    // Grant permissions for OIDC state table
-    oidcStateTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for OIDC state table (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OidcStateTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [oidcStateTableArn, `${oidcStateTableArn}/index/*`],
+      })
+    );
 
     // Grant permissions for managed models table
     managedModelsTable.grantReadWriteData(taskDefinition.taskRole);
@@ -1233,11 +1002,39 @@ export class AppApiStack extends cdk.Stack {
     userCostSummaryTable.grantReadWriteData(taskDefinition.taskRole);
     systemCostRollupTable.grantReadWriteData(taskDefinition.taskRole);
 
-    // Grant permissions for users table
-    usersTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for users table (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'UsersTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [usersTableArn, `${usersTableArn}/index/*`],
+      })
+    );
 
-    // Grant permissions for AppRoles table
-    appRolesTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for AppRoles table (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'AppRolesTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [appRolesTableArn, `${appRolesTableArn}/index/*`],
+      })
+    );
 
     // Grant permissions for file upload resources
     userFilesTable.grantReadWriteData(taskDefinition.taskRole);
@@ -1268,11 +1065,56 @@ export class AppApiStack extends cdk.Stack {
       }),
     );
 
-    // Grant permissions for OAuth provider management
-    oauthProvidersTable.grantReadWriteData(taskDefinition.taskRole);
-    oauthUserTokensTable.grantReadWriteData(taskDefinition.taskRole);
-    oauthTokenEncryptionKey.grantEncryptDecrypt(taskDefinition.taskRole);
-    oauthClientSecretsSecret.grantRead(taskDefinition.taskRole);
+    // Grant permissions for OAuth provider management (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OAuthProvidersTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [oauthProvidersTableArn, `${oauthProvidersTableArn}/index/*`],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OAuthUserTokensTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [oauthUserTokensTableArn, `${oauthUserTokensTableArn}/index/*`],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OAuthTokenEncryptionKeyAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey', 'kms:DescribeKey'],
+        resources: [oauthTokenEncryptionKeyArn],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OAuthClientSecretsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+        resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
+      })
+    );
 
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(
@@ -1406,8 +1248,8 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "OidcStateTableName", {
-      value: oidcStateTable.tableName,
-      description: "OIDC state table name",
+      value: oidcStateTableName,
+      description: "OIDC state table name (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OidcStateTableName`,
     });
 
@@ -1436,14 +1278,14 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "UsersTableName", {
-      value: usersTable.tableName,
-      description: "Users table name for admin user lookup",
+      value: usersTableName,
+      description: "Users table name for admin user lookup (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-UsersTableName`,
     });
 
     new cdk.CfnOutput(this, "AppRolesTableName", {
-      value: appRolesTable.tableName,
-      description: "AppRoles table name for RBAC",
+      value: appRolesTableName,
+      description: "AppRoles table name for RBAC (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-AppRolesTableName`,
     });
 
@@ -1477,26 +1319,26 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "OAuthProvidersTableName", {
-      value: oauthProvidersTable.tableName,
-      description: "OAuth providers configuration table name",
+      value: oauthProvidersTableName,
+      description: "OAuth providers configuration table name (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthProvidersTableName`,
     });
 
     new cdk.CfnOutput(this, "OAuthUserTokensTableName", {
-      value: oauthUserTokensTable.tableName,
-      description: "OAuth user tokens table name (KMS encrypted)",
+      value: oauthUserTokensTableName,
+      description: "OAuth user tokens table name (KMS encrypted, imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthUserTokensTableName`,
     });
 
     new cdk.CfnOutput(this, "OAuthTokenEncryptionKeyArn", {
-      value: oauthTokenEncryptionKey.keyArn,
-      description: "KMS key ARN for OAuth token encryption",
+      value: oauthTokenEncryptionKeyArn,
+      description: "KMS key ARN for OAuth token encryption (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthTokenEncryptionKeyArn`,
     });
 
     new cdk.CfnOutput(this, "OAuthClientSecretsSecretArn", {
-      value: oauthClientSecretsSecret.secretArn,
-      description: "Secrets Manager ARN for OAuth client secrets",
+      value: oauthClientSecretsArn,
+      description: "Secrets Manager ARN for OAuth client secrets (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
     });
   }

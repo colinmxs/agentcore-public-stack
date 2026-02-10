@@ -1,8 +1,10 @@
 import * as cdk from 'aws-cdk-lib';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
+import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
+import * as kms from 'aws-cdk-lib/aws-kms';
 import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
@@ -15,13 +17,15 @@ export interface InfrastructureStackProps extends cdk.StackProps {
 }
 
 /**
- * Infrastructure Stack - Shared Network Resources
+ * Infrastructure Stack - Shared Network Resources and Core Tables
  * 
  * This stack creates foundational resources shared by all application stacks:
  * - VPC with public/private subnets across multiple AZs
  * - Application Load Balancer (ALB) in public subnets
  * - ECS Cluster for application workloads
  * - Security groups for ALB and ECS
+ * - Core DynamoDB tables (Users, AppRoles, OAuth, OIDC)
+ * - KMS keys and Secrets Manager for OAuth
  * - SSM parameters for cross-stack references
  * 
  * This stack should be deployed FIRST, before any application stacks.
@@ -287,6 +291,303 @@ export class InfrastructureStack extends cdk.Stack {
       parameterName: `/${config.projectPrefix}/network/ecs-cluster-arn`,
       stringValue: this.ecsCluster.clusterArn,
       description: 'ECS Cluster ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
+    // Core DynamoDB Tables (OAuth, RBAC, Users)
+    // ============================================================
+    // These tables are shared by both App API and Inference API stacks
+    // to avoid circular dependencies. They must be created in the
+    // Infrastructure Stack (foundation layer) and imported by other stacks.
+
+    // OidcState Table - Distributed state storage for OIDC authentication
+    const oidcStateTable = new dynamodb.Table(this, "OidcStateTable", {
+      tableName: getResourceName(config, "oidc-state"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      timeToLiveAttribute: "expiresAt",
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // Store OIDC state table name in SSM
+    new ssm.StringParameter(this, "OidcStateTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-name`,
+      stringValue: oidcStateTable.tableName,
+      description: "OIDC state table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OidcStateTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-arn`,
+      stringValue: oidcStateTable.tableArn,
+      description: "OIDC state table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // Users Table - User profiles synced from JWT for admin lookup
+    const usersTable = new dynamodb.Table(this, "UsersTable", {
+      tableName: getResourceName(config, "users"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // UserIdIndex - O(1) lookup by userId for admin deep links
+    usersTable.addGlobalSecondaryIndex({
+      indexName: "UserIdIndex",
+      partitionKey: {
+        name: "userId",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // EmailIndex - O(1) lookup by email for search
+    usersTable.addGlobalSecondaryIndex({
+      indexName: "EmailIndex",
+      partitionKey: {
+        name: "email",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // EmailDomainIndex - Browse users by company/domain, sorted by last login
+    usersTable.addGlobalSecondaryIndex({
+      indexName: "EmailDomainIndex",
+      partitionKey: {
+        name: "GSI2PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI2SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["userId", "email", "name", "status"],
+    });
+
+    // StatusLoginIndex - Browse users by status, sorted by last login
+    usersTable.addGlobalSecondaryIndex({
+      indexName: "StatusLoginIndex",
+      partitionKey: {
+        name: "GSI3PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI3SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["userId", "email", "name", "emailDomain"],
+    });
+
+    // Store users table name in SSM
+    new ssm.StringParameter(this, "UsersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/users/users-table-name`,
+      stringValue: usersTable.tableName,
+      description: "Users table name for admin user lookup",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "UsersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/users/users-table-arn`,
+      stringValue: usersTable.tableArn,
+      description: "Users table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // AppRoles Table - Role definitions and permission mappings
+    const appRolesTable = new dynamodb.Table(this, "AppRolesTable", {
+      tableName: getResourceName(config, "app-roles"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: JwtRoleMappingIndex - Fast lookup: "Given JWT role X, what AppRoles apply?"
+    // This is the critical index for authorization performance
+    appRolesTable.addGlobalSecondaryIndex({
+      indexName: "JwtRoleMappingIndex",
+      partitionKey: {
+        name: "GSI1PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI1SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI2: ToolRoleMappingIndex - Reverse lookup: "What AppRoles grant access to tool X?"
+    // Used for bidirectional sync when updating tool permissions
+    appRolesTable.addGlobalSecondaryIndex({
+      indexName: "ToolRoleMappingIndex",
+      partitionKey: {
+        name: "GSI2PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI2SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["roleId", "displayName", "enabled"],
+    });
+
+    // GSI3: ModelRoleMappingIndex - Reverse lookup: "What AppRoles grant access to model X?"
+    // Used for bidirectional sync when updating model permissions
+    appRolesTable.addGlobalSecondaryIndex({
+      indexName: "ModelRoleMappingIndex",
+      partitionKey: {
+        name: "GSI3PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI3SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["roleId", "displayName", "enabled"],
+    });
+
+    // Store AppRoles table name in SSM
+    new ssm.StringParameter(this, "AppRolesTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/rbac/app-roles-table-name`,
+      stringValue: appRolesTable.tableName,
+      description: "AppRoles table name for RBAC",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AppRolesTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/rbac/app-roles-table-arn`,
+      stringValue: appRolesTable.tableArn,
+      description: "AppRoles table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // KMS Key for encrypting OAuth user tokens at rest
+    const oauthTokenEncryptionKey = new kms.Key(this, "OAuthTokenEncryptionKey", {
+      alias: getResourceName(config, "oauth-token-key"),
+      description: "KMS key for encrypting OAuth user tokens at rest",
+      enableKeyRotation: true,
+      removalPolicy: getRemovalPolicy(config),
+    });
+
+    // OAuth Providers Table - Admin-configured OAuth provider settings
+    const oauthProvidersTable = new dynamodb.Table(this, "OAuthProvidersTable", {
+      tableName: getResourceName(config, "oauth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled providers for user display
+    oauthProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // OAuth User Tokens Table - User-connected OAuth tokens (KMS encrypted)
+    const oauthUserTokensTable = new dynamodb.Table(this, "OAuthUserTokensTable", {
+      tableName: getResourceName(config, "oauth-user-tokens"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.CUSTOMER_MANAGED,
+      encryptionKey: oauthTokenEncryptionKey,
+    });
+
+    // GSI1: ProviderUsersIndex - List users connected to a provider (admin view)
+    oauthUserTokensTable.addGlobalSecondaryIndex({
+      indexName: "ProviderUsersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Secrets Manager for OAuth client secrets
+    const oauthClientSecretsSecret = new secretsmanager.Secret(this, "OAuthClientSecretsSecret", {
+      secretName: getResourceName(config, "oauth-client-secrets"),
+      description: "OAuth provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store OAuth resource names in SSM
+    new ssm.StringParameter(this, "OAuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/providers-table-name`,
+      stringValue: oauthProvidersTable.tableName,
+      description: "OAuth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/providers-table-arn`,
+      stringValue: oauthProvidersTable.tableArn,
+      description: "OAuth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthUserTokensTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-name`,
+      stringValue: oauthUserTokensTable.tableName,
+      description: "OAuth user tokens table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthUserTokensTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-arn`,
+      stringValue: oauthUserTokensTable.tableArn,
+      description: "OAuth user tokens table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthTokenEncryptionKeyArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/token-encryption-key-arn`,
+      stringValue: oauthTokenEncryptionKey.keyArn,
+      description: "KMS key ARN for OAuth token encryption",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "OAuthClientSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/oauth/client-secrets-arn`,
+      stringValue: oauthClientSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for OAuth client secrets",
       tier: ssm.ParameterTier.STANDARD,
     });
 
