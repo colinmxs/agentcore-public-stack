@@ -53,6 +53,18 @@ jobs:
   install:
     name: Install Dependencies
     runs-on: ubuntu-latest
+    
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
