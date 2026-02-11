@@ -128,6 +128,25 @@ jobs:
     name: Synthesize CloudFormation
     runs-on: ubuntu-latest
     needs: build-cdk
+    
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_GATEWAY_ENABLED: ${{ vars.CDK_GATEWAY_ENABLED }}
+      CDK_GATEWAY_API_TYPE: ${{ vars.CDK_GATEWAY_API_TYPE }}
+      CDK_GATEWAY_THROTTLE_RATE_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_RATE_LIMIT }}
+      CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
+      CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
+      CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
