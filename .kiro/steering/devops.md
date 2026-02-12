@@ -1,6 +1,6 @@
 ---
-inclusion: manual
-keywords: ci/cd, github actions, infrastructure, scripting, iac, cdk, aws, cloudformation, deployment, pipeline, workflow, devops, terraform, docker, ecr, fargate, ecs, lambda, s3, cloudfront, alb, vpc, ssm
+inclusion: fileMatch
+fileMatchPattern: [".github/actions/*", ".github/workflows/*", "scripts/*", "**/*.sh", "infrastructure/*"]
 ---
 # DevOps & Infrastructure Guide
 
