@@ -33,8 +33,8 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Write concise descriptions (≤150 chars) for each entry
     - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 3. Document App API Stack configuration
-  - [ ] 3.1 Analyze App API Stack workflow
+- [x] 3. Document App API Stack configuration
+  - [x] 3.1 Analyze App API Stack workflow
     - Read `.github/workflows/app-api.yml`
     - Read `scripts/common/load-env.sh` for defaults
     - Read `infrastructure/lib/config.ts` for defaults and usage
@@ -44,7 +44,7 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Determine which are Required vs Optional based on defaults and CDK usage
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 8.1, 8.2, 8.3, 8.4, 8.5_
   
-  - [ ] 3.2 Write App API Stack documentation section
+  - [x] 3.2 Write App API Stack documentation section
     - Create subsection: "### App API Stack"
     - Create markdown table with columns: Name, Type, Required, Default, Description
     - Document all variables and secrets found in analysis
@@ -53,8 +53,8 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Ensure format matches Infrastructure Stack section
     - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 4. Document Inference API Stack configuration
-  - [ ] 4.1 Analyze Inference API Stack workflow
+- [x] 4. Document Inference API Stack configuration
+  - [x] 4.1 Analyze Inference API Stack workflow
     - Read `.github/workflows/inference-api.yml`
     - Read `scripts/common/load-env.sh` for defaults
     - Read `infrastructure/lib/config.ts` for defaults and usage
@@ -64,7 +64,7 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Determine which are Required vs Optional based on defaults and CDK usage
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 9.1, 9.2, 9.3, 9.4, 9.5_
   
-  - [ ] 4.2 Write Inference API Stack documentation section
+  - [x] 4.2 Write Inference API Stack documentation section
     - Create subsection: "### Inference API Stack"
     - Create markdown table with columns: Name, Type, Required, Default, Description
     - Document all variables and secrets found in analysis
@@ -73,8 +73,8 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Ensure format matches previous sections
     - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 5. Document Frontend Stack configuration
-  - [ ] 5.1 Analyze Frontend Stack workflow
+- [x] 5. Document Frontend Stack configuration
+  - [x] 5.1 Analyze Frontend Stack workflow
     - Read `.github/workflows/frontend.yml`
     - Read `scripts/common/load-env.sh` for defaults
     - Read `infrastructure/lib/config.ts` for defaults and usage
@@ -84,7 +84,7 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Determine which are Required vs Optional based on defaults and CDK usage
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 10.1, 10.2, 10.3, 10.4, 10.5_
   
-  - [ ] 5.2 Write Frontend Stack documentation section
+  - [x] 5.2 Write Frontend Stack documentation section
     - Create subsection: "### Frontend Stack"
     - Create markdown table with columns: Name, Type, Required, Default, Description
     - Document all variables and secrets found in analysis
@@ -93,8 +93,8 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Ensure format matches previous sections
     - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 6. Document Gateway Stack configuration
-  - [ ] 6.1 Analyze Gateway Stack workflow
+- [x] 6. Document Gateway Stack configuration
+  - [x] 6.1 Analyze Gateway Stack workflow
     - Read `.github/workflows/gateway.yml`
     - Read `scripts/common/load-env.sh` for defaults
     - Read `infrastructure/lib/config.ts` for defaults and usage
@@ -104,7 +104,7 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Determine which are Required vs Optional based on defaults and CDK usage
     - _Requirements: 2.1, 2.2, 2.3, 2.4, 2.5, 3.1, 3.2, 3.3, 4.1, 4.2, 4.3, 4.4, 4.5, 11.1, 11.2, 11.3, 11.4, 11.5_
   
-  - [ ] 6.2 Write Gateway Stack documentation section
+  - [x] 6.2 Write Gateway Stack documentation section
     - Create subsection: "### Gateway Stack"
     - Create markdown table with columns: Name, Type, Required, Default, Description
     - Document all variables and secrets found in analysis
@@ -113,7 +113,7 @@ This plan creates comprehensive reference documentation for GitHub Actions confi
     - Ensure format matches previous sections
     - _Requirements: 5.1, 5.2, 5.3, 6.1, 6.2, 6.3, 6.5_
 
-- [ ] 7. Review and finalize documentation
+- [x] 7. Review and finalize documentation
   - Review entire document for consistency
   - Verify all 5 stacks are documented with identical table format
   - Check that all descriptions are concise and clear
