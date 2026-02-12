@@ -588,7 +588,13 @@ export class InferenceApiStack extends cdk.Stack {
       },
       requestHeaderConfiguration: {
         requestHeaderAllowlist: ['Authorization'],
-      },      
+      },
+      authorizerConfiguration: {
+        customJwtAuthorizer: {
+          discoveryUrl: `https://login.microsoftonline.com/${config.entraTenantId}/v2.0/.well-known/openid-configuration`,
+          allowedAudience: [config.entraClientId],
+        }        
+      },
       networkConfiguration: {
         networkMode: 'PUBLIC',
       }, 
