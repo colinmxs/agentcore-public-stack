@@ -627,6 +627,57 @@ export class AppApiStack extends cdk.Stack {
     );
 
     // ============================================================
+    // Auth Providers Table (OIDC Authentication Providers)
+    // ============================================================
+
+    const authProvidersTable = new dynamodb.Table(this, "AuthProvidersTable", {
+      tableName: getResourceName(config, "auth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled auth providers for login page
+    authProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Secrets Manager for auth provider client secrets
+    const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
+      secretName: getResourceName(config, "auth-provider-secrets"),
+      description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store auth provider resource names in SSM
+    new ssm.StringParameter(this, "AuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
+      stringValue: authProvidersTable.tableName,
+      description: "Auth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
+      stringValue: authProvidersTable.tableArn,
+      description: "Auth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProviderSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
+      stringValue: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
@@ -840,6 +891,9 @@ export class AppApiStack extends cdk.Stack {
         DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
+        DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
+        AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
+        
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -1116,6 +1170,10 @@ export class AppApiStack extends cdk.Stack {
         resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
       })
     );
+    // Grant permissions for auth provider management
+    authProvidersTable.grantReadWriteData(taskDefinition.taskRole);
+    authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
+    authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
 
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(
@@ -1317,6 +1375,18 @@ export class AppApiStack extends cdk.Stack {
     new cdk.CfnOutput(this, "AssistantsVectorIndexArn", {
       value: assistantsVectorIndex.getAtt("IndexArn").toString(),
       description: "ARN of the assistants vector index",
+    });
+
+    new cdk.CfnOutput(this, "AuthProvidersTableName", {
+      value: authProvidersTable.tableName,
+      description: "Auth providers configuration table name",
+      exportName: `${config.projectPrefix}-AuthProvidersTableName`,
+    });
+
+    new cdk.CfnOutput(this, "AuthProviderSecretsSecretArn", {
+      value: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
     });
 
     new cdk.CfnOutput(this, "OAuthProvidersTableName", {

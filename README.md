@@ -38,7 +38,7 @@ This reference architecture demonstrates building agentic workflows combining **
 | **Agent Framework** | Strands Agents SDK |
 | **Cloud Services** | AWS Bedrock AgentCore (Runtime, Memory, Gateway, Code Interpreter, Browser) |
 | **Infrastructure** | AWS CDK (TypeScript), ECS Fargate, CloudFront, DynamoDB |
-| **Authentication** | OIDC (Entra ID, Cognito, Google) with PKCE |
+| **Authentication** | OIDC (Entra ID, Cognito, Google) with PKCE — [Setup Guide](backend/README.md#authentication-providers) |
 
 ## Architecture Overview
 
@@ -269,6 +269,16 @@ Native support for visual and document content:
 ### Local Development
 
 *Detailed instructions coming soon.*
+
+**Component-specific setup:**
+
+| Component | Guide |
+|-----------|-------|
+| Backend (APIs, Authentication) | [backend/README.md](backend/README.md) |
+| Frontend (Angular SPA) | `frontend/ai.client/` |
+| Infrastructure (CDK) | `infrastructure/` |
+
+> **First-time authentication setup?** See the [Authentication Providers guide](backend/README.md#authentication-providers) for bootstrapping your first OIDC provider.
 
 ### Cloud Deployment
 

@@ -14,7 +14,8 @@ import {
   heroUsers,
   heroShieldCheck,
   heroWrenchScrewdriver,
-  heroLink
+  heroLink,
+  heroFingerPrint,
 } from '@ng-icons/heroicons/outline';
 
 interface AdminFeature {
@@ -41,7 +42,8 @@ interface AdminFeature {
       heroUsers,
       heroShieldCheck,
       heroWrenchScrewdriver,
-      heroLink
+      heroLink,
+      heroFingerPrint,
     })
   ],
   templateUrl: './admin.page.html',
@@ -98,6 +100,12 @@ export class AdminPage {
       description: 'Create and manage application roles with tool and model permissions. Configure JWT mappings and role inheritance.',
       icon: 'heroShieldCheck',
       route: '/admin/roles',
+    },
+    {
+      title: 'Auth Providers',
+      description: 'Configure OIDC authentication providers for user login. Manage issuer URLs, client credentials, claim mappings, and login page appearance.',
+      icon: 'heroFingerPrint',
+      route: '/admin/auth-providers',
     },
     {
       title: 'OAuth Providers',
