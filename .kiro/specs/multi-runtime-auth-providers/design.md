@@ -310,10 +310,40 @@ All runtimes share these AgentCore resources (created once in Inference API Stac
 ### Modified Stack: InferenceApiStack
 
 **Changes**:
-1. Remove single runtime creation (now handled by Lambda)
+1. **Remove single runtime creation** (now handled by Lambda)
 2. Keep shared resources (Memory, Gateway, Code Interpreter, Browser)
 3. Export runtime execution role ARN to SSM
 4. Export shared resource ARNs to SSM (if not already exported)
+
+**Migration Strategy**:
+
+The current InferenceApiStack creates a single runtime for Entra ID at deployment time. With the new design, this becomes obsolete since runtimes are created dynamically by Lambda when providers are added.
+
+**Option A: Bootstrap with Existing Provider (Recommended)**:
+1. Before deploying the updated InferenceApiStack, ensure Entra ID provider exists in DynamoDB
+2. Deploy RuntimeProvisionerStack first (Lambda will create Entra ID runtime)
+3. Deploy updated InferenceApiStack (removes CDK-managed runtime)
+4. Old runtime is deleted by CloudFormation, new Lambda-managed runtime takes over
+5. Brief service interruption during transition (~2-5 minutes)
+
+**Option B: Parallel Migration**:
+1. Deploy RuntimeProvisionerStack (Lambda creates new Entra ID runtime)
+2. Update frontend to use new runtime endpoint
+3. Verify new runtime works
+4. Deploy updated InferenceApiStack (removes old runtime)
+5. Zero downtime but requires coordination
+
+**Option C: Manual Migration**:
+1. Manually create Entra ID provider in DynamoDB via admin UI
+2. Wait for Lambda to provision runtime
+3. Update frontend configuration
+4. Deploy updated InferenceApiStack
+5. Most control but requires manual steps
+
+**Recommended Approach**: Option A with maintenance window
+- Schedule deployment during low-usage period
+- Communicate expected 5-10 minute downtime
+- Rollback plan: revert InferenceApiStack deployment
 
 ### Modified Stack: FrontendStack
 
@@ -530,6 +560,258 @@ Each runtime validates JWTs independently using its provider's configuration:
 - **10 Providers**: +$40-50/month
 - **20 Providers**: +$80-100/month
 
+## Removing Hardcoded Entra ID Configuration
+
+The current implementation has Microsoft Entra ID configuration hardcoded throughout the codebase. This section documents all locations where Entra ID configuration must be removed as part of the migration to dynamic provider management.
+
+### Configuration Files to Update
+
+#### 1. `infrastructure/lib/config.ts`
+
+**Remove these fields from `AppConfig` interface**:
+```typescript
+// REMOVE:
+entraClientId: string;
+entraTenantId: string;
+```
+
+**Remove these fields from `AppApiConfig` interface**:
+```typescript
+// REMOVE:
+entraRedirectUri: string;
+```
+
+**Remove from `loadConfig()` function**:
+```typescript
+// REMOVE:
+entraClientId: process.env.CDK_ENTRA_CLIENT_ID || scope.node.tryGetContext('entraClientId'),
+entraTenantId: process.env.CDK_ENTRA_TENANT_ID || scope.node.tryGetContext('entraTenantId'),
+
+// REMOVE from appApi config:
+entraRedirectUri: process.env.CDK_APP_API_ENTRA_REDIRECT_URI || scope.node.tryGetContext('appApi')?.entraRedirectUri,
+```
+
+#### 2. `infrastructure/lib/app-api-stack.ts`
+
+**Remove from ECS container environment variables**:
+```typescript
+// REMOVE these three lines:
+ENTRA_CLIENT_ID: config.entraClientId,
+ENTRA_TENANT_ID: config.entraTenantId,
+ENTRA_REDIRECT_URI: config.appApi.entraRedirectUri,
+```
+
+**Remove from ECS container secrets**:
+```typescript
+// REMOVE entire secrets block:
+secrets: {
+  ENTRA_CLIENT_SECRET: ecs.Secret.fromSecretsManager(authSecret, "secret"),
+},
+```
+
+**Remove authentication secret import**:
+```typescript
+// REMOVE:
+const authSecretArn = ssm.StringParameter.valueForStringParameter(
+  this,
+  `/${config.projectPrefix}/auth/secret-arn`
+);
+
+// REMOVE:
+const authSecret = secretsmanager.Secret.fromSecretCompleteArn(
+  this,
+  "AuthSecret",
+  authSecretArn
+);
+```
+
+**Remove authentication secret permissions**:
+```typescript
+// REMOVE:
+taskDefinition.taskRole.addToPrincipalPolicy(
+  new iam.PolicyStatement({
+    effect: iam.Effect.ALLOW,
+    actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
+    resources: [authSecretArn],
+  }),
+);
+```
+
+#### 3. `infrastructure/lib/inference-api-stack.ts`
+
+**Remove from runtime authorizer configuration**:
+```typescript
+// REMOVE entire authorizerConfiguration block:
+authorizerConfiguration: {
+  customJwtAuthorizer: {
+    discoveryUrl: `https://login.microsoftonline.com/${config.entraTenantId}/v2.0/.well-known/openid-configuration`,
+    allowedAudience: [config.entraClientId],
+  }        
+},
+```
+
+**Note**: The runtime resource itself will be removed entirely (see Phase 1 below), but if keeping it temporarily during migration, remove the authorizer configuration.
+
+#### 4. GitHub Workflows
+
+**Remove from all workflow files** (`.github/workflows/*.yml`):
+
+Remove these environment variables from the `env:` section:
+```yaml
+# REMOVE:
+CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
+CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
+CDK_APP_API_ENTRA_REDIRECT_URI: ${{ vars.CDK_APP_API_ENTRA_REDIRECT_URI }}
+```
+
+Remove this secret:
+```yaml
+# REMOVE:
+CDK_ENTRA_CLIENT_SECRET: ${{ secrets.CDK_ENTRA_CLIENT_SECRET }}
+```
+
+**Files to update**:
+- `.github/workflows/infrastructure.yml`
+- `.github/workflows/app-api.yml`
+- `.github/workflows/inference-api.yml`
+
+#### 5. `cdk.context.json`
+
+**Remove Entra ID configuration** (if present):
+```json
+// REMOVE:
+"entraClientId": "...",
+"entraTenantId": "...",
+"appApi": {
+  "entraRedirectUri": "..."
+}
+```
+
+#### 6. GitHub Repository Settings
+
+**Delete these GitHub Variables** (Settings → Secrets and variables → Actions → Variables):
+- `CDK_ENTRA_CLIENT_ID`
+- `CDK_ENTRA_TENANT_ID`
+- `CDK_APP_API_ENTRA_REDIRECT_URI`
+
+**Delete this GitHub Secret** (Settings → Secrets and variables → Actions → Secrets):
+- `CDK_ENTRA_CLIENT_SECRET`
+
+#### 7. `scripts/common/load-env.sh`
+
+**Remove Entra ID environment variable exports**:
+```bash
+# REMOVE:
+export CDK_ENTRA_CLIENT_ID="${CDK_ENTRA_CLIENT_ID:-$(get_json_value "entraClientId" "${CONTEXT_FILE}")}"
+export CDK_ENTRA_TENANT_ID="${CDK_ENTRA_TENANT_ID:-$(get_json_value "entraTenantId" "${CONTEXT_FILE}")}"
+export CDK_APP_API_ENTRA_REDIRECT_URI="${CDK_APP_API_ENTRA_REDIRECT_URI:-$(get_json_value "appApi.entraRedirectUri" "${CONTEXT_FILE}")}"
+```
+
+**Remove from context parameters function**:
+```bash
+# REMOVE:
+if [ -n "${CDK_ENTRA_CLIENT_ID:-}" ]; then
+    context_params="${context_params} --context entraClientId=\"${CDK_ENTRA_CLIENT_ID}\""
+fi
+if [ -n "${CDK_ENTRA_TENANT_ID:-}" ]; then
+    context_params="${context_params} --context entraTenantId=\"${CDK_ENTRA_TENANT_ID}\""
+fi
+```
+
+**Remove from config display**:
+```bash
+# REMOVE:
+if [ -n "${CDK_ENTRA_CLIENT_ID:-}" ]; then
+    log_info "  Entra Client ID: ${CDK_ENTRA_CLIENT_ID:0:20}..."
+fi
+```
+
+#### 8. Stack Deployment Scripts
+
+**Remove from `scripts/stack-infrastructure/synth.sh` and `deploy.sh`**:
+```bash
+# REMOVE context parameters:
+--context entraClientId="${CDK_ENTRA_CLIENT_ID}" \
+--context entraTenantId="${CDK_ENTRA_TENANT_ID}" \
+```
+
+**Remove from `scripts/stack-app-api/synth.sh` and `deploy.sh`**:
+```bash
+# REMOVE context parameters:
+--context entraClientId="${CDK_ENTRA_CLIENT_ID}" \
+--context entraTenantId="${CDK_ENTRA_TENANT_ID}" \
+```
+
+**Remove from `scripts/stack-inference-api/synth.sh` and `deploy.sh`**:
+```bash
+# REMOVE context parameters:
+--context entraClientId="${CDK_ENTRA_CLIENT_ID}" \
+--context entraTenantId="${CDK_ENTRA_TENANT_ID}" \
+```
+
+### Backend Code Updates
+
+#### 9. Test Files
+
+**Search and update test files** that reference Entra ID:
+```bash
+# Find all test files with Entra references
+grep -r "ENTRA_CLIENT_ID\|ENTRA_TENANT_ID\|ENTRA_REDIRECT_URI\|ENTRA_CLIENT_SECRET" backend/tests/
+```
+
+**Update tests to**:
+- Use mock auth providers from database instead of hardcoded Entra ID
+- Test with multiple providers, not just Entra ID
+- Remove Entra-specific test fixtures
+
+### Migration Checklist
+
+Complete these steps in order:
+
+**Phase 0: Pre-Migration** (before any code changes):
+- [ ] Document current Entra ID configuration values
+- [ ] Create Entra ID provider entry in DynamoDB (via admin UI or seed script)
+- [ ] Verify all environment variables are documented
+- [ ] Plan maintenance window
+
+**Phase 1: Remove CDK-Managed Runtime**:
+- [ ] Remove runtime creation from `InferenceApiStack`
+- [ ] Keep Memory, Gateway, Code Interpreter, Browser
+- [ ] Export runtime execution role ARN to SSM (used by Lambda-created runtimes)
+- [ ] Deploy updated `InferenceApiStack`
+
+**Phase 2: Remove Entra ID Configuration**:
+- [ ] Update `config.ts` (remove Entra fields)
+- [ ] Update `app-api-stack.ts` (remove Entra environment variables and secrets)
+- [ ] Update `inference-api-stack.ts` (remove authorizer configuration if runtime still exists)
+- [ ] Update GitHub workflow files (remove Entra variables/secrets)
+- [ ] Update `cdk.context.json` (remove Entra configuration)
+- [ ] Update `load-env.sh` (remove Entra exports)
+- [ ] Update stack deployment scripts (remove Entra context parameters)
+- [ ] Delete GitHub Variables and Secrets
+- [ ] Update test files (remove Entra-specific tests)
+
+**Phase 3: Deploy Lambda-Managed Runtimes**:
+- [ ] Deploy `RuntimeProvisionerStack` (Lambda creates runtimes from database)
+- [ ] Verify Entra ID runtime is created by Lambda
+- [ ] Test authentication with Lambda-managed runtime
+
+**Phase 4: Validation**:
+- [ ] Verify no references to `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, `ENTRA_REDIRECT_URI`, `ENTRA_CLIENT_SECRET` in codebase
+- [ ] Verify no Entra-specific GitHub Variables or Secrets exist
+- [ ] Verify all auth providers are managed via database
+- [ ] Test end-to-end authentication flow
+
+### Why This Matters
+
+Removing hardcoded Entra ID configuration is critical because:
+
+1. **Single Source of Truth**: All auth providers (including Entra ID) should be managed via the database, not hardcoded in infrastructure
+2. **Consistency**: Entra ID should be treated the same as any other OIDC provider
+3. **Flexibility**: Admins can update Entra ID configuration via UI without redeploying infrastructure
+4. **Scalability**: Adding new providers doesn't require code changes or redeployment
+5. **Security**: Client secrets stored in Secrets Manager with provider ID keys, not hardcoded per-provider secrets
+
 ## Trade-offs and Alternatives
 
 ### Pros of Multi-Runtime Approach
@@ -572,11 +854,28 @@ Each runtime validates JWTs independently using its provider's configuration:
 
 ## Implementation Phases
 
+### Phase 0: Pre-Migration Preparation (Week 0)
+- Document current Entra ID runtime configuration
+- Create Entra ID provider entry in DynamoDB (if not exists)
+- Verify all environment variables and configurations
+- Plan maintenance window for migration
+
 ### Phase 1: Core Infrastructure (Week 1)
 - Update Auth Provider DynamoDB schema
 - Enable DynamoDB Streams
 - Export runtime execution role ARN to SSM
-- Update Inference API stack (remove single runtime)
+- **Remove runtime creation from InferenceApiStack** (keep shared resources)
+- Update InferenceApiStack to only create Memory, Gateway, Code Interpreter, Browser
+
+**Code Removals**:
+```typescript
+// infrastructure/lib/inference-api-stack.ts
+// REMOVE: this.runtime = new bedrock.CfnRuntime(...)
+// REMOVE: Runtime-specific SSM parameters
+// REMOVE: Runtime endpoint URL exports
+// KEEP: Memory, Gateway, Code Interpreter, Browser
+// KEEP: Runtime execution role (used by Lambda-created runtimes)
+```
 
 ### Phase 2: Runtime Provisioner (Week 2)
 - Create Runtime Provisioner Lambda function
