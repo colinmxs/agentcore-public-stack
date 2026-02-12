@@ -45,43 +45,10 @@ on:
         default: 'false'
 
 env:
-  # All configuration comes from GitHub Environment variables
-  # Environment is selected based on:
-  #   - Manual: workflow_dispatch input
-  #   - Automatic: main branch → production, develop branch → development
-  CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-  # CDK Configuration - from GitHub Variables
-  CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-  CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
-  CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
-  CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-  # CDK Secrets - from GitHub Secrets
-  CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
-  # AWS Authentication
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  # Inference API Stack Configuration
-  CDK_INFERENCE_API_ENABLED: ${{ vars.CDK_INFERENCE_API_ENABLED }}
-  CDK_INFERENCE_API_CPU: ${{ vars.CDK_INFERENCE_API_CPU }}
-  CDK_INFERENCE_API_MEMORY: ${{ vars.CDK_INFERENCE_API_MEMORY }}
-  CDK_INFERENCE_API_DESIRED_COUNT: ${{ vars.CDK_INFERENCE_API_DESIRED_COUNT }}
-  CDK_INFERENCE_API_MAX_CAPACITY: ${{ vars.CDK_INFERENCE_API_MAX_CAPACITY }}
-  CDK_INFERENCE_API_ENABLE_GPU: ${{ vars.CDK_INFERENCE_API_ENABLE_GPU }}
-  # Build and Deploy Configuration
+  # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
-  # Application Configuration - from GitHub Variables
-  ENV_INFERENCE_API_ENABLE_AUTHENTICATION: ${{ vars.ENV_INFERENCE_API_ENABLE_AUTHENTICATION }}
-  ENV_INFERENCE_API_LOG_LEVEL: ${{ vars.ENV_INFERENCE_API_LOG_LEVEL }}
-  ENV_INFERENCE_API_UPLOAD_DIR: ${{ vars.ENV_INFERENCE_API_UPLOAD_DIR }}
-  ENV_INFERENCE_API_OUTPUT_DIR: ${{ vars.ENV_INFERENCE_API_OUTPUT_DIR }}
-  ENV_INFERENCE_API_GENERATED_IMAGES_DIR: ${{ vars.ENV_INFERENCE_API_GENERATED_IMAGES_DIR }}
-  ENV_INFERENCE_API_API_URL: ${{ vars.ENV_INFERENCE_API_API_URL }}
-  ENV_INFERENCE_API_FRONTEND_URL: ${{ vars.ENV_INFERENCE_API_FRONTEND_URL }}
-  ENV_INFERENCE_API_CORS_ORIGINS: ${{ vars.ENV_INFERENCE_API_CORS_ORIGINS }}
-  # API Keys - from GitHub Secrets
-  ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
-  ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
+  # OAuth Configuration
+  ENV_INFERENCE_API_OAUTH_CALLBACK_URL: ${{ vars.ENV_INFERENCE_API_OAUTH_CALLBACK_URL }}
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -121,8 +88,14 @@ jobs:
     runs-on: ubuntu-24.04-arm
     needs: install
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     outputs:
       image-tag: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+    
+    env:
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
@@ -183,8 +156,12 @@ jobs:
     needs: build-docker
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     
+    # Select environment to get project prefix for image naming
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
     
     steps:
       - name: Checkout code
@@ -238,6 +215,35 @@ jobs:
       id-token: write
       contents: read
     
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
+      CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_INFERENCE_API_ENABLED: ${{ vars.CDK_INFERENCE_API_ENABLED }}
+      CDK_INFERENCE_API_CPU: ${{ vars.CDK_INFERENCE_API_CPU }}
+      CDK_INFERENCE_API_MEMORY: ${{ vars.CDK_INFERENCE_API_MEMORY }}
+      CDK_INFERENCE_API_DESIRED_COUNT: ${{ vars.CDK_INFERENCE_API_DESIRED_COUNT }}
+      CDK_INFERENCE_API_MAX_CAPACITY: ${{ vars.CDK_INFERENCE_API_MAX_CAPACITY }}
+      CDK_INFERENCE_API_ENABLE_GPU: ${{ vars.CDK_INFERENCE_API_ENABLE_GPU }}
+      ENV_INFERENCE_API_ENABLE_AUTHENTICATION: ${{ vars.ENV_INFERENCE_API_ENABLE_AUTHENTICATION }}
+      ENV_INFERENCE_API_LOG_LEVEL: ${{ vars.ENV_INFERENCE_API_LOG_LEVEL }}
+      ENV_INFERENCE_API_UPLOAD_DIR: ${{ vars.ENV_INFERENCE_API_UPLOAD_DIR }}
+      ENV_INFERENCE_API_OUTPUT_DIR: ${{ vars.ENV_INFERENCE_API_OUTPUT_DIR }}
+      ENV_INFERENCE_API_GENERATED_IMAGES_DIR: ${{ vars.ENV_INFERENCE_API_GENERATED_IMAGES_DIR }}
+      ENV_INFERENCE_API_API_URL: ${{ vars.ENV_INFERENCE_API_API_URL }}
+      ENV_INFERENCE_API_FRONTEND_URL: ${{ vars.ENV_INFERENCE_API_FRONTEND_URL }}
+      ENV_INFERENCE_API_CORS_ORIGINS: ${{ vars.ENV_INFERENCE_API_CORS_ORIGINS }}
+      ENV_INFERENCE_API_OAUTH_CALLBACK_URL: ${{ vars.ENV_INFERENCE_API_OAUTH_CALLBACK_URL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
+      ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -286,6 +292,15 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -340,6 +355,12 @@ jobs:
     
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -390,6 +411,33 @@ jobs:
     
     env:
       IMAGE_TAG: ${{ needs.push-to-ecr.outputs.image-tag }}
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
+      CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_INFERENCE_API_ENABLED: ${{ vars.CDK_INFERENCE_API_ENABLED }}
+      CDK_INFERENCE_API_CPU: ${{ vars.CDK_INFERENCE_API_CPU }}
+      CDK_INFERENCE_API_MEMORY: ${{ vars.CDK_INFERENCE_API_MEMORY }}
+      CDK_INFERENCE_API_DESIRED_COUNT: ${{ vars.CDK_INFERENCE_API_DESIRED_COUNT }}
+      CDK_INFERENCE_API_MAX_CAPACITY: ${{ vars.CDK_INFERENCE_API_MAX_CAPACITY }}
+      CDK_INFERENCE_API_ENABLE_GPU: ${{ vars.CDK_INFERENCE_API_ENABLE_GPU }}
+      ENV_INFERENCE_API_ENABLE_AUTHENTICATION: ${{ vars.ENV_INFERENCE_API_ENABLE_AUTHENTICATION }}
+      ENV_INFERENCE_API_LOG_LEVEL: ${{ vars.ENV_INFERENCE_API_LOG_LEVEL }}
+      ENV_INFERENCE_API_UPLOAD_DIR: ${{ vars.ENV_INFERENCE_API_UPLOAD_DIR }}
+      ENV_INFERENCE_API_OUTPUT_DIR: ${{ vars.ENV_INFERENCE_API_OUTPUT_DIR }}
+      ENV_INFERENCE_API_GENERATED_IMAGES_DIR: ${{ vars.ENV_INFERENCE_API_GENERATED_IMAGES_DIR }}
+      ENV_INFERENCE_API_API_URL: ${{ vars.ENV_INFERENCE_API_API_URL }}
+      ENV_INFERENCE_API_FRONTEND_URL: ${{ vars.ENV_INFERENCE_API_FRONTEND_URL }}
+      ENV_INFERENCE_API_CORS_ORIGINS: ${{ vars.ENV_INFERENCE_API_CORS_ORIGINS }}
+      ENV_INFERENCE_API_OAUTH_CALLBACK_URL: ${{ vars.ENV_INFERENCE_API_OAUTH_CALLBACK_URL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
+      ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code

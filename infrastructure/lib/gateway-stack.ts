@@ -118,7 +118,9 @@ export class GatewayStack extends cdk.Stack {
         sid: 'LambdaInvokeAccess',
         effect: iam.Effect.ALLOW,
         actions: ['lambda:InvokeFunction'],
-        resources: [`arn:aws:lambda:${this.region}:${this.account}:function:mcp-*`],
+        resources: [
+          `arn:aws:lambda:${this.region}:${this.account}:function:${config.projectPrefix}-mcp-*`,
+        ],
       })
     );
 

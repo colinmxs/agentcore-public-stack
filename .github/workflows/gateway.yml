@@ -41,28 +41,7 @@ on:
         default: 'false'
 
 env:
-  # All configuration comes from GitHub Environment variables
-  # Environment is selected based on:
-  #   - Manual: workflow_dispatch input
-  #   - Automatic: main branch → production, develop branch → development
-  CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-  # CDK Configuration - from GitHub Variables
-  CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-  CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-  # Gateway Configuration - from GitHub Variables
-  CDK_GATEWAY_ENABLED: ${{ vars.CDK_GATEWAY_ENABLED }}
-  CDK_GATEWAY_API_TYPE: ${{ vars.CDK_GATEWAY_API_TYPE }}
-  CDK_GATEWAY_THROTTLE_RATE_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_RATE_LIMIT }}
-  CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
-  CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
-  CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
-  # CDK Secrets - from GitHub Secrets
-  CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
-  # AWS Authentication
-  AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
-  AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-  AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-  # Build and Deploy Configuration
+  # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
 
 # Ensure only one deployment runs at a time
@@ -74,6 +53,18 @@ jobs:
   install:
     name: Install Dependencies
     runs-on: ubuntu-latest
+    
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -96,6 +87,18 @@ jobs:
     name: Build CDK Code
     runs-on: ubuntu-latest
     needs: install
+    
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -125,6 +128,25 @@ jobs:
     name: Synthesize CloudFormation
     runs-on: ubuntu-latest
     needs: build-cdk
+    
+    # Select environment based on trigger
+    # Manual: workflow_dispatch input
+    # Automatic: main → production, develop → development
+    environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_GATEWAY_ENABLED: ${{ vars.CDK_GATEWAY_ENABLED }}
+      CDK_GATEWAY_API_TYPE: ${{ vars.CDK_GATEWAY_API_TYPE }}
+      CDK_GATEWAY_THROTTLE_RATE_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_RATE_LIMIT }}
+      CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
+      CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
+      CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+    
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -172,6 +194,22 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_GATEWAY_ENABLED: ${{ vars.CDK_GATEWAY_ENABLED }}
+      CDK_GATEWAY_API_TYPE: ${{ vars.CDK_GATEWAY_API_TYPE }}
+      CDK_GATEWAY_THROTTLE_RATE_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_RATE_LIMIT }}
+      CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
+      CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
+      CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -249,6 +287,22 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_GATEWAY_ENABLED: ${{ vars.CDK_GATEWAY_ENABLED }}
+      CDK_GATEWAY_API_TYPE: ${{ vars.CDK_GATEWAY_API_TYPE }}
+      CDK_GATEWAY_THROTTLE_RATE_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_RATE_LIMIT }}
+      CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
+      CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
+      CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
@@ -335,6 +389,15 @@ jobs:
     permissions:
       id-token: write
       contents: read
+    
+    env:
+      # Environment-scoped configuration
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
     
     steps:
       - name: Checkout code
