@@ -5,7 +5,6 @@ on:
     branches:
       - main
       - develop
-      - develop
     paths:
       - 'backend/src/apis/app_api/**'
       - 'backend/pyproject.toml'
@@ -14,9 +13,6 @@ on:
       - 'scripts/stack-app-api/**'
       - '.github/workflows/app-api.yml'
   pull_request:
-    branches:
-      - main
-      - develop
     branches:
       - main
       - develop
