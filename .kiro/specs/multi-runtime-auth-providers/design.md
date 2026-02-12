@@ -25,9 +25,9 @@ Runtime ARN stored in DynamoDB
         ↓
 User authenticates with provider
         ↓
-Frontend includes X-Auth-Provider header
+Frontend fetches runtime endpoint URL
         ↓
-ALB routes to provider's runtime
+Frontend calls runtime directly
         ↓
 Runtime validates JWT and processes request
 ```
@@ -365,8 +365,8 @@ Each runtime validates JWTs independently using its provider's configuration:
 ### Network Security
 
 - Runtimes deployed in PUBLIC network mode (AgentCore requirement)
-- ALB provides TLS termination
-- Security groups control inbound/outbound traffic
+- Runtimes have AWS-managed HTTPS endpoints with TLS
+- Security groups control inbound/outbound traffic for supporting infrastructure
 - VPC endpoints for AWS service access (optional)
 
 ## Monitoring and Observability
@@ -645,4 +645,4 @@ If critical issues arise:
 5. **Cost Allocation**: Per-provider cost tracking and billing
 6. **Runtime Health Checks**: Automated health monitoring and recovery
 7. **Provider Groups**: Shared runtimes for provider groups
-8. **Custom Routing Logic**: Advanced routing beyond header-based
+8. **Advanced Routing Logic**: Custom provider selection strategies
