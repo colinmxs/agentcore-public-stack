@@ -46,9 +46,7 @@ on:
 
 env:
   # Build and Deploy Configuration (non-sensitive, repository-level)
-  CDK_REQUIRE_APPROVAL: never
-  # OAuth Configuration
-  ENV_INFERENCE_API_OAUTH_CALLBACK_URL: ${{ vars.ENV_INFERENCE_API_OAUTH_CALLBACK_URL }}
+  CDK_REQUIRE_APPROVAL: never  
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -242,7 +240,7 @@ jobs:
       ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}      
     
     steps:
       - name: Checkout code
