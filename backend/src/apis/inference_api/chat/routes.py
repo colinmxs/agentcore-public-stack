@@ -191,7 +191,7 @@ async def ping():
 
 
 @router.post("/invocations")
-async def invocations(request: InvocationRequest, current_user: User = Depends(get_current_user_trusted)):
+async def invocations(request: InvocationRequest, current_user: User = Depends(get_current_user)):
     """
     AgentCore Runtime standard invocation endpoint (required)
 
