@@ -31,7 +31,7 @@ GitHub provides two mechanisms for storing configuration values:
 | CDK_APP_API_MEMORY | Variable | No | `1024` | Infrastructure, App API | Memory (MB) for App API ECS task (512, 1024, 2048, 4096, 8192) |
 | CDK_AWS_ACCOUNT | Secret | Yes | None | All | 12-digit AWS account ID for CDK deployment |
 | CDK_CERTIFICATE_ARN | Variable | No | None | Infrastructure | ACM certificate ARN for HTTPS on ALB |
-| CDK_ENABLE_AUTHENTICATION | Variable | No | `true` | Infrastructure, App API | Enable/disable authentication for the platform |
+| CDK_ENABLE_AUTHENTICATION | Variable | No | `false` | Infrastructure, App API | Enable/disable authentication for the platform |
 | CDK_ENTRA_CLIENT_ID | Variable | No | None | App API, Inference API | Microsoft Entra ID (Azure AD) application client ID |
 | CDK_ENTRA_TENANT_ID | Variable | No | None | App API, Inference API | Microsoft Entra ID (Azure AD) tenant ID |
 | CDK_FILE_UPLOAD_CORS_ORIGINS | Variable | No | `http://localhost:4200` | Infrastructure, App API | Comma-separated CORS origins for file upload S3 bucket |
@@ -56,12 +56,12 @@ GitHub provides two mechanisms for storing configuration values:
 | CDK_INFERENCE_API_MAX_CAPACITY | Variable | No | `5` | Infrastructure, Inference API | Maximum Inference API runtime instances for auto-scaling |
 | CDK_INFERENCE_API_MEMORY | Variable | No | `2048` | Infrastructure, Inference API | Memory (MB) for Inference API AgentCore Runtime (512, 1024, 2048, 4096, 8192) |
 | CDK_PRODUCTION | Variable | No | `true` | Frontend | Production environment flag (affects runtime config generation) |
-| CDK_PROJECT_PREFIX | Variable | Yes | `bsu-agentcore` | All | Prefix for all resource names (e.g., 'mycompany-agentcore') |
+| CDK_PROJECT_PREFIX | Variable | Yes | `agentcore` | All | Prefix for all resource names (e.g., 'mycompany-agentcore') |
 | CDK_RETAIN_DATA_ON_DELETE | Variable | No | `true` | All | Retain data resources (DynamoDB, S3, Secrets) on stack deletion |
 | CDK_VPC_CIDR | Variable | No | `10.0.0.0/16` | Infrastructure, App API | CIDR block for VPC network |
 | ENV_INFERENCE_API_API_URL | Variable | No | None | Inference API | Backend API URL for runtime environment (e.g., 'https://api.example.com') |
 | ENV_INFERENCE_API_CORS_ORIGINS | Variable | No | None | Inference API | Comma-separated CORS origins for runtime environment |
-| ENV_INFERENCE_API_ENABLE_AUTHENTICATION | Variable | No | `true` | Inference API | Enable/disable authentication in runtime container |
+| ENV_INFERENCE_API_ENABLE_AUTHENTICATION | Variable | No | `false` | Inference API | Enable/disable authentication in runtime container |
 | ENV_INFERENCE_API_FRONTEND_URL | Variable | No | None | Inference API | Frontend URL for runtime environment (e.g., 'https://app.example.com') |
 | ENV_INFERENCE_API_GENERATED_IMAGES_DIR | Variable | No | `generated_images` | Inference API | Directory path for generated images in runtime container |
 | ENV_INFERENCE_API_LOG_LEVEL | Variable | No | `INFO` | Inference API | Log level for runtime container (DEBUG, INFO, WARNING, ERROR) |

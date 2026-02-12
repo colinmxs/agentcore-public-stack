@@ -10,7 +10,7 @@ To deploy the AgentCore Public Stack via GitHub Actions, you need to configure t
 |------|------|---------------|-------------|
 | AWS_REGION | Variable | `us-west-2` | AWS region for all resource deployment |
 | CDK_AWS_ACCOUNT | Secret | `123456789012` | Your 12-digit AWS account ID |
-| CDK_PROJECT_PREFIX | Variable | `mycompany-agentcore` | Unique prefix for all AWS resource names |
+| CDK_PROJECT_PREFIX | Variable | `agentcore` | Unique prefix for all AWS resource names |
 
 ### Authentication (Choose One Method)
 
