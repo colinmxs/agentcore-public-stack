@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import { Tool, ToolListResponse, UserToolPermissions } from '../models/tool.model';
 
@@ -14,6 +14,8 @@ import { Tool, ToolListResponse, UserToolPermissions } from '../models/tool.mode
 export class ToolsService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => this.config.appApiUrl());
 
   /**
    * Reactive resource for fetching the tool catalog.
@@ -63,7 +65,7 @@ export class ToolsService {
   async fetchCatalog(): Promise<ToolListResponse> {
     const response = await firstValueFrom(
       this.http.get<ToolListResponse>(
-        `${environment.appApiUrl}/tools/catalog`
+        `${this.baseUrl()}/tools/catalog`
       )
     );
     return response;
@@ -76,7 +78,7 @@ export class ToolsService {
   async fetchAdminCatalog(): Promise<ToolListResponse> {
     const response = await firstValueFrom(
       this.http.get<ToolListResponse>(
-        `${environment.appApiUrl}/admin/tools/`
+        `${this.baseUrl()}/admin/tools/`
       )
     );
     return response;
@@ -88,7 +90,7 @@ export class ToolsService {
   async fetchMyPermissions(): Promise<UserToolPermissions> {
     const response = await firstValueFrom(
       this.http.get<UserToolPermissions>(
-        `${environment.appApiUrl}/tools/my-permissions`
+        `${this.baseUrl()}/tools/my-permissions`
       )
     );
     return response;

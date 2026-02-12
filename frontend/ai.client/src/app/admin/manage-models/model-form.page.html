@@ -297,6 +297,24 @@
               Model Enabled (Users can select this model)
             </label>
           </div>
+
+          <!-- Default Model -->
+          <div>
+            <div class="flex items-center gap-3">
+              <input
+                type="checkbox"
+                id="isDefault"
+                formControlName="isDefault"
+                class="size-4 rounded-xs border-gray-300 text-blue-600 focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700"
+              />
+              <label for="isDefault" class="text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                Default Model (Auto-selected for new sessions)
+              </label>
+            </div>
+            <p class="ml-7 mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+              Only one model can be the default. Setting this will unset any previous default.
+            </p>
+          </div>
         </div>
       </div>
 

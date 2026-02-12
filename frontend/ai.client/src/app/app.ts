@@ -9,7 +9,13 @@ import { TooltipDirective } from './components/tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-root',
-  imports: [RouterOutlet, Sidenav, ErrorToastComponent, ToastComponent, TooltipDirective],
+  imports: [
+    RouterOutlet, 
+    Sidenav, 
+    ErrorToastComponent, 
+    ToastComponent, 
+    TooltipDirective
+  ],
   templateUrl: './app.html',
   styleUrl: './app.css',
 })

@@ -604,7 +604,6 @@ export class InferenceApiStack extends cdk.Stack {
         // AgentCore Runtime configuration
         'LOG_LEVEL': config.inferenceApi.logLevel,
         'PROJECT_NAME': config.projectPrefix,
-        'ENVIRONMENT': config.environment || 'production',
         
         // AWS Configuration
         'AWS_REGION': config.awsRegion,
@@ -646,16 +645,16 @@ export class InferenceApiStack extends cdk.Stack {
         'OAUTH_CALLBACK_URL': config.inferenceApi.oauthCallbackUrl,
         
         // Assistants & RAG (imported from RagIngestionStack via SSM)
-        'ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
+        'DYNAMODB_ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/assistants-table-name`
         ),
-        // Note: ASSISTANTS_DOCUMENTS_BUCKET_NAME not needed - inference API only queries vectors
-        'ASSISTANTS_VECTOR_STORE_BUCKET_NAME': ssm.StringParameter.valueForStringParameter(
+        // Note: S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME not needed - inference API only queries vectors
+        'S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-bucket-name`
         ),
-        'ASSISTANTS_VECTOR_STORE_INDEX_NAME': ssm.StringParameter.valueForStringParameter(
+        'S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME': ssm.StringParameter.valueForStringParameter(
           this,
           `/${config.projectPrefix}/rag/vector-index-name`
         ),
@@ -755,10 +754,24 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Construct the full endpoint URL for the runtime
+    const runtimeEndpointUrl = cdk.Fn.sub(
+      'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
+      { RuntimeArn: this.runtime.attrAgentRuntimeArn }
+    );
+
+    new ssm.StringParameter(this, 'InferenceApiRuntimeEndpointUrlParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-endpoint-url`,
+      stringValue: runtimeEndpointUrl,
+      description: 'Inference API AgentCore Runtime Endpoint URL (ARN not URL-encoded)',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // ============================================================
     // CloudFormation Outputs
     // ============================================================
     
+
     new cdk.CfnOutput(this, 'InferenceApiRuntimeArn', {
       value: this.runtime.attrAgentRuntimeArn,
       description: 'Inference API AgentCore Runtime ARN',
@@ -799,6 +812,14 @@ export class InferenceApiStack extends cdk.Stack {
       value: ecrRepository.repositoryUri,
       description: 'Inference API ECR Repository URI',
       exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
+    });
+
+    // AgentCore Runtime Endpoint URL
+    // Note: ARN will be URL-encoded at runtime by the consuming service
+    new cdk.CfnOutput(this, 'InferenceApiRuntimeEndpointUrl', {
+      value: runtimeEndpointUrl,
+      description: 'Inference API AgentCore Runtime Endpoint URL (ARN needs URL encoding by consumer)',
+      exportName: `${config.projectPrefix}-InferenceApiRuntimeEndpointUrl`,
     });
    }
 }

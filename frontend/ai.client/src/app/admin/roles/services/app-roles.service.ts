@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   AppRole,
@@ -22,8 +22,9 @@ import {
 export class AppRolesService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/admin/roles`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/admin/roles`);
 
   /**
    * Reactive resource for fetching AppRoles.
@@ -61,7 +62,7 @@ export class AppRolesService {
    */
   async fetchRoles(): Promise<AppRoleListResponse> {
     const response = await firstValueFrom(
-      this.http.get<AppRoleListResponse>(`${this.baseUrl}/`)
+      this.http.get<AppRoleListResponse>(`${this.baseUrl()}/`)
     );
     return response;
   }
@@ -71,7 +72,7 @@ export class AppRolesService {
    */
   async fetchRole(roleId: string): Promise<AppRole> {
     const response = await firstValueFrom(
-      this.http.get<AppRole>(`${this.baseUrl}/${roleId}`)
+      this.http.get<AppRole>(`${this.baseUrl()}/${roleId}`)
     );
     return response;
   }
@@ -81,7 +82,7 @@ export class AppRolesService {
    */
   async createRole(roleData: AppRoleCreateRequest): Promise<AppRole> {
     const response = await firstValueFrom(
-      this.http.post<AppRole>(`${this.baseUrl}/`, roleData)
+      this.http.post<AppRole>(`${this.baseUrl()}/`, roleData)
     );
     this.rolesResource.reload();
     return response;
@@ -92,7 +93,7 @@ export class AppRolesService {
    */
   async updateRole(roleId: string, updates: AppRoleUpdateRequest): Promise<AppRole> {
     const response = await firstValueFrom(
-      this.http.patch<AppRole>(`${this.baseUrl}/${roleId}`, updates)
+      this.http.patch<AppRole>(`${this.baseUrl()}/${roleId}`, updates)
     );
     this.rolesResource.reload();
     return response;
@@ -103,7 +104,7 @@ export class AppRolesService {
    */
   async deleteRole(roleId: string): Promise<void> {
     await firstValueFrom(
-      this.http.delete<void>(`${this.baseUrl}/${roleId}`)
+      this.http.delete<void>(`${this.baseUrl()}/${roleId}`)
     );
     this.rolesResource.reload();
   }
@@ -113,7 +114,7 @@ export class AppRolesService {
    */
   async syncPermissions(roleId: string): Promise<AppRole> {
     const response = await firstValueFrom(
-      this.http.post<AppRole>(`${this.baseUrl}/${roleId}/sync`, {})
+      this.http.post<AppRole>(`${this.baseUrl()}/${roleId}/sync`, {})
     );
     this.rolesResource.reload();
     return response;

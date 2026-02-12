@@ -10,7 +10,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 from datetime import datetime, timezone
 
 from apis.app_api.admin.services.model_access import ModelAccessService
-from apis.app_api.admin.models import ManagedModel
+from apis.shared.models.models import ManagedModel
 from apis.shared.auth.models import User
 from apis.shared.rbac.models import UserEffectivePermissions
 

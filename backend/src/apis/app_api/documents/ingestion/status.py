@@ -150,11 +150,11 @@ def _format_error_message(exception: Exception) -> Tuple[str, str]:
 
 def get_table_name() -> Optional[str]:
     """
-    Get ASSISTANTS_TABLE_NAME from environment
+    Get DYNAMODB_ASSISTANTS_TABLE_NAME from environment
     Returns:
         Table name if found, None otherwise
     """
-    return os.environ.get('ASSISTANTS_TABLE_NAME')
+    return os.environ.get('DYNAMODB_ASSISTANTS_TABLE_NAME')
 
 
 def create_status_manager(table_name: Optional[str] = None) -> 'DocumentStatusManager':
@@ -162,7 +162,7 @@ def create_status_manager(table_name: Optional[str] = None) -> 'DocumentStatusMa
     Factory function to create DocumentStatusManager instance
     
     Args:
-        table_name: Optional table name (defaults to ASSISTANTS_TABLE_NAME env var)
+        table_name: Optional table name (defaults to DYNAMODB_ASSISTANTS_TABLE_NAME env var)
     
     Returns:
         DocumentStatusManager instance
@@ -180,11 +180,11 @@ class DocumentStatusManager:
         Initialize status manager
         
         Args:
-            table_name: DynamoDB table name (defaults to ASSISTANTS_TABLE_NAME env var)
+            table_name: DynamoDB table name (defaults to DYNAMODB_ASSISTANTS_TABLE_NAME env var)
         """
         self.table_name = table_name or get_table_name()
         if not self.table_name:
-            logger.warning("ASSISTANTS_TABLE_NAME not set - status updates will fail")
+            logger.warning("DYNAMODB_ASSISTANTS_TABLE_NAME not set - status updates will fail")
     
     async def update_status(
         self,

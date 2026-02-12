@@ -55,6 +55,11 @@ class ManagedModelCreate(BaseModel):
         alias="supportsCaching",
         description="Whether this model supports prompt caching. Defaults to True for Bedrock Claude models, False for others."
     )
+    is_default: bool = Field(
+        False,
+        alias="isDefault",
+        description="Whether this is the default model for new sessions. Only one model can be default."
+    )
 
 
 class ManagedModelUpdate(BaseModel):
@@ -102,6 +107,11 @@ class ManagedModelUpdate(BaseModel):
         alias="supportsCaching",
         description="Whether this model supports prompt caching."
     )
+    is_default: Optional[bool] = Field(
+        None,
+        alias="isDefault",
+        description="Whether this is the default model for new sessions."
+    )
 
 
 class ManagedModel(BaseModel):
@@ -147,6 +157,11 @@ class ManagedModel(BaseModel):
         True,
         alias="supportsCaching",
         description="Whether this model supports prompt caching. Defaults to True."
+    )
+    is_default: bool = Field(
+        False,
+        alias="isDefault",
+        description="Whether this is the default model for new sessions. Only one model can be default."
     )
     created_at: datetime = Field(..., alias="createdAt")
     updated_at: datetime = Field(..., alias="updatedAt")

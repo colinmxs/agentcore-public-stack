@@ -13,9 +13,9 @@ logger = logging.getLogger(__name__)
 
 def _get_documents_bucket() -> str:
     """Get documents S3 bucket name from environment"""
-    bucket = os.environ.get("ASSISTANTS_DOCUMENTS_BUCKET_NAME")
+    bucket = os.environ.get("S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME")
     if not bucket:
-        raise ValueError("ASSISTANTS_DOCUMENTS_BUCKET_NAME environment variable not set")
+        raise ValueError("S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME environment variable not set")
     return bucket
 
 

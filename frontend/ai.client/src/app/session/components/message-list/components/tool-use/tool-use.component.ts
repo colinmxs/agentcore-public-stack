@@ -19,6 +19,9 @@ export class ToolUseComponent {
   /** The content block containing tool use data */
   toolUse = input.required<ContentBlock>();
 
+  /** Whether the component is displayed in minimized mode (for promoted visuals) */
+  minimized = input<boolean>(false);
+
   /** Whether the details section is expanded (both input and output) */
   isDetailsExpanded = signal(false);
 

@@ -1,147 +1,19 @@
-@if (showSkeleton()) {
-  <!-- Skeleton loading state when navigating to a session -->
-  <div
-    class="fixed top-0 left-0 right-0 z-40 transition-[left] duration-300"
-    [class.lg:left-72]="!sidenavService.isCollapsed()"
-    [class.lg:left-0]="sidenavService.isCollapsed()">
-    <app-topnav />
-  </div>
-  <div class="relative pb-30 pt-16 max-w-[720px] mx-auto px-4 py-6 min-w-0">
-    <div class="min-w-0 animate-fade-in">
-      <app-paragraph-skeleton />
-    </div>
-  </div>
-} @else if (!hasMessages()) {
-  <div
-    class="empty-state-background fixed inset-0 flex items-center justify-center transition-[left] duration-300"
-    [class.lg:left-72]="!sidenavService.isCollapsed()"
-    [class.lg:left-0]="sidenavService.isCollapsed()">
-    <div class="w-full max-w-[720px] animate-fade-in px-4 -mt-20 relative">
-      <div class="mb-8 flex items-center justify-center gap-4 relative">
-        <img
-          src="/img/logo-light.png"
-          alt="Logo"
-          class="size-14 shrink-0 dark:hidden">
-        <img
-          src="/img/logo-dark.png"
-          alt="Logo"
-          class="hidden size-14 shrink-0 dark:block">
-        <div>
-          <app-animated-text [text]="greetingMessage()" [speed]="50" />
-        </div>
-      </div>
-      
-      <!-- Assistant Card (if loaded) -->
-      @if (assistant()) {
-        <div class="mb-6 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4 relative">
-          @if (canCloseAssistant()) {
-            <button
-              type="button"
-              (click)="closeAssistant()"
-              class="absolute top-2 right-2 rounded-sm p-1 text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 dark:hover:text-gray-300 dark:hover:bg-gray-700 dark:focus-visible:outline-primary-400"
-              aria-label="Remove assistant">
-              <ng-icon name="heroXMark" class="size-5" aria-hidden="true" />
-            </button>
-          }
-          <div class="flex items-start gap-4">
-            @if (assistant()!.imageUrl) {
-              <img
-                [src]="assistant()!.imageUrl"
-                [alt]="assistant()!.name"
-                class="w-12 h-12 rounded-lg object-cover shrink-0">
-            }
-            <div class="flex-1 min-w-0">
-              <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-                {{ assistant()!.name }}
-              </h3>
-              @if (assistant()!.description) {
-                <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-                  {{ assistant()!.description }}
-                </p>
-              }
-            </div>
-          </div>
-        </div>
-      }
-      
-      <!-- Assistant Error Message -->
-      @if (assistantError()) {
-        <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-          <p class="text-sm text-red-800 dark:text-red-200">{{ assistantError() }}</p>
-        </div>
-      }
-      
-      <div class="relative">
-        <app-chat-input
-          [sessionId]="effectiveSessionId()"
-          (messageSubmitted)="onMessageSubmitted($event)"
-          (messageCancelled)="onMessageCancelled()"
-          (fileAttached)="onFileAttached($event)"
-          (settingsToggled)="toggleSettings()">
-        </app-chat-input>
-      </div>
-    </div>
-  </div>
-} @else {
-  <!-- Header (fixed, content scrolls underneath) -->
-  <div
-    class="fixed top-0 left-0 right-0 z-40 transition-[left] duration-300"
-    [class.lg:left-72]="!sidenavService.isCollapsed()"
-    [class.lg:left-0]="sidenavService.isCollapsed()">
-    <app-topnav />
-  </div>
-   <!-- Assistant Card (if loaded) - shown above chat input when messages exist -->
-   @if (assistant()) {
-    <div class="mt-10 mb-4 bg-white dark:bg-gray-800 rounded-lg border border-gray-200 dark:border-gray-700 p-4">
-      <div class="flex items-start gap-4">
-        @if (assistant()!.imageUrl) {
-          <img
-            [src]="assistant()!.imageUrl"
-            [alt]="assistant()!.name"
-            class="w-12 h-12 rounded-lg object-cover shrink-0">
-        }
-        <div class="flex-1 min-w-0">
-          <h3 class="text-lg font-semibold text-gray-900 dark:text-gray-100">
-            Chatting With: {{ assistant()!.name }}
-          </h3>
-          @if (assistant()!.description) {
-            <p class="mt-1 text-sm text-gray-600 dark:text-gray-400">
-              {{ assistant()!.description }}
-            </p>
-          }
-        </div>
-      </div>
-    </div>
-  }
-  
-  <!-- Assistant Error Message -->
-  @if (assistantError()) {
-    <div class="mb-4 p-3 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-      <p class="text-sm text-red-800 dark:text-red-200">{{ assistantError() }}</p>
-    </div>
-  }
-  <div class="relative pb-30 pt-16 max-w-[720px] mx-auto px-4 py-6 min-w-0">
-    <div class="min-w-0">
-      <app-message-list [messages]="messages()" [isChatLoading]="isChatLoading()" [streamingMessageId]="streamingMessageId()" />
-    </div>
-  </div>
-
-  <!-- Footer (fixed, content scrolls underneath) -->
-  <div
-    class="pb-4 fixed bottom-0 left-0 right-0 animate-fade-in transition-[left] duration-300"
-    [class.lg:left-72]="!sidenavService.isCollapsed()"
-    [class.lg:left-0]="sidenavService.isCollapsed()">
-    <div class="max-w-[720px] mx-auto px-4">
-      <app-chat-input
-        [sessionId]="effectiveSessionId()"
-        (messageSubmitted)="onMessageSubmitted($event)"
-        (messageCancelled)="onMessageCancelled()"
-        (fileAttached)="onFileAttached($event)"
-        (settingsToggled)="toggleSettings()">
-      </app-chat-input>
-    </div>
-  </div>
-}
+<app-chat-container
+  [messages]="messages()"
+  [sessionId]="effectiveSessionId()"
+  [assistant]="assistant()"
+  [assistantError]="assistantError()"
+  [isChatLoading]="isChatLoading()"
+  [isLoadingSession]="showSkeleton()"
+  [streamingMessageId]="streamingMessageId()"
+  [greetingMessage]="greetingMessage()"
+  [config]="chatConfig"
+  (messageSubmitted)="onMessageSubmitted($event)"
+  (messageCancelled)="onMessageCancelled()"
+  (fileAttached)="onFileAttached($event)"
+  (settingsToggled)="toggleSettings()"
+  (assistantClosed)="closeAssistant()"
+/>
 
 <!-- Model Settings Panel -->
 <app-model-settings

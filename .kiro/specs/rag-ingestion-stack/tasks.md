@@ -65,7 +65,7 @@ This implementation plan creates a new independent RAG ingestion stack that is a
     - Create DockerImageFunction with ARM64 architecture
     - Set memory to config.ragIngestion.lambdaMemorySize (10240 MB)
     - Set timeout to config.ragIngestion.lambdaTimeout (900 seconds)
-    - Configure environment variables (ASSISTANTS_DOCUMENTS_BUCKET_NAME, ASSISTANTS_TABLE_NAME, ASSISTANTS_VECTOR_STORE_BUCKET_NAME, ASSISTANTS_VECTOR_STORE_INDEX_NAME, BEDROCK_REGION)
+    - Configure environment variables (S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME, DYNAMODB_ASSISTANTS_TABLE_NAME, S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME, S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME, BEDROCK_REGION)
     - _Requirements: 2.4, 9.1-9.14_
 
   - [x] 2.6 Configure IAM Permissions

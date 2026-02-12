@@ -1,5 +1,6 @@
 import * as cdk from 'aws-cdk-lib';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3deploy from 'aws-cdk-lib/aws-s3-deployment';
 import * as cloudfront from 'aws-cdk-lib/aws-cloudfront';
 import * as origins from 'aws-cdk-lib/aws-cloudfront-origins';
 import * as route53 from 'aws-cdk-lib/aws-route53';
@@ -7,7 +8,7 @@ import * as targets from 'aws-cdk-lib/aws-route53-targets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
 
 export interface FrontendStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -35,6 +36,80 @@ export class FrontendStack extends cdk.Stack {
     // Apply standard tags
     applyStandardTags(this, config);
 
+    // ============================================================================
+    // SSM Parameter Imports - Backend URLs for Runtime Configuration
+    // ============================================================================
+    // These parameters are exported by the backend stacks and must exist before
+    // this stack can be deployed. The frontend stack depends on:
+    // 1. InfrastructureStack - exports ALB URL to SSM
+    // 2. InferenceApiStack - exports Runtime endpoint URL to SSM
+    //
+    // Deployment order: InfrastructureStack → AppApiStack → InferenceApiStack → FrontendStack
+    // ============================================================================
+
+    let appApiUrl: string;
+    let inferenceApiUrl: string;
+
+    try {
+      // Import App API URL from SSM Parameter Store
+      // This parameter is created by InfrastructureStack after ALB creation
+      // Parameter format: /${projectPrefix}/network/alb-url
+      // Example value: https://api.example.com or http://alb-123.us-east-1.elb.amazonaws.com
+      appApiUrl = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/network/alb-url`
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to import App API URL from SSM Parameter Store. ` +
+        `Ensure InfrastructureStack has been deployed and exports the parameter: ` +
+        `/${config.projectPrefix}/network/alb-url. ` +
+        `Error: ${error}`
+      );
+    }
+
+    try {
+      // Import Inference API Runtime endpoint URL from SSM Parameter Store
+      // This parameter is created by InferenceApiStack after AgentCore Runtime creation
+      // Parameter format: /${projectPrefix}/inference-api/runtime-endpoint-url
+      // Example value: https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/RUNTIME_ARN
+      inferenceApiUrl = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/inference-api/runtime-endpoint-url`
+      );
+    } catch (error) {
+      throw new Error(
+        `Failed to import Inference API Runtime URL from SSM Parameter Store. ` +
+        `Ensure InferenceApiStack has been deployed and exports the parameter: ` +
+        `/${config.projectPrefix}/inference-api/runtime-endpoint-url. ` +
+        `Error: ${error}`
+      );
+    }
+
+    // Log imported values for debugging (values will be tokens at synth time)
+    console.log('📥 Imported backend URLs from SSM:');
+    console.log(`   App API URL: ${appApiUrl}`);
+    console.log(`   Inference API URL: ${inferenceApiUrl}`);
+
+    // ============================================================================
+    // Runtime Configuration Generation
+    // ============================================================================
+    // Generate config.json content with backend URLs and environment settings.
+    // This configuration will be deployed to S3 and fetched by the Angular app
+    // at startup via APP_INITIALIZER, enabling environment-agnostic builds.
+    // ============================================================================
+
+    const runtimeConfig = {
+      appApiUrl: appApiUrl,
+      inferenceApiUrl: inferenceApiUrl,
+      enableAuthentication: true,
+      environment: config.production ? 'production' : 'development',
+    };
+
+    console.log('🔧 Generated runtime configuration:');
+    console.log(`   Environment: ${runtimeConfig.environment}`);
+    console.log(`   Authentication: ${runtimeConfig.enableAuthentication}`);
+
     // Generate bucket name with account ID to ensure global uniqueness
     const bucketName = config.frontend.bucketName || 
                        getResourceName(config, 'frontend', config.awsAccount);
@@ -56,9 +131,9 @@ export class FrontendStack extends cdk.Stack {
           enabled: true,
         },
       ],
-      // Removal policy - be careful with DESTROY in production
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
+      // Removal policy based on retention configuration
+      removalPolicy: getRemovalPolicy(config),
+      autoDeleteObjects: getAutoDeleteObjects(config),
     });
 
     // Create Origin Access Control (OAC) for CloudFront
@@ -199,6 +274,34 @@ export class FrontendStack extends cdk.Stack {
         ),
       });
     }
+
+    // ============================================================================
+    // Deploy Runtime Configuration to S3
+    // ============================================================================
+    // Deploy config.json to the S3 bucket root with appropriate cache headers.
+    // Cache strategy:
+    // - TTL: 5 minutes (balance between freshness and performance)
+    // - Must revalidate: Ensures clients check for updates after TTL expires
+    // - Prune: false (don't delete other files in the bucket)
+    // ============================================================================
+
+    new s3deploy.BucketDeployment(this, 'RuntimeConfigDeployment', {
+      sources: [
+        s3deploy.Source.jsonData('config.json', runtimeConfig),
+      ],
+      destinationBucket: this.bucket,
+      cacheControl: [
+        s3deploy.CacheControl.maxAge(cdk.Duration.minutes(5)), // Short TTL for config updates
+        s3deploy.CacheControl.mustRevalidate(), // Force revalidation after TTL
+      ],
+      prune: false, // Don't delete other files (static assets deployed separately)
+    });
+
+    console.log('📦 Runtime config deployment configured:');
+    console.log('   File: config.json');
+    console.log('   Cache TTL: 5 minutes');
+    console.log('   Must revalidate: true');
+    console.log('   Prune: false');
 
     // Store parameters in SSM Parameter Store for cross-stack references
     new ssm.StringParameter(this, 'DistributionIdParameter', {

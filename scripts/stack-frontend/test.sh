@@ -54,7 +54,7 @@ fi
 
 # Run tests in headless mode (no watch, single run)
 # This is appropriate for CI/CD environments
-log_info "Running: ng test --no-watch --coverage"
+log_info "Running: ng test --no-watch --coverage (filtering CSS warnings)"
 
 # Set environment variable for CI
 export CI=true
@@ -62,10 +62,10 @@ export CI=true
 # Run tests with code coverage
 # Angular uses Vitest which handles headless mode automatically in CI environments
 # The CI=true environment variable triggers headless behavior
-./node_modules/.bin/ng test --no-watch --coverage
-
-# Check test exit code
-TEST_EXIT_CODE=$?
+# Filter out jsdom CSS parsing warnings that clutter logs
+# Use PIPESTATUS to preserve test exit code after grep filter
+./node_modules/.bin/ng test --no-watch --coverage 2>&1 | grep -v "Could not parse CSS stylesheet"
+TEST_EXIT_CODE=${PIPESTATUS[0]}
 
 if [ ${TEST_EXIT_CODE} -eq 0 ]; then
     log_info "All tests passed successfully!"

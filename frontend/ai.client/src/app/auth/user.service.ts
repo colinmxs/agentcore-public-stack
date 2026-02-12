@@ -1,7 +1,7 @@
 import { inject, Injectable, signal } from '@angular/core';
 import { AuthService } from './auth.service';
 import { User, JWTPayload } from './user.model';
-import { environment } from '../../environments/environment';
+import { ConfigService } from '../services/config.service';
 
 /**
  * Service for managing current user information decoded from JWT tokens.
@@ -12,6 +12,7 @@ import { environment } from '../../environments/environment';
 })
 export class UserService {
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
   /**
    * Current user signal. Null if not authenticated or token cannot be decoded.
@@ -193,7 +194,7 @@ export class UserService {
    */
   refreshUser(): void {
     // If authentication is disabled, set anonymous user
-    if (!environment.enableAuthentication) {
+    if (!this.config.enableAuthentication()) {
       this.currentUser.set(this.anonymousUser);
       return;
     }

@@ -9,6 +9,10 @@ from functools import lru_cache
 
 from agents.main_agent.session.memory_config import load_memory_config
 from agents.main_agent.session.compaction_models import CompactionConfig
+from agents.main_agent.session.preview_session_manager import (
+    PreviewSessionManager,
+    is_preview_session,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -93,8 +97,13 @@ class SessionFactory:
             compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
-            Session manager instance (TurnBasedSessionManager or LocalSessionBuffer)
+            Session manager instance (TurnBasedSessionManager, LocalSessionBuffer, or PreviewSessionManager)
         """
+        # Check for preview session first - these use in-memory storage only
+        if is_preview_session(session_id):
+            logger.info(f"🔍 Preview session detected: {session_id}")
+            return PreviewSessionManager(session_id=session_id, user_id=user_id)
+
         # Load memory configuration from environment
         config = load_memory_config()
 

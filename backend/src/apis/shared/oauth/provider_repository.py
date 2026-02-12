@@ -197,6 +197,7 @@ class OAuthProviderRepository:
                 userinfo_endpoint=create_request.userinfo_endpoint,
                 revocation_endpoint=create_request.revocation_endpoint,
                 pkce_required=create_request.pkce_required,
+                authorization_params=create_request.authorization_params,
                 created_at=now,
                 updated_at=now,
             )
@@ -267,6 +268,8 @@ class OAuthProviderRepository:
                 existing.revocation_endpoint = updates.revocation_endpoint
             if updates.pkce_required is not None:
                 existing.pkce_required = updates.pkce_required
+            if updates.authorization_params is not None:
+                existing.authorization_params = updates.authorization_params
 
             existing.updated_at = datetime.utcnow().isoformat() + "Z"
 

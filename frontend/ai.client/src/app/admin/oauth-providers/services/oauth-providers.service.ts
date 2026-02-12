@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import {
   OAuthProvider,
@@ -47,8 +47,9 @@ function toCamelCase(obj: Record<string, any>): Record<string, any> {
 export class OAuthProvidersService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
 
-  private readonly baseUrl = `${environment.appApiUrl}/admin/oauth-providers`;
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/admin/oauth-providers`);
 
   /**
    * Reactive resource for fetching OAuth Providers.
@@ -86,7 +87,7 @@ export class OAuthProvidersService {
    */
   async fetchProviders(): Promise<OAuthProviderListResponse> {
     const response = await firstValueFrom(
-      this.http.get<any>(`${this.baseUrl}/`)
+      this.http.get<any>(`${this.baseUrl()}/`)
     );
     // Convert snake_case response to camelCase
     return {
@@ -100,7 +101,7 @@ export class OAuthProvidersService {
    */
   async fetchProvider(providerId: string): Promise<OAuthProvider> {
     const response = await firstValueFrom(
-      this.http.get<any>(`${this.baseUrl}/${providerId}`)
+      this.http.get<any>(`${this.baseUrl()}/${providerId}`)
     );
     // Convert snake_case response to camelCase
     return toCamelCase(response) as OAuthProvider;
@@ -113,7 +114,7 @@ export class OAuthProvidersService {
     // Convert camelCase request to snake_case
     const snakeCaseData = toSnakeCase(providerData as unknown as Record<string, any>);
     const response = await firstValueFrom(
-      this.http.post<any>(`${this.baseUrl}/`, snakeCaseData)
+      this.http.post<any>(`${this.baseUrl()}/`, snakeCaseData)
     );
     this.providersResource.reload();
     // Convert snake_case response to camelCase
@@ -127,7 +128,7 @@ export class OAuthProvidersService {
     // Convert camelCase request to snake_case
     const snakeCaseData = toSnakeCase(updates as unknown as Record<string, any>);
     const response = await firstValueFrom(
-      this.http.patch<any>(`${this.baseUrl}/${providerId}`, snakeCaseData)
+      this.http.patch<any>(`${this.baseUrl()}/${providerId}`, snakeCaseData)
     );
     this.providersResource.reload();
     // Convert snake_case response to camelCase
@@ -139,7 +140,7 @@ export class OAuthProvidersService {
    */
   async deleteProvider(providerId: string): Promise<void> {
     await firstValueFrom(
-      this.http.delete<void>(`${this.baseUrl}/${providerId}`)
+      this.http.delete<void>(`${this.baseUrl()}/${providerId}`)
     );
     this.providersResource.reload();
   }

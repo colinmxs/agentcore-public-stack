@@ -15,7 +15,7 @@ from typing import List, Optional
 
 from apis.shared.auth.models import User
 from apis.shared.rbac.service import AppRoleService, get_app_role_service
-from apis.app_api.admin.models import ManagedModel
+from apis.shared.models.models import ManagedModel
 
 logger = logging.getLogger(__name__)
 

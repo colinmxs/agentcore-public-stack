@@ -5,7 +5,7 @@ This guide shows how to test the Assistants CRUD API using local file storage.
 ## Prerequisites
 
 - Backend server running (`python -m uvicorn apis.app_api.main:app --reload`)
-- No `ASSISTANTS_TABLE_NAME` environment variable set (uses local storage by default)
+- No `DYNAMODB_ASSISTANTS_TABLE_NAME` environment variable set (uses local storage by default)
 - Valid JWT token for authentication
 
 ## Local Storage Location
@@ -248,7 +248,7 @@ rm backend/src/assistants/assistant_*.json
 ## Next Steps
 
 Once local testing is complete:
-1. Set `ASSISTANTS_TABLE_NAME` environment variable
+1. Set `DYNAMODB_ASSISTANTS_TABLE_NAME` environment variable
 2. Implement DynamoDB TODO sections in `assistant_service.py`
 3. Test with cloud storage
 

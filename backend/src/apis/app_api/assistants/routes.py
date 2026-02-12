@@ -121,7 +121,7 @@ async def create_assistant_endpoint(request: CreateAssistantRequest, current_use
 
     try:
         # Create complete assistant
-        # Note: vector_index_id is automatically set from ASSISTANTS_VECTOR_STORE_INDEX_NAME env var
+        # Note: vector_index_id is automatically set from S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME env var
         assistant = await create_assistant(
             owner_id=user_id,
             owner_name=current_user.name,
@@ -130,6 +130,8 @@ async def create_assistant_endpoint(request: CreateAssistantRequest, current_use
             instructions=request.instructions,
             visibility=request.visibility,
             tags=request.tags,
+            starters=request.starters,
+            emoji=request.emoji,
         )
 
         # Convert to response model (excludes owner_id for privacy)
@@ -332,6 +334,8 @@ async def update_assistant_endpoint(assistant_id: str, request: UpdateAssistantR
             instructions=request.instructions,
             visibility=request.visibility,
             tags=request.tags,
+            starters=request.starters,
+            emoji=request.emoji,
             status=request.status,
             image_url=request.image_url,
         )

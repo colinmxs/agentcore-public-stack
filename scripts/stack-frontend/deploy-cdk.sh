@@ -103,10 +103,10 @@ else
     # Deploy with context parameters (will synthesize first)
     cdk deploy FrontendStack \
         --require-approval ${REQUIRE_APPROVAL} \
-        --context environment="${DEPLOY_ENVIRONMENT}" \
         --context projectPrefix="${CDK_PROJECT_PREFIX}" \
         --context awsAccount="${CDK_AWS_ACCOUNT}" \
         --context awsRegion="${CDK_AWS_REGION}" \
+        --context production="${CDK_PRODUCTION}" \
         --context vpcCidr="${CDK_VPC_CIDR}" \
         --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
         --context frontend.domainName="${CDK_FRONTEND_DOMAIN_NAME}" \

@@ -19,6 +19,8 @@ class Assistant(BaseModel):
     vector_index_id: str = Field(..., alias="vectorIndexId", description="S3 vector index name")
     visibility: Literal["PRIVATE", "PUBLIC", "SHARED"] = Field(..., description="Access control level")
     tags: Optional[List[str]] = Field(default_factory=list, description="Search keywords")
+    starters: Optional[List[str]] = Field(default_factory=list, description="Conversation starter prompts")
+    emoji: Optional[str] = Field(None, description="Single emoji character for assistant avatar")
     usage_count: int = Field(0, alias="usageCount", description="Number of times used")
     created_at: str = Field(..., alias="createdAt", description="ISO 8601 timestamp of creation")
     updated_at: str = Field(..., alias="updatedAt", description="ISO 8601 timestamp of last update")
@@ -44,6 +46,8 @@ class CreateAssistantRequest(BaseModel):
     instructions: str = Field(..., description="System prompt")
     visibility: Literal["PRIVATE", "PUBLIC", "SHARED"] = Field("PRIVATE", description="Access control")
     tags: Optional[List[str]] = Field(default_factory=list, description="Search keywords")
+    starters: Optional[List[str]] = Field(default_factory=list, description="Conversation starter prompts")
+    emoji: Optional[str] = Field(None, description="Single emoji character for assistant avatar")
     image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
 
@@ -57,6 +61,8 @@ class UpdateAssistantRequest(BaseModel):
     instructions: Optional[str] = Field(None, description="System prompt")
     visibility: Optional[Literal["PRIVATE", "PUBLIC", "SHARED"]] = Field(None, description="Access control")
     tags: Optional[List[str]] = Field(None, description="Search keywords")
+    starters: Optional[List[str]] = Field(None, description="Conversation starter prompts")
+    emoji: Optional[str] = Field(None, description="Single emoji character for assistant avatar")
     status: Optional[Literal["DRAFT", "COMPLETE", "ARCHIVED"]] = Field(None, description="Lifecycle status")
     image_url: Optional[str] = Field(None, alias="imageUrl", description="URL to assistant avatar/image")
 
@@ -74,6 +80,8 @@ class AssistantResponse(BaseModel):
     vector_index_id: str = Field(..., alias="vectorIndexId", description="S3 vector index name")
     visibility: Literal["PRIVATE", "PUBLIC", "SHARED"] = Field(..., description="Access control")
     tags: Optional[List[str]] = Field(default_factory=list, description="Search keywords")
+    starters: Optional[List[str]] = Field(default_factory=list, description="Conversation starter prompts")
+    emoji: Optional[str] = Field(None, description="Single emoji character for assistant avatar")
     usage_count: int = Field(..., alias="usageCount", description="Usage count")
     created_at: str = Field(..., alias="createdAt", description="ISO 8601 creation timestamp")
     updated_at: str = Field(..., alias="updatedAt", description="ISO 8601 update timestamp")

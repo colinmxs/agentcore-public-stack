@@ -1,7 +1,7 @@
 import { inject, Injectable, signal, WritableSignal, resource, computed, effect } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import { AuthService } from '../../../auth/auth.service';
 import { SessionMetadata, UpdateSessionMetadataRequest } from '../models/session-metadata.model';
 import { Message } from '../models/message.model';
@@ -88,6 +88,8 @@ export interface BulkDeleteSessionsResponse {
 export class SessionService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/sessions`);
 
   /**
    * Signal representing the current active session.
@@ -385,7 +387,7 @@ export class SessionService {
     try {
       const response = await firstValueFrom(
         this.http.get<SessionsListResponse>(
-          `${environment.appApiUrl}/sessions`,
+          this.baseUrl(),
           { params: httpParams }
         )
       );
@@ -433,7 +435,7 @@ export class SessionService {
     try {
       const response = await firstValueFrom(
         this.http.get<MessagesListResponse>(
-          `${environment.appApiUrl}/sessions/${sessionId}/messages`,
+          `${this.baseUrl()}/${sessionId}/messages`,
           { params: httpParams }
         )
       );
@@ -465,7 +467,7 @@ export class SessionService {
     try {
       const response = await firstValueFrom(
         this.http.get<SessionMetadata>(
-          `${environment.appApiUrl}/sessions/${sessionId}/metadata`
+          `${this.baseUrl()}/${sessionId}/metadata`
         )
       );
 
@@ -502,7 +504,7 @@ export class SessionService {
     try {
       const response = await firstValueFrom(
         this.http.put<SessionMetadata>(
-          `${environment.appApiUrl}/sessions/${sessionId}/metadata`,
+          `${this.baseUrl()}/${sessionId}/metadata`,
           updates
         )
       );
@@ -614,7 +616,7 @@ export class SessionService {
 
     try {
       await firstValueFrom(
-        this.http.delete(`${environment.appApiUrl}/sessions/${sessionId}`)
+        this.http.delete(`${this.baseUrl()}/${sessionId}`)
       );
 
       // Remove from new session IDs set if present
@@ -678,7 +680,7 @@ export class SessionService {
     try {
       const response = await firstValueFrom(
         this.http.post<BulkDeleteSessionsResponse>(
-          `${environment.appApiUrl}/sessions/bulk-delete`,
+          `${this.baseUrl()}/bulk-delete`,
           { sessionIds } as BulkDeleteSessionsRequest
         )
       );

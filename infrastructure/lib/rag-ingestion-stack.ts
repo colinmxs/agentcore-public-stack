@@ -9,7 +9,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { Construct } from 'constructs';
 import { CfnResource } from 'aws-cdk-lib';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from './config';
 
 export interface RagIngestionStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -165,10 +165,7 @@ export class RagIngestionStack extends cdk.Stack {
       },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      removalPolicy:
-        config.environment === 'prod'
-          ? cdk.RemovalPolicy.RETAIN
-          : cdk.RemovalPolicy.DESTROY,
+      removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
@@ -235,10 +232,10 @@ export class RagIngestionStack extends cdk.Stack {
         timeout: cdk.Duration.seconds(config.ragIngestion.lambdaTimeout),
         memorySize: config.ragIngestion.lambdaMemorySize,
         environment: {
-          ASSISTANTS_DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
-          ASSISTANTS_TABLE_NAME: this.assistantsTable.tableName,
-          ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
-          ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
+          S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
+          DYNAMODB_ASSISTANTS_TABLE_NAME: this.assistantsTable.tableName,
+          S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
+          S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
           BEDROCK_REGION: config.awsRegion,
         },
         description:

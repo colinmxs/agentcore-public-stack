@@ -1,7 +1,7 @@
-import { Injectable, inject, resource } from '@angular/core';
+import { Injectable, inject, resource, computed } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
 import { AuthService } from '../../auth/auth.service';
 import {
   MemoryStatus,
@@ -24,6 +24,8 @@ import {
 export class MemoryService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/memory`);
 
   /**
    * Reactive resource for fetching memory status
@@ -50,7 +52,7 @@ export class MemoryService {
    */
   async fetchMemoryStatus(): Promise<MemoryStatus> {
     const response = await firstValueFrom(
-      this.http.get<MemoryStatus>(`${environment.appApiUrl}/memory/status`)
+      this.http.get<MemoryStatus>(`${this.baseUrl()}/status`)
     );
     return response;
   }
@@ -60,7 +62,7 @@ export class MemoryService {
    */
   async fetchAllMemories(topK: number = 20): Promise<AllMemoriesResponse> {
     const response = await firstValueFrom(
-      this.http.get<AllMemoriesResponse>(`${environment.appApiUrl}/memory?topK=${topK}`)
+      this.http.get<AllMemoriesResponse>(`${this.baseUrl()}?topK=${topK}`)
     );
     return response;
   }
@@ -69,7 +71,7 @@ export class MemoryService {
    * Fetch user preferences
    */
   async fetchPreferences(query?: string, topK: number = 10): Promise<MemoriesResponse> {
-    let url = `${environment.appApiUrl}/memory/preferences?topK=${topK}`;
+    let url = `${this.baseUrl()}/preferences?topK=${topK}`;
     if (query) {
       url += `&query=${encodeURIComponent(query)}`;
     }
@@ -83,7 +85,7 @@ export class MemoryService {
    * Fetch user facts
    */
   async fetchFacts(query?: string, topK: number = 10): Promise<MemoriesResponse> {
-    let url = `${environment.appApiUrl}/memory/facts?topK=${topK}`;
+    let url = `${this.baseUrl()}/facts?topK=${topK}`;
     if (query) {
       url += `&query=${encodeURIComponent(query)}`;
     }
@@ -98,7 +100,7 @@ export class MemoryService {
    */
   async searchMemories(request: MemorySearchRequest): Promise<MemoriesResponse> {
     const response = await firstValueFrom(
-      this.http.post<MemoriesResponse>(`${environment.appApiUrl}/memory/search`, request)
+      this.http.post<MemoriesResponse>(`${this.baseUrl()}/search`, request)
     );
     return response;
   }
@@ -108,7 +110,7 @@ export class MemoryService {
    */
   async fetchStrategies(): Promise<StrategiesResponse> {
     const response = await firstValueFrom(
-      this.http.get<StrategiesResponse>(`${environment.appApiUrl}/memory/strategies`)
+      this.http.get<StrategiesResponse>(`${this.baseUrl()}/strategies`)
     );
     return response;
   }
@@ -118,7 +120,7 @@ export class MemoryService {
    */
   async deleteMemory(recordId: string): Promise<DeleteMemoryResponse> {
     const response = await firstValueFrom(
-      this.http.delete<DeleteMemoryResponse>(`${environment.appApiUrl}/memory/${recordId}`)
+      this.http.delete<DeleteMemoryResponse>(`${this.baseUrl()}/${recordId}`)
     );
     return response;
   }

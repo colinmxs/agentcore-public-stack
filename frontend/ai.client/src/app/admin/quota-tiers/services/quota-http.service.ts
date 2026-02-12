@@ -1,7 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient, HttpParams } from '@angular/common/http';
 import { Observable } from 'rxjs';
-import { environment } from '../../../../environments/environment';
+import { ConfigService } from '../../../services/config.service';
 import {
   QuotaTier,
   QuotaTierCreate,
@@ -25,21 +25,22 @@ import {
 })
 export class QuotaHttpService {
   private http = inject(HttpClient);
-  private baseUrl = `${environment.appApiUrl}/admin/quota`;
+  private config = inject(ConfigService);
+  private baseUrl = computed(() => `${this.config.appApiUrl()}/admin/quota`);
 
   // ========== Quota Tiers ==========
 
   getTiers(enabledOnly = false): Observable<QuotaTier[]> {
     const params = new HttpParams().set('enabled_only', enabledOnly);
-    return this.http.get<QuotaTier[]>(`${this.baseUrl}/tiers`, { params });
+    return this.http.get<QuotaTier[]>(`${this.baseUrl()}/tiers`, { params });
   }
 
   getTier(tierId: string): Observable<QuotaTier> {
-    return this.http.get<QuotaTier>(`${this.baseUrl}/tiers/${tierId}`);
+    return this.http.get<QuotaTier>(`${this.baseUrl()}/tiers/${tierId}`);
   }
 
   createTier(tier: QuotaTierCreate): Observable<QuotaTier> {
-    return this.http.post<QuotaTier>(`${this.baseUrl}/tiers`, tier);
+    return this.http.post<QuotaTier>(`${this.baseUrl()}/tiers`, tier);
   }
 
   updateTier(
@@ -47,13 +48,13 @@ export class QuotaHttpService {
     updates: QuotaTierUpdate
   ): Observable<QuotaTier> {
     return this.http.patch<QuotaTier>(
-      `${this.baseUrl}/tiers/${tierId}`,
+      `${this.baseUrl()}/tiers/${tierId}`,
       updates
     );
   }
 
   deleteTier(tierId: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/tiers/${tierId}`);
+    return this.http.delete<void>(`${this.baseUrl()}/tiers/${tierId}`);
   }
 
   // ========== Quota Assignments ==========
@@ -66,14 +67,14 @@ export class QuotaHttpService {
     if (tierId) {
       params = params.set('tier_id', tierId);
     }
-    return this.http.get<QuotaAssignment[]>(`${this.baseUrl}/assignments`, {
+    return this.http.get<QuotaAssignment[]>(`${this.baseUrl()}/assignments`, {
       params,
     });
   }
 
   getAssignment(assignmentId: string): Observable<QuotaAssignment> {
     return this.http.get<QuotaAssignment>(
-      `${this.baseUrl}/assignments/${assignmentId}`
+      `${this.baseUrl()}/assignments/${assignmentId}`
     );
   }
 
@@ -81,7 +82,7 @@ export class QuotaHttpService {
     assignment: QuotaAssignmentCreate
   ): Observable<QuotaAssignment> {
     return this.http.post<QuotaAssignment>(
-      `${this.baseUrl}/assignments`,
+      `${this.baseUrl()}/assignments`,
       assignment
     );
   }
@@ -91,14 +92,14 @@ export class QuotaHttpService {
     updates: QuotaAssignmentUpdate
   ): Observable<QuotaAssignment> {
     return this.http.patch<QuotaAssignment>(
-      `${this.baseUrl}/assignments/${assignmentId}`,
+      `${this.baseUrl()}/assignments/${assignmentId}`,
       updates
     );
   }
 
   deleteAssignment(assignmentId: string): Observable<void> {
     return this.http.delete<void>(
-      `${this.baseUrl}/assignments/${assignmentId}`
+      `${this.baseUrl()}/assignments/${assignmentId}`
     );
   }
 
@@ -112,14 +113,14 @@ export class QuotaHttpService {
     if (userId) {
       params = params.set('user_id', userId);
     }
-    return this.http.get<QuotaOverride[]>(`${this.baseUrl}/overrides`, {
+    return this.http.get<QuotaOverride[]>(`${this.baseUrl()}/overrides`, {
       params,
     });
   }
 
   getOverride(overrideId: string): Observable<QuotaOverride> {
     return this.http.get<QuotaOverride>(
-      `${this.baseUrl}/overrides/${overrideId}`
+      `${this.baseUrl()}/overrides/${overrideId}`
     );
   }
 
@@ -127,7 +128,7 @@ export class QuotaHttpService {
     override: QuotaOverrideCreate
   ): Observable<QuotaOverride> {
     return this.http.post<QuotaOverride>(
-      `${this.baseUrl}/overrides`,
+      `${this.baseUrl()}/overrides`,
       override
     );
   }
@@ -137,13 +138,13 @@ export class QuotaHttpService {
     updates: QuotaOverrideUpdate
   ): Observable<QuotaOverride> {
     return this.http.patch<QuotaOverride>(
-      `${this.baseUrl}/overrides/${overrideId}`,
+      `${this.baseUrl()}/overrides/${overrideId}`,
       updates
     );
   }
 
   deleteOverride(overrideId: string): Observable<void> {
-    return this.http.delete<void>(`${this.baseUrl}/overrides/${overrideId}`);
+    return this.http.delete<void>(`${this.baseUrl()}/overrides/${overrideId}`);
   }
 
   // ========== Quota Events ==========
@@ -169,7 +170,7 @@ export class QuotaHttpService {
       params = params.set('limit', options.limit);
     }
 
-    return this.http.get<QuotaEvent[]>(`${this.baseUrl}/events`, { params });
+    return this.http.get<QuotaEvent[]>(`${this.baseUrl()}/events`, { params });
   }
 
   // ========== User Quota Inspector ==========
@@ -188,7 +189,7 @@ export class QuotaHttpService {
       params = params.set('roles', roles.join(','));
     }
 
-    return this.http.get<UserQuotaInfo>(`${this.baseUrl}/users/${userId}`, {
+    return this.http.get<UserQuotaInfo>(`${this.baseUrl()}/users/${userId}`, {
       params,
     });
   }

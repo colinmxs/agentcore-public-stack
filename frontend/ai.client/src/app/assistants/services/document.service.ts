@@ -1,7 +1,7 @@
-import { Injectable, inject } from '@angular/core';
+import { Injectable, inject, computed } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
-import { environment } from '../../../environments/environment';
+import { ConfigService } from '../../services/config.service';
 import { AuthService } from '../../auth/auth.service';
 import {
   CreateDocumentRequest,
@@ -40,7 +40,8 @@ export class DocumentUploadError extends Error {
 export class DocumentService {
   private http = inject(HttpClient);
   private authService = inject(AuthService);
-  private readonly baseUrl = `${environment.appApiUrl}/assistants`;
+  private config = inject(ConfigService);
+  private readonly baseUrl = computed(() => `${this.config.appApiUrl()}/assistants`);
 
   /**
    * Request a presigned URL for uploading a document to an assistant.
@@ -62,7 +63,7 @@ export class DocumentService {
     try {
       return await firstValueFrom(
         this.http.post<UploadUrlResponse>(
-          `${this.baseUrl}/${assistantId}/documents/upload-url`,
+          `${this.baseUrl()}/${assistantId}/documents/upload-url`,
           request
         )
       );
@@ -181,7 +182,7 @@ export class DocumentService {
     await this.authService.ensureAuthenticated();
 
     try {
-      let url = `${this.baseUrl}/${assistantId}/documents`;
+      let url = `${this.baseUrl()}/${assistantId}/documents`;
       const params: string[] = [];
       
       if (limit !== undefined) {
@@ -216,7 +217,7 @@ export class DocumentService {
 
     try {
       return await firstValueFrom(
-        this.http.get<Document>(`${this.baseUrl}/${assistantId}/documents/${documentId}`)
+        this.http.get<Document>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`)
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to get document');
@@ -238,7 +239,7 @@ export class DocumentService {
     try {
       return await firstValueFrom(
         this.http.get<DownloadUrlResponse>(
-          `${this.baseUrl}/${assistantId}/documents/${documentId}/download`
+          `${this.baseUrl()}/${assistantId}/documents/${documentId}/download`
         )
       );
     } catch (err) {
@@ -259,7 +260,7 @@ export class DocumentService {
 
     try {
       await firstValueFrom(
-        this.http.delete<void>(`${this.baseUrl}/${assistantId}/documents/${documentId}`)
+        this.http.delete<void>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`)
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to delete document');
