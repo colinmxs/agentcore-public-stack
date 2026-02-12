@@ -66,10 +66,11 @@ The application currently supports dynamic database-driven OIDC provider managem
 **So that** I can access the AI agent with my existing credentials
 
 **Acceptance Criteria:**
-- 5.1 Frontend includes my provider ID in API requests (X-Auth-Provider header)
-- 5.2 ALB routes my requests to the correct runtime based on provider ID
-- 5.3 Runtime validates my JWT token using my provider's JWKS
-- 5.4 Authentication failures provide clear error messages
+- 5.1 Frontend determines my provider ID from my JWT token or auth service
+- 5.2 Frontend fetches the correct runtime endpoint URL for my provider from App API
+- 5.3 Frontend calls my provider's runtime endpoint directly
+- 5.4 Runtime validates my JWT token using my provider's JWKS
+- 5.5 Authentication failures provide clear error messages
 
 ### 6. Shared Resource Access
 **As a** user authenticated via any provider  
@@ -117,12 +118,12 @@ Attributes:
 
 ### Routing Strategy
 
-**Header-Based Routing (Recommended)**:
-- Frontend includes `X-Auth-Provider: {provider_id}` header
-- ALB routes to correct runtime based on header value
-- One listener rule per provider
+**Direct Runtime Invocation**:
+- Frontend fetches runtime endpoint URL from App API based on user's provider ID
+- Frontend calls provider-specific runtime endpoint directly
+- No ALB routing needed (AgentCore Runtimes are AWS-managed services with their own HTTPS endpoints)
 
-**Alternative**: Path-based routing (`/inference/{provider_id}/*`)
+**Endpoint Format**: `https://bedrock-agentcore.{region}.amazonaws.com/runtimes/{runtime-arn}/invocations`
 
 ### Security
 
@@ -137,7 +138,7 @@ Attributes:
 - Runtime provisioning: < 5 minutes
 - Runtime updates: < 5 minutes per runtime
 - Image updates: All runtimes updated within 30 minutes (parallel execution)
-- Request latency: No added latency vs single runtime (direct routing)
+- Request latency: No added latency vs single runtime (direct runtime invocation)
 
 ### Scalability
 - Support 1-10 providers initially
@@ -174,11 +175,12 @@ Attributes:
 - DynamoDB Streams on Auth Providers table
 - EventBridge rule for image tag changes
 - SNS topic for alerts
-- ALB listener rules for routing
+- App API endpoint for runtime URL lookup
 
 ### Code Changes
 - Auth Provider models (add runtime tracking fields)
-- Frontend API service (include X-Auth-Provider header)
+- App API endpoint (GET /auth/runtime-endpoint)
+- Frontend API service (fetch runtime endpoint URL per provider)
 - Admin UI (display runtime status)
 
 ## Out of Scope
@@ -204,9 +206,9 @@ Attributes:
 **Impact**: Users cannot authenticate with new provider  
 **Mitigation**: Retry logic, detailed error logging, SNS alerts, admin UI shows status
 
-### Risk 2: ALB Routing Complexity
-**Impact**: Requests routed to wrong runtime  
-**Mitigation**: Comprehensive testing, header validation, fallback routing
+### Risk 2: Runtime Endpoint Resolution Failures
+**Impact**: Requests cannot be routed to correct runtime  
+**Mitigation**: Comprehensive testing, endpoint validation, fallback error handling
 
 ### Risk 3: Image Update Failures
 **Impact**: Runtimes running stale code  
