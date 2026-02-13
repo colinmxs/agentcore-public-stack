@@ -188,7 +188,11 @@ class GenericOIDCJWTValidator:
 
             # Extract user info using provider's claim mappings
             user_id = self._extract_claim(payload, provider.user_id_claim)
-            email = self._extract_claim(payload, provider.email_claim)
+            email = (
+                self._extract_claim(payload, provider.email_claim)
+                or payload.get("preferred_username")
+                or payload.get("upn")
+            )
             name = self._extract_claim(payload, provider.name_claim)
             roles = payload.get(provider.roles_claim, [])
             picture = payload.get(provider.picture_claim) if provider.picture_claim else None

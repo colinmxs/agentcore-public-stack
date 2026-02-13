@@ -294,7 +294,12 @@ async def get_current_user_trusted(
                 provider = await generic_validator.resolve_provider_from_token(token)
                 if provider:
                     # Use provider-specific claim extraction
-                    email = payload.get(provider.email_claim)
+                    # Fall back to common OIDC claims if primary claim is absent
+                    email = (
+                        payload.get(provider.email_claim)
+                        or payload.get("preferred_username")
+                        or payload.get("upn")
+                    )
                     name = payload.get(provider.name_claim)
                     user_id = payload.get(provider.user_id_claim)
                     roles = payload.get(provider.roles_claim, [])
