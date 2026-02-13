@@ -38,6 +38,7 @@ from apis.shared.errors import (
     build_conversational_error_event,
 )
 from apis.shared.quota import (
+    build_no_quota_configured_event,
     build_quota_exceeded_event,
     build_quota_warning_event,
     get_quota_checker,
@@ -135,9 +136,14 @@ async def chat_stream(request: ChatRequest, current_user: User = Depends(get_cur
             quota_result = await quota_checker.check_quota(user=current_user, session_id=request.session_id)
 
             if not quota_result.allowed:
-                # Quota exceeded - stream as SSE instead of 429 for better UX
-                logger.warning(f"Quota exceeded for user {user_id}: {quota_result.message}")
-                quota_exceeded_event = build_quota_exceeded_event(quota_result)
+                # Quota blocked - stream as SSE instead of 429 for better UX
+                logger.warning(f"Quota blocked for user {user_id}: {quota_result.message}")
+                if quota_result.tier is None:
+                    # No quota tier configured for this user
+                    quota_exceeded_event = build_no_quota_configured_event(quota_result)
+                else:
+                    # Quota limit exceeded
+                    quota_exceeded_event = build_quota_exceeded_event(quota_result)
             else:
                 # Check for warning level
                 quota_warning_event = build_quota_warning_event(quota_result)
