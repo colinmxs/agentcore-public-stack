@@ -103,25 +103,25 @@ The Lambda functions for runtime management are deployed as part of the App API 
     - Preserve all other configuration (JWT auth, network, environment)
   - [x] 6.3 Create requirements.txt with dependencies
 
-- [ ] 7. Add Runtime Updater to AppApiStack
-  - [ ] 7.1 Define Lambda function resource in AppApiStack
+- [x] 7. Add Runtime Updater to AppApiStack
+  - [x] 7.1 Define Lambda function resource in AppApiStack
     - Runtime: Python 3.13
     - Memory: 512 MB
     - Timeout: 15 minutes (for parallel updates)
     - Code from `backend/lambda-functions/runtime-updater/`
-  - [ ] 7.2 Create IAM role for Lambda
+  - [x] 7.2 Create IAM role for Lambda
     - Bedrock AgentCore permissions (GetAgentRuntime, UpdateAgentRuntime)
     - DynamoDB Scan and UpdateItem permissions
     - SSM Parameter Store read permissions
     - ECR read permissions
     - SNS Publish permissions
-  - [ ] 7.3 Create SNS topic for alerts
+  - [x] 7.3 Create SNS topic for alerts
     - Topic name: `{projectPrefix}-runtime-update-alerts`
     - Add email subscription (optional)
-  - [ ] 7.4 Create EventBridge rule
+  - [x] 7.4 Create EventBridge rule
     - Detect SSM parameter changes: `/${projectPrefix}/inference-api/image-tag`
     - Target: Runtime Updater Lambda
-  - [ ] 7.5 Deploy updated AppApiStack with Runtime Updater
+  - [x] 7.5 Deploy updated AppApiStack with Runtime Updater
 
 ### Phase 5: Remove Entra ID Hardcoded Configuration
 

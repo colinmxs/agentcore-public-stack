@@ -13,6 +13,9 @@ import * as logs from "aws-cdk-lib/aws-logs";
 import * as kms from "aws-cdk-lib/aws-kms";
 import * as lambda from "aws-cdk-lib/aws-lambda";
 import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
@@ -1309,6 +1312,115 @@ export class AppApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // ============================================================
+    // Runtime Updater Lambda
+    // ============================================================
+
+    // Create SNS topic for runtime update alerts
+    const runtimeUpdateAlertsTopic = new sns.Topic(this, "RuntimeUpdateAlertsTopic", {
+      topicName: getResourceName(config, "runtime-update-alerts"),
+      displayName: "AgentCore Runtime Update Alerts",
+    });
+
+    // Create Lambda function for runtime updates
+    const runtimeUpdaterFunction = new lambda.Function(this, "RuntimeUpdaterFunction", {
+      functionName: getResourceName(config, "runtime-updater"),
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "lambda_function.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-updater"),
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+      architecture: lambda.Architecture.ARM_64,
+      environment: {
+        PROJECT_PREFIX: config.projectPrefix,
+        AWS_REGION: config.awsRegion,
+        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+        SNS_TOPIC_ARN: runtimeUpdateAlertsTopic.topicArn,
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant Bedrock AgentCore permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "BedrockAgentCoreRuntimeUpdates",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock-agentcore:GetAgentRuntime",
+          "bedrock-agentcore:UpdateAgentRuntime",
+        ],
+        resources: ["*"], // Runtime ARNs are not known at deployment time
+      })
+    );
+
+    // Grant DynamoDB Scan and UpdateItem permissions
+    authProvidersTable.grantReadWriteData(runtimeUpdaterFunction);
+
+    // Grant SSM Parameter Store read permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SSMParameterReadAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+        ],
+        resources: [
+          `arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`,
+        ],
+      })
+    );
+
+    // Grant ECR read permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ECRReadAccessForUpdater",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:GetAuthorizationToken",
+        ],
+        resources: ["*"], // ECR authorization token requires wildcard
+      })
+    );
+
+    // Grant SNS Publish permissions
+    runtimeUpdateAlertsTopic.grantPublish(runtimeUpdaterFunction);
+
+    // Create EventBridge rule to detect SSM parameter changes
+    const imageTagChangeRule = new events.Rule(this, "ImageTagChangeRule", {
+      ruleName: getResourceName(config, "image-tag-change"),
+      description: "Triggers Runtime Updater when inference API image tag changes",
+      eventPattern: {
+        source: ["aws.ssm"],
+        detailType: ["Parameter Store Change"],
+        detail: {
+          name: [`/${config.projectPrefix}/inference-api/image-tag`],
+          operation: ["Update"],
+        },
+      },
+    });
+
+    // Add Lambda as target for EventBridge rule
+    imageTagChangeRule.addTarget(new targets.LambdaFunction(runtimeUpdaterFunction));
+
+    // Store Lambda function ARN in SSM
+    new ssm.StringParameter(this, "RuntimeUpdaterFunctionArnParameter", {
+      parameterName: `/${config.projectPrefix}/lambda/runtime-updater-arn`,
+      stringValue: runtimeUpdaterFunction.functionArn,
+      description: "Runtime Updater Lambda function ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // Store SNS topic ARN in SSM
+    new ssm.StringParameter(this, "RuntimeUpdateAlertsTopicArnParameter", {
+      parameterName: `/${config.projectPrefix}/sns/runtime-update-alerts-arn`,
+      stringValue: runtimeUpdateAlertsTopic.topicArn,
+      description: "SNS topic ARN for runtime update alerts",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -1551,6 +1663,18 @@ export class AppApiStack extends cdk.Stack {
       value: runtimeProvisionerFunction.functionArn,
       description: "Runtime Provisioner Lambda function ARN",
       exportName: `${config.projectPrefix}-RuntimeProvisionerFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdaterFunctionArn", {
+      value: runtimeUpdaterFunction.functionArn,
+      description: "Runtime Updater Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeUpdaterFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdateAlertsTopicArn", {
+      value: runtimeUpdateAlertsTopic.topicArn,
+      description: "SNS topic ARN for runtime update alerts",
+      exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
     });
   }
 }
