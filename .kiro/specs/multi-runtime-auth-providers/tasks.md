@@ -40,25 +40,25 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
 
 ### Phase 3: Runtime Provisioner Lambda
 
-- [ ] 4. Create Runtime Provisioner Lambda Function
-  - [ ] 4.1 Create Lambda function code (`backend/lambda-functions/runtime-provisioner/`)
+- [x] 4. Create Runtime Provisioner Lambda Function
+  - [x] 4.1 Create Lambda function code (`backend/lambda-functions/runtime-provisioner/`)
     - Implement DynamoDB Stream event handler
     - Implement `handle_insert()` - create new runtime
     - Implement `handle_modify()` - update runtime if JWT config changed
     - Implement `handle_remove()` - delete runtime and clean up SSM
-  - [ ] 4.2 Implement runtime creation logic
+  - [x] 4.2 Implement runtime creation logic
     - Fetch container image tag from SSM
     - Construct runtime name: `{projectPrefix}_agentcore_runtime_{provider_id}`
     - Determine discovery URL from issuer URL or JWKS URI
     - Call `bedrock-agentcore-control:CreateAgentRuntime` API
     - Store runtime ARN, ID, endpoint URL in DynamoDB
     - Store runtime ARN in SSM: `/${projectPrefix}/runtimes/{provider_id}/arn`
-  - [ ] 4.3 Implement error handling
+  - [x] 4.3 Implement error handling
     - Catch all exceptions during runtime operations
     - Update DynamoDB with FAILED status and error message
     - Log detailed errors to CloudWatch
-  - [ ] 4.4 Add retry logic (handled by Lambda DynamoDB Stream integration)
-  - [ ] 4.5 Create requirements.txt with dependencies (boto3, etc.)
+  - [x] 4.4 Add retry logic (handled by Lambda DynamoDB Stream integration)
+  - [x] 4.5 Create requirements.txt with dependencies (boto3, etc.)
 
 - [ ] 5. Create RuntimeProvisionerStack CDK
   - [ ] 5.1 Create new CDK stack file (`infrastructure/lib/runtime-provisioner-stack.ts`)
