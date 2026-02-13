@@ -88,8 +88,8 @@ The Lambda functions for runtime management are deployed as part of the App API 
 
 ### Phase 4: Runtime Updater Lambda
 
-- [ ] 6. Create Runtime Updater Lambda Function
-  - [ ] 6.1 Create Lambda function code (`backend/lambda-functions/runtime-updater/`)
+- [x] 6. Create Runtime Updater Lambda Function
+  - [x] 6.1 Create Lambda function code (`backend/lambda-functions/runtime-updater/`)
     - Implement EventBridge event handler
     - Query DynamoDB for all providers with existing runtimes
     - Fetch new container image URI from ECR
@@ -97,11 +97,11 @@ The Lambda functions for runtime management are deployed as part of the App API 
     - Implement retry logic (3 attempts with exponential backoff)
     - Update DynamoDB status for each provider
     - Send SNS notification summary
-  - [ ] 6.2 Implement update logic
+  - [x] 6.2 Implement update logic
     - Fetch current runtime configuration via GetAgentRuntime
     - Call UpdateAgentRuntime with new container image
     - Preserve all other configuration (JWT auth, network, environment)
-  - [ ] 6.3 Create requirements.txt with dependencies
+  - [x] 6.3 Create requirements.txt with dependencies
 
 - [ ] 7. Add Runtime Updater to AppApiStack
   - [ ] 7.1 Define Lambda function resource in AppApiStack
