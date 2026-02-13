@@ -3,7 +3,7 @@
 import logging
 from typing import Optional
 
-from fastapi import APIRouter, HTTPException, Query, status
+from fastapi import APIRouter, HTTPException, Query, Request, status
 
 from .models import (
     LoginResponse,
@@ -66,6 +66,7 @@ async def list_auth_providers() -> AuthProviderPublicListResponse:
     summary="Initiate OIDC login",
 )
 async def login(
+    request: Request,
     provider_id: Optional[str] = Query(None, description="Auth provider ID (omit for legacy Entra ID)"),
     redirect_uri: str = Query(None, description="Optional redirect URI override"),
     prompt: str = Query("select_account", description="Prompt type (select_account, login, consent)")
@@ -75,6 +76,10 @@ async def login(
 
     If provider_id is specified, uses the configured auth provider.
     Otherwise falls back to the legacy Entra ID configuration.
+
+    When no redirect_uri is configured (neither in the query param nor on the
+    provider), one is auto-derived from the request's Origin or Referer header
+    by appending /auth/callback.
     """
     try:
         if provider_id:
@@ -84,13 +89,25 @@ async def login(
             # Fall back to legacy Entra ID auth service
             auth_service = get_auth_service()
 
-        state, code_challenge, nonce = auth_service.generate_state(redirect_uri=redirect_uri)
+        # Auto-derive redirect_uri from request origin when not configured
+        effective_redirect_uri = redirect_uri
+        if not effective_redirect_uri and not auth_service.redirect_uri:
+            origin = request.headers.get("origin") or request.headers.get("referer")
+            if origin:
+                # Strip path from referer to get just the origin
+                from urllib.parse import urlparse
+                parsed = urlparse(origin)
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                effective_redirect_uri = f"{base}/auth/callback"
+                logger.info(f"Auto-derived redirect_uri from request origin: {effective_redirect_uri}")
+
+        state, code_challenge, nonce = auth_service.generate_state(redirect_uri=effective_redirect_uri)
 
         authorization_url = auth_service.build_authorization_url(
             state=state,
             code_challenge=code_challenge,
             nonce=nonce,
-            redirect_uri=redirect_uri,
+            redirect_uri=effective_redirect_uri,
             prompt=prompt
         )
 

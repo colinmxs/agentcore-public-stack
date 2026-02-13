@@ -25,7 +25,7 @@ export class UserService {
    */
   private readonly anonymousUser: User = {
     email: 'anonymous@local.dev',
-    empl_id: 'anonymous',
+    user_id: 'anonymous',
     firstName: 'Anonymous',
     lastName: 'User',
     fullName: 'Anonymous User',
@@ -88,15 +88,12 @@ export class UserService {
       const payload = this.base64UrlDecode(parts[1]);
       const jwtPayload: JWTPayload = JSON.parse(payload);
       
-      // Extract user information matching backend User model
-      const email = jwtPayload.email || jwtPayload.preferred_username;
-      if (!email) {
-        throw new Error('Token missing email or preferred_username');
-      }
+      // Extract user identity from standard OIDC claims
+      const email = jwtPayload.email || jwtPayload.preferred_username || '';
+      const userId = jwtPayload.sub || '';
 
-      const emplId = jwtPayload['http://schemas.boisestate.edu/claims/employeenumber'];
-      if (!emplId || !emplId.toString().match(/^\d{9}$/)) {
-        throw new Error('Token missing valid empl_id (9-digit employee number)');
+      if (!userId && !email) {
+        throw new Error('Token missing both sub and email claims');
       }
 
       // Build full name from available claims
@@ -119,7 +116,7 @@ export class UserService {
 
       const user: User = {
         email,
-        empl_id: emplId.toString(),
+        user_id: userId || email,
         firstName,
         lastName,
         fullName,

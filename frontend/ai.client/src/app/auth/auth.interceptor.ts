@@ -19,7 +19,7 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
 
   // Skip adding token for auth endpoints (login, token exchange, refresh)
-  const authEndpoints = ['/auth/login', '/auth/token', '/auth/refresh'];
+  const authEndpoints = ['/auth/login', '/auth/token', '/auth/refresh', '/auth/providers'];
   const isAuthEndpoint = authEndpoints.some(endpoint => req.url.includes(endpoint));
 
   // If it's an auth endpoint, proceed without modification

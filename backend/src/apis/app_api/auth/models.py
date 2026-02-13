@@ -25,11 +25,11 @@ class TokenExchangeRequest(BaseModel):
 class TokenExchangeResponse(BaseModel):
     """Response model for token exchange endpoint."""
     access_token: str = Field(..., description="JWT access token")
-    refresh_token: str = Field(..., description="Refresh token for obtaining new access tokens")
+    refresh_token: Optional[str] = Field(None, description="Refresh token for obtaining new access tokens")
     id_token: Optional[str] = Field(None, description="ID token containing user information")
     token_type: str = Field(default="Bearer", description="Token type")
     expires_in: int = Field(..., description="Access token expiration time in seconds")
-    scope: str = Field(..., description="Token scopes")
+    scope: Optional[str] = Field(None, description="Token scopes")
 
 
 class TokenRefreshRequest(BaseModel):
@@ -40,11 +40,11 @@ class TokenRefreshRequest(BaseModel):
 class TokenRefreshResponse(BaseModel):
     """Response model for token refresh endpoint."""
     access_token: str = Field(..., description="New JWT access token")
-    refresh_token: str = Field(..., description="New refresh token (may be same as input)")
+    refresh_token: Optional[str] = Field(None, description="New refresh token (may be same as input)")
     id_token: Optional[str] = Field(None, description="New ID token containing user information")
     token_type: str = Field(default="Bearer", description="Token type")
     expires_in: int = Field(..., description="Access token expiration time in seconds")
-    scope: str = Field(..., description="Token scopes")
+    scope: Optional[str] = Field(None, description="Token scopes")
 
 
 class LoginResponse(BaseModel):

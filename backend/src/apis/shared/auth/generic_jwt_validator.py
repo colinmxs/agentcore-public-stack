@@ -73,10 +73,7 @@ class GenericOIDCJWTValidator:
             # Query enabled providers and match by issuer
             providers = await self._provider_repo.list_providers(enabled_only=True)
             for provider in providers:
-                # Normalize trailing slashes for comparison
-                provider_issuer = provider.issuer_url.rstrip("/")
-                token_issuer = issuer.rstrip("/")
-                if provider_issuer == token_issuer:
+                if self._issuer_matches(issuer, provider):
                     self._issuer_to_provider[issuer] = provider
                     return provider
 
@@ -108,24 +105,51 @@ class GenericOIDCJWTValidator:
             HTTPException: If validation fails
         """
         try:
+            # Log token details for debugging
+            try:
+                unverified = jwt.decode(token, options={"verify_signature": False})
+                token_header = jwt.get_unverified_header(token)
+                logger.debug(
+                    f"Validating token for provider {provider.provider_id}: "
+                    f"iss={unverified.get('iss')}, aud={unverified.get('aud')}, "
+                    f"alg={token_header.get('alg')}, kid={token_header.get('kid')}"
+                )
+            except Exception:
+                pass
+
             # Get signing key from provider's JWKS
             jwks_client = self._get_jwks_client(provider)
             signing_key = jwks_client.get_signing_key_from_jwt(token)
 
             # Decode and validate token
+            # Allow issuer mismatch for providers like Entra ID where
+            # the token issuer (v1: sts.windows.net) differs from the
+            # OIDC discovery issuer (v2: login.microsoftonline.com)
             payload = jwt.decode(
                 token,
                 signing_key.key,
                 algorithms=["RS256", "RS384", "RS512", "ES256", "ES384", "ES512"],
-                issuer=provider.issuer_url,
                 options={
                     "verify_signature": True,
                     "verify_aud": False,  # Manual audience verification below
-                    "verify_iss": True,
+                    "verify_iss": False,  # Manual issuer verification below
                     "verify_exp": True,
                 },
                 leeway=60,
             )
+
+            # Manual issuer verification: accept both the configured issuer
+            # and known variant issuers (e.g., Entra ID v1 vs v2)
+            token_issuer = payload.get("iss", "")
+            if not self._issuer_matches(token_issuer, provider):
+                logger.warning(
+                    f"Token issuer '{token_issuer}' does not match provider "
+                    f"'{provider.provider_id}' issuer '{provider.issuer_url}'"
+                )
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail=f"Invalid token issuer.",
+                )
 
             # Verify audience if configured
             if provider.allowed_audiences:
@@ -246,6 +270,41 @@ class GenericOIDCJWTValidator:
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Token validation failed.",
             )
+
+    def _issuer_matches(self, token_issuer: str, provider: AuthProvider) -> bool:
+        """
+        Check if a token's issuer matches a provider, accounting for known
+        issuer variants (e.g., Entra ID v1 vs v2 endpoints).
+
+        Entra ID v2 issuer: https://login.microsoftonline.com/{tenant}/v2.0
+        Entra ID v1 issuer: https://sts.windows.net/{tenant}/
+        Both are valid for the same tenant.
+        """
+        provider_issuer = provider.issuer_url.rstrip("/")
+        token_iss = token_issuer.rstrip("/")
+
+        # Direct match
+        if provider_issuer == token_iss:
+            return True
+
+        # Entra ID v1/v2 cross-match
+        # Extract tenant ID from either format and compare
+        v2_pattern = r"https://login\.microsoftonline\.com/([^/]+)/v2\.0"
+        v1_pattern = r"https://sts\.windows\.net/([^/]+)"
+
+        v2_match_provider = re.match(v2_pattern, provider_issuer)
+        v1_match_token = re.match(v1_pattern, token_iss)
+        if v2_match_provider and v1_match_token:
+            if v2_match_provider.group(1) == v1_match_token.group(1):
+                return True
+
+        v1_match_provider = re.match(v1_pattern, provider_issuer)
+        v2_match_token = re.match(v2_pattern, token_iss)
+        if v1_match_provider and v2_match_token:
+            if v1_match_provider.group(1) == v2_match_token.group(1):
+                return True
+
+        return False
 
     def _extract_claim(self, payload: dict, claim_path: str) -> Optional[str]:
         """

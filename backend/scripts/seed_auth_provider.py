@@ -416,6 +416,9 @@ Examples:
                 secrets = {}
             else:
                 raise
+        except (json.JSONDecodeError, KeyError):
+            # Secret exists but is empty or not valid JSON (e.g., newly created by CDK)
+            secrets = {}
 
         secrets[args.provider_id] = args.client_secret
         secrets_client.put_secret_value(

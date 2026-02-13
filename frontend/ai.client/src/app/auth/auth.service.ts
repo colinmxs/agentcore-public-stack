@@ -36,6 +36,7 @@ export class AuthService {
   private readonly tokenExpiryKey = 'token_expiry';
   private readonly stateKey = 'auth_state';
   private readonly returnUrlKey = 'auth_return_url';
+  private readonly providerIdKey = 'auth_provider_id';
 
   // Computed signal for reactive base URL
   private readonly baseUrl = computed(() => this.config.appApiUrl());
@@ -114,11 +115,16 @@ export class AuthService {
         refresh_token: refreshToken
       };
 
+      const providerId = this.getStoredProviderId();
+      const refreshParams = new URLSearchParams();
+      if (providerId) {
+        refreshParams.set('provider_id', providerId);
+      }
+      const refreshQuery = refreshParams.toString();
+      const refreshUrl = `${this.baseUrl()}/auth/refresh${refreshQuery ? `?${refreshQuery}` : ''}`;
+
       const response = await firstValueFrom(
-        this.http.post<TokenRefreshResponse>(
-          `${this.baseUrl()}/auth/refresh`,
-          request
-        )
+        this.http.post<TokenRefreshResponse>(refreshUrl, request)
       );
 
       if (!response || !response.access_token) {
@@ -141,20 +147,6 @@ export class AuthService {
    * @param response Token response containing access_token, refresh_token, and expires_in
    */
   storeTokens(response: { access_token: string; refresh_token?: string; expires_in: number }): void {
-    // Debug: Log token audience to help diagnose ID token vs access token issues
-    try {
-      const parts = response.access_token.split('.');
-      if (parts.length === 3) {
-        const payload = JSON.parse(atob(parts[1].replace(/-/g, '+').replace(/_/g, '/')));
-        console.log('[AuthService] Storing token with audience:', payload.aud);
-        if (typeof payload.aud === 'string' && !payload.aud.startsWith('api://')) {
-          console.warn('[AuthService] WARNING: Token audience does not start with "api://". This may be an ID token instead of an access token.');
-        }
-      }
-    } catch (e) {
-      // Ignore decode errors during logging
-    }
-
     localStorage.setItem(this.tokenKey, response.access_token);
 
     if (response.refresh_token) {
@@ -180,6 +172,7 @@ export class AuthService {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.refreshTokenKey);
     localStorage.removeItem(this.tokenExpiryKey);
+    sessionStorage.removeItem(this.providerIdKey);
 
     // Dispatch custom event to notify UserService of token removal in same tab
     if (typeof window !== 'undefined') {
@@ -198,19 +191,23 @@ export class AuthService {
 
   /**
    * Initiates the OIDC login flow by calling the backend login endpoint
-   * and redirecting the user to Entra ID for authentication.
-   * 
-   * Stores the state token in sessionStorage for CSRF protection.
-   * The state token will be validated when the authorization code is exchanged.
-   * 
+   * and redirecting the user to the IdP for authentication.
+   *
+   * Stores the state token and provider ID in sessionStorage for CSRF
+   * protection and multi-provider routing.
+   *
+   * @param providerId Optional auth provider ID for multi-provider support
    * @param redirectUri Optional redirect URI override
    * @param prompt Optional prompt parameter (defaults to "select_account")
    * @throws Error if login initiation fails
    */
-  async login(redirectUri?: string, prompt: string = 'select_account'): Promise<void> {
+  async login(providerId?: string, redirectUri?: string, prompt: string = 'select_account'): Promise<void> {
     try {
       // Build query parameters
       const params = new URLSearchParams();
+      if (providerId) {
+        params.set('provider_id', providerId);
+      }
       if (redirectUri) {
         params.set('redirect_uri', redirectUri);
       }
@@ -229,17 +226,18 @@ export class AuthService {
 
       // Store state token in sessionStorage for CSRF protection
       sessionStorage.setItem(this.stateKey, response.state);
-      
-      // Note: redirectUri parameter is for OIDC callback URL override (must be absolute URI)
-      // The final destination (returnUrl) is stored separately in sessionStorage by the login page
-      // We don't store it here because this method shouldn't be responsible for final destination
+
+      // Store provider ID for refresh/logout routing
+      if (providerId) {
+        sessionStorage.setItem(this.providerIdKey, providerId);
+      }
 
       // Redirect to authorization URL
       window.location.href = response.authorization_url;
     } catch (error) {
       // Clear any stored state on error
       sessionStorage.removeItem(this.stateKey);
-      
+
       if (error instanceof Error) {
         throw error;
       }
@@ -275,6 +273,14 @@ export class AuthService {
    */
   clearStoredReturnUrl(): void {
     sessionStorage.removeItem(this.returnUrlKey);
+  }
+
+  /**
+   * Get the stored provider ID from sessionStorage.
+   * Used to route refresh and logout requests to the correct provider.
+   */
+  getStoredProviderId(): string | null {
+    return sessionStorage.getItem(this.providerIdKey);
   }
 
   /**
@@ -329,14 +335,15 @@ export class AuthService {
   }
 
   /**
-   * Logs the user out by clearing local tokens and redirecting to Entra ID logout.
+   * Logs the user out by clearing local tokens and redirecting to the
+   * IdP's logout endpoint.
    *
    * This performs a complete logout:
    * 1. Clears all local tokens from localStorage
-   * 2. Fetches the Entra ID logout URL from the backend
-   * 3. Redirects the user to Entra ID to end the session
+   * 2. Fetches the IdP logout URL from the backend
+   * 3. Redirects the user to the IdP to end the session
    *
-   * @param postLogoutRedirectUri Optional URL to redirect to after Entra ID logout
+   * @param postLogoutRedirectUri Optional URL to redirect to after IdP logout
    * @throws Error if logout initiation fails
    */
   async logout(postLogoutRedirectUri?: string): Promise<void> {
@@ -350,6 +357,10 @@ export class AuthService {
     try {
       // Build query parameters
       const params = new URLSearchParams();
+      const providerId = this.getStoredProviderId();
+      if (providerId) {
+        params.set('provider_id', providerId);
+      }
       if (postLogoutRedirectUri) {
         params.set('post_logout_redirect_uri', postLogoutRedirectUri);
       }
@@ -368,7 +379,7 @@ export class AuthService {
       // Clear local tokens first
       this.clearTokens();
 
-      // Redirect to Entra ID logout
+      // Redirect to IdP logout
       window.location.href = response.logout_url;
     } catch (error) {
       // On error, still clear tokens and redirect to home

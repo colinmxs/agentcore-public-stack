@@ -52,7 +52,7 @@ export class ChatRequestService {
     if (isNewSession) {
       // Get the current user from UserService
       const user = this.userService.getUser();
-      const userId = user?.empl_id || 'anonymous';
+      const userId = user?.user_id || 'anonymous';
 
       // Add the new session to the cache so it appears in the sidenav immediately
       this.sessionService.addSessionToCache(sessionId, userId);

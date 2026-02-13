@@ -4,7 +4,7 @@
  */
 export interface User {
   email: string;
-  empl_id: string;
+  user_id: string;
   firstName: string;
   lastName: string;
   fullName: string;
@@ -13,16 +13,17 @@ export interface User {
 }
 
 /**
- * Decoded JWT payload structure from Entra ID.
- * This represents the raw JWT claims before mapping to User.
+ * Decoded JWT payload structure.
+ * Uses an index signature to support dynamic claim names
+ * from any OIDC provider.
  */
 export interface JWTPayload {
+  [key: string]: any;
   email?: string;
   preferred_username?: string;
   name?: string;
   given_name?: string;
   family_name?: string;
-  'http://schemas.boisestate.edu/claims/employeenumber'?: string;
   roles?: string[];
   picture?: string;
   exp?: number;
@@ -31,11 +32,3 @@ export interface JWTPayload {
   iss?: string;
   sub?: string;
 }
-
-
-
-
-
-
-
-
