@@ -62,9 +62,6 @@ export class AppApiStack extends cdk.Stack {
     // Import image tag from SSM (set by push-to-ecr.sh)
     const imageTag = ssm.StringParameter.valueForStringParameter(this, `/${config.projectPrefix}/app-api/image-tag`);
 
-    // Import authentication secret ARN from SSM (created by infrastructure stack)
-    const authSecretArn = ssm.StringParameter.valueForStringParameter(this, `/${config.projectPrefix}/auth/secret-arn`);
-
     const vpc = ec2.Vpc.fromVpcAttributes(this, "ImportedVpc", {
       vpcId: vpcId,
       vpcCidrBlock: vpcCidr,
@@ -860,9 +857,6 @@ export class AppApiStack extends cdk.Stack {
     // Reference the ECR repository created by the build pipeline
     const ecrRepository = ecr.Repository.fromRepositoryName(this, "AppApiRepository", getResourceName(config, "app-api"));
 
-    // Reference the authentication secret from infrastructure stack
-    const authSecret = secretsmanager.Secret.fromSecretCompleteArn(this, "AuthSecret", authSecretArn);
-
     // Container Definition
     const container = taskDefinition.addContainer("AppApiContainer", {
       containerName: "app-api",
@@ -911,11 +905,6 @@ export class AppApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/inference-api/memory-id`
         ),
-        ENTRA_CLIENT_ID: config.entraClientId,
-        ENTRA_TENANT_ID: config.entraTenantId,
-        ENTRA_REDIRECT_URI: config.appApi.entraRedirectUri,
-        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTableName,
-        DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
@@ -923,10 +912,6 @@ export class AppApiStack extends cdk.Stack {
         
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
-      },
-      secrets: {
-        // Secret values fetched at task startup, never visible in console/API
-        ENTRA_CLIENT_SECRET: ecs.Secret.fromSecretsManager(authSecret, "secret"),
       },
       portMappings: [
         {
@@ -1121,16 +1106,6 @@ export class AppApiStack extends cdk.Stack {
     // Grant permissions for file upload resources
     userFilesTable.grantReadWriteData(taskDefinition.taskRole);
     userFilesBucket.grantReadWrite(taskDefinition.taskRole);
-
-    // Grant permissions for authentication secret (imported from infrastructure stack)
-    // Using manual policy statement for clarity when working with cross-stack imported secrets
-    taskDefinition.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
-        resources: [authSecretArn],
-      }),
-    );
 
     // Grant Bedrock permissions for title generation (Nova Micro)
     taskDefinition.taskRole.addToPrincipalPolicy(

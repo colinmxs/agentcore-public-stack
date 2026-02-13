@@ -217,8 +217,6 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
-      CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
       CDK_INFERENCE_API_ENABLED: ${{ vars.CDK_INFERENCE_API_ENABLED }}
       CDK_INFERENCE_API_CPU: ${{ vars.CDK_INFERENCE_API_CPU }}
@@ -412,8 +410,6 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_ENTRA_CLIENT_ID: ${{ vars.CDK_ENTRA_CLIENT_ID }}
-      CDK_ENTRA_TENANT_ID: ${{ vars.CDK_ENTRA_TENANT_ID }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
       CDK_INFERENCE_API_ENABLED: ${{ vars.CDK_INFERENCE_API_ENABLED }}
       CDK_INFERENCE_API_CPU: ${{ vars.CDK_INFERENCE_API_CPU }}

@@ -125,27 +125,27 @@ The Lambda functions for runtime management are deployed as part of the App API 
 
 ### Phase 5: Remove Entra ID Hardcoded Configuration
 
-- [ ] 8. Update Configuration Files
-  - [ ] 8.1 Update `infrastructure/lib/config.ts`
+- [x] 8. Update Configuration Files
+  - [x] 8.1 Update `infrastructure/lib/config.ts`
     - Remove `entraClientId` and `entraTenantId` from `AppConfig` interface
     - Remove `entraRedirectUri` from `AppApiConfig` interface
     - Remove Entra fields from `loadConfig()` function
-  - [ ] 8.2 Update `infrastructure/lib/app-api-stack.ts`
+  - [x] 8.2 Update `infrastructure/lib/app-api-stack.ts`
     - Remove `ENTRA_CLIENT_ID`, `ENTRA_TENANT_ID`, `ENTRA_REDIRECT_URI` environment variables
     - Remove `ENTRA_CLIENT_SECRET` from secrets block
     - Remove authentication secret import (`authSecretArn`, `authSecret`)
     - Remove authentication secret permissions from task role
-  - [ ] 8.3 Update GitHub workflow files
+  - [x] 8.3 Update GitHub workflow files
     - Remove `CDK_ENTRA_CLIENT_ID`, `CDK_ENTRA_TENANT_ID`, `CDK_APP_API_ENTRA_REDIRECT_URI` from env sections
     - Remove `CDK_ENTRA_CLIENT_SECRET` from secrets
     - Files: `.github/workflows/infrastructure.yml`, `app-api.yml`, `inference-api.yml`
-  - [ ] 8.4 Update `cdk.context.json`
+  - [x] 8.4 Update `cdk.context.json`
     - Remove Entra ID configuration (if present)
-  - [ ] 8.5 Update `scripts/common/load-env.sh`
+  - [x] 8.5 Update `scripts/common/load-env.sh`
     - Remove Entra ID environment variable exports
     - Remove Entra ID from context parameters function
     - Remove Entra ID from config display
-  - [ ] 8.6 Update stack deployment scripts
+  - [x] 8.6 Update stack deployment scripts
     - Remove Entra context parameters from `scripts/stack-infrastructure/synth.sh` and `deploy.sh`
     - Remove Entra context parameters from `scripts/stack-app-api/synth.sh` and `deploy.sh`
     - Remove Entra context parameters from `scripts/stack-inference-api/synth.sh` and `deploy.sh`

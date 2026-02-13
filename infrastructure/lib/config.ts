@@ -10,8 +10,6 @@ export interface AppConfig {
   infrastructureHostedZoneDomain?: string;
   albSubdomain?: string; // Subdomain for ALB (e.g., 'api' for api.yourdomain.com)
   certificateArn?: string; // ACM certificate ARN for HTTPS on ALB
-  entraClientId: string; // Microsoft Entra (Azure AD) Client ID for OAuth
-  entraTenantId: string; // Microsoft Entra (Azure AD) Tenant ID
   frontend: FrontendConfig;
   appApi: AppApiConfig;
   inferenceApi: InferenceApiConfig;
@@ -48,7 +46,6 @@ export interface AppApiConfig {
   rdsEngine?: string;
   rdsDatabaseName?: string;
   imageTag: string;
-  entraRedirectUri: string;
 }
 
 export interface InferenceApiConfig {
@@ -156,8 +153,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     albSubdomain: process.env.CDK_ALB_SUBDOMAIN || scope.node.tryGetContext('albSubdomain'),
     certificateArn: process.env.CDK_CERTIFICATE_ARN || scope.node.tryGetContext('certificateArn'),
-    entraClientId: process.env.CDK_ENTRA_CLIENT_ID || scope.node.tryGetContext('entraClientId'),
-    entraTenantId: process.env.CDK_ENTRA_TENANT_ID || scope.node.tryGetContext('entraTenantId'),
     frontend: {
       domainName: process.env.CDK_FRONTEND_DOMAIN_NAME || scope.node.tryGetContext('frontend').domainName,
       enableRoute53: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLE_ROUTE53) ?? scope.node.tryGetContext('frontend').enableRoute53,
@@ -175,7 +170,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
-      entraRedirectUri: process.env.CDK_APP_API_ENTRA_REDIRECT_URI || scope.node.tryGetContext('appApi')?.entraRedirectUri,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,
