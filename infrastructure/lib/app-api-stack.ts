@@ -311,6 +311,20 @@ export class AppApiStack extends cdk.Stack {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
+    // GSI6: AppRoleAssignmentIndex - Query quota assignments by AppRole ID
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "AppRoleAssignmentIndex",
+      partitionKey: {
+        name: "GSI6PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI6SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
     // QuotaEvents Table
     const quotaEventsTable = new dynamodb.Table(this, "QuotaEventsTable", {
       tableName: getResourceName(config, "quota-events"),

@@ -26,7 +26,7 @@ class ToolCatalogRepository:
     - Tool: PK=TOOL#{tool_id}, SK=METADATA
     - User Preferences: PK=USER#{user_id}, SK=TOOL_PREFERENCES
 
-    GSI1 is used for category queries:
+    GSI1 (JwtRoleMappingIndex) is shared with RBAC and also used for category queries:
     - GSI1PK=CATEGORY#{category}, GSI1SK=TOOL#{tool_id}
     """
 
@@ -81,7 +81,7 @@ class ToolCatalogRepository:
             if category:
                 # Use GSI1 for category queries
                 response = self._table.query(
-                    IndexName="CategoryToolIndex",
+                    IndexName="JwtRoleMappingIndex",
                     KeyConditionExpression="GSI1PK = :pk",
                     ExpressionAttributeValues={":pk": f"CATEGORY#{category}"},
                 )
@@ -90,7 +90,7 @@ class ToolCatalogRepository:
                 # Handle pagination
                 while "LastEvaluatedKey" in response:
                     response = self._table.query(
-                        IndexName="CategoryToolIndex",
+                        IndexName="JwtRoleMappingIndex",
                         KeyConditionExpression="GSI1PK = :pk",
                         ExpressionAttributeValues={":pk": f"CATEGORY#{category}"},
                         ExclusiveStartKey=response["LastEvaluatedKey"],
