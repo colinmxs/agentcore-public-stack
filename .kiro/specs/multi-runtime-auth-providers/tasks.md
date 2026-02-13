@@ -23,20 +23,20 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
 
 ### Phase 2: Remove CDK-Managed Runtime
 
-- [ ] 3. Update InferenceApiStack
-  - [ ] 3.1 Remove runtime creation code
+- [x] 3. Update InferenceApiStack
+  - [x] 3.1 Remove runtime creation code
     - Remove `this.runtime = new bedrock.CfnRuntime(...)`
     - Remove runtime-specific SSM parameters
     - Remove runtime endpoint URL exports
-  - [ ] 3.2 Keep shared resources
+  - [x] 3.2 Keep shared resources
     - Keep Memory, Gateway, Code Interpreter, Browser
     - Keep all IAM roles (runtime execution role will be used by Lambda-created runtimes)
-  - [ ] 3.3 Export runtime execution role ARN to SSM
+  - [x] 3.3 Export runtime execution role ARN to SSM
     - Parameter: `/${projectPrefix}/inference-api/runtime-execution-role-arn`
-  - [ ] 3.4 Export shared resource ARNs to SSM (if not already exported)
+  - [x] 3.4 Export shared resource ARNs to SSM (if not already exported)
     - Memory ARN, Gateway ID, Code Interpreter ID, Browser ID
-  - [ ] 3.5 Update CloudFormation outputs (remove runtime-specific outputs)
-  - [ ] 3.6 Deploy InferenceApiStack (this will delete the old runtime)
+  - [x] 3.5 Update CloudFormation outputs (remove runtime-specific outputs)
+  - [x] 3.6 Deploy InferenceApiStack (this will delete the old runtime)
 
 ### Phase 3: Runtime Provisioner Lambda
 
