@@ -62,15 +62,15 @@ The Lambda functions for runtime management are deployed as part of the App API 
   - [x] 4.4 Add retry logic (handled by Lambda DynamoDB Stream integration)
   - [x] 4.5 Create requirements.txt with dependencies (boto3, etc.)
 
-- [ ] 5. Add Runtime Provisioner Lambda to AppApiStack
-  - [ ] 5.1 Update AppApiStack CDK file (`infrastructure/lib/app-api-stack.ts`)
-  - [ ] 5.2 Define Lambda function resource
+- [x] 5. Add Runtime Provisioner Lambda to AppApiStack
+  - [x] 5.1 Update AppApiStack CDK file (`infrastructure/lib/app-api-stack.ts`)
+  - [x] 5.2 Define Lambda function resource
     - Runtime: Python 3.13
     - Memory: 512 MB
     - Timeout: 5 minutes
     - Code from `backend/lambda-functions/runtime-provisioner/`
     - Environment variables (project prefix, region, auth providers table name)
-  - [ ] 5.3 Create IAM role for Lambda
+  - [x] 5.3 Create IAM role for Lambda
     - DynamoDB Stream read permissions
     - DynamoDB UpdateItem permissions (Auth Providers table)
     - Bedrock AgentCore permissions (CreateAgentRuntime, UpdateAgentRuntime, DeleteAgentRuntime, GetAgentRuntime)
@@ -78,13 +78,13 @@ The Lambda functions for runtime management are deployed as part of the App API 
     - ECR read permissions (DescribeRepositories, DescribeImages)
     - IAM PassRole permission (for runtime execution role)
     - CloudWatch Logs permissions
-  - [ ] 5.4 Add DynamoDB Stream event source
+  - [x] 5.4 Add DynamoDB Stream event source
     - Use stream ARN from Auth Providers table
     - Set batch size: 1
     - Set starting position: LATEST
     - Enable retry with 3 attempts
-  - [ ] 5.5 Add CloudWatch log group with retention policy
-  - [ ] 5.6 Deploy AppApiStack with Runtime Provisioner Lambda
+  - [x] 5.5 Add CloudWatch log group with retention policy
+  - [x] 5.6 Deploy AppApiStack with Runtime Provisioner Lambda
 
 ### Phase 4: Runtime Updater Lambda
 

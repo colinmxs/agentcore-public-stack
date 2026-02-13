@@ -11,6 +11,8 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as kms from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
@@ -1183,6 +1185,117 @@ export class AppApiStack extends cdk.Stack {
     authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
     authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
 
+    // ============================================================
+    // Runtime Provisioner Lambda
+    // ============================================================
+
+    // Create Lambda function for runtime provisioning
+    const runtimeProvisionerFunction = new lambda.Function(this, "RuntimeProvisionerFunction", {
+      functionName: getResourceName(config, "runtime-provisioner"),
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "lambda_function.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-provisioner"),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      architecture: lambda.Architecture.ARM_64,
+      environment: {
+        PROJECT_PREFIX: config.projectPrefix,
+        AWS_REGION: config.awsRegion,
+        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant DynamoDB Stream read permissions
+    authProvidersTable.grantStreamRead(runtimeProvisionerFunction);
+
+    // Grant DynamoDB UpdateItem permissions for Auth Providers table
+    authProvidersTable.grantReadWriteData(runtimeProvisionerFunction);
+
+    // Grant Bedrock AgentCore permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "BedrockAgentCoreRuntimeManagement",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock-agentcore:CreateAgentRuntime",
+          "bedrock-agentcore:UpdateAgentRuntime",
+          "bedrock-agentcore:DeleteAgentRuntime",
+          "bedrock-agentcore:GetAgentRuntime",
+        ],
+        resources: ["*"], // Runtime ARNs are not known at deployment time
+      })
+    );
+
+    // Grant SSM Parameter Store read/write permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SSMParameterAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:PutParameter",
+          "ssm:DeleteParameter",
+        ],
+        resources: [
+          `arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`,
+        ],
+      })
+    );
+
+    // Grant ECR read permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ECRReadAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:GetAuthorizationToken",
+        ],
+        resources: ["*"], // ECR authorization token requires wildcard
+      })
+    );
+
+    // Grant IAM PassRole permission for runtime execution role
+    const runtimeExecutionRoleArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/inference-api/runtime-execution-role-arn`
+    );
+
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "IAMPassRoleForRuntime",
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:PassRole"],
+        resources: [runtimeExecutionRoleArn],
+        conditions: {
+          StringEquals: {
+            "iam:PassedToService": "bedrock-agentcore.amazonaws.com",
+          },
+        },
+      })
+    );
+
+    // Add DynamoDB Stream event source
+    runtimeProvisionerFunction.addEventSource(
+      new lambdaEventSources.DynamoEventSource(authProvidersTable, {
+        startingPosition: lambda.StartingPosition.LATEST,
+        batchSize: 1,
+        retryAttempts: 3,
+        bisectBatchOnError: true,
+      })
+    );
+
+    // Store Lambda function ARN in SSM
+    new ssm.StringParameter(this, "RuntimeProvisionerFunctionArnParameter", {
+      parameterName: `/${config.projectPrefix}/lambda/runtime-provisioner-arn`,
+      stringValue: runtimeProvisionerFunction.functionArn,
+      description: "Runtime Provisioner Lambda function ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -1419,6 +1532,12 @@ export class AppApiStack extends cdk.Stack {
       value: oauthClientSecretsArn,
       description: "Secrets Manager ARN for OAuth client secrets (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeProvisionerFunctionArn", {
+      value: runtimeProvisionerFunction.functionArn,
+      description: "Runtime Provisioner Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeProvisionerFunctionArn`,
     });
   }
 }
