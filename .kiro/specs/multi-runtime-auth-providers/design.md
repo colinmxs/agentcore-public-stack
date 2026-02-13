@@ -279,33 +279,55 @@ All runtimes share these AgentCore resources (created once in Inference API Stac
 
 ## Infrastructure Components
 
-### New CDK Stack: RuntimeProvisionerStack
+### Architectural Decision: Integration with App API Stack
 
-**Purpose**: Deploy Lambda functions and supporting infrastructure for runtime management
+The runtime provisioning Lambda functions are integrated into the existing App API stack rather than creating a separate RuntimeProvisionerStack. This decision was made to avoid unnecessary cross-stack dependencies:
 
-**Resources**:
+**Why App API Stack?**
+- The App API stack already depends on the Inference API stack for shared resource ARNs (Memory, Gateway, Code Interpreter, Browser, Runtime Execution Role)
+- The Lambda functions need access to both the Auth Providers DynamoDB table (owned by App API stack) and the shared resource ARNs (from Inference API stack)
+- Creating a separate stack would require the new stack to depend on both App API and Inference API stacks, creating a complex dependency chain
+- Integrating into App API stack keeps the dependency graph simple: Infrastructure → Inference API → App API
+
+**Benefits**:
+- Simpler deployment order (no new stack to coordinate)
+- Cleaner dependency management
+- All auth-related infrastructure in one stack
+- Easier to reason about and maintain
+
+### Modified Stack: AppApiStack (Runtime Management Integration)
+
+**Purpose**: Integrate runtime provisioning Lambda functions into the existing App API stack
+
+**New Resources Added**:
 - Runtime Provisioner Lambda function
 - Runtime Updater Lambda function
 - EventBridge rule for SSM parameter changes
 - SNS topic for alerts
-- IAM roles and policies
+- IAM roles and policies for Lambda functions
 - CloudWatch dashboard for monitoring
 - CloudWatch alarms for failures
 
 **Dependencies**:
-- App API Stack (DynamoDB table, stream ARN)
-- Inference API Stack (shared resource ARNs, execution role ARN)
 - Infrastructure Stack (VPC, security groups)
+- Inference API Stack (shared resource ARNs, execution role ARN)
 
-**Deployment Order**: After App API Stack and Inference API Stack
+**Deployment Order**: After Inference API Stack (unchanged)
 
-### Modified Stack: AppApiStack
+### Modified Stack: AppApiStack (Expanded)
 
 **Changes**:
 1. Enable DynamoDB Streams on Auth Providers table
 2. Export stream ARN to SSM for Lambda trigger
 3. Update AuthProvider model with runtime tracking fields
 4. Add new endpoint: `GET /auth/runtime-endpoint` to return runtime URL for user's provider
+5. **Add Runtime Provisioner Lambda function** with DynamoDB Stream trigger
+6. **Add Runtime Updater Lambda function** with EventBridge trigger
+7. **Add SNS topic** for runtime management alerts
+8. **Add EventBridge rule** to detect SSM parameter changes for image tags
+9. **Add IAM roles and policies** for Lambda functions
+10. **Add CloudWatch dashboard** for runtime monitoring
+11. **Add CloudWatch alarms** for failure detection
 
 ### Modified Stack: InferenceApiStack
 
@@ -321,13 +343,13 @@ The current InferenceApiStack creates a single runtime for Entra ID at deploymen
 
 **Option A: Bootstrap with Existing Provider (Recommended)**:
 1. Before deploying the updated InferenceApiStack, ensure Entra ID provider exists in DynamoDB
-2. Deploy RuntimeProvisionerStack first (Lambda will create Entra ID runtime)
+2. Deploy updated AppApiStack with Lambda functions (Lambda will create Entra ID runtime)
 3. Deploy updated InferenceApiStack (removes CDK-managed runtime)
 4. Old runtime is deleted by CloudFormation, new Lambda-managed runtime takes over
 5. Brief service interruption during transition (~2-5 minutes)
 
 **Option B: Parallel Migration**:
-1. Deploy RuntimeProvisionerStack (Lambda creates new Entra ID runtime)
+1. Deploy updated AppApiStack with Lambda functions (Lambda creates new Entra ID runtime)
 2. Update frontend to use new runtime endpoint
 3. Verify new runtime works
 4. Deploy updated InferenceApiStack (removes old runtime)
@@ -792,7 +814,7 @@ Complete these steps in order:
 - [ ] Update test files (remove Entra-specific tests)
 
 **Phase 3: Deploy Lambda-Managed Runtimes**:
-- [ ] Deploy `RuntimeProvisionerStack` (Lambda creates runtimes from database)
+- [ ] Deploy updated `AppApiStack` with Lambda functions
 - [ ] Verify Entra ID runtime is created by Lambda
 - [ ] Test authentication with Lambda-managed runtime
 
@@ -878,14 +900,15 @@ Removing hardcoded Entra ID configuration is critical because:
 ```
 
 ### Phase 2: Runtime Provisioner (Week 2)
-- Create Runtime Provisioner Lambda function
-- Create RuntimeProvisionerStack CDK
+- Create Runtime Provisioner Lambda function in App API Stack
 - Add DynamoDB Stream trigger
+- Add IAM permissions for Bedrock AgentCore operations
 - Test runtime creation with sample provider
 
 ### Phase 3: Runtime Updater (Week 3)
-- Create Runtime Updater Lambda function
+- Create Runtime Updater Lambda function in App API Stack
 - Add EventBridge rule for SSM changes
+- Add SNS topic for alerts
 - Implement retry logic and SNS alerts
 - Test automatic image updates
 

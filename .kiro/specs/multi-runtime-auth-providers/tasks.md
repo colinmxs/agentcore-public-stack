@@ -2,7 +2,9 @@
 
 ## Overview
 
-This task list implements dynamic multi-runtime deployment for OIDC authentication providers. When an admin adds a provider via the UI, a Lambda function automatically provisions a dedicated AWS Bedrock AgentCore Runtime with that provider's JWT authorizer configuration.
+This task list implements dynamic multi-runtime deployment for OIDC authentication providers. When an admin adds a provider via the UI, a Lambda function (integrated into the App API stack) automatically provisions a dedicated AWS Bedrock AgentCore Runtime with that provider's JWT authorizer configuration.
+
+The Lambda functions for runtime management are deployed as part of the App API stack rather than a separate stack, avoiding unnecessary cross-stack dependencies since the App API stack already depends on the Inference API stack for shared resource ARNs.
 
 ## Task Breakdown
 
@@ -60,13 +62,14 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
   - [x] 4.4 Add retry logic (handled by Lambda DynamoDB Stream integration)
   - [x] 4.5 Create requirements.txt with dependencies (boto3, etc.)
 
-- [ ] 5. Create RuntimeProvisionerStack CDK
-  - [ ] 5.1 Create new CDK stack file (`infrastructure/lib/runtime-provisioner-stack.ts`)
+- [ ] 5. Add Runtime Provisioner Lambda to AppApiStack
+  - [ ] 5.1 Update AppApiStack CDK file (`infrastructure/lib/app-api-stack.ts`)
   - [ ] 5.2 Define Lambda function resource
     - Runtime: Python 3.13
     - Memory: 512 MB
     - Timeout: 5 minutes
-    - Environment variables (project prefix, region, etc.)
+    - Code from `backend/lambda-functions/runtime-provisioner/`
+    - Environment variables (project prefix, region, auth providers table name)
   - [ ] 5.3 Create IAM role for Lambda
     - DynamoDB Stream read permissions
     - DynamoDB UpdateItem permissions (Auth Providers table)
@@ -76,13 +79,12 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
     - IAM PassRole permission (for runtime execution role)
     - CloudWatch Logs permissions
   - [ ] 5.4 Add DynamoDB Stream event source
-    - Import stream ARN from SSM
+    - Use stream ARN from Auth Providers table
     - Set batch size: 1
     - Set starting position: LATEST
     - Enable retry with 3 attempts
   - [ ] 5.5 Add CloudWatch log group with retention policy
-  - [ ] 5.6 Wire up stack in `infrastructure/bin/infrastructure.ts`
-  - [ ] 5.7 Deploy RuntimeProvisionerStack
+  - [ ] 5.6 Deploy AppApiStack with Runtime Provisioner Lambda
 
 ### Phase 4: Runtime Updater Lambda
 
@@ -101,11 +103,12 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
     - Preserve all other configuration (JWT auth, network, environment)
   - [ ] 6.3 Create requirements.txt with dependencies
 
-- [ ] 7. Add Runtime Updater to RuntimeProvisionerStack
-  - [ ] 7.1 Define Lambda function resource
+- [ ] 7. Add Runtime Updater to AppApiStack
+  - [ ] 7.1 Define Lambda function resource in AppApiStack
     - Runtime: Python 3.13
     - Memory: 512 MB
     - Timeout: 15 minutes (for parallel updates)
+    - Code from `backend/lambda-functions/runtime-updater/`
   - [ ] 7.2 Create IAM role for Lambda
     - Bedrock AgentCore permissions (GetAgentRuntime, UpdateAgentRuntime)
     - DynamoDB Scan and UpdateItem permissions
@@ -118,7 +121,7 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
   - [ ] 7.4 Create EventBridge rule
     - Detect SSM parameter changes: `/${projectPrefix}/inference-api/image-tag`
     - Target: Runtime Updater Lambda
-  - [ ] 7.5 Deploy updated RuntimeProvisionerStack
+  - [ ] 7.5 Deploy updated AppApiStack with Runtime Updater
 
 ### Phase 5: Remove Entra ID Hardcoded Configuration
 
@@ -327,3 +330,4 @@ This task list implements dynamic multi-runtime deployment for OIDC authenticati
 - Maintain a rollback plan for each deployment
 - Schedule deployments during low-usage periods
 - Communicate expected downtime to users (5-10 minutes during Phase 2)
+- **Architectural Decision**: Lambda functions are integrated into the App API stack rather than a separate RuntimeProvisionerStack to avoid unnecessary cross-stack dependencies. The App API stack already depends on the Inference API stack for shared resource ARNs, making it the natural location for runtime management logic.
