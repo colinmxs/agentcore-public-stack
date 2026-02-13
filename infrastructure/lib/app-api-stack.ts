@@ -1333,7 +1333,6 @@ export class AppApiStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       environment: {
         PROJECT_PREFIX: config.projectPrefix,
-        AWS_REGION: config.awsRegion,
         AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
         SNS_TOPIC_ARN: runtimeUpdateAlertsTopic.topicArn,
       },
