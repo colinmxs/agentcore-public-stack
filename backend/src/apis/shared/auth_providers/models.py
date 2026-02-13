@@ -50,12 +50,6 @@ class AuthProvider:
     created_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     updated_at: str = field(default_factory=lambda: datetime.utcnow().isoformat() + "Z")
     created_by: Optional[str] = None
-    # AgentCore Runtime tracking
-    agentcore_runtime_arn: Optional[str] = None
-    agentcore_runtime_id: Optional[str] = None
-    agentcore_runtime_endpoint_url: Optional[str] = None
-    agentcore_runtime_status: str = "PENDING"
-    agentcore_runtime_error: Optional[str] = None
 
     def to_dynamo_item(self) -> Dict[str, Any]:
         """Convert to DynamoDB item format."""
@@ -123,17 +117,6 @@ class AuthProvider:
         if self.created_by:
             item["createdBy"] = self.created_by
 
-        # AgentCore Runtime tracking fields
-        if self.agentcore_runtime_arn:
-            item["agentcoreRuntimeArn"] = self.agentcore_runtime_arn
-        if self.agentcore_runtime_id:
-            item["agentcoreRuntimeId"] = self.agentcore_runtime_id
-        if self.agentcore_runtime_endpoint_url:
-            item["agentcoreRuntimeEndpointUrl"] = self.agentcore_runtime_endpoint_url
-        item["agentcoreRuntimeStatus"] = self.agentcore_runtime_status
-        if self.agentcore_runtime_error:
-            item["agentcoreRuntimeError"] = self.agentcore_runtime_error
-
         return item
 
     @classmethod
@@ -170,11 +153,6 @@ class AuthProvider:
             created_at=item.get("createdAt", datetime.utcnow().isoformat() + "Z"),
             updated_at=item.get("updatedAt", datetime.utcnow().isoformat() + "Z"),
             created_by=item.get("createdBy"),
-            agentcore_runtime_arn=item.get("agentcoreRuntimeArn"),
-            agentcore_runtime_id=item.get("agentcoreRuntimeId"),
-            agentcore_runtime_endpoint_url=item.get("agentcoreRuntimeEndpointUrl"),
-            agentcore_runtime_status=item.get("agentcoreRuntimeStatus", "PENDING"),
-            agentcore_runtime_error=item.get("agentcoreRuntimeError"),
         )
 
 
@@ -295,11 +273,6 @@ class AuthProviderResponse(BaseModel):
     created_at: str
     updated_at: str
     created_by: Optional[str] = None
-    agentcore_runtime_arn: Optional[str] = None
-    agentcore_runtime_id: Optional[str] = None
-    agentcore_runtime_endpoint_url: Optional[str] = None
-    agentcore_runtime_status: str = "PENDING"
-    agentcore_runtime_error: Optional[str] = None
 
     @classmethod
     def from_provider(cls, provider: AuthProvider) -> "AuthProviderResponse":
@@ -335,11 +308,6 @@ class AuthProviderResponse(BaseModel):
             created_at=provider.created_at,
             updated_at=provider.updated_at,
             created_by=provider.created_by,
-            agentcore_runtime_arn=provider.agentcore_runtime_arn,
-            agentcore_runtime_id=provider.agentcore_runtime_id,
-            agentcore_runtime_endpoint_url=provider.agentcore_runtime_endpoint_url,
-            agentcore_runtime_status=provider.agentcore_runtime_status,
-            agentcore_runtime_error=provider.agentcore_runtime_error,
         )
 
 

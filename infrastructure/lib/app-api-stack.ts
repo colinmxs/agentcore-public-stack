@@ -636,7 +636,6 @@ export class AppApiStack extends cdk.Stack {
       sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
       billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
       pointInTimeRecovery: true,
-      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
       removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
@@ -675,13 +674,6 @@ export class AppApiStack extends cdk.Stack {
       parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
       stringValue: authProviderSecretsSecret.secretArn,
       description: "Secrets Manager ARN for auth provider client secrets",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "AuthProvidersStreamArnParameter", {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
-      stringValue: authProvidersTable.tableStreamArn!,
-      description: "DynamoDB Stream ARN for auth providers table",
       tier: ssm.ParameterTier.STANDARD,
     });
 
