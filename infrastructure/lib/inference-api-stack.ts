@@ -631,6 +631,14 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Export ECR repository URI for Lambda-created runtimes
+    new ssm.StringParameter(this, 'EcrRepositoryUriParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/ecr-repository-uri`,
+      stringValue: ecrRepository.repositoryUri,
+      description: 'Inference API ECR Repository URI for runtime container images',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // ============================================================
     // CloudFormation Outputs
     // ============================================================

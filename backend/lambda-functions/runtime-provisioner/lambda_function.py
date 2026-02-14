@@ -227,6 +227,12 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     # Fetch runtime execution role ARN from SSM
     execution_role_arn = get_runtime_execution_role_arn()
     
+    # Fetch shared resource IDs from SSM
+    shared_resources = get_shared_resource_ids()
+    
+    # Fetch all required environment variables from SSM
+    runtime_env_vars = get_runtime_environment_variables(provider_id, shared_resources)
+    
     logger.info(f"Creating runtime: {runtime_name}")
     logger.info(f"Discovery URL: {discovery_url}")
     logger.info(f"Client ID: {provider_config['client_id']}")
@@ -249,11 +255,7 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
         networkConfiguration={
             'networkMode': 'PUBLIC'
         },
-        environmentVariables={
-            'PROJECT_PREFIX': PROJECT_PREFIX,
-            'AWS_REGION': AWS_REGION,
-            'PROVIDER_ID': provider_id
-        }
+        environmentVariables=runtime_env_vars
     )
     
     runtime_arn = response['agentRuntimeArn']
@@ -335,6 +337,80 @@ def delete_runtime(runtime_id: str) -> None:
 # =============================================================================
 # Helper Functions
 # =============================================================================
+
+
+def get_optional_parameter(parameter_name: str) -> Optional[str]:
+    """
+    Fetch an optional SSM parameter, returning None if it doesn't exist.
+    
+    Args:
+        parameter_name: Full SSM parameter path
+        
+    Returns:
+        Parameter value if it exists, None otherwise
+    """
+    try:
+        response = ssm.get_parameter(
+            Name=parameter_name,
+            WithDecryption=True
+        )
+        return response['Parameter']['Value']
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ParameterNotFound':
+            logger.info(f"Optional parameter {parameter_name} not found, skipping")
+            return None
+        else:
+            logger.error(f"Error fetching optional parameter {parameter_name}: {e}")
+            raise
+
+
+def get_required_parameter(parameter_name: str) -> str:
+    """
+    Fetch a required SSM parameter, raising an exception if it doesn't exist.
+    
+    Args:
+        parameter_name: Full SSM parameter path
+        
+    Returns:
+        Parameter value
+        
+    Raises:
+        ClientError: If the required parameter doesn't exist or other SSM errors
+    """
+    try:
+        response = ssm.get_parameter(
+            Name=parameter_name,
+            WithDecryption=True
+        )
+        return response['Parameter']['Value']
+    except ClientError as e:
+        if e.response['Error']['Code'] == 'ParameterNotFound':
+            logger.error(f"Required parameter {parameter_name} not found")
+            raise
+        else:
+            logger.error(f"Error fetching required parameter {parameter_name}: {e}")
+            raise
+
+
+def validate_url(url: str, parameter_name: str) -> None:
+    """
+    Validate that a URL parameter has the correct format.
+    
+    Args:
+        url: URL string to validate
+        parameter_name: Parameter name for error messages
+        
+    Raises:
+        ValueError: If URL format is invalid
+    """
+    if not url.startswith(('http://', 'https://')):
+        raise ValueError(
+            f"Invalid URL format for {parameter_name}: {url}. "
+            f"Must start with http:// or https://"
+        )
+    
+    if not url.strip():
+        raise ValueError(f"Empty URL value for {parameter_name}")
 
 
 def parse_provider_from_stream(image: Dict[str, Any]) -> Dict[str, Any]:
@@ -541,3 +617,149 @@ def update_provider_runtime_error(
         logger.info(f"Updated provider {provider_id} with error status")
     except ClientError as e:
         logger.error(f"Failed to update provider error status: {e}")
+
+
+def get_shared_resource_ids() -> Dict[str, str]:
+    """
+    Fetch shared AgentCore resource IDs from SSM
+    
+    Returns:
+        Dict with memory_arn, memory_id, code_interpreter_id, browser_id, gateway_url
+    """
+    try:
+        # Fetch all required SSM parameters in batch
+        param_names = [
+            f"/{PROJECT_PREFIX}/inference-api/memory-arn",
+            f"/{PROJECT_PREFIX}/inference-api/memory-id",
+            f"/{PROJECT_PREFIX}/inference-api/code-interpreter-id",
+            f"/{PROJECT_PREFIX}/inference-api/browser-id",
+            f"/{PROJECT_PREFIX}/gateway/gateway-url",
+        ]
+        
+        response = ssm.get_parameters(Names=param_names, WithDecryption=False)
+        
+        # Build result dictionary
+        params = {p['Name']: p['Value'] for p in response['Parameters']}
+        
+        return {
+            'memory_arn': params.get(f"/{PROJECT_PREFIX}/inference-api/memory-arn", ''),
+            'memory_id': params.get(f"/{PROJECT_PREFIX}/inference-api/memory-id", ''),
+            'code_interpreter_id': params.get(f"/{PROJECT_PREFIX}/inference-api/code-interpreter-id", ''),
+            'browser_id': params.get(f"/{PROJECT_PREFIX}/inference-api/browser-id", ''),
+            'gateway_url': params.get(f"/{PROJECT_PREFIX}/gateway/gateway-url", ''),
+        }
+    except ClientError as e:
+        logger.error(f"Failed to fetch shared resource IDs from SSM: {e}")
+        raise ValueError(f"Could not fetch shared resource IDs: {e}")
+
+
+def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[str, str]) -> Dict[str, str]:
+    """
+    Construct complete environment variable dictionary for runtime
+    
+    Args:
+        provider_id: Provider ID for this runtime
+        shared_resources: Dict with shared resource IDs from get_shared_resource_ids()
+        
+    Returns:
+        Dict of environment variables for runtime creation
+    """
+    try:
+        # Define required parameters
+        required_params = [
+            # DynamoDB tables
+            f"/{PROJECT_PREFIX}/users/users-table-name",
+            f"/{PROJECT_PREFIX}/rbac/app-roles-table-name",
+            f"/{PROJECT_PREFIX}/auth/oidc-state-table-name",
+            f"/{PROJECT_PREFIX}/oauth/providers-table-name",
+            f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name",
+            f"/{PROJECT_PREFIX}/rag/assistants-table-name",
+            # OAuth configuration
+            f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn",
+            f"/{PROJECT_PREFIX}/oauth/client-secrets-arn",
+            f"/{PROJECT_PREFIX}/oauth/callback-url",
+            # S3 buckets
+            f"/{PROJECT_PREFIX}/rag/vector-bucket-name",
+            f"/{PROJECT_PREFIX}/rag/vector-index-name",
+            # URLs
+            f"/{PROJECT_PREFIX}/network/alb-url",
+            f"/{PROJECT_PREFIX}/frontend/url",
+            f"/{PROJECT_PREFIX}/frontend/cors-origins",
+        ]
+        
+        # Fetch all required parameters
+        params = {}
+        for param_name in required_params:
+            params[param_name] = get_required_parameter(param_name)
+        
+        # Validate URLs
+        validate_url(params[f"/{PROJECT_PREFIX}/network/alb-url"], "alb-url")
+        validate_url(params[f"/{PROJECT_PREFIX}/frontend/url"], "frontend-url")
+        validate_url(params[f"/{PROJECT_PREFIX}/oauth/callback-url"], "oauth-callback-url")
+        
+        # Construct environment variables dictionary
+        env_vars = {
+            # Basic configuration
+            'LOG_LEVEL': 'INFO',
+            'PROJECT_NAME': PROJECT_PREFIX,
+            'AWS_REGION': AWS_REGION,
+            'AWS_DEFAULT_REGION': AWS_REGION,
+            'PROVIDER_ID': provider_id,
+            
+            # DynamoDB tables
+            'DYNAMODB_USERS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/users/users-table-name"],
+            'DYNAMODB_APP_ROLES_TABLE_NAME': params[f"/{PROJECT_PREFIX}/rbac/app-roles-table-name"],
+            'DYNAMODB_OIDC_STATE_TABLE_NAME': params[f"/{PROJECT_PREFIX}/auth/oidc-state-table-name"],
+            'DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/oauth/providers-table-name"],
+            'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name"],
+            'DYNAMODB_ASSISTANTS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/rag/assistants-table-name"],
+            
+            # OAuth configuration
+            'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': params[f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn"],
+            'OAUTH_CLIENT_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/oauth/client-secrets-arn"],
+            'OAUTH_CALLBACK_URL': params[f"/{PROJECT_PREFIX}/oauth/callback-url"],
+            
+            # AgentCore resources (from shared_resources parameter)
+            'MEMORY_ARN': shared_resources['memory_arn'],
+            'MEMORY_ID': shared_resources['memory_id'],
+            'CODE_INTERPRETER_ID': shared_resources['code_interpreter_id'],
+            'BROWSER_ID': shared_resources['browser_id'],
+            'GATEWAY_URL': shared_resources['gateway_url'],
+            
+            # AgentCore Memory configuration
+            'AGENTCORE_MEMORY_TYPE': 'bedrock',
+            'AGENTCORE_MEMORY_ID': shared_resources['memory_id'],
+            
+            # S3 storage
+            'S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME': params[f"/{PROJECT_PREFIX}/rag/vector-bucket-name"],
+            'S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME': params[f"/{PROJECT_PREFIX}/rag/vector-index-name"],
+            
+            # Authentication
+            'ENABLE_AUTHENTICATION': 'true',
+            
+            # Directories (runtime-specific paths)
+            'UPLOAD_DIR': '/tmp/uploads',
+            'OUTPUT_DIR': '/tmp/output',
+            'GENERATED_IMAGES_DIR': '/tmp/generated_images',
+            
+            # URLs
+            'API_URL': params[f"/{PROJECT_PREFIX}/network/alb-url"],
+            'FRONTEND_URL': params[f"/{PROJECT_PREFIX}/frontend/url"],
+            'CORS_ORIGINS': params[f"/{PROJECT_PREFIX}/frontend/cors-origins"],
+        }
+        
+        # Add optional API keys if they exist
+        tavily_key = get_optional_parameter(f"/{PROJECT_PREFIX}/api-keys/tavily-api-key")
+        if tavily_key:
+            env_vars['TAVILY_API_KEY'] = tavily_key
+            
+        nova_act_key = get_optional_parameter(f"/{PROJECT_PREFIX}/api-keys/nova-act-api-key")
+        if nova_act_key:
+            env_vars['NOVA_ACT_API_KEY'] = nova_act_key
+        
+        logger.info(f"Constructed {len(env_vars)} environment variables for runtime")
+        return env_vars
+        
+    except ClientError as e:
+        logger.error(f"Failed to fetch environment variables from SSM: {e}")
+        raise ValueError(f"Could not fetch environment variables: {e}")

@@ -318,6 +318,19 @@ export class FrontendStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Construct CORS origins list
+    const corsOrigins = config.frontend.domainName
+      ? `https://${config.frontend.domainName}`
+      : `https://${this.distributionDomainName}`;
+
+    // Export CORS origins for runtime provisioner
+    new ssm.StringParameter(this, 'CorsOriginsParameter', {
+      parameterName: `/${config.projectPrefix}/frontend/cors-origins`,
+      stringValue: corsOrigins,
+      description: 'Comma-separated list of allowed CORS origins for OAuth flows',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     new ssm.StringParameter(this, 'BucketNameParameter', {
       parameterName: `/${config.projectPrefix}/frontend/bucket-name`,
       stringValue: this.bucket.bucketName,
