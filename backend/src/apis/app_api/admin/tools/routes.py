@@ -118,7 +118,6 @@ async def admin_create_tool(
         display_name=request.display_name,
         description=request.description,
         category=request.category,
-        icon=request.icon,
         protocol=request.protocol,
         status=request.status,
         requires_oauth_provider=request.requires_oauth_provider,

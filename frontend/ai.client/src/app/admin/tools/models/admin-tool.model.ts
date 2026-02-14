@@ -76,7 +76,6 @@ export interface AdminTool {
   displayName: string;
   description: string;
   category: ToolCategory;
-  icon: string | null;
   protocol: ToolProtocol;
   status: ToolStatus;
   requiresOauthProvider: string | null;
@@ -127,7 +126,6 @@ export interface ToolCreateRequest {
   displayName: string;
   description: string;
   category?: ToolCategory;
-  icon?: string;
   protocol?: ToolProtocol;
   status?: ToolStatus;
   requiresOauthProvider?: string | null;
@@ -144,7 +142,6 @@ export interface ToolUpdateRequest {
   displayName?: string;
   description?: string;
   category?: ToolCategory;
-  icon?: string;
   protocol?: ToolProtocol;
   status?: ToolStatus;
   requiresOauthProvider?: string | null;
@@ -179,7 +176,6 @@ export interface ToolFormData {
   displayName: string;
   description: string;
   category: ToolCategory;
-  icon: string;
   protocol: ToolProtocol;
   status: ToolStatus;
   requiresOauthProvider: string | null;

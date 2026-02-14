@@ -252,9 +252,6 @@ class ToolDefinition(BaseModel):
     )
     description: str = Field(..., description="Description of what the tool does")
     category: ToolCategory = Field(default=ToolCategory.UTILITY)
-    icon: Optional[str] = Field(
-        None, description="Icon identifier for UI (e.g., 'heroCloud')"
-    )
 
     # Technical metadata
     protocol: ToolProtocol = Field(..., description="How the tool is invoked")
@@ -315,7 +312,6 @@ class ToolDefinition(BaseModel):
             "displayName": self.display_name,
             "description": self.description,
             "category": self.category if isinstance(self.category, str) else self.category.value,
-            "icon": self.icon,
             "protocol": self.protocol if isinstance(self.protocol, str) else self.protocol.value,
             "status": self.status if isinstance(self.status, str) else self.status.value,
             "requiresOauthProvider": self.requires_oauth_provider,
@@ -372,7 +368,6 @@ class ToolDefinition(BaseModel):
             display_name=item.get("displayName", ""),
             description=item.get("description", ""),
             category=item.get("category", ToolCategory.UTILITY),
-            icon=item.get("icon"),
             protocol=protocol,
             status=item.get("status", ToolStatus.ACTIVE),
             requires_oauth_provider=item.get("requiresOauthProvider"),
@@ -436,7 +431,6 @@ class UserToolAccess(BaseModel):
     display_name: str = Field(..., alias="displayName")
     description: str
     category: ToolCategory
-    icon: Optional[str] = None
     protocol: ToolProtocol
     status: ToolStatus
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
@@ -560,7 +554,6 @@ class ToolCreateRequest(BaseModel):
     )
     description: str = Field(..., max_length=500)
     category: ToolCategory = Field(default=ToolCategory.UTILITY)
-    icon: Optional[str] = Field(None, max_length=50)
     protocol: ToolProtocol = Field(default=ToolProtocol.LOCAL)
     status: ToolStatus = Field(default=ToolStatus.ACTIVE)
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
@@ -582,7 +575,6 @@ class ToolUpdateRequest(BaseModel):
     )
     description: Optional[str] = Field(None, max_length=500)
     category: Optional[ToolCategory] = None
-    icon: Optional[str] = Field(None, max_length=50)
     protocol: Optional[ToolProtocol] = None
     status: Optional[ToolStatus] = None
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
@@ -710,7 +702,6 @@ class AdminToolResponse(BaseModel):
     display_name: str = Field(..., alias="displayName")
     description: str
     category: ToolCategory
-    icon: Optional[str] = None
     protocol: ToolProtocol
     status: ToolStatus
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
@@ -747,7 +738,6 @@ class AdminToolResponse(BaseModel):
             display_name=tool.display_name,
             description=tool.description,
             category=tool.category,
-            icon=tool.icon,
             protocol=tool.protocol,
             status=tool.status,
             requires_oauth_provider=tool.requires_oauth_provider,

@@ -449,35 +449,20 @@ import {
             </div>
           }
 
-          <!-- Status and Icon Row -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Status
-              </label>
-              <select
-                id="status"
-                formControlName="status"
-                class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
-              >
-                @for (stat of statuses; track stat.value) {
-                  <option [value]="stat.value">{{ stat.label }}</option>
-                }
-              </select>
-            </div>
-
-            <div>
-              <label for="icon" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Icon
-              </label>
-              <input
-                id="icon"
-                type="text"
-                formControlName="icon"
-                class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
-                placeholder="e.g., heroCodeBracket"
-              />
-            </div>
+          <!-- Status -->
+          <div>
+            <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Status
+            </label>
+            <select
+              id="status"
+              formControlName="status"
+              class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+            >
+              @for (stat of statuses; track stat.value) {
+                <option [value]="stat.value">{{ stat.label }}</option>
+              }
+            </select>
           </div>
 
           <!-- Checkboxes -->
@@ -573,7 +558,6 @@ export class ToolFormPage implements OnInit {
     category: ['utility'],
     protocol: ['local'],
     status: ['active'],
-    icon: [''],
     isPublic: [false],
     enabledByDefault: [false],
     requiresOauthProvider: [''],
@@ -639,7 +623,6 @@ export class ToolFormPage implements OnInit {
         category: tool.category,
         protocol: tool.protocol,
         status: tool.status,
-        icon: tool.icon || '',
         isPublic: tool.isPublic,
         enabledByDefault: tool.enabledByDefault,
         requiresOauthProvider: tool.requiresOauthProvider || '',
@@ -737,7 +720,6 @@ export class ToolFormPage implements OnInit {
           category: formValue.category,
           protocol: formValue.protocol,
           status: formValue.status,
-          icon: formValue.icon || undefined,
           isPublic: formValue.isPublic,
           enabledByDefault: formValue.enabledByDefault,
           requiresOauthProvider: requiresOauthProvider,
@@ -753,7 +735,6 @@ export class ToolFormPage implements OnInit {
           category: formValue.category,
           protocol: formValue.protocol,
           status: formValue.status,
-          icon: formValue.icon || undefined,
           isPublic: formValue.isPublic,
           enabledByDefault: formValue.enabledByDefault,
           requiresOauthProvider: requiresOauthProvider,

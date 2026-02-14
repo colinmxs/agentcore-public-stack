@@ -102,7 +102,6 @@ class ToolCatalogService:
                     display_name=tool.display_name,
                     description=tool.description,
                     category=tool.category,
-                    icon=tool.icon,
                     protocol=tool.protocol,
                     status=tool.status,
                     granted_by=granted_by,
@@ -458,14 +457,18 @@ class ToolCatalogService:
         self, admin: User, dry_run: bool = True
     ) -> SyncResult:
         """
-        Discover tools from backend registry and sync to catalog.
+        Discover new tools from the backend registry and add them to the catalog.
+
+        Only adds tools that are in the registry but not yet in the catalog.
+        Does NOT modify or deprecate existing catalog entries, since those may
+        include externally configured tools (MCP external, A2A, etc.).
 
         Args:
             admin: Admin user performing the action
             dry_run: If True, only report what would happen
 
         Returns:
-            SyncResult with discovered, orphaned, and unchanged tools
+            SyncResult with discovered and unchanged tools
         """
         # Get registered tools from in-memory catalog
         registered_tools = TOOL_CATALOG
@@ -487,14 +490,6 @@ class ToolCatalogService:
                     "action": "create",
                 })
 
-        orphaned = []
-        for tool in catalog_tools:
-            if tool.tool_id not in registered_ids:
-                orphaned.append({
-                    "tool_id": tool.tool_id,
-                    "action": "mark_deprecated",
-                })
-
         unchanged = list(catalog_ids & registered_ids)
 
         if not dry_run:
@@ -512,27 +507,18 @@ class ToolCatalogService:
                 )
                 await self.create_tool(tool, admin)
 
-            # Mark orphaned as deprecated
-            for item in orphaned:
-                await self.update_tool(
-                    item["tool_id"],
-                    {"status": ToolStatus.DEPRECATED},
-                    admin,
-                )
-
             logger.info(
                 f"Admin {admin.email} synced tool catalog",
                 extra={
                     "event": "tool_catalog_synced",
                     "admin_user_id": admin.user_id,
                     "discovered": len(discovered),
-                    "orphaned": len(orphaned),
                 },
             )
 
         return SyncResult(
             discovered=discovered,
-            orphaned=orphaned,
+            orphaned=[],
             unchanged=unchanged,
             dry_run=dry_run,
         )
@@ -569,7 +555,6 @@ class ToolCatalogService:
             display_name=legacy.name,
             description=legacy.description,
             category=self._map_legacy_category(legacy.category),
-            icon=legacy.icon,
             protocol=ToolProtocol.MCP_GATEWAY if legacy.is_gateway_tool else ToolProtocol.LOCAL,
             status=ToolStatus.ACTIVE,
             requires_oauth_provider=legacy.requires_oauth_provider,
