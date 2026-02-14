@@ -45,7 +45,6 @@ describe('RagIngestionStack', () => {
         databaseType: 'none',
         enableRds: false,
         imageTag: 'latest',
-        entraRedirectUri: 'http://localhost:3000/auth/callback',
       },
       inferenceApi: {
         enabled: true,
