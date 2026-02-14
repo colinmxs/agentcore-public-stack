@@ -159,10 +159,15 @@ Before running the seed script, you need a Client ID and Client Secret from your
 2. Set the **Redirect URI** to `http://localhost:4200/auth/callback` (Web platform)
 3. After creation, copy the **Application (client) ID** and **Directory (tenant) ID**
 4. Go to **Certificates & secrets > New client secret**, copy the secret value
-5. Go to **Token configuration > Add optional claim**, add `email`, `given_name`, `family_name` to the ID token
-6. Go to **App roles** to create application roles (e.g., `Admin`, `User`). Assign users to these roles in **Enterprise applications > Users and groups**
-7. Your **Issuer URL** is: `https://login.microsoftonline.com/{TENANT_ID}/v2.0`
-8. Entra ID emits roles in the `roles` claim by default
+5. Go to **API permissions > Add a permission > Microsoft Graph > Delegated** and ensure `openid`, `profile`, `email`, and `offline_access` are granted
+6. Go to **Expose an API > Add a scope**:
+   - Set the **Application ID URI** (defaults to `api://{CLIENT_ID}`)
+   - Add a scope named `Read` (full value: `api://{CLIENT_ID}/Read`)
+   - This custom scope is required by the platform to obtain a properly-scoped access token
+7. Go to **Token configuration > Add optional claim**, add `email`, `given_name`, `family_name` to the ID token
+8. Go to **App roles** to create application roles (e.g., `Admin`, `User`). Assign users to these roles in **Enterprise applications > Users and groups**
+9. Your **Issuer URL** is: `https://login.microsoftonline.com/{TENANT_ID}/v2.0`
+10. Entra ID emits roles in the `roles` claim by default
 
 </details>
 
@@ -178,8 +183,9 @@ Before running the seed script, you need a Client ID and Client Secret from your
    - Enable **Authorization code grant** flow
    - Set **OpenID Connect scopes**: `openid`, `profile`, `email`
 4. Under **App integration**, note your **Cognito domain** (e.g., `https://my-app.auth.us-west-2.amazoncognito.com`)
-5. Your **Issuer URL** is: `https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}`
-6. To use roles with Cognito, create a **custom attribute** or use **Cognito groups**. Groups are emitted in the `cognito:groups` claim by default
+5. To enable refresh tokens, go to **App client settings > Auth Flows** and ensure **Refresh token** is enabled (it is by default in Cognito)
+6. Your **Issuer URL** is: `https://cognito-idp.{REGION}.amazonaws.com/{USER_POOL_ID}`
+7. To use roles with Cognito, create a **custom attribute** or use **Cognito groups**. Groups are emitted in the `cognito:groups` claim by default
 
 </details>
 
@@ -204,6 +210,7 @@ python scripts/seed_auth_provider.py --dry-run \
     --issuer-url "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0" \
     --client-id "YOUR_CLIENT_ID" \
     --display-name "Microsoft Entra ID" \
+    --scopes "openid profile email api://YOUR_CLIENT_ID/Read offline_access" \
     --table-name my-app-auth-providers-dev \
     --secrets-arn "arn:aws:secretsmanager:us-west-2:123456789:secret:my-app-auth-provider-secrets-dev-AbCdEf" \
     --discover
@@ -218,7 +225,7 @@ python scripts/seed_auth_provider.py \
     --issuer-url "https://login.microsoftonline.com/YOUR_TENANT_ID/v2.0" \
     --client-id "YOUR_ENTRA_CLIENT_ID" \
     --discover \
-    --scopes "openid profile email" \
+    --scopes "openid profile email api://YOUR_ENTRA_CLIENT_ID/Read offline_access" \
     --user-id-claim "sub" \
     --email-claim "email" \
     --name-claim "name" \
@@ -231,6 +238,8 @@ python scripts/seed_auth_provider.py \
     --secrets-arn "arn:aws:secretsmanager:us-west-2:123456789:secret:my-app-auth-provider-secrets-dev-AbCdEf" \
     --region us-west-2
 ```
+
+> **Note on Entra ID scopes:** The `api://{CLIENT_ID}/Read` scope is an application-specific scope registered under **Expose an API** in your Entra ID app registration. It ensures the access token is scoped to your application. The `offline_access` scope is required to obtain a refresh token, which enables the frontend to silently refresh expired sessions without re-prompting the user to log in.
 
 The script will securely prompt for the client secret since `--client-secret` was omitted (recommended to keep it out of shell history).
 
@@ -255,6 +264,8 @@ python scripts/seed_auth_provider.py \
     --secrets-arn "arn:aws:secretsmanager:us-west-2:123456789:secret:my-app-auth-provider-secrets-dev-AbCdEf" \
     --region us-west-2
 ```
+
+> **Note on Cognito scopes:** Cognito issues refresh tokens by default when the `openid` scope is requested — you do not need to add `offline_access` explicitly. Cognito does not support the `offline_access` scope as a request parameter. Refresh token behavior is controlled through the app client settings in the Cognito console (token expiration, rotation, etc.).
 
 **Key flags:**
 
@@ -349,7 +360,7 @@ These are auto-discovered when using the `--discover` flag. You can override any
 |-------|----------|----------|-------------|------------------|-----------------|
 | `client_id` | `--client-id` | Yes | The OAuth application/client ID registered with the IdP. | `a1b2c3d4-e5f6-7890-abcd-ef1234567890` | `1a2b3c4d5e6f7g8h9i0j1k2l3` |
 | `client_secret` | `--client-secret` | Yes | The OAuth client secret. Stored securely in AWS Secrets Manager, never in DynamoDB. Prompted via secure input if omitted from CLI. | *(secret value)* | *(secret value)* |
-| `scopes` | `--scopes` | No | Space-separated OAuth scopes to request. Defaults to `openid profile email`. | `openid profile email` | `openid profile email` |
+| `scopes` | `--scopes` | No | Space-separated OAuth scopes to request. Defaults to `openid profile email`. Include `offline_access` for providers that require it to issue refresh tokens (e.g., Entra ID). Include provider-specific API scopes if required (e.g., `api://{CLIENT_ID}/Read` for Entra ID). Cognito issues refresh tokens automatically and does not need `offline_access`. | `openid profile email api://{CLIENT_ID}/Read offline_access` | `openid profile email` |
 | `response_type` | — | No | OAuth response type. Always `code` (authorization code flow). | `code` | `code` |
 | `pkce_enabled` | `--pkce-enabled` | No | Whether to use PKCE (Proof Key for Code Exchange) for added security. Defaults to `true`. | `true` | `true` |
 | `redirect_uri` | `--redirect-uri` | No | Override for the OAuth redirect URI. If not set, the backend constructs it automatically. | `http://localhost:4200/auth/callback` | `http://localhost:4200/auth/callback` |
