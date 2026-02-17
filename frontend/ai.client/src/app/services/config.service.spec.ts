@@ -113,7 +113,7 @@ describe('ConfigService', () => {
     });
 
     it('should handle missing inferenceApiUrl', async () => {
-      const invalidConfig = {
+      const configWithoutInferenceUrl = {
         appApiUrl: 'https://valid.com',
         enableAuthentication: true,
         environment: 'production'
@@ -122,13 +122,14 @@ describe('ConfigService', () => {
       const loadPromise = service.loadConfig();
       
       const req = httpMock.expectOne('/config.json');
-      req.flush(invalidConfig);
+      req.flush(configWithoutInferenceUrl);
       
       await loadPromise;
       
-      // Should fall back due to validation error
+      // Should load successfully - inferenceApiUrl is optional
       expect(service.loaded()).toBe(true);
-      expect(service.error()).not.toBeNull();
+      expect(service.error()).toBeNull();
+      expect(service.appApiUrl()).toBe('https://valid.com');
     });
 
     it('should handle invalid enableAuthentication type', async () => {
