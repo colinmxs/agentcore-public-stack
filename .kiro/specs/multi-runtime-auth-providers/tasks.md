@@ -179,12 +179,12 @@ The Lambda functions for runtime management are deployed as part of the App API 
     - Extract provider ID from JWT token or user record
     - Store in signal: `currentProviderId = signal<string | null>(null)`
 
-- [ ] 13. Update Frontend Chat Service
-  - [ ] 13.1 Fetch runtime endpoint URL before making inference requests
+- [x] 13. Update Frontend Chat Service
+  - [x] 13.1 Fetch runtime endpoint URL before making inference requests
     - Get provider ID from auth service
     - Fetch runtime endpoint URL from API service
     - Use runtime endpoint URL for all inference API calls
-  - [ ] 13.2 Handle runtime endpoint resolution errors
+  - [x] 13.2 Handle runtime endpoint resolution errors
     - Display error message if provider not found
     - Display error message if runtime not ready
 
