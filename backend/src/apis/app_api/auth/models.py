@@ -57,3 +57,10 @@ class LogoutResponse(BaseModel):
     """Response model for logout endpoint."""
     logout_url: str = Field(..., description="URL to redirect user to for Entra ID logout")
 
+
+class RuntimeEndpointResponse(BaseModel):
+    """Response model for runtime endpoint lookup."""
+    runtime_endpoint_url: str = Field(..., description="AgentCore Runtime endpoint URL for the user's provider")
+    provider_id: str = Field(..., description="Auth provider ID")
+    runtime_status: str = Field(..., description="Runtime status (PENDING, CREATING, READY, UPDATING, FAILED)")
+

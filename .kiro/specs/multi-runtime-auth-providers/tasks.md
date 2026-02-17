@@ -202,14 +202,14 @@ The Lambda functions for runtime management are deployed as part of the App API 
 
 ### Phase 7: App API Backend Updates
 
-- [ ] 15. Add Runtime Endpoint API
-  - [ ] 15.1 Create new endpoint: `GET /auth/runtime-endpoint`
+- [x] 15. Add Runtime Endpoint API
+  - [x] 15.1 Create new endpoint: `GET /auth/runtime-endpoint`
     - Extract provider ID from current user's JWT claims or user record
     - Fetch provider from DynamoDB
     - Return runtime endpoint URL
     - Return 404 if provider not found or runtime not ready
-  - [ ] 15.2 Add authentication middleware (require valid JWT)
-  - [ ] 15.3 Add error handling for missing runtime
+  - [x] 15.2 Add authentication middleware (require valid JWT)
+  - [x] 15.3 Add error handling for missing runtime
 
 ### Phase 8: Monitoring and Observability
 
