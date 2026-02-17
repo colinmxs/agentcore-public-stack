@@ -25,7 +25,10 @@ interface AuthProviderPublicListResponse {
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
     <div class="fixed inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900 overflow-y-auto">
-      <div class="w-full max-w-md px-4 py-12">
+      <!-- Sign-in card uses narrow width; setup guide uses wider width -->
+      <div class="w-full px-4 py-12"
+        [class.max-w-md]="!providersLoading() && providers().length > 0"
+        [class.max-w-xl]="providersLoading() || providers().length === 0">
         <!-- Logo -->
         <div class="mb-8 flex justify-center">
           <img
@@ -146,12 +149,19 @@ interface AuthProviderPublicListResponse {
                   <div class="flex flex-col gap-1">
                     <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Register an OIDC application with your Identity Provider</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      Create an app registration in your IdP (e.g., Entra ID, Okta, Auth0, AWS Cognito). You will need the following values:
+                      Create an app registration in your IdP (e.g., Entra ID, Okta, Auth0, AWS Cognito). You will need:
                     </p>
-                    <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
-                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Issuer URL</span> &mdash; e.g., <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">https://login.microsoftonline.com/&#123;tenant&#125;/v2.0</code></li>
-                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client ID</span> &mdash; the OAuth application/client ID</li>
-                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client Secret</span> &mdash; the OAuth client secret</li>
+                    <ul class="mt-1 flex flex-col gap-2 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
+                      <li>
+                        <span class="font-medium text-gray-800 dark:text-gray-200">Issuer URL</span> &mdash; the OIDC issuer for your IdP
+                        <ul class="mt-1 ml-4 flex flex-col gap-0.5 list-none text-gray-500 dark:text-gray-400">
+                          <li>Entra ID: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">https://login.microsoftonline.com/&#123;tenant-id&#125;/v2.0</code></li>
+                          <li>Cognito: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">https://cognito-idp.&#123;region&#125;.amazonaws.com/&#123;user-pool-id&#125;</code></li>
+                          <li>Okta: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">https://&#123;domain&#125;.okta.com/oauth2/default</code></li>
+                        </ul>
+                      </li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client ID</span> &mdash; the OIDC application/client identifier</li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client Secret</span> &mdash; the OIDC client secret</li>
                     </ul>
                   </div>
                 </div>
@@ -162,11 +172,11 @@ interface AuthProviderPublicListResponse {
                   <div class="flex flex-col gap-1">
                     <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Ensure AWS resources are deployed</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      The CDK <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AppApiStack</code> creates the DynamoDB auth providers table and Secrets Manager secret. Obtain:
+                      The CDK <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AppApiStack</code> creates the DynamoDB auth providers table and Secrets Manager secret. You can find these values in the CDK stack outputs or in the AWS Console:
                     </p>
                     <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
                       <li><span class="font-medium text-gray-800 dark:text-gray-200">DynamoDB Table Name</span> &mdash; the auth-providers table name</li>
-                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Secrets Manager ARN</span> &mdash; the secret ARN for client secrets</li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Secrets Manager ARN</span> &mdash; the secret ARN for provider client secrets</li>
                     </ul>
                   </div>
                 </div>
@@ -179,8 +189,8 @@ interface AuthProviderPublicListResponse {
                     <p class="text-xs text-gray-500 dark:text-gray-400">
                       From the project root, run:
                     </p>
-                    <div class="mt-1.5 p-3 bg-gray-900 dark:bg-gray-950 rounded-sm overflow-x-auto">
-                      <pre class="text-xs text-green-400 font-mono whitespace-pre leading-relaxed">python backend/scripts/seed_auth_provider.py \
+                    <div class="mt-1.5 p-3 bg-gray-900 dark:bg-gray-950 rounded-sm">
+                      <pre class="text-xs text-green-400 font-mono whitespace-pre-wrap break-all leading-relaxed">python backend/scripts/seed_auth_provider.py \
   --provider-id my-provider \
   --display-name "My Provider" \
   --issuer-url "https://..." \
@@ -200,16 +210,30 @@ interface AuthProviderPublicListResponse {
                 <div class="flex gap-3">
                   <span class="flex items-center justify-center size-6 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300" aria-hidden="true">4</span>
                   <div class="flex flex-col gap-1">
-                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Set environment variables &amp; restart</p>
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Configure environment &amp; restart</p>
                     <p class="text-xs text-gray-500 dark:text-gray-400">
-                      Ensure these are set in your backend <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> file, then restart the service:
+                      The following environment variables must be available to the backend service. For deployed environments, these are set automatically via CDK and SSM parameters. For local development, add them to your <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> file:
                     </p>
-                    <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
-                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">DYNAMODB_AUTH_PROVIDERS_TABLE_NAME</code></li>
-                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AUTH_PROVIDER_SECRETS_ARN</code></li>
-                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ENABLE_AUTHENTICATION=true</code></li>
-                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ADMIN_JWT_ROLES=["YourAdminRole"]</code> &mdash; JSON array of JWT role names that grant admin access. Must match a role your IdP issues in the token&rsquo;s <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">roles</code> claim.</li>
+                    <ul class="mt-1 flex flex-col gap-2 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
+                      <li>
+                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">DYNAMODB_AUTH_PROVIDERS_TABLE_NAME</code>
+                        <span class="text-gray-500 dark:text-gray-400"> &mdash; set via CDK/SSM on deploy; only needed in <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> for local dev</span>
+                      </li>
+                      <li>
+                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AUTH_PROVIDER_SECRETS_ARN</code>
+                        <span class="text-gray-500 dark:text-gray-400"> &mdash; set via CDK/SSM on deploy; only needed in <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> for local dev</span>
+                      </li>
+                      <li>
+                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ENABLE_AUTHENTICATION=true</code>
+                      </li>
+                      <li>
+                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ADMIN_JWT_ROLES=["YourAdminRole"]</code>
+                        <span class="text-gray-500 dark:text-gray-400"> &mdash; JSON array of JWT role names that grant system admin access. Must match a role your IdP issues in the token&rsquo;s <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">roles</code> claim. The first user who logs in with an admin role can then manage providers, models, and roles from the admin dashboard.</span>
+                      </li>
                     </ul>
+                    <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">
+                      After configuring, restart the backend service and refresh this page.
+                    </p>
                   </div>
                 </div>
               </div>
@@ -227,7 +251,7 @@ interface AuthProviderPublicListResponse {
                 <div class="mt-3 ml-6 flex flex-col gap-2 text-xs text-gray-600 dark:text-gray-400">
                   <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
                     <code class="font-mono text-gray-800 dark:text-gray-200">--scopes</code>
-                    <span>OAuth scopes (default: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">openid profile email</code>)</span>
+                    <span>OIDC scopes (default: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">openid profile email</code>)</span>
                     <code class="font-mono text-gray-800 dark:text-gray-200">--pkce-enabled</code>
                     <span>Enable PKCE (default: true)</span>
                     <code class="font-mono text-gray-800 dark:text-gray-200">--redirect-uri</code>
