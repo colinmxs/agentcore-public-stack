@@ -21,10 +21,10 @@ import {
   heroCheckCircle,
   heroXCircle,
   heroExclamationTriangle,
-  heroClockSolid,
   heroServerStack,
   heroLink,
 } from '@ng-icons/heroicons/outline';
+import { heroClockSolid } from '@ng-icons/heroicons/solid';
 import { AuthProvidersService } from '../services/auth-providers.service';
 import { AuthProvider } from '../models/auth-provider.model';
 
