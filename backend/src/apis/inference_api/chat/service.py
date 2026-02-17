@@ -99,6 +99,7 @@ _CACHE_MAX_SIZE = 100
 def get_agent(
     session_id: str,
     user_id: Optional[str] = None,
+    auth_token: Optional[str] = None,
     enabled_tools: Optional[List[str]] = None,
     model_id: Optional[str] = None,
     temperature: Optional[float] = None,
@@ -153,6 +154,7 @@ def get_agent(
     agent = MainAgent(
         session_id=session_id,
         user_id=user_id,
+        auth_token=auth_token,
         enabled_tools=enabled_tools,
         model_id=model_id,
         temperature=temperature,

@@ -13,7 +13,7 @@ from .models import (
     TokenRefreshRequest,
     TokenRefreshResponse,
 )
-from .service import get_auth_service, get_generic_auth_service
+from .service import get_generic_auth_service
 from apis.shared.auth_providers.models import (
     AuthProviderPublicInfo,
     AuthProviderPublicListResponse,
@@ -67,27 +67,22 @@ async def list_auth_providers() -> AuthProviderPublicListResponse:
 )
 async def login(
     request: Request,
-    provider_id: Optional[str] = Query(None, description="Auth provider ID (omit for legacy Entra ID)"),
+    provider_id: str = Query(..., description="Auth provider ID"),
     redirect_uri: str = Query(None, description="Optional redirect URI override"),
     prompt: str = Query("select_account", description="Prompt type (select_account, login, consent)")
 ) -> LoginResponse:
     """
     Generate authorization URL for OIDC login.
 
-    If provider_id is specified, uses the configured auth provider.
-    Otherwise falls back to the legacy Entra ID configuration.
+    Requires a provider_id that references an enabled auth provider
+    configured via the admin OIDC provider setup.
 
     When no redirect_uri is configured (neither in the query param nor on the
     provider), one is auto-derived from the request's Origin or Referer header
     by appending /auth/callback.
     """
     try:
-        if provider_id:
-            # Use generic multi-provider auth service
-            auth_service = await get_generic_auth_service(provider_id)
-        else:
-            # Fall back to legacy Entra ID auth service
-            auth_service = get_auth_service()
+        auth_service = await get_generic_auth_service(provider_id)
 
         # Auto-derive redirect_uri from request origin when not configured
         effective_redirect_uri = redirect_uri
@@ -111,10 +106,7 @@ async def login(
             prompt=prompt
         )
 
-        logger.info(
-            f"Generated authorization URL for OIDC login"
-            f"{f' (provider: {provider_id})' if provider_id else ' (legacy Entra ID)'}"
-        )
+        logger.info(f"Generated authorization URL for OIDC login (provider: {provider_id})")
 
         return LoginResponse(
             authorization_url=authorization_url,
@@ -148,17 +140,19 @@ async def exchange_token(request: TokenExchangeRequest) -> TokenExchangeResponse
     Exchange authorization code for access and refresh tokens.
 
     Resolves the auth provider from the stored state's provider_id.
-    Falls back to legacy Entra ID if no provider_id is in state.
     """
     try:
         # Peek at the state to determine provider (without consuming it)
         # The actual state validation/consumption happens inside exchange_code_for_tokens
         provider_id = _peek_provider_from_state(request.state)
 
-        if provider_id:
-            auth_service = await get_generic_auth_service(provider_id)
-        else:
-            auth_service = get_auth_service()
+        if not provider_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not resolve auth provider from state. Please initiate login again."
+            )
+
+        auth_service = await get_generic_auth_service(provider_id)
 
         tokens = await auth_service.exchange_code_for_tokens(
             code=request.code,
@@ -191,19 +185,15 @@ async def exchange_token(request: TokenExchangeRequest) -> TokenExchangeResponse
 )
 async def refresh_token(
     request: TokenRefreshRequest,
-    provider_id: Optional[str] = Query(None, description="Auth provider ID"),
+    provider_id: str = Query(..., description="Auth provider ID"),
 ) -> TokenRefreshResponse:
     """
     Refresh access token using refresh token.
 
-    If provider_id is specified, uses that provider's token endpoint.
-    Otherwise falls back to legacy Entra ID.
+    Requires a provider_id to route to the correct provider's token endpoint.
     """
     try:
-        if provider_id:
-            auth_service = await get_generic_auth_service(provider_id)
-        else:
-            auth_service = get_auth_service()
+        auth_service = await get_generic_auth_service(provider_id)
 
         tokens = await auth_service.refresh_access_token(request.refresh_token)
 
@@ -230,7 +220,7 @@ async def refresh_token(
     summary="Get logout URL",
 )
 async def logout(
-    provider_id: Optional[str] = Query(None, description="Auth provider ID"),
+    provider_id: str = Query(..., description="Auth provider ID"),
     post_logout_redirect_uri: str = Query(
         None,
         description="URL to redirect to after logout"
@@ -239,23 +229,16 @@ async def logout(
     """
     Get logout URL for ending the user's session.
 
-    If provider_id is specified, returns that provider's end session URL.
-    Otherwise returns the legacy Entra ID logout URL.
+    Requires a provider_id to return the correct provider's end session URL.
     """
     try:
-        if provider_id:
-            auth_service = await get_generic_auth_service(provider_id)
-        else:
-            auth_service = get_auth_service()
+        auth_service = await get_generic_auth_service(provider_id)
 
         logout_url = auth_service.build_logout_url(
             post_logout_redirect_uri=post_logout_redirect_uri
         )
 
-        logger.info(
-            f"Generated logout URL"
-            f"{f' (provider: {provider_id})' if provider_id else ' (legacy Entra ID)'}"
-        )
+        logger.info(f"Generated logout URL (provider: {provider_id})")
 
         return LogoutResponse(logout_url=logout_url)
 

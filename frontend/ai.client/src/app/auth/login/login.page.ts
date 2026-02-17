@@ -24,8 +24,8 @@ interface AuthProviderPublicListResponse {
   styleUrl: './login.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="fixed inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900">
-      <div class="w-full max-w-md px-4 -mt-20">
+    <div class="fixed inset-0 flex items-center justify-center bg-gray-50 dark:bg-gray-900 overflow-y-auto">
+      <div class="w-full max-w-md px-4 py-12">
         <!-- Logo -->
         <div class="mb-8 flex justify-center">
           <img
@@ -38,44 +38,36 @@ interface AuthProviderPublicListResponse {
             class="hidden size-16 dark:block">
         </div>
 
-        <!-- Sign In Card -->
-        <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
-          <div class="flex flex-col items-center gap-6">
-            <div class="flex flex-col items-center gap-2">
-              <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">
-                Sign In
-              </h1>
-              <p class="text-base/7 text-gray-600 dark:text-gray-400 text-center">
-                @if (providers().length > 1) {
-                  Choose an authentication provider to continue
-                } @else {
-                  Sign in to continue
-                }
-              </p>
-            </div>
+        <!-- Sign In Card (when providers exist) -->
+        @if (!providersLoading() && providers().length > 0) {
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
+            <div class="flex flex-col items-center gap-6">
+              <div class="flex flex-col items-center gap-2">
+                <h1 class="text-2xl font-semibold text-gray-900 dark:text-gray-100">
+                  Sign In
+                </h1>
+                <p class="text-base/7 text-gray-600 dark:text-gray-400 text-center">
+                  @if (providers().length > 1) {
+                    Choose an authentication provider to continue
+                  } @else {
+                    Sign in to continue
+                  }
+                </p>
+              </div>
 
-            @if (errorMessage()) {
-              <div class="w-full p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg">
-                <div class="flex items-start gap-3">
-                  <svg class="size-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
-                  </svg>
-                  <p class="text-sm text-red-800 dark:text-red-300">
-                    {{ errorMessage() }}
-                  </p>
+              @if (errorMessage()) {
+                <div class="w-full p-4 bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg" role="alert">
+                  <div class="flex items-start gap-3">
+                    <svg class="size-5 text-red-600 dark:text-red-400 shrink-0 mt-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                      <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v4m0 4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
+                    </svg>
+                    <p class="text-sm text-red-800 dark:text-red-300">
+                      {{ errorMessage() }}
+                    </p>
+                  </div>
                 </div>
-              </div>
-            }
+              }
 
-            <!-- Loading state while fetching providers -->
-            @if (providersLoading()) {
-              <div class="w-full flex justify-center py-4">
-                <div class="size-6 border-2 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin"></div>
-              </div>
-            }
-
-            <!-- Dynamic provider buttons -->
-            @if (!providersLoading()) {
               <div class="w-full flex flex-col gap-3">
                 @for (provider of providers(); track provider.provider_id) {
                   <button
@@ -93,7 +85,7 @@ interface AuthProviderPublicListResponse {
                       @if (provider.logo_url) {
                         <img [src]="provider.logo_url" [alt]="provider.display_name" class="size-5 object-contain" />
                       } @else {
-                        <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                        <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
                           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
                         </svg>
                       }
@@ -101,34 +93,160 @@ interface AuthProviderPublicListResponse {
                     }
                   </button>
                 }
-
-                <!-- Fallback: legacy button when no dynamic providers configured -->
-                @if (providers().length === 0) {
-                  <button
-                    type="button"
-                    (click)="handleLegacyLogin()"
-                    [disabled]="isLoading()"
-                    class="w-full px-4 py-3 bg-blue-600 hover:bg-blue-700 disabled:bg-blue-400 text-white font-medium rounded-lg transition-colors duration-200 flex items-center justify-center gap-2"
-                  >
-                    @if (isLoading()) {
-                      <div class="size-5 border-2 border-white border-t-transparent rounded-full animate-spin"></div>
-                      <span>Connecting...</span>
-                    } @else {
-                      <svg class="size-5" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z" />
-                      </svg>
-                      <span>Sign in with Microsoft</span>
-                    }
-                  </button>
-                }
               </div>
-            }
 
-            <p class="text-xs text-gray-500 dark:text-gray-400 text-center">
-              You will be redirected to your identity provider to complete authentication
-            </p>
+              <p class="text-xs text-gray-500 dark:text-gray-400 text-center">
+                You will be redirected to your identity provider to complete authentication
+              </p>
+            </div>
           </div>
-        </div>
+        }
+
+        <!-- Loading state -->
+        @if (providersLoading()) {
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
+            <div class="flex justify-center py-4">
+              <div class="size-6 border-2 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-400 rounded-full animate-spin" role="status">
+                <span class="sr-only">Loading authentication providers</span>
+              </div>
+            </div>
+          </div>
+        }
+
+        <!-- No Providers Setup Guide -->
+        @if (!providersLoading() && providers().length === 0) {
+          <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
+            <div class="flex flex-col gap-5">
+              <!-- Header -->
+              <div class="flex flex-col items-center gap-3 text-center">
+                <div class="flex items-center justify-center size-12 rounded-full bg-amber-100 dark:bg-amber-900/30">
+                  <svg class="size-6 text-amber-600 dark:text-amber-400" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-2.5L13.732 4.5c-.77-.833-2.694-.833-3.464 0L3.34 16.5c-.77.833.192 2.5 1.732 2.5z" />
+                  </svg>
+                </div>
+                <h1 class="text-xl font-semibold text-gray-900 dark:text-gray-100">
+                  Authentication Not Configured
+                </h1>
+                <p class="text-sm text-gray-600 dark:text-gray-400">
+                  No OIDC authentication providers have been set up yet. An administrator needs to seed an initial provider before users can sign in.
+                </p>
+              </div>
+
+              <hr class="border-gray-200 dark:border-gray-700" />
+
+              <!-- Setup Steps -->
+              <div class="flex flex-col gap-4">
+                <h2 class="text-sm font-semibold text-gray-900 dark:text-gray-100 uppercase tracking-wide">
+                  Setup Instructions
+                </h2>
+
+                <!-- Step 1 -->
+                <div class="flex gap-3">
+                  <span class="flex items-center justify-center size-6 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300" aria-hidden="true">1</span>
+                  <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Register an OIDC application with your Identity Provider</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      Create an app registration in your IdP (e.g., Entra ID, Okta, Auth0, AWS Cognito). You will need the following values:
+                    </p>
+                    <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Issuer URL</span> &mdash; e.g., <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">https://login.microsoftonline.com/&#123;tenant&#125;/v2.0</code></li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client ID</span> &mdash; the OAuth application/client ID</li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Client Secret</span> &mdash; the OAuth client secret</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- Step 2 -->
+                <div class="flex gap-3">
+                  <span class="flex items-center justify-center size-6 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300" aria-hidden="true">2</span>
+                  <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Ensure AWS resources are deployed</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      The CDK <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AppApiStack</code> creates the DynamoDB auth providers table and Secrets Manager secret. Obtain:
+                    </p>
+                    <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">DynamoDB Table Name</span> &mdash; the auth-providers table name</li>
+                      <li><span class="font-medium text-gray-800 dark:text-gray-200">Secrets Manager ARN</span> &mdash; the secret ARN for client secrets</li>
+                    </ul>
+                  </div>
+                </div>
+
+                <!-- Step 3 -->
+                <div class="flex gap-3">
+                  <span class="flex items-center justify-center size-6 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300" aria-hidden="true">3</span>
+                  <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Run the seed script</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      From the project root, run:
+                    </p>
+                    <div class="mt-1.5 p-3 bg-gray-900 dark:bg-gray-950 rounded-sm overflow-x-auto">
+                      <pre class="text-xs text-green-400 font-mono whitespace-pre leading-relaxed">python backend/scripts/seed_auth_provider.py \
+  --provider-id my-provider \
+  --display-name "My Provider" \
+  --issuer-url "https://..." \
+  --client-id "your-client-id" \
+  --client-secret "your-secret" \
+  --discover \
+  --table-name auth-providers \
+  --secrets-arn "arn:aws:secretsmanager:..."</pre>
+                    </div>
+                    <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                      Use <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">--discover</code> to auto-detect OIDC endpoints from the issuer URL. Run with no flags for interactive mode.
+                    </p>
+                  </div>
+                </div>
+
+                <!-- Step 4 -->
+                <div class="flex gap-3">
+                  <span class="flex items-center justify-center size-6 shrink-0 rounded-full bg-blue-100 dark:bg-blue-900/30 text-xs font-bold text-blue-700 dark:text-blue-300" aria-hidden="true">4</span>
+                  <div class="flex flex-col gap-1">
+                    <p class="text-sm font-medium text-gray-900 dark:text-gray-100">Set environment variables &amp; restart</p>
+                    <p class="text-xs text-gray-500 dark:text-gray-400">
+                      Ensure these are set in your backend <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> file, then restart the service:
+                    </p>
+                    <ul class="mt-1 flex flex-col gap-1 text-xs text-gray-600 dark:text-gray-400 list-disc list-inside">
+                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">DYNAMODB_AUTH_PROVIDERS_TABLE_NAME</code></li>
+                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AUTH_PROVIDER_SECRETS_ARN</code></li>
+                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ENABLE_AUTHENTICATION=true</code></li>
+                    </ul>
+                  </div>
+                </div>
+              </div>
+
+              <hr class="border-gray-200 dark:border-gray-700" />
+
+              <!-- Seed script options -->
+              <details class="group">
+                <summary class="flex items-center gap-2 cursor-pointer text-sm font-medium text-gray-700 dark:text-gray-300 select-none">
+                  <svg class="size-4 text-gray-400 transition-transform group-open:rotate-90" fill="none" viewBox="0 0 24 24" stroke="currentColor" aria-hidden="true">
+                    <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7" />
+                  </svg>
+                  Optional seed script flags
+                </summary>
+                <div class="mt-3 ml-6 flex flex-col gap-2 text-xs text-gray-600 dark:text-gray-400">
+                  <div class="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1.5">
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--scopes</code>
+                    <span>OAuth scopes (default: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">openid profile email</code>)</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--pkce-enabled</code>
+                    <span>Enable PKCE (default: true)</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--redirect-uri</code>
+                    <span>Override redirect URI</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--user-id-claim</code>
+                    <span>JWT claim for user ID (default: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">sub</code>)</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--roles-claim</code>
+                    <span>JWT claim for roles (default: <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">roles</code>)</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--button-color</code>
+                    <span>Hex color for login button (e.g., <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs">#0078D4</code>)</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--logo-url</code>
+                    <span>URL to provider logo for login button</span>
+                    <code class="font-mono text-gray-800 dark:text-gray-200">--dry-run</code>
+                    <span>Preview changes without writing to AWS</span>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+        }
       </div>
     </div>
   `
@@ -171,7 +289,6 @@ export class LoginPage implements OnInit, OnDestroy {
         await this.authService.login(providerList[0].provider_id);
       }
     } catch (error) {
-      // If providers endpoint fails, show legacy button as fallback
       this.providers.set([]);
     } finally {
       this.providersLoading.set(false);
@@ -189,20 +306,6 @@ export class LoginPage implements OnInit, OnDestroy {
     } catch (error) {
       this.isLoading.set(false);
       this.activeProviderId.set(null);
-      const errorMsg = error instanceof Error ? error.message : 'An error occurred during login';
-      this.errorMessage.set(errorMsg);
-    }
-  }
-
-  async handleLegacyLogin(): Promise<void> {
-    this.isLoading.set(true);
-    this.errorMessage.set(null);
-
-    try {
-      this.storeReturnUrl();
-      await this.authService.login();
-    } catch (error) {
-      this.isLoading.set(false);
       const errorMsg = error instanceof Error ? error.message : 'An error occurred during login';
       this.errorMessage.set(errorMsg);
     }
