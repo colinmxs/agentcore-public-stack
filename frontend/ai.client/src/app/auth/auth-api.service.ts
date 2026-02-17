@@ -28,9 +28,15 @@ export class AuthApiService {
   /**
    * Get the AgentCore Runtime endpoint URL for the user's auth provider.
    * 
-   * This endpoint is used to route inference requests to the correct runtime
-   * based on the user's authentication provider. Each provider has its own
-   * dedicated runtime with provider-specific JWT validation.
+   * The backend resolves the provider by extracting the issuer claim from the
+   * user's JWT token and matching it against configured providers in the database.
+   * Each provider has its own dedicated runtime with provider-specific JWT validation.
+   * 
+   * Flow:
+   * 1. Frontend sends authenticated request (JWT in Authorization header)
+   * 2. Backend extracts issuer from JWT (e.g., "https://login.microsoftonline.com/{tenant}/v2.0")
+   * 3. Backend matches issuer to provider in database
+   * 4. Backend returns runtime endpoint URL for that provider
    * 
    * @returns Observable of runtime endpoint response containing the endpoint URL and provider ID
    * @throws HTTP 404 if provider not found or runtime not ready
@@ -41,6 +47,7 @@ export class AuthApiService {
    * this.authApiService.getRuntimeEndpoint().subscribe({
    *   next: (response) => {
    *     console.log('Runtime endpoint:', response.runtime_endpoint_url);
+   *     console.log('Provider:', response.provider_id);
    *     // Use this endpoint for inference API calls
    *   },
    *   error: (error) => {

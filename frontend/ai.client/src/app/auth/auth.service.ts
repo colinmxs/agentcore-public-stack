@@ -43,17 +43,18 @@ export class AuthService {
 
   /**
    * Signal tracking the current authentication provider ID.
-   * Extracted from JWT token or retrieved from sessionStorage.
-   * Used for routing requests to the correct AgentCore Runtime.
+   * Resolved from the JWT token's issuer claim by the backend.
+   * Used for display purposes and tracking which provider the user authenticated with.
+   * 
+   * Note: The backend resolves the provider by matching the token's issuer claim
+   * against configured providers. The frontend doesn't need to extract the issuer
+   * directly - it just tracks the provider_id returned from the backend.
    */
   readonly currentProviderId = signal<string | null>(null);
 
   constructor() {
-    // Initialize provider ID from current token
-    const token = this.getAccessToken();
-    if (token) {
-      this.updateProviderIdFromToken(token);
-    }
+    // Initialize provider ID from sessionStorage
+    this.updateProviderIdFromStorage();
   }
 
   /**
@@ -172,8 +173,8 @@ export class AuthService {
     const expiryTime = Date.now() + response.expires_in * 1000;
     localStorage.setItem(this.tokenExpiryKey, expiryTime.toString());
 
-    // Extract and update provider ID from token
-    this.updateProviderIdFromToken(response.access_token);
+    // Update provider ID from sessionStorage (set during login)
+    this.updateProviderIdFromStorage();
 
     // Dispatch custom event to notify UserService of token change in same tab
     if (typeof window !== 'undefined') {
@@ -211,64 +212,15 @@ export class AuthService {
   }
 
   /**
-   * Extract provider ID from JWT token and update the signal.
-   * Falls back to sessionStorage if token doesn't contain provider_id.
-   * @param token JWT access token
+   * Update provider ID from sessionStorage or clear it.
+   * The provider ID is set during login and used for routing logout/refresh requests.
+   * 
+   * Note: The backend resolves the actual provider from the token's issuer claim.
+   * This stored provider_id is just for maintaining session context.
    */
-  private updateProviderIdFromToken(token: string): void {
-    try {
-      // JWT tokens have three parts: header.payload.signature
-      const parts = token.split('.');
-      if (parts.length !== 3) {
-        console.warn('Invalid token format for provider ID extraction');
-        return;
-      }
-
-      // Decode the payload (middle part)
-      const payload = this.base64UrlDecode(parts[1]);
-      const jwtPayload = JSON.parse(payload);
-      
-      // Extract provider_id from JWT claims
-      const providerId = jwtPayload.provider_id;
-      
-      if (providerId) {
-        this.currentProviderId.set(providerId);
-        // Also store in sessionStorage for consistency
-        sessionStorage.setItem(this.providerIdKey, providerId);
-      } else {
-        // Fall back to sessionStorage if token doesn't contain provider_id
-        const storedProviderId = this.getStoredProviderId();
-        this.currentProviderId.set(storedProviderId);
-      }
-    } catch (error) {
-      console.error('Failed to extract provider ID from token:', error);
-      // Fall back to sessionStorage
-      const storedProviderId = this.getStoredProviderId();
-      this.currentProviderId.set(storedProviderId);
-    }
-  }
-
-  /**
-   * Decode base64url encoded string.
-   * @param str Base64url encoded string
-   * @returns Decoded string
-   */
-  private base64UrlDecode(str: string): string {
-    // Convert base64url to base64
-    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
-    
-    // Add padding if needed
-    while (base64.length % 4) {
-      base64 += '=';
-    }
-
-    // Decode base64
-    try {
-      const decoded = atob(base64);
-      return decoded;
-    } catch (error) {
-      throw new Error('Invalid base64 encoding');
-    }
+  private updateProviderIdFromStorage(): void {
+    const storedProviderId = this.getStoredProviderId();
+    this.currentProviderId.set(storedProviderId);
   }
 
   /**

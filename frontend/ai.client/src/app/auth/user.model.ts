@@ -10,7 +10,6 @@ export interface User {
   fullName: string;
   roles: string[];
   picture?: string;
-  provider_id?: string;
 }
 
 /**
@@ -27,7 +26,6 @@ export interface JWTPayload {
   family_name?: string;
   roles?: string[];
   picture?: string;
-  provider_id?: string;
   exp?: number;
   iat?: number;
   aud?: string | string[];
