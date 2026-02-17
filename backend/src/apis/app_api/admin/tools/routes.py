@@ -121,6 +121,7 @@ async def admin_create_tool(
         protocol=request.protocol,
         status=request.status,
         requires_oauth_provider=request.requires_oauth_provider,
+        forward_auth_token=request.forward_auth_token,
         is_public=request.is_public,
         enabled_by_default=request.enabled_by_default,
         mcp_config=mcp_config,
@@ -168,7 +169,10 @@ async def admin_update_tool(
     if "a2a_config" in updates and updates["a2a_config"] is not None:
         updates["a2a_config"] = request.a2a_config.to_model()
 
-    updated = await service.update_tool(tool_id, updates, admin)
+    try:
+        updated = await service.update_tool(tool_id, updates, admin)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
 
     if not updated:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found")

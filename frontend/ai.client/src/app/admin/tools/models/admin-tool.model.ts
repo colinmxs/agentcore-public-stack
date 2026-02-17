@@ -79,6 +79,7 @@ export interface AdminTool {
   protocol: ToolProtocol;
   status: ToolStatus;
   requiresOauthProvider: string | null;
+  forwardAuthToken: boolean;
   isPublic: boolean;
   allowedAppRoles: string[];
   enabledByDefault: boolean;
@@ -129,6 +130,7 @@ export interface ToolCreateRequest {
   protocol?: ToolProtocol;
   status?: ToolStatus;
   requiresOauthProvider?: string | null;
+  forwardAuthToken?: boolean;
   isPublic?: boolean;
   enabledByDefault?: boolean;
   mcpConfig?: MCPServerConfig;
@@ -145,6 +147,7 @@ export interface ToolUpdateRequest {
   protocol?: ToolProtocol;
   status?: ToolStatus;
   requiresOauthProvider?: string | null;
+  forwardAuthToken?: boolean;
   isPublic?: boolean;
   enabledByDefault?: boolean;
   mcpConfig?: MCPServerConfig | null;
@@ -179,6 +182,7 @@ export interface ToolFormData {
   protocol: ToolProtocol;
   status: ToolStatus;
   requiresOauthProvider: string | null;
+  forwardAuthToken: boolean;
   isPublic: boolean;
   enabledByDefault: boolean;
   // MCP configuration (for mcp_external protocol)

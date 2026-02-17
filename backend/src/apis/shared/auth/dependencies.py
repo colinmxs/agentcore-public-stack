@@ -173,6 +173,7 @@ async def get_current_user(
             provider = await generic_validator.resolve_provider_from_token(token)
             if provider:
                 user = generic_validator.validate_token(token, provider)
+                user.raw_token = token
 
                 # Fire-and-forget sync to Users table
                 sync_service = _get_user_sync_service()
@@ -190,6 +191,7 @@ async def get_current_user(
     if legacy_validator:
         try:
             user = legacy_validator.validate_token(token)
+            user.raw_token = token
 
             # Fire-and-forget sync to Users table
             sync_service = _get_user_sync_service()
@@ -324,7 +326,8 @@ async def get_current_user_trusted(
                         name=str(name) if name else "",
                         user_id=str(user_id),
                         roles=roles if isinstance(roles, list) else [],
-                        picture=picture
+                        picture=picture,
+                        raw_token=token,
                     )
 
                     sync_service = _get_user_sync_service()
@@ -359,7 +362,8 @@ async def get_current_user_trusted(
             name=name,
             user_id=user_id,
             roles=roles,
-            picture=picture
+            picture=picture,
+            raw_token=token,
         )
 
         # Fire-and-forget sync to Users table

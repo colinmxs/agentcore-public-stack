@@ -207,6 +207,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     """
     input_data = request
     user_id = current_user.user_id
+    auth_token = current_user.raw_token
     logger.info(f"Invocation request - Session: {input_data.session_id}, User: {user_id}")
     logger.info(f"Message: {input_data.message[:50]}...")
 
@@ -489,6 +490,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         agent = get_agent(
             session_id=input_data.session_id,
             user_id=user_id,
+            auth_token=auth_token,
             enabled_tools=input_data.enabled_tools,
             model_id=input_data.model_id,
             temperature=input_data.temperature,

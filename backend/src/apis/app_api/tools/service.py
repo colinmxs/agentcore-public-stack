@@ -212,6 +212,33 @@ class ToolCatalogService:
 
         return tool
 
+    def _validate_auth_config(self, tool: ToolDefinition) -> None:
+        """
+        Validate that auth configurations don't conflict.
+
+        Raises:
+            ValueError: If forward_auth_token and requires_oauth_provider are both set,
+                or if forward_auth_token is set with a non-'none' MCP auth type.
+        """
+        if tool.forward_auth_token and tool.requires_oauth_provider:
+            raise ValueError(
+                "Cannot enable both 'forward_auth_token' and 'requires_oauth_provider'. "
+                "Both use the Authorization header and are mutually exclusive."
+            )
+
+        if tool.forward_auth_token and tool.mcp_config:
+            auth_type = tool.mcp_config.auth_type
+            if isinstance(auth_type, str):
+                is_none = auth_type == "none"
+            else:
+                from .models import MCPAuthType
+                is_none = auth_type == MCPAuthType.NONE
+            if not is_none:
+                raise ValueError(
+                    "When 'forward_auth_token' is enabled, MCP auth type must be 'none'. "
+                    "The OIDC token will use the Authorization header."
+                )
+
     async def create_tool(
         self, tool: ToolDefinition, admin: User
     ) -> ToolDefinition:
@@ -224,7 +251,12 @@ class ToolCatalogService:
 
         Returns:
             Created ToolDefinition
+
+        Raises:
+            ValueError: If auth configuration is invalid
         """
+        self._validate_auth_config(tool)
+
         tool.created_by = admin.user_id
         tool.updated_by = admin.user_id
 
@@ -255,7 +287,26 @@ class ToolCatalogService:
 
         Returns:
             Updated ToolDefinition or None if not found
+
+        Raises:
+            ValueError: If the resulting auth configuration is invalid
         """
+        # Pre-validate auth config if relevant fields are being updated
+        if "forward_auth_token" in updates or "requires_oauth_provider" in updates or "mcp_config" in updates:
+            existing = await self.repository.get_tool(tool_id)
+            if existing:
+                # Build a preview of the updated tool for validation
+                preview = ToolDefinition(
+                    tool_id=existing.tool_id,
+                    display_name=existing.display_name,
+                    description=existing.description,
+                    protocol=existing.protocol,
+                    forward_auth_token=updates.get("forward_auth_token", existing.forward_auth_token),
+                    requires_oauth_provider=updates.get("requires_oauth_provider", existing.requires_oauth_provider),
+                    mcp_config=updates.get("mcp_config", existing.mcp_config),
+                )
+                self._validate_auth_config(preview)
+
         updated = await self.repository.update_tool(
             tool_id, updates, admin_user_id=admin.user_id
         )
