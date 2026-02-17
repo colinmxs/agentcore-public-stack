@@ -29,7 +29,16 @@ export interface AuthProvider {
   created_at: string;
   updated_at: string;
   created_by?: string | null;
+  // Runtime tracking fields
+  agentcore_runtime_arn?: string | null;
+  agentcore_runtime_id?: string | null;
+  agentcore_runtime_endpoint_url?: string | null;
+  agentcore_runtime_status?: RuntimeStatus;
+  agentcore_runtime_error?: string | null;
+  agentcore_runtime_image_tag?: string | null;
 }
+
+export type RuntimeStatus = 'PENDING' | 'CREATING' | 'READY' | 'UPDATING' | 'FAILED' | 'UPDATE_FAILED';
 
 export interface AuthProviderListResponse {
   providers: AuthProvider[];

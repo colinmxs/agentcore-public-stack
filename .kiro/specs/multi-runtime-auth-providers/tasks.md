@@ -188,17 +188,17 @@ The Lambda functions for runtime management are deployed as part of the App API 
     - Display error message if provider not found
     - Display error message if runtime not ready
 
-- [ ] 14. Add Admin UI for Runtime Status
-  - [ ] 14.1 Create runtime status component
+- [x] 14. Add Admin UI for Runtime Status
+  - [x] 14.1 Create runtime status component
     - Display list of all providers with runtime status
     - Show runtime ARN, ID, endpoint URL
     - Show runtime status (PENDING, CREATING, READY, UPDATING, FAILED)
     - Show error details for failed runtimes
-  - [ ] 14.2 Add runtime version tracking
+  - [x] 14.2 Add runtime version tracking
     - Display current deployed image tag
     - Display image tag per runtime
     - Show version mismatch indicators
-  - [ ] 14.3 Add manual update trigger button (optional)
+  - [x] 14.3 Add manual update trigger button (optional)
 
 ### Phase 7: App API Backend Updates
 

@@ -83,6 +83,18 @@ export class AuthProvidersService {
     );
   }
 
+  async getCurrentImageTag(): Promise<{ image_tag: string }> {
+    return firstValueFrom(
+      this.http.get<{ image_tag: string }>(`${this.baseUrl()}/runtime-image-tag`)
+    );
+  }
+
+  async triggerRuntimeUpdate(providerId: string): Promise<{ message: string }> {
+    return firstValueFrom(
+      this.http.post<{ message: string }>(`${this.baseUrl()}/${providerId}/update-runtime`, {})
+    );
+  }
+
   reload(): void {
     this.providersResource.reload();
   }
