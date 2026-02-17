@@ -158,11 +158,11 @@ The Lambda functions for runtime management are deployed as part of the App API 
   - [ ] 9.2 Delete GitHub Secrets
     - Delete `CDK_ENTRA_CLIENT_SECRET`
 
-- [ ] 10. Update Backend Code
-  - [ ] 10.1 Search for Entra references in test files
+- [x] 10. Update Backend Code
+  - [x] 10.1 Search for Entra references in test files
     - Run: `grep -r "ENTRA_CLIENT_ID\|ENTRA_TENANT_ID\|ENTRA_REDIRECT_URI\|ENTRA_CLIENT_SECRET" backend/tests/`
-  - [ ] 10.2 Update test files to use mock auth providers from database
-  - [ ] 10.3 Remove Entra-specific test fixtures
+  - [x] 10.2 Update test files to use mock auth providers from database
+  - [x] 10.3 Remove Entra-specific test fixtures
 
 - [ ] 11. Deploy Configuration Changes
   - [ ] 11.1 Deploy updated AppApiStack (without Entra environment variables)
@@ -171,11 +171,11 @@ The Lambda functions for runtime management are deployed as part of the App API 
 
 ### Phase 6: Frontend Updates
 
-- [ ] 12. Update Frontend API Service
-  - [ ] 12.1 Add method to fetch runtime endpoint URL
+- [x] 12. Update Frontend API Service
+  - [x] 12.1 Add method to fetch runtime endpoint URL
     - `getRuntimeEndpoint(providerId: string): Promise<string>`
     - Calls `GET /auth/runtime-endpoint`
-  - [ ] 12.2 Update auth service to track current provider ID
+  - [x] 12.2 Update auth service to track current provider ID
     - Extract provider ID from JWT token or user record
     - Store in signal: `currentProviderId = signal<string | null>(null)`
 

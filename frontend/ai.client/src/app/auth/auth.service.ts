@@ -1,4 +1,4 @@
-import { inject, Injectable, computed } from '@angular/core';
+import { inject, Injectable, computed, signal } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '../services/config.service';
@@ -40,6 +40,21 @@ export class AuthService {
 
   // Computed signal for reactive base URL
   private readonly baseUrl = computed(() => this.config.appApiUrl());
+
+  /**
+   * Signal tracking the current authentication provider ID.
+   * Extracted from JWT token or retrieved from sessionStorage.
+   * Used for routing requests to the correct AgentCore Runtime.
+   */
+  readonly currentProviderId = signal<string | null>(null);
+
+  constructor() {
+    // Initialize provider ID from current token
+    const token = this.getAccessToken();
+    if (token) {
+      this.updateProviderIdFromToken(token);
+    }
+  }
 
   /**
    * Get the current access token from localStorage.
@@ -157,6 +172,9 @@ export class AuthService {
     const expiryTime = Date.now() + response.expires_in * 1000;
     localStorage.setItem(this.tokenExpiryKey, expiryTime.toString());
 
+    // Extract and update provider ID from token
+    this.updateProviderIdFromToken(response.access_token);
+
     // Dispatch custom event to notify UserService of token change in same tab
     if (typeof window !== 'undefined') {
       window.dispatchEvent(new CustomEvent('token-stored', {
@@ -173,6 +191,9 @@ export class AuthService {
     localStorage.removeItem(this.refreshTokenKey);
     localStorage.removeItem(this.tokenExpiryKey);
     sessionStorage.removeItem(this.providerIdKey);
+    
+    // Clear provider ID signal
+    this.currentProviderId.set(null);
 
     // Dispatch custom event to notify UserService of token removal in same tab
     if (typeof window !== 'undefined') {
@@ -187,6 +208,67 @@ export class AuthService {
   getAuthorizationHeader(): string | null {
     const token = this.getAccessToken();
     return token ? `Bearer ${token}` : null;
+  }
+
+  /**
+   * Extract provider ID from JWT token and update the signal.
+   * Falls back to sessionStorage if token doesn't contain provider_id.
+   * @param token JWT access token
+   */
+  private updateProviderIdFromToken(token: string): void {
+    try {
+      // JWT tokens have three parts: header.payload.signature
+      const parts = token.split('.');
+      if (parts.length !== 3) {
+        console.warn('Invalid token format for provider ID extraction');
+        return;
+      }
+
+      // Decode the payload (middle part)
+      const payload = this.base64UrlDecode(parts[1]);
+      const jwtPayload = JSON.parse(payload);
+      
+      // Extract provider_id from JWT claims
+      const providerId = jwtPayload.provider_id;
+      
+      if (providerId) {
+        this.currentProviderId.set(providerId);
+        // Also store in sessionStorage for consistency
+        sessionStorage.setItem(this.providerIdKey, providerId);
+      } else {
+        // Fall back to sessionStorage if token doesn't contain provider_id
+        const storedProviderId = this.getStoredProviderId();
+        this.currentProviderId.set(storedProviderId);
+      }
+    } catch (error) {
+      console.error('Failed to extract provider ID from token:', error);
+      // Fall back to sessionStorage
+      const storedProviderId = this.getStoredProviderId();
+      this.currentProviderId.set(storedProviderId);
+    }
+  }
+
+  /**
+   * Decode base64url encoded string.
+   * @param str Base64url encoded string
+   * @returns Decoded string
+   */
+  private base64UrlDecode(str: string): string {
+    // Convert base64url to base64
+    let base64 = str.replace(/-/g, '+').replace(/_/g, '/');
+    
+    // Add padding if needed
+    while (base64.length % 4) {
+      base64 += '=';
+    }
+
+    // Decode base64
+    try {
+      const decoded = atob(base64);
+      return decoded;
+    } catch (error) {
+      throw new Error('Invalid base64 encoding');
+    }
   }
 
   /**
@@ -281,6 +363,15 @@ export class AuthService {
    */
   getStoredProviderId(): string | null {
     return sessionStorage.getItem(this.providerIdKey);
+  }
+
+  /**
+   * Get the current provider ID from the signal.
+   * This is extracted from the JWT token or retrieved from sessionStorage.
+   * @returns The current provider ID or null if not available
+   */
+  getProviderId(): string | null {
+    return this.currentProviderId();
   }
 
   /**

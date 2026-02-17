@@ -113,6 +113,7 @@ export class UserService {
       }
 
       const roles = jwtPayload.roles || [];
+      const providerId = jwtPayload.provider_id;
 
       const user: User = {
         email,
@@ -121,7 +122,8 @@ export class UserService {
         lastName,
         fullName,
         roles,
-        picture: jwtPayload.picture
+        picture: jwtPayload.picture,
+        provider_id: providerId
       };
 
       return user;
