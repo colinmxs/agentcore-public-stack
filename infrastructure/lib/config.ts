@@ -46,6 +46,7 @@ export interface AppApiConfig {
   rdsEngine?: string;
   rdsDatabaseName?: string;
   imageTag: string;
+  corsOrigins?: string; // Comma-separated CORS origins (defaults based on frontend domain)
 }
 
 export interface InferenceApiConfig {
@@ -170,6 +171,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
+      corsOrigins: process.env.CDK_APP_API_CORS_ORIGINS || scope.node.tryGetContext('appApi')?.corsOrigins,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,
