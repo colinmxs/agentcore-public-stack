@@ -392,25 +392,51 @@ def get_required_parameter(parameter_name: str) -> str:
             raise
 
 
-def validate_url(url: str, parameter_name: str) -> None:
+def normalize_url(url: str) -> str:
     """
-    Validate that a URL parameter has the correct format.
+    Normalize a URL by ensuring it has a protocol.
+    
+    If the URL doesn't start with http:// or https://, prepends https://.
+    
+    Args:
+        url: URL or domain name
+        
+    Returns:
+        Normalized URL with protocol
+    """
+    url = url.strip()
+    if not url:
+        return url
+    
+    # If already has protocol, return as-is
+    if url.startswith(('http://', 'https://')):
+        return url
+    
+    # Auto-prepend https:// for domain names
+    return f"https://{url}"
+
+
+def validate_url(url: str, parameter_name: str) -> str:
+    """
+    Validate and normalize a URL parameter.
     
     Args:
         url: URL string to validate
         parameter_name: Parameter name for error messages
         
+    Returns:
+        Normalized URL with protocol
+        
     Raises:
-        ValueError: If URL format is invalid
+        ValueError: If URL is empty
     """
-    if not url.startswith(('http://', 'https://')):
-        raise ValueError(
-            f"Invalid URL format for {parameter_name}: {url}. "
-            f"Must start with http:// or https://"
-        )
-    
-    if not url.strip():
+    if not url or not url.strip():
         raise ValueError(f"Empty URL value for {parameter_name}")
+    
+    # Normalize the URL (add https:// if missing)
+    normalized = normalize_url(url)
+    
+    return normalized
 
 
 def parse_provider_from_stream(image: Dict[str, Any]) -> Dict[str, Any]:
@@ -692,10 +718,10 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
         for param_name in required_params:
             params[param_name] = get_required_parameter(param_name)
         
-        # Validate URLs
-        validate_url(params[f"/{PROJECT_PREFIX}/network/alb-url"], "alb-url")
-        validate_url(params[f"/{PROJECT_PREFIX}/frontend/url"], "frontend-url")
-        validate_url(params[f"/{PROJECT_PREFIX}/oauth/callback-url"], "oauth-callback-url")
+        # Validate and normalize URLs
+        alb_url = validate_url(params[f"/{PROJECT_PREFIX}/network/alb-url"], "alb-url")
+        frontend_url = validate_url(params[f"/{PROJECT_PREFIX}/frontend/url"], "frontend-url")
+        callback_url = validate_url(params[f"/{PROJECT_PREFIX}/oauth/callback-url"], "oauth-callback-url")
         
         # Construct environment variables dictionary
         env_vars = {
@@ -717,7 +743,7 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             # OAuth configuration
             'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': params[f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn"],
             'OAUTH_CLIENT_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/oauth/client-secrets-arn"],
-            'OAUTH_CALLBACK_URL': params[f"/{PROJECT_PREFIX}/oauth/callback-url"],
+            'OAUTH_CALLBACK_URL': callback_url,
             
             # AgentCore resources (from shared_resources parameter)
             'MEMORY_ARN': shared_resources['memory_arn'],
@@ -743,8 +769,8 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'GENERATED_IMAGES_DIR': '/tmp/generated_images',
             
             # URLs
-            'API_URL': params[f"/{PROJECT_PREFIX}/network/alb-url"],
-            'FRONTEND_URL': params[f"/{PROJECT_PREFIX}/frontend/url"],
+            'API_URL': alb_url,
+            'FRONTEND_URL': frontend_url,
             'CORS_ORIGINS': params[f"/{PROJECT_PREFIX}/frontend/cors-origins"],
         }
         
