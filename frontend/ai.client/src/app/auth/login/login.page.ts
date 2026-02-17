@@ -208,6 +208,7 @@ interface AuthProviderPublicListResponse {
                       <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">DYNAMODB_AUTH_PROVIDERS_TABLE_NAME</code></li>
                       <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">AUTH_PROVIDER_SECRETS_ARN</code></li>
                       <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ENABLE_AUTHENTICATION=true</code></li>
+                      <li><code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ADMIN_JWT_ROLES=["YourAdminRole"]</code> &mdash; JSON array of JWT role names that grant admin access. Must match a role your IdP issues in the token&rsquo;s <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">roles</code> claim.</li>
                     </ul>
                   </div>
                 </div>
