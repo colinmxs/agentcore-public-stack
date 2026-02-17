@@ -224,16 +224,6 @@ export class ConfigService {
       }
     }
     
-    // Validate inferenceApiUrl
-    if (!config.inferenceApiUrl || typeof config.inferenceApiUrl !== 'string') {
-      errors.push('inferenceApiUrl is required and must be a string');
-    } else {
-      try {
-        new URL(config.inferenceApiUrl);
-      } catch {
-        errors.push(`inferenceApiUrl is not a valid URL: "${config.inferenceApiUrl}"`);
-      }
-    }
     
     // Validate enableAuthentication
     if (typeof config.enableAuthentication !== 'boolean') {
