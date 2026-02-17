@@ -8,7 +8,6 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from .jwt_validator import get_validator
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -64,8 +63,7 @@ def _get_generic_validator():
     """
     Get the GenericOIDCJWTValidator instance.
 
-    Returns None if the auth providers table is not configured,
-    allowing graceful fallback to the legacy EntraID validator.
+    Returns None if the auth providers table is not configured.
     """
     global _generic_validator, _generic_validator_initialized
     if _generic_validator_initialized:
@@ -132,9 +130,8 @@ async def get_current_user(
     """
     FastAPI dependency to get the current authenticated user.
 
-    Validates the JWT token using multi-provider support:
-    1. Try GenericOIDCJWTValidator (matches token issuer to configured providers)
-    2. Fall back to legacy EntraIDJWTValidator (backward compatibility)
+    Validates the JWT token using the GenericOIDCJWTValidator, which
+    matches the token issuer to configured auth providers.
 
     When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
     authentication for local development only.
@@ -166,7 +163,7 @@ async def get_current_user(
 
     token = credentials.credentials
 
-    # Try generic multi-provider validation first
+    # Use generic multi-provider validation
     generic_validator = _get_generic_validator()
     if generic_validator:
         try:
@@ -184,35 +181,17 @@ async def get_current_user(
         except HTTPException:
             raise
         except Exception as e:
-            logger.debug(f"Generic provider validation failed, trying legacy: {e}")
-
-    # Fall back to legacy Entra ID validator
-    legacy_validator = get_validator()
-    if legacy_validator:
-        try:
-            user = legacy_validator.validate_token(token)
-            user.raw_token = token
-
-            # Fire-and-forget sync to Users table
-            sync_service = _get_user_sync_service()
-            if sync_service and sync_service.enabled:
-                asyncio.create_task(_sync_user_background(sync_service, user))
-
-            return user
-        except HTTPException:
-            raise
-        except Exception as e:
-            logger.error(f"Unexpected error in legacy authentication: {e}", exc_info=True)
+            logger.error(f"Token validation failed: {e}", exc_info=True)
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Authentication failed."
             )
 
-    # No validator available
-    logger.error("No JWT validator available (neither generic nor legacy)")
+    # No validator available - no auth providers configured
+    logger.error("No JWT validator available. Ensure at least one OIDC auth provider is configured.")
     raise HTTPException(
         status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-        detail="Authentication service misconfigured."
+        detail="Authentication service not configured. No OIDC auth providers have been set up."
     )
 
 
@@ -246,11 +225,7 @@ async def get_current_user_trusted(
     Use this when JWT validation is already performed at the network level
     (e.g., by AWS Bedrock AgentCore Runtime's JWT authorizer). This method
     skips expensive signature verification and simply extracts claims from
-    the token.
-
-    Supports multi-provider claim extraction: if a matching auth provider
-    is found, its claim mappings are used. Otherwise falls back to legacy
-    Entra ID claim extraction.
+    the token using the matching auth provider's claim mappings.
 
     Security: Only use this in services where the JWT validation
     is guaranteed. IE AgentCore Runtime with Inbound Auth. For services without pre-validation, use
@@ -289,7 +264,7 @@ async def get_current_user_trusted(
         # Decode JWT without verification (network layer already validated it)
         payload = jwt.decode(token, options={"verify_signature": False})
 
-        # Try to resolve provider for claim mappings
+        # Resolve provider for claim mappings
         generic_validator = _get_generic_validator()
         if generic_validator:
             try:
@@ -338,20 +313,24 @@ async def get_current_user_trusted(
             except HTTPException:
                 raise
             except Exception as e:
-                logger.debug(f"Provider-based trusted extraction failed, using legacy: {e}")
+                logger.error(f"Provider-based trusted extraction failed: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication failed."
+                )
 
-        # Legacy Entra ID claim extraction
+        # No auth providers configured - use standard OIDC claim extraction
+        logger.warning("No auth providers configured for trusted token extraction, using standard OIDC claims")
         email = payload.get('email') or payload.get('preferred_username')
         name = payload.get('name') or (
             f"{payload.get('given_name', '')} {payload.get('family_name', '')}"
         ).strip()
-        user_id = payload.get('http://schemas.boisestate.edu/claims/employeenumber')
+        user_id = payload.get('sub')
         roles = payload.get('roles', [])
         picture = payload.get('picture')
 
-        # Basic validation of user_id (should still be a 9-digit number)
-        if not user_id or not user_id.isdigit() or len(user_id) != 9:
-            logger.warning(f"Invalid emplId in network-validated token for user: {email}")
+        if not user_id:
+            logger.warning(f"Missing 'sub' claim in network-validated token for user: {email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid user."
@@ -360,7 +339,7 @@ async def get_current_user_trusted(
         user = User(
             email=email.lower() if email else "",
             name=name,
-            user_id=user_id,
+            user_id=str(user_id),
             roles=roles,
             picture=picture,
             raw_token=token,
