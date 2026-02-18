@@ -209,6 +209,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
       CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
       CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
       CDK_APP_API_ENABLED: ${{ vars.CDK_APP_API_ENABLED }}
@@ -281,6 +282,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
       CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
@@ -398,6 +400,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
       CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
       CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
       CDK_APP_API_ENABLED: ${{ vars.CDK_APP_API_ENABLED }}
