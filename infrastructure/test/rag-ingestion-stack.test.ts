@@ -29,8 +29,6 @@ describe('RagIngestionStack', () => {
       production: false, // Test environment
       retainDataOnDelete: false,
       vpcCidr: '10.0.0.0/16',
-      entraClientId: 'test-client-id',
-      entraTenantId: 'test-tenant-id',
       frontend: {
         enabled: true,
         enableRoute53: false,
@@ -45,7 +43,6 @@ describe('RagIngestionStack', () => {
         databaseType: 'none',
         enableRds: false,
         imageTag: 'latest',
-        entraRedirectUri: 'http://localhost:3000/auth/callback',
       },
       inferenceApi: {
         enabled: true,

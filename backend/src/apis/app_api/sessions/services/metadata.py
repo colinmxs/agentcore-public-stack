@@ -686,31 +686,22 @@ async def _store_session_metadata_cloud(
                 merged_item['PK'] = pk
                 merged_item['SK'] = new_sk
 
-                # Transactional delete + put
-                logger.debug(f"🔄 Transacting session move: old_sk={old_sk[:50]}..., new_sk={new_sk[:50]}...")
+                # Move session: put new SK first, then delete old SK
+                # Using high-level Table API (put_item + delete_item) instead of
+                # transact_write_items to avoid low-level serialization issues
+                logger.debug(f"🔄 Moving session: old_sk={old_sk[:50]}..., new_sk={new_sk[:50]}...")
                 try:
-                    dynamodb.meta.client.transact_write_items(
-                        TransactItems=[
-                            {
-                                'Delete': {
-                                    'TableName': table_name,
-                                    'Key': {
-                                        'PK': {'S': pk},
-                                        'SK': {'S': old_sk}
-                                    }
-                                }
-                            },
-                            {
-                                'Put': {
-                                    'TableName': table_name,
-                                    'Item': _convert_to_dynamodb_format(merged_item)
-                                }
-                            }
-                        ]
-                    )
+                    # Convert floats to Decimal for DynamoDB compatibility
+                    decimal_item = _convert_floats_to_decimal(merged_item)
+
+                    # Put new item first — if this fails, original is untouched
+                    table.put_item(Item=decimal_item)
+                    # Delete old item
+                    table.delete_item(Key={'PK': pk, 'SK': old_sk})
                     logger.info(f"💾 Moved session metadata in DynamoDB (SK changed)")
-                except Exception as tx_error:
-                    logger.error(f"Transaction failed - PK={pk}, old_SK={old_sk}, new_SK={new_sk}")
+                except Exception as move_error:
+                    logger.error(f"Session move failed - PK={pk}, old_SK={old_sk}, new_SK={new_sk}")
+                    logger.error(f"Move error: {move_error}")
                     raise
             else:
                 # SK unchanged - simple update with deep merge
@@ -794,53 +785,6 @@ async def _get_session_by_gsi(session_id: str, user_id: str, table) -> Optional[
         logger.debug(f"GSI lookup failed (may not exist yet): {e}")
         return None
 
-
-def _convert_to_dynamodb_format(item: dict) -> dict:
-    """
-    Convert a Python dict to DynamoDB low-level format for transact_write_items
-
-    Args:
-        item: Python dict with native types
-
-    Returns:
-        Dict with DynamoDB type descriptors (e.g., {'S': 'value'}, {'N': '123'})
-    """
-    result = {}
-    for key, value in item.items():
-        if value is None:
-            continue
-        elif isinstance(value, str):
-            result[key] = {'S': value}
-        elif isinstance(value, bool):
-            result[key] = {'BOOL': value}
-        elif isinstance(value, (int, float, Decimal)):
-            result[key] = {'N': str(value)}
-        elif isinstance(value, list):
-            # Always use List type (L), not String Set (SS)
-            # SS has restrictions: no empty strings, no duplicates, cannot be empty
-            # Using L is safer and preserves order
-            result[key] = {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
-        elif isinstance(value, dict):
-            result[key] = {'M': _convert_to_dynamodb_format(value)}
-    return result
-
-
-def _convert_single_value_to_dynamodb(value) -> dict:
-    """Convert a single value to DynamoDB format"""
-    if value is None:
-        return {'NULL': True}
-    elif isinstance(value, str):
-        return {'S': value}
-    elif isinstance(value, bool):
-        return {'BOOL': value}
-    elif isinstance(value, (int, float, Decimal)):
-        return {'N': str(value)}
-    elif isinstance(value, list):
-        return {'L': [_convert_single_value_to_dynamodb(v) for v in value]}
-    elif isinstance(value, dict):
-        return {'M': _convert_to_dynamodb_format(value)}
-    else:
-        return {'S': str(value)}
 
 
 async def get_session_metadata(session_id: str, user_id: str) -> Optional[SessionMetadata]:

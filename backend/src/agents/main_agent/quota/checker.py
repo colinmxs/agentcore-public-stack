@@ -44,11 +44,11 @@ class QuotaChecker:
         resolved = await self.resolver.resolve_user_quota(user)
 
         if not resolved:
-            # No quota configured - allow by default
-            logger.info(f"No quota configured for user {user.user_id}, allowing request")
+            # No quota configured - block request (fail-closed)
+            logger.warning(f"No quota tier configured for user {user.user_id}, blocking request")
             return QuotaCheckResult(
-                allowed=True,
-                message="No quota configured",
+                allowed=False,
+                message="No quota tier configured. Please contact your administrator.",
                 current_usage=0.0,
                 percentage_used=0.0
             )

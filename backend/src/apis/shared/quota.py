@@ -19,8 +19,8 @@ from apis.app_api.costs.aggregator import CostAggregator
 
 logger = logging.getLogger(__name__)
 
-# Check if quota enforcement is enabled (defaults to false for backward compatibility)
-ENABLE_QUOTA_ENFORCEMENT = os.environ.get('ENABLE_QUOTA_ENFORCEMENT', 'false').lower() == 'true'
+# Check if quota enforcement is enabled (defaults to true for safety)
+ENABLE_QUOTA_ENFORCEMENT = os.environ.get('ENABLE_QUOTA_ENFORCEMENT', 'true').lower() == 'true'
 
 # Singleton instances (lazy initialization)
 _quota_repository: Optional[QuotaRepository] = None
@@ -238,5 +238,34 @@ I'm here to help once your quota resets!"""
         periodType=period_type,
         tierName=result.tier.tier_name if result.tier else None,
         resetInfo=reset_info,
+        message=message
+    )
+
+
+def build_no_quota_configured_event(result: QuotaCheckResult) -> QuotaExceededEvent:
+    """Build an SSE event for when no quota tier is configured for the user.
+
+    This is distinct from quota exceeded — the user hasn't hit a limit,
+    they simply have no quota tier assigned. Displayed as an assistant
+    message in the chat for better UX.
+    """
+    message = """I'm sorry, but your account does not have a usage quota configured yet.
+
+**What does this mean?**
+- Your administrator has not yet assigned a usage tier to your account.
+- Until a quota tier is configured, access is restricted.
+
+**What should I do?**
+- Please contact your administrator to request access.
+
+I'll be ready to help as soon as your account is set up!"""
+
+    return QuotaExceededEvent(
+        currentUsage=0.0,
+        quotaLimit=0.0,
+        percentageUsed=0.0,
+        periodType="monthly",
+        tierName=None,
+        resetInfo="Contact your administrator to get a quota tier assigned.",
         message=message
     )

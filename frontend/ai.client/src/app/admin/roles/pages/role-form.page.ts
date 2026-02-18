@@ -20,7 +20,7 @@ import {
   heroInformationCircle,
 } from '@ng-icons/heroicons/outline';
 import { AppRolesService } from '../services/app-roles.service';
-import { ToolsService } from '../../tools/services/tools.service';
+import { AdminToolService } from '../../tools/services/admin-tool.service';
 import { ManagedModelsService } from '../../manage-models/services/managed-models.service';
 import { AppRoleCreateRequest, AppRoleUpdateRequest } from '../models/app-role.model';
 
@@ -303,7 +303,7 @@ interface RoleFormGroup {
                           class="rounded-sm px-3 py-1.5 text-sm/6 font-medium hover:opacity-80 focus:outline-hidden focus:ring-3 focus:ring-green-500/50"
                           [title]="tool.description"
                         >
-                          {{ tool.name }}
+                          {{ tool.displayName }}
                         </button>
                       }
                     </div>
@@ -405,11 +405,11 @@ export class RoleFormPage implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private appRolesService = inject(AppRolesService);
-  private toolsService = inject(ToolsService);
+  private adminToolService = inject(AdminToolService);
   private managedModelsService = inject(ManagedModelsService);
 
   // Resources
-  readonly toolsResource = this.toolsService.catalogResource;
+  readonly toolsResource = this.adminToolService.toolsResource;
   readonly modelsResource = this.managedModelsService.modelsResource;
 
   // State
@@ -452,7 +452,7 @@ export class RoleFormPage implements OnInit {
     this.isEditMode() ? 'Edit Role' : 'Create Role'
   );
 
-  readonly availableTools = computed(() => this.toolsService.getTools());
+  readonly availableTools = computed(() => this.adminToolService.getTools());
 
   readonly availableModels = computed(() =>
     this.managedModelsService.getManagedModels()

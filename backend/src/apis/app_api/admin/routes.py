@@ -730,3 +730,8 @@ router.include_router(tools_router)
 from .oauth.routes import router as oauth_admin_router
 
 router.include_router(oauth_admin_router)
+
+# ========== Include Auth Providers Admin Subrouter ==========
+from .auth_providers.routes import router as auth_providers_router
+
+router.include_router(auth_providers_router)

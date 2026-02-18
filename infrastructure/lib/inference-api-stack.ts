@@ -11,19 +11,18 @@ export interface InferenceApiStackProps extends cdk.StackProps {
 }
 
 /**
- * Inference API Stack - AWS Bedrock AgentCore Runtime Infrastructure
+ * Inference API Stack - AWS Bedrock AgentCore Shared Resources
  * 
- * This stack creates:
- * - AWS Bedrock AgentCore Runtime for AI agent workloads
+ * This stack creates shared resources used by all AgentCore Runtimes:
  * - AgentCore Memory for conversation context and memory
  * - Code Interpreter Custom for Python code execution
  * - Browser Custom for web browsing capabilities
  * - IAM roles with appropriate permissions
  * 
+ * Note: Individual runtimes are created dynamically by Lambda when auth providers are added.
  * Note: ECR repository is created by the build pipeline, not by CDK.
  */
 export class InferenceApiStack extends cdk.Stack {
-  public readonly runtime: bedrock.CfnRuntime;
   public readonly memory: bedrock.CfnMemory;
   public readonly codeInterpreter: bedrock.CfnCodeInterpreterCustom;
   public readonly browser: bedrock.CfnBrowserCustom;
@@ -578,154 +577,18 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [this.browser.attrBrowserArn],
     }));
 
-    this.runtime = new bedrock.CfnRuntime(this, 'AgentCoreRuntime', {
-      agentRuntimeName: getResourceName(config, 'agentcore_runtime').replace(/-/g, '_'),
-      roleArn: runtimeExecutionRole.roleArn,            
-      agentRuntimeArtifact: {        
-        containerConfiguration: {
-          containerUri: containerImageUri
-        },
-      },
-      requestHeaderConfiguration: {
-        requestHeaderAllowlist: ['Authorization'],
-      },
-      authorizerConfiguration: {
-        customJwtAuthorizer: {
-          discoveryUrl: `https://login.microsoftonline.com/${config.entraTenantId}/v2.0/.well-known/openid-configuration`,
-          allowedAudience: [config.entraClientId],
-        }        
-      },
-      networkConfiguration: {
-        networkMode: 'PUBLIC',
-      }, 
-      protocolConfiguration: 'HTTP',
-      description: 'AgentCore Runtime for AI agent workloads with LangGraph and Strands framework support',
-      environmentVariables: {
-        // AgentCore Runtime configuration
-        'LOG_LEVEL': config.inferenceApi.logLevel,
-        'PROJECT_NAME': config.projectPrefix,
-        
-        // AWS Configuration
-        'AWS_REGION': config.awsRegion,
-        'AWS_DEFAULT_REGION': config.awsRegion,
-        
-        // DynamoDB Tables (imported from App API Stack)
-        'DYNAMODB_USERS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/users/users-table-name`
-        ),
-        'DYNAMODB_APP_ROLES_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/rbac/app-roles-table-name`
-        ),
-        
-        // OAuth/OIDC Configuration (imported from App API Stack)
-        // Note: Inference API doesn't use OAuth flows, but shared modules check for these
-        'DYNAMODB_OIDC_STATE_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/auth/oidc-state-table-name`
-        ),
-        'DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/oauth/providers-table-name`
-        ),
-        'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/oauth/user-tokens-table-name`
-        ),
-        'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/oauth/token-encryption-key-arn`
-        ),
-        
-        // OAuth External MCP Configuration
-        // Client secrets ARN imported from App API Stack via SSM
-        'OAUTH_CLIENT_SECRETS_ARN': oauthClientSecretsArn,
-        // Callback URL from GitHub Variables
-        'OAUTH_CALLBACK_URL': config.inferenceApi.oauthCallbackUrl,
-        
-        // Assistants & RAG (imported from RagIngestionStack via SSM)
-        'DYNAMODB_ASSISTANTS_TABLE_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/rag/assistants-table-name`
-        ),
-        // Note: S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME not needed - inference API only queries vectors
-        'S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/rag/vector-bucket-name`
-        ),
-        'S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME': ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/rag/vector-index-name`
-        ),
-        
-        // AgentCore Resources
-        'MEMORY_ARN': this.memory.attrMemoryArn,
-        'MEMORY_ID': this.memory.attrMemoryId,
-        'CODE_INTERPRETER_ID': this.codeInterpreter.attrCodeInterpreterId,
-        'BROWSER_ID': this.browser.attrBrowserId,
-        
-        // AgentCore Memory Configuration (for session management)
-        'AGENTCORE_MEMORY_TYPE': 'dynamodb',  // Use AWS Bedrock AgentCore Memory
-        'AGENTCORE_MEMORY_ID': this.memory.attrMemoryId,  // Same as MEMORY_ID above
-        
-        // AgentCore Gateway (optional - for MCP tools)
-        'GATEWAY_URL': config.gateway.enabled
-          ? ssm.StringParameter.valueForStringParameter(
-              this,
-              `/${config.projectPrefix}/gateway/url`
-            )
-          : '',
-        
-        // Authentication (from GitHub Variables)
-        'ENABLE_AUTHENTICATION': config.inferenceApi.enableAuthentication
-        ,
-        
-        // Storage directories (from GitHub Variables)
-        'UPLOAD_DIR': config.inferenceApi.uploadDir,
-        'OUTPUT_DIR': config.inferenceApi.outputDir,
-        'GENERATED_IMAGES_DIR': config.inferenceApi.generatedImagesDir,
-        
-        // API URLs (from GitHub Variables)
-        'API_URL': config.inferenceApi.apiUrl,
-        'FRONTEND_URL': config.inferenceApi.frontendUrl,
-        
-        // CORS Configuration (from GitHub Variables)
-        'CORS_ORIGINS': config.inferenceApi.corsOrigins,
-        
-        // API Keys (from GitHub Secrets)
-        'TAVILY_API_KEY': config.inferenceApi.tavilyApiKey,
-        'NOVA_ACT_API_KEY': config.inferenceApi.novaActApiKey,
-      },
-    });
-
-    // Ensure Runtime is created after IAM roles and dependencies
-    this.runtime.node.addDependency(runtimeExecutionRole);
-    this.runtime.node.addDependency(memoryExecutionRole);
-    this.runtime.node.addDependency(codeInterpreterExecutionRole);
-    this.runtime.node.addDependency(browserExecutionRole);
-    this.runtime.node.addDependency(this.memory);
-    this.runtime.node.addDependency(this.codeInterpreter);
-    this.runtime.node.addDependency(this.browser);    
-
     // ============================================================
     // SSM Parameters for Cross-Stack References
     // ============================================================
     
-    new ssm.StringParameter(this, 'InferenceApiRuntimeArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-arn`,
-      stringValue: this.runtime.attrAgentRuntimeArn,
-      description: 'Inference API AgentCore Runtime ARN',
+    // Export runtime execution role ARN for Lambda-created runtimes
+    new ssm.StringParameter(this, 'RuntimeExecutionRoleArnParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-execution-role-arn`,
+      stringValue: runtimeExecutionRole.roleArn,
+      description: 'Runtime execution role ARN for Lambda-created AgentCore Runtimes',
       tier: ssm.ParameterTier.STANDARD,
     });
-
-    new ssm.StringParameter(this, 'InferenceApiRuntimeIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-id`,
-      stringValue: this.runtime.attrAgentRuntimeId,
-      description: 'Inference API AgentCore Runtime ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
+    
     new ssm.StringParameter(this, 'InferenceApiMemoryArnParameter', {
       parameterName: `/${config.projectPrefix}/inference-api/memory-arn`,
       stringValue: this.memory.attrMemoryArn,
@@ -747,6 +610,13 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    new ssm.StringParameter(this, 'InferenceApiCodeInterpreterArnParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-arn`,
+      stringValue: this.codeInterpreter.attrCodeInterpreterArn,
+      description: 'Inference API AgentCore Code Interpreter ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     new ssm.StringParameter(this, 'InferenceApiBrowserIdParameter', {
       parameterName: `/${config.projectPrefix}/inference-api/browser-id`,
       stringValue: this.browser.attrBrowserId,
@@ -754,16 +624,18 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    // Construct the full endpoint URL for the runtime
-    const runtimeEndpointUrl = cdk.Fn.sub(
-      'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
-      { RuntimeArn: this.runtime.attrAgentRuntimeArn }
-    );
+    new ssm.StringParameter(this, 'InferenceApiBrowserArnParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/browser-arn`,
+      stringValue: this.browser.attrBrowserArn,
+      description: 'Inference API AgentCore Browser ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
 
-    new ssm.StringParameter(this, 'InferenceApiRuntimeEndpointUrlParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-endpoint-url`,
-      stringValue: runtimeEndpointUrl,
-      description: 'Inference API AgentCore Runtime Endpoint URL (ARN not URL-encoded)',
+    // Export ECR repository URI for Lambda-created runtimes
+    new ssm.StringParameter(this, 'EcrRepositoryUriParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/ecr-repository-uri`,
+      stringValue: ecrRepository.repositoryUri,
+      description: 'Inference API ECR Repository URI for runtime container images',
       tier: ssm.ParameterTier.STANDARD,
     });
 
@@ -771,18 +643,6 @@ export class InferenceApiStack extends cdk.Stack {
     // CloudFormation Outputs
     // ============================================================
     
-
-    new cdk.CfnOutput(this, 'InferenceApiRuntimeArn', {
-      value: this.runtime.attrAgentRuntimeArn,
-      description: 'Inference API AgentCore Runtime ARN',
-      exportName: `${config.projectPrefix}-InferenceApiRuntimeArn`,
-    });
-
-    new cdk.CfnOutput(this, 'InferenceApiRuntimeId', {
-      value: this.runtime.attrAgentRuntimeId,
-      description: 'Inference API AgentCore Runtime ID',
-      exportName: `${config.projectPrefix}-InferenceApiRuntimeId`,
-    });
 
     new cdk.CfnOutput(this, 'InferenceApiMemoryArn', {
       value: this.memory.attrMemoryArn,
@@ -812,14 +672,6 @@ export class InferenceApiStack extends cdk.Stack {
       value: ecrRepository.repositoryUri,
       description: 'Inference API ECR Repository URI',
       exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
-    });
-
-    // AgentCore Runtime Endpoint URL
-    // Note: ARN will be URL-encoded at runtime by the consuming service
-    new cdk.CfnOutput(this, 'InferenceApiRuntimeEndpointUrl', {
-      value: runtimeEndpointUrl,
-      description: 'Inference API AgentCore Runtime Endpoint URL (ARN needs URL encoding by consumer)',
-      exportName: `${config.projectPrefix}-InferenceApiRuntimeEndpointUrl`,
     });
    }
 }

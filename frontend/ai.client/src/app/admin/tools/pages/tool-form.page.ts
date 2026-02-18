@@ -16,6 +16,7 @@ import {
   heroServer,
   heroUserGroup,
   heroLink,
+  heroShieldCheck,
 } from '@ng-icons/heroicons/outline';
 import { AdminToolService } from '../services/admin-tool.service';
 import { OAuthProvidersService } from '../../oauth-providers/services/oauth-providers.service';
@@ -37,7 +38,7 @@ import {
   selector: 'app-tool-form',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [RouterLink, ReactiveFormsModule, NgIcon],
-  providers: [provideIcons({ heroArrowLeft, heroCheck, heroServer, heroUserGroup, heroLink })],
+  providers: [provideIcons({ heroArrowLeft, heroCheck, heroServer, heroUserGroup, heroLink, heroShieldCheck })],
   host: {
     class: 'block p-6',
   },
@@ -299,6 +300,44 @@ import {
               </label>
             </div>
 
+            <!-- OIDC Token Forwarding -->
+            <div class="border border-amber-200 dark:border-amber-800 rounded-lg p-4 bg-amber-50/50 dark:bg-amber-900/20">
+              <div class="flex items-center gap-2 mb-3">
+                <ng-icon name="heroShieldCheck" class="size-5 text-amber-600 dark:text-amber-400" />
+                <h3 class="text-lg font-semibold text-amber-900 dark:text-amber-100">Forward App Authentication Token</h3>
+              </div>
+
+              <label class="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  formControlName="forwardAuthToken"
+                  class="size-4 mt-0.5 rounded border-gray-300 text-amber-600 focus:ring-amber-500"
+                />
+                <div class="flex-1">
+                  <span class="text-sm font-medium text-gray-700 dark:text-gray-300">
+                    Forward user's OIDC token to MCP server
+                  </span>
+                  <p class="text-sm text-gray-600 dark:text-gray-400 mt-1">
+                    The user's authentication token from app login will be sent in the Authorization header.
+                    The MCP server validates the JWT and extracts user identity from claims.
+                  </p>
+                </div>
+              </label>
+
+              @if (form.get('forwardAuthToken')?.value) {
+                <div class="mt-3 p-3 bg-amber-100 dark:bg-amber-900/30 border border-amber-300 dark:border-amber-700 rounded-sm">
+                  <p class="text-sm font-medium text-amber-900 dark:text-amber-100 mb-1">
+                    Security Notice
+                  </p>
+                  <p class="text-sm text-amber-800 dark:text-amber-200">
+                    Only enable this for MCP servers you control. The user's authentication token will be sent
+                    in the Authorization header. The MCP server should validate the JWT signature and extract
+                    user identity from the token claims. Set the MCP Authentication Type to "None" above.
+                  </p>
+                </div>
+              }
+            </div>
+
             <!-- OAuth Provider Requirement -->
             <div class="border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/20">
               <div class="flex items-center gap-2 mb-4">
@@ -449,35 +488,20 @@ import {
             </div>
           }
 
-          <!-- Status and Icon Row -->
-          <div class="grid grid-cols-2 gap-4">
-            <div>
-              <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Status
-              </label>
-              <select
-                id="status"
-                formControlName="status"
-                class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
-              >
-                @for (stat of statuses; track stat.value) {
-                  <option [value]="stat.value">{{ stat.label }}</option>
-                }
-              </select>
-            </div>
-
-            <div>
-              <label for="icon" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                Icon
-              </label>
-              <input
-                id="icon"
-                type="text"
-                formControlName="icon"
-                class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
-                placeholder="e.g., heroCodeBracket"
-              />
-            </div>
+          <!-- Status -->
+          <div>
+            <label for="status" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
+              Status
+            </label>
+            <select
+              id="status"
+              formControlName="status"
+              class="w-full px-3 py-2 border border-gray-300 rounded-sm focus:ring-2 focus:ring-blue-500 focus:border-blue-500 dark:bg-gray-800 dark:border-gray-600"
+            >
+              @for (stat of statuses; track stat.value) {
+                <option [value]="stat.value">{{ stat.label }}</option>
+              }
+            </select>
           </div>
 
           <!-- Checkboxes -->
@@ -573,10 +597,10 @@ export class ToolFormPage implements OnInit {
     category: ['utility'],
     protocol: ['local'],
     status: ['active'],
-    icon: [''],
     isPublic: [false],
     enabledByDefault: [false],
     requiresOauthProvider: [''],
+    forwardAuthToken: [false],
     // MCP External Server configuration
     mcpServerUrl: [''],
     mcpTransport: ['streamable-http'],
@@ -619,6 +643,18 @@ export class ToolFormPage implements OnInit {
       this.selectedProtocol.set(value);
     });
 
+    // Mutual exclusivity: forwardAuthToken and requiresOauthProvider
+    this.form.get('forwardAuthToken')?.valueChanges.subscribe(checked => {
+      if (checked && this.form.get('requiresOauthProvider')?.value) {
+        this.form.get('requiresOauthProvider')?.setValue('');
+      }
+    });
+    this.form.get('requiresOauthProvider')?.valueChanges.subscribe(value => {
+      if (value && this.form.get('forwardAuthToken')?.value) {
+        this.form.get('forwardAuthToken')?.setValue(false);
+      }
+    });
+
     const id = this.route.snapshot.paramMap.get('toolId');
     if (id) {
       this.toolId.set(id);
@@ -639,10 +675,10 @@ export class ToolFormPage implements OnInit {
         category: tool.category,
         protocol: tool.protocol,
         status: tool.status,
-        icon: tool.icon || '',
         isPublic: tool.isPublic,
         enabledByDefault: tool.enabledByDefault,
         requiresOauthProvider: tool.requiresOauthProvider || '',
+        forwardAuthToken: tool.forwardAuthToken || false,
       });
 
       // Update protocol signal
@@ -737,10 +773,10 @@ export class ToolFormPage implements OnInit {
           category: formValue.category,
           protocol: formValue.protocol,
           status: formValue.status,
-          icon: formValue.icon || undefined,
           isPublic: formValue.isPublic,
           enabledByDefault: formValue.enabledByDefault,
           requiresOauthProvider: requiresOauthProvider,
+          forwardAuthToken: formValue.forwardAuthToken || false,
           mcpConfig: mcpConfig,
           a2aConfig: a2aConfig,
         });
@@ -753,10 +789,10 @@ export class ToolFormPage implements OnInit {
           category: formValue.category,
           protocol: formValue.protocol,
           status: formValue.status,
-          icon: formValue.icon || undefined,
           isPublic: formValue.isPublic,
           enabledByDefault: formValue.enabledByDefault,
           requiresOauthProvider: requiresOauthProvider,
+          forwardAuthToken: formValue.forwardAuthToken || false,
           mcpConfig: mcpConfig,
           a2aConfig: a2aConfig,
         });

@@ -202,8 +202,8 @@ build_cdk_context_params() {
     fi
     
     # Frontend optional parameters
-    if [ -n "${CDK_FRONTEND_DOMAIN_NAME:-}" ]; then
-        context_params="${context_params} --context frontend.domainName=\"${CDK_FRONTEND_DOMAIN_NAME}\""
+    if [ -n "${CDK_DOMAIN_NAME:-}" ]; then
+        context_params="${context_params} --context frontend.domainName=\"${CDK_DOMAIN_NAME}\""
     fi
     if [ -n "${CDK_FRONTEND_ENABLE_ROUTE53:-}" ]; then
         context_params="${context_params} --context frontend.enableRoute53=\"${CDK_FRONTEND_ENABLE_ROUTE53}\""
@@ -220,15 +220,6 @@ build_cdk_context_params() {
     if [ -n "${CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS:-}" ]; then
         context_params="${context_params} --context frontend.cloudFrontPriceClass=\"${CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS}\""
     fi
-    if [ -n "${CDK_ENTRA_CLIENT_ID:-}" ]; then
-        context_params="${context_params} --context entraClientId=\"${CDK_ENTRA_CLIENT_ID}\""
-    fi
-    if [ -n "${CDK_APP_API_ENTRA_REDIRECT_URI:-}" ]; then
-        context_params="${context_params} --context appApi.entraRedirectUri=\"${CDK_APP_API_ENTRA_REDIRECT_URI}\""
-    fi
-    if [ -n "${CDK_ENTRA_TENANT_ID:-}" ]; then
-        context_params="${context_params} --context entraTenantId=\"${CDK_ENTRA_TENANT_ID}\""
-    fi    
     
     # RAG Ingestion optional parameters
     if [ -n "${CDK_RAG_ENABLED:-}" ]; then

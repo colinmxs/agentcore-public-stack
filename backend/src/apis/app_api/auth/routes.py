@@ -1,18 +1,26 @@
-"""OIDC authentication routes for Entra ID."""
+"""OIDC authentication routes with multi-provider support."""
 
 import logging
-from fastapi import APIRouter, HTTPException, Query, status
-from fastapi.responses import RedirectResponse
+from typing import Optional
+
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, status
 
 from .models import (
     LoginResponse,
     LogoutResponse,
+    RuntimeEndpointResponse,
     TokenExchangeRequest,
     TokenExchangeResponse,
     TokenRefreshRequest,
     TokenRefreshResponse,
 )
-from .service import get_auth_service
+from .service import get_generic_auth_service
+from apis.shared.auth_providers.models import (
+    AuthProviderPublicInfo,
+    AuthProviderPublicListResponse,
+)
+from apis.shared.auth.dependencies import get_current_user
+from apis.shared.auth.models import User
 
 logger = logging.getLogger(__name__)
 
@@ -20,113 +28,102 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 
 
 @router.get(
+    "/providers",
+    response_model=AuthProviderPublicListResponse,
+    summary="List enabled authentication providers",
+)
+async def list_auth_providers() -> AuthProviderPublicListResponse:
+    """
+    Public endpoint (no authentication required).
+
+    Returns enabled auth providers for the login page to display
+    provider selection buttons.
+    """
+    try:
+        from apis.shared.auth_providers.repository import get_auth_provider_repository
+
+        repo = get_auth_provider_repository()
+        if not repo.enabled:
+            return AuthProviderPublicListResponse(providers=[])
+
+        providers = await repo.list_providers(enabled_only=True)
+        return AuthProviderPublicListResponse(
+            providers=[
+                AuthProviderPublicInfo(
+                    provider_id=p.provider_id,
+                    display_name=p.display_name,
+                    logo_url=p.logo_url,
+                    button_color=p.button_color,
+                )
+                for p in providers
+            ]
+        )
+    except Exception as e:
+        logger.debug(f"Error listing auth providers (may not be configured): {e}")
+        return AuthProviderPublicListResponse(providers=[])
+
+
+@router.get(
     "/login",
-    summary="Initiate OIDC login",
-    description="""
-    Initiates the OIDC authentication flow by redirecting the user to Entra ID login.
-
-    This endpoint generates secure tokens and returns the authorization URL
-    that the client should redirect the user to.
-
-    ## Security Features
-
-    - **State Parameter**: A cryptographically secure random token is generated
-      and must be validated when the authorization code is exchanged for tokens.
-    - **PKCE (S256)**: Proof Key for Code Exchange prevents authorization code
-      interception attacks. The code_verifier is stored server-side and sent
-      during token exchange.
-    - **Nonce Binding**: A cryptographic nonce is included in the ID token to
-      prevent token replay attacks.
-    - **Redirect URI Validation**: The redirect URI is validated to match the
-      configured value or the provided value.
-
-    ## Usage Flow
-
-    1. Client calls `/auth/login` to get the authorization URL and state token
-    2. Client redirects user to the authorization URL
-    3. User authenticates with Entra ID
-    4. Entra ID redirects back to the configured redirect URI with an authorization code
-    5. Client calls `/auth/token` with the code and state to exchange for tokens
-
-    ## Response
-
-    Returns a JSON object with:
-    - `authorization_url`: The URL to redirect the user to (includes PKCE challenge)
-    - `state`: The state token that must be included in the token exchange request
-
-    ## Example Response
-
-    ```json
-    {
-        "authorization_url": "https://login.microsoftonline.com/.../oauth2/v2.0/authorize?...",
-        "state": "abc123..."
-    }
-    ```
-    """,
     response_model=LoginResponse,
-    responses={
-        200: {
-            "description": "Authorization URL generated successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "authorization_url": "https://login.microsoftonline.com/tenant/oauth2/v2.0/authorize?client_id=...",
-                        "state": "random-state-token"
-                    }
-                }
-            }
-        },
-        500: {
-            "description": "Internal server error",
-        }
-    }
+    summary="Initiate OIDC login",
 )
 async def login(
+    request: Request,
+    provider_id: str = Query(..., description="Auth provider ID"),
     redirect_uri: str = Query(None, description="Optional redirect URI override"),
     prompt: str = Query("select_account", description="Prompt type (select_account, login, consent)")
 ) -> LoginResponse:
     """
-    Generate authorization URL for Entra ID login.
-    
-    Creates a secure state token and builds the Entra ID authorization URL
-    with proper security parameters.
-    
-    Args:
-        redirect_uri: Optional redirect URI (defaults to configured value)
-        prompt: Prompt parameter for Entra ID (defaults to "select_account")
-        
-    Returns:
-        LoginResponse with authorization URL and state token
+    Generate authorization URL for OIDC login.
+
+    Requires a provider_id that references an enabled auth provider
+    configured via the admin OIDC provider setup.
+
+    When no redirect_uri is configured (neither in the query param nor on the
+    provider), one is auto-derived from the request's Origin or Referer header
+    by appending /auth/callback.
     """
     try:
-        auth_service = get_auth_service()
+        auth_service = await get_generic_auth_service(provider_id)
 
-        # Generate secure state token with PKCE and nonce
-        state, code_challenge, nonce = auth_service.generate_state(redirect_uri=redirect_uri)
+        # Auto-derive redirect_uri from request origin when not configured
+        effective_redirect_uri = redirect_uri
+        if not effective_redirect_uri and not auth_service.redirect_uri:
+            origin = request.headers.get("origin") or request.headers.get("referer")
+            if origin:
+                # Strip path from referer to get just the origin
+                from urllib.parse import urlparse
+                parsed = urlparse(origin)
+                base = f"{parsed.scheme}://{parsed.netloc}"
+                effective_redirect_uri = f"{base}/auth/callback"
+                logger.info(f"Auto-derived redirect_uri from request origin: {effective_redirect_uri}")
 
-        # Build authorization URL with PKCE parameters
+        state, code_challenge, nonce = auth_service.generate_state(redirect_uri=effective_redirect_uri)
+
         authorization_url = auth_service.build_authorization_url(
             state=state,
             code_challenge=code_challenge,
             nonce=nonce,
-            redirect_uri=redirect_uri,
+            redirect_uri=effective_redirect_uri,
             prompt=prompt
         )
 
-        logger.info("Generated authorization URL for OIDC login with PKCE")
+        logger.info(f"Generated authorization URL for OIDC login (provider: {provider_id})")
 
         return LoginResponse(
             authorization_url=authorization_url,
             state=state
         )
-        
+
     except ValueError as e:
-        # Missing configuration - return 503 Service Unavailable
         logger.error(f"Authentication not configured: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Error generating authorization URL: {e}", exc_info=True)
         raise HTTPException(
@@ -137,293 +134,272 @@ async def login(
 
 @router.post(
     "/token",
-    summary="Exchange authorization code for tokens",
-    description="""
-    Exchanges an authorization code for access and refresh tokens.
-
-    This endpoint completes the OIDC authorization code flow by exchanging
-    the authorization code received from Entra ID for access and refresh tokens.
-
-    ## Security
-
-    - **State Validation**: The state parameter is validated to prevent CSRF attacks.
-      The state must match the one generated during the login request.
-    - **PKCE Verification**: The code_verifier stored during login is sent to validate
-      that the same client is completing the flow.
-    - **Nonce Validation**: The nonce in the ID token is verified against the stored
-      value to prevent token replay attacks.
-    - **One-Time Use**: State tokens are single-use and expire after 10 minutes.
-    - **Code Validation**: The authorization code is validated with Entra ID.
-
-    ## Request Body
-
-    - **code**: Authorization code from Entra ID callback
-    - **state**: State token from login request (must match)
-    - **redirect_uri**: Optional redirect URI (must match authorization request)
-
-    ## Response
-
-    Returns tokens including:
-    - `access_token`: JWT access token for API authentication
-    - `refresh_token`: Token for refreshing the access token
-    - `id_token`: ID token containing user information
-    - `expires_in`: Access token expiration time in seconds
-
-    ## Error Responses
-
-    - **400 Bad Request**: Invalid or expired state, PKCE/nonce mismatch, or token exchange failed
-    - **503 Service Unavailable**: Entra ID service unavailable
-
-    ## Example Request
-
-    ```json
-    {
-        "code": "authorization-code-from-entraid",
-        "state": "state-token-from-login",
-        "redirect_uri": "https://example.com/callback"
-    }
-    ```
-    """,
     response_model=TokenExchangeResponse,
     status_code=status.HTTP_200_OK,
-    responses={
-        200: {
-            "description": "Tokens exchanged successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "access_token": "eyJhbGciOiJSUzI1NiIs...",
-                        "refresh_token": "refresh-token-value",
-                        "id_token": "eyJhbGciOiJSUzI1NiIs...",
-                        "token_type": "Bearer",
-                        "expires_in": 3600,
-                        "scope": "openid profile email offline_access"
-                    }
-                }
-            }
-        },
-        400: {
-            "description": "Invalid request (invalid state, code, etc.)",
-        },
-        503: {
-            "description": "Authentication service unavailable",
-        }
-    }
+    summary="Exchange authorization code for tokens",
 )
 async def exchange_token(request: TokenExchangeRequest) -> TokenExchangeResponse:
     """
     Exchange authorization code for access and refresh tokens.
-    
-    Validates the state token and exchanges the authorization code
-    with Entra ID for access and refresh tokens.
-    
-    Args:
-        request: Token exchange request with code, state, and optional redirect_uri
-        
-    Returns:
-        TokenExchangeResponse with access_token, refresh_token, and related information
+
+    Resolves the auth provider from the stored state's provider_id.
     """
     try:
-        auth_service = get_auth_service()
-        
+        # Peek at the state to determine provider (without consuming it)
+        # The actual state validation/consumption happens inside exchange_code_for_tokens
+        provider_id = _peek_provider_from_state(request.state)
+
+        if not provider_id:
+            raise HTTPException(
+                status_code=status.HTTP_400_BAD_REQUEST,
+                detail="Could not resolve auth provider from state. Please initiate login again."
+            )
+
+        auth_service = await get_generic_auth_service(provider_id)
+
         tokens = await auth_service.exchange_code_for_tokens(
             code=request.code,
             state=request.state,
             redirect_uri=request.redirect_uri
         )
-        
+
         return TokenExchangeResponse(**tokens)
     except ValueError as e:
-        # Missing configuration
         logger.error(f"Authentication not configured: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error exchanging token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token exchange failed."
         )
 
 
 @router.post(
     "/refresh",
-    summary="Refresh access token",
-    description="""
-    Refreshes an access token using a refresh token.
-    
-    This endpoint allows clients to obtain a new access token without requiring
-    the user to re-authenticate. The refresh token is exchanged for a new
-    access token and optionally a new refresh token.
-    
-    ## Security
-    
-    - **Token Validation**: The refresh token is validated with Entra ID.
-    - **Automatic Rotation**: Entra ID may issue a new refresh token, which
-      should replace the old one.
-    
-    ## Request Body
-    
-    - **refresh_token**: Refresh token from previous authentication
-    
-    ## Response
-    
-    Returns new tokens including:
-    - `access_token`: New JWT access token
-    - `refresh_token`: New refresh token (may be same as input)
-    - `id_token`: New ID token containing user information
-    - `expires_in`: Access token expiration time in seconds
-    
-    ## Error Responses
-    
-    - **401 Unauthorized**: Invalid or expired refresh token
-    - **400 Bad Request**: Token refresh failed
-    - **503 Service Unavailable**: Entra ID service unavailable
-    
-    ## Example Request
-    
-    ```json
-    {
-        "refresh_token": "refresh-token-value"
-    }
-    ```
-    """,
     response_model=TokenRefreshResponse,
     status_code=status.HTTP_200_OK,
-    responses={
-        200: {
-            "description": "Token refreshed successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "access_token": "eyJhbGciOiJSUzI1NiIs...",
-                        "refresh_token": "new-refresh-token-value",
-                        "id_token": "eyJhbGciOiJSUzI1NiIs...",
-                        "token_type": "Bearer",
-                        "expires_in": 3600,
-                        "scope": "openid profile email offline_access"
-                    }
-                }
-            }
-        },
-        401: {
-            "description": "Invalid or expired refresh token",
-        },
-        400: {
-            "description": "Token refresh failed",
-        },
-        503: {
-            "description": "Authentication service unavailable",
-        }
-    }
+    summary="Refresh access token",
 )
-async def refresh_token(request: TokenRefreshRequest) -> TokenRefreshResponse:
+async def refresh_token(
+    request: TokenRefreshRequest,
+    provider_id: str = Query(..., description="Auth provider ID"),
+) -> TokenRefreshResponse:
     """
     Refresh access token using refresh token.
-    
-    Exchanges a refresh token with Entra ID for a new access token
-    and optionally a new refresh token.
-    
-    Args:
-        request: Token refresh request with refresh_token
-        
-    Returns:
-        TokenRefreshResponse with new access_token, refresh_token, and related information
+
+    Requires a provider_id to route to the correct provider's token endpoint.
     """
     try:
-        auth_service = get_auth_service()
-        
+        auth_service = await get_generic_auth_service(provider_id)
+
         tokens = await auth_service.refresh_access_token(request.refresh_token)
 
         return TokenRefreshResponse(**tokens)
     except ValueError as e:
-        # Missing configuration
         logger.error(f"Authentication not configured: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error refreshing token: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Token refresh failed."
         )
 
 
 @router.get(
     "/logout",
-    summary="Get logout URL",
-    description="""
-    Returns the Entra ID logout URL for ending the user's session.
-
-    This endpoint returns the URL that the client should redirect to in order
-    to properly log the user out of both the application and Entra ID.
-
-    ## Usage Flow
-
-    1. Client clears local tokens (access_token, refresh_token, etc.)
-    2. Client calls `/auth/logout` to get the Entra ID logout URL
-    3. Client redirects user to the logout URL
-    4. Entra ID ends the session and redirects back to the application
-
-    ## Query Parameters
-
-    - **post_logout_redirect_uri**: Optional URL to redirect to after logout.
-      If not provided, Entra ID will show its default logout confirmation page.
-
-    ## Response
-
-    Returns a JSON object with:
-    - `logout_url`: The URL to redirect the user to for Entra ID logout
-
-    ## Example Response
-
-    ```json
-    {
-        "logout_url": "https://login.microsoftonline.com/.../oauth2/v2.0/logout?post_logout_redirect_uri=..."
-    }
-    ```
-    """,
     response_model=LogoutResponse,
-    responses={
-        200: {
-            "description": "Logout URL generated successfully",
-            "content": {
-                "application/json": {
-                    "example": {
-                        "logout_url": "https://login.microsoftonline.com/tenant/oauth2/v2.0/logout?post_logout_redirect_uri=https://example.com"
-                    }
-                }
-            }
-        },
-        503: {
-            "description": "Authentication service unavailable",
-        }
-    }
+    summary="Get logout URL",
 )
 async def logout(
+    provider_id: str = Query(..., description="Auth provider ID"),
     post_logout_redirect_uri: str = Query(
         None,
-        description="URL to redirect to after logout (must be registered in Entra ID app)"
+        description="URL to redirect to after logout"
     )
 ) -> LogoutResponse:
     """
-    Get Entra ID logout URL.
+    Get logout URL for ending the user's session.
 
-    Returns the URL that the client should redirect to for proper logout.
-
-    Args:
-        post_logout_redirect_uri: Optional URL to redirect after logout
-
-    Returns:
-        LogoutResponse with logout_url
+    Requires a provider_id to return the correct provider's end session URL.
     """
     try:
-        auth_service = get_auth_service()
+        auth_service = await get_generic_auth_service(provider_id)
 
         logout_url = auth_service.build_logout_url(
             post_logout_redirect_uri=post_logout_redirect_uri
         )
 
-        logger.info("Generated logout URL for Entra ID")
+        logger.info(f"Generated logout URL (provider: {provider_id})")
 
         return LogoutResponse(logout_url=logout_url)
 
     except ValueError as e:
-        # Missing configuration
         logger.error(f"Authentication not configured: {e}")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
             detail=str(e)
+        )
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error generating logout URL: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to generate logout URL"
+        )
+
+
+def _peek_provider_from_state(state: str) -> Optional[str]:
+    """
+    Peek at the OIDC state to determine which provider initiated the flow.
+
+    This reads the state from the store WITHOUT consuming it. The actual
+    consumption happens inside the auth service's exchange_code_for_tokens.
+
+    For the in-memory store we inspect the internal dict directly.
+    For DynamoDB we do a GetItem without the atomic delete.
+    """
+    try:
+        from apis.shared.auth.state_store import create_state_store
+
+        store = create_state_store()
+
+        # For InMemoryStateStore, peek at the internal dict
+        if hasattr(store, '_store'):
+            entry = store._store.get(state)
+            if entry:
+                _, data = entry
+                return data.provider_id if data else None
+            return None
+
+        # For DynamoDBStateStore, do a non-destructive read
+        if hasattr(store, 'table'):
+            import time
+            response = store.table.get_item(
+                Key={
+                    'PK': f'STATE#{state}',
+                    'SK': f'STATE#{state}',
+                },
+                ConsistentRead=True,
+            )
+            item = response.get('Item')
+            if item:
+                expires_at = item.get('expiresAt', 0)
+                if int(time.time()) <= expires_at:
+                    return item.get('provider_id')
+            return None
+
+    except Exception as e:
+        logger.debug(f"Could not peek provider from state: {e}")
+
+    return None
+
+
+# Redefine the endpoint with proper dependency injection
+@router.get(
+    "/runtime-endpoint",
+    response_model=RuntimeEndpointResponse,
+    summary="Get AgentCore Runtime endpoint URL for user's provider",
+)
+async def get_runtime_endpoint_impl(
+    current_user: User = Depends(get_current_user)
+) -> RuntimeEndpointResponse:
+    """
+    Get the AgentCore Runtime endpoint URL for the authenticated user's auth provider.
+
+    This endpoint requires authentication. The provider ID is extracted from the
+    user's JWT token by resolving the issuer to a configured auth provider.
+
+    Returns:
+        RuntimeEndpointResponse with the runtime endpoint URL and status
+
+    Raises:
+        HTTPException:
+            - 401 if not authenticated
+            - 404 if provider not found or runtime not ready
+            - 500 if runtime endpoint not configured
+    """
+    from apis.shared.auth.generic_jwt_validator import GenericOIDCJWTValidator
+    from apis.shared.auth_providers.repository import get_auth_provider_repository
+
+    try:
+        repo = get_auth_provider_repository()
+        if not repo.enabled:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Auth provider repository not configured"
+            )
+
+        validator = GenericOIDCJWTValidator(repo)
+
+        # Get the raw token from the user object
+        token = getattr(current_user, 'raw_token', None)
+        if not token:
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Token not available"
+            )
+
+        # Resolve provider from token
+        provider = await validator.resolve_provider_from_token(token)
+        if not provider:
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail="Auth provider not found for this token"
+            )
+
+        # Check if runtime endpoint is configured
+        if not provider.agentcore_runtime_endpoint_url:
+            if provider.agentcore_runtime_status == "PENDING":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Runtime is being provisioned for provider '{provider.provider_id}'. Please try again in a few minutes."
+                )
+            elif provider.agentcore_runtime_status == "CREATING":
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Runtime is currently being created for provider '{provider.provider_id}'. Please try again in a few minutes."
+                )
+            elif provider.agentcore_runtime_status == "FAILED":
+                error_msg = provider.agentcore_runtime_error or "Unknown error"
+                raise HTTPException(
+                    status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                    detail=f"Runtime provisioning failed for provider '{provider.provider_id}': {error_msg}"
+                )
+            else:
+                raise HTTPException(
+                    status_code=status.HTTP_404_NOT_FOUND,
+                    detail=f"Runtime endpoint not configured for provider '{provider.provider_id}'"
+                )
+
+        logger.info(
+            f"Resolved runtime endpoint for user {current_user.user_id} "
+            f"(provider: {provider.provider_id}): {provider.agentcore_runtime_endpoint_url}"
+        )
+
+        return RuntimeEndpointResponse(
+            runtime_endpoint_url=provider.agentcore_runtime_endpoint_url,
+            provider_id=provider.provider_id,
+            runtime_status=provider.agentcore_runtime_status,
+        )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error resolving runtime endpoint: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to resolve runtime endpoint"
         )

@@ -252,9 +252,6 @@ class ToolDefinition(BaseModel):
     )
     description: str = Field(..., description="Description of what the tool does")
     category: ToolCategory = Field(default=ToolCategory.UTILITY)
-    icon: Optional[str] = Field(
-        None, description="Icon identifier for UI (e.g., 'heroCloud')"
-    )
 
     # Technical metadata
     protocol: ToolProtocol = Field(..., description="How the tool is invoked")
@@ -262,6 +259,11 @@ class ToolDefinition(BaseModel):
     requires_oauth_provider: Optional[str] = Field(
         None,
         description="OAuth provider ID if tool requires user OAuth connection (e.g., 'google_workspace')",
+    )
+    forward_auth_token: bool = Field(
+        default=False,
+        description="If true, forward the user's OIDC authentication token to the MCP server. "
+        "Only use for same-team controlled servers. Mutually exclusive with requires_oauth_provider.",
     )
 
     # Access control
@@ -315,10 +317,10 @@ class ToolDefinition(BaseModel):
             "displayName": self.display_name,
             "description": self.description,
             "category": self.category if isinstance(self.category, str) else self.category.value,
-            "icon": self.icon,
             "protocol": self.protocol if isinstance(self.protocol, str) else self.protocol.value,
             "status": self.status if isinstance(self.status, str) else self.status.value,
             "requiresOauthProvider": self.requires_oauth_provider,
+            "forwardAuthToken": self.forward_auth_token,
             "isPublic": self.is_public,
             "enabledByDefault": self.enabled_by_default,
             "createdAt": self.created_at.isoformat() + "Z" if self.created_at else None,
@@ -372,10 +374,10 @@ class ToolDefinition(BaseModel):
             display_name=item.get("displayName", ""),
             description=item.get("description", ""),
             category=item.get("category", ToolCategory.UTILITY),
-            icon=item.get("icon"),
             protocol=protocol,
             status=item.get("status", ToolStatus.ACTIVE),
             requires_oauth_provider=item.get("requiresOauthProvider"),
+            forward_auth_token=item.get("forwardAuthToken", False),
             is_public=item.get("isPublic", False),
             enabled_by_default=item.get("enabledByDefault", False),
             mcp_config=mcp_config,
@@ -436,7 +438,6 @@ class UserToolAccess(BaseModel):
     display_name: str = Field(..., alias="displayName")
     description: str
     category: ToolCategory
-    icon: Optional[str] = None
     protocol: ToolProtocol
     status: ToolStatus
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
@@ -560,10 +561,10 @@ class ToolCreateRequest(BaseModel):
     )
     description: str = Field(..., max_length=500)
     category: ToolCategory = Field(default=ToolCategory.UTILITY)
-    icon: Optional[str] = Field(None, max_length=50)
     protocol: ToolProtocol = Field(default=ToolProtocol.LOCAL)
     status: ToolStatus = Field(default=ToolStatus.ACTIVE)
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
+    forward_auth_token: bool = Field(default=False, alias="forwardAuthToken")
     is_public: bool = Field(default=False, alias="isPublic")
     enabled_by_default: bool = Field(default=False, alias="enabledByDefault")
 
@@ -582,10 +583,10 @@ class ToolUpdateRequest(BaseModel):
     )
     description: Optional[str] = Field(None, max_length=500)
     category: Optional[ToolCategory] = None
-    icon: Optional[str] = Field(None, max_length=50)
     protocol: Optional[ToolProtocol] = None
     status: Optional[ToolStatus] = None
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
+    forward_auth_token: Optional[bool] = Field(None, alias="forwardAuthToken")
     is_public: Optional[bool] = Field(None, alias="isPublic")
     enabled_by_default: Optional[bool] = Field(None, alias="enabledByDefault")
 
@@ -710,10 +711,10 @@ class AdminToolResponse(BaseModel):
     display_name: str = Field(..., alias="displayName")
     description: str
     category: ToolCategory
-    icon: Optional[str] = None
     protocol: ToolProtocol
     status: ToolStatus
     requires_oauth_provider: Optional[str] = Field(None, alias="requiresOauthProvider")
+    forward_auth_token: bool = Field(default=False, alias="forwardAuthToken")
     is_public: bool = Field(..., alias="isPublic")
     allowed_app_roles: List[str] = Field(..., alias="allowedAppRoles")
     enabled_by_default: bool = Field(..., alias="enabledByDefault")
@@ -747,10 +748,10 @@ class AdminToolResponse(BaseModel):
             display_name=tool.display_name,
             description=tool.description,
             category=tool.category,
-            icon=tool.icon,
             protocol=tool.protocol,
             status=tool.status,
             requires_oauth_provider=tool.requires_oauth_provider,
+            forward_auth_token=tool.forward_auth_token,
             is_public=tool.is_public,
             allowed_app_roles=allowed_roles or tool.allowed_app_roles,
             enabled_by_default=tool.enabled_by_default,

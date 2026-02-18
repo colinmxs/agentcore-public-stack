@@ -204,16 +204,9 @@ import { TooltipDirective } from '../../../components/tooltip';
             @for (tool of filteredTools(); track tool.toolId) {
               <tr class="hover:bg-gray-50 dark:hover:bg-gray-700">
                 <td class="px-6 py-4">
-                  <div class="flex items-center gap-3">
-                    @if (tool.icon) {
-                      <ng-icon [name]="tool.icon" class="size-6 shrink-0 text-gray-500 dark:text-gray-400" />
-                    } @else {
-                      <div class="size-6 shrink-0 rounded bg-gray-100 dark:bg-gray-700"></div>
-                    }
-                    <div>
-                      <div class="font-medium">{{ tool.displayName }}</div>
-                      <div class="text-sm text-gray-500 dark:text-gray-400">{{ tool.toolId }}</div>
-                    </div>
+                  <div>
+                    <div class="font-medium">{{ tool.displayName }}</div>
+                    <div class="text-sm text-gray-500 dark:text-gray-400">{{ tool.toolId }}</div>
                   </div>
                 </td>
                 <td class="px-6 py-4">
@@ -404,7 +397,7 @@ export class ToolListPage {
     const confirmed = await firstValueFrom(dialogRef.closed);
     if (confirmed) {
       try {
-        await this.adminToolService.deleteTool(tool.toolId);
+        await this.adminToolService.deleteTool(tool.toolId, true);
       } catch (error: unknown) {
         console.error('Error deleting tool:', error);
         const message = error instanceof Error ? error.message : 'Failed to delete tool.';

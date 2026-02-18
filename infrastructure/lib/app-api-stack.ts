@@ -11,6 +11,11 @@ import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as logs from "aws-cdk-lib/aws-logs";
 import * as kms from "aws-cdk-lib/aws-kms";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
@@ -56,9 +61,6 @@ export class AppApiStack extends cdk.Stack {
 
     // Import image tag from SSM (set by push-to-ecr.sh)
     const imageTag = ssm.StringParameter.valueForStringParameter(this, `/${config.projectPrefix}/app-api/image-tag`);
-
-    // Import authentication secret ARN from SSM (created by infrastructure stack)
-    const authSecretArn = ssm.StringParameter.valueForStringParameter(this, `/${config.projectPrefix}/auth/secret-arn`);
 
     const vpc = ec2.Vpc.fromVpcAttributes(this, "ImportedVpc", {
       vpcId: vpcId,
@@ -304,6 +306,20 @@ export class AppApiStack extends cdk.Stack {
       },
       sortKey: {
         name: "GSI4SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI6: AppRoleAssignmentIndex - Query quota assignments by AppRole ID
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "AppRoleAssignmentIndex",
+      partitionKey: {
+        name: "GSI6PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI6SK",
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
@@ -627,6 +643,65 @@ export class AppApiStack extends cdk.Stack {
     );
 
     // ============================================================
+    // Auth Providers Table (OIDC Authentication Providers)
+    // ============================================================
+
+    const authProvidersTable = new dynamodb.Table(this, "AuthProvidersTable", {
+      tableName: getResourceName(config, "auth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled auth providers for login page
+    authProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Secrets Manager for auth provider client secrets
+    const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
+      secretName: getResourceName(config, "auth-provider-secrets"),
+      description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store auth provider resource names in SSM
+    new ssm.StringParameter(this, "AuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
+      stringValue: authProvidersTable.tableName,
+      description: "Auth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
+      stringValue: authProvidersTable.tableArn,
+      description: "Auth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProviderSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
+      stringValue: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersStreamArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
+      stringValue: authProvidersTable.tableStreamArn!,
+      description: "DynamoDB Stream ARN for auth providers table",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
@@ -782,9 +857,6 @@ export class AppApiStack extends cdk.Stack {
     // Reference the ECR repository created by the build pipeline
     const ecrRepository = ecr.Repository.fromRepositoryName(this, "AppApiRepository", getResourceName(config, "app-api"));
 
-    // Reference the authentication secret from infrastructure stack
-    const authSecret = secretsmanager.Secret.fromSecretCompleteArn(this, "AuthSecret", authSecretArn);
-
     // Container Definition
     const container = taskDefinition.addContainer("AppApiContainer", {
       containerName: "app-api",
@@ -796,6 +868,7 @@ export class AppApiStack extends cdk.Stack {
       environment: {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
+        FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
         DYNAMODB_QUOTA_TABLE: userQuotasTable.tableName,
         DYNAMODB_EVENTS_TABLE: quotaEventsTable.tableName,
         DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,
@@ -833,19 +906,13 @@ export class AppApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/inference-api/memory-id`
         ),
-        ENTRA_CLIENT_ID: config.entraClientId,
-        ENTRA_TENANT_ID: config.entraTenantId,
-        ENTRA_REDIRECT_URI: config.appApi.entraRedirectUri,
-        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTableName,
-        DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME: oauthUserTokensTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
+        DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
+        AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
+        
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
-      },
-      secrets: {
-        // Secret values fetched at task startup, never visible in console/API
-        ENTRA_CLIENT_SECRET: ecs.Secret.fromSecretsManager(authSecret, "secret"),
       },
       portMappings: [
         {
@@ -1041,16 +1108,6 @@ export class AppApiStack extends cdk.Stack {
     userFilesTable.grantReadWriteData(taskDefinition.taskRole);
     userFilesBucket.grantReadWrite(taskDefinition.taskRole);
 
-    // Grant permissions for authentication secret (imported from infrastructure stack)
-    // Using manual policy statement for clarity when working with cross-stack imported secrets
-    taskDefinition.taskRole.addToPrincipalPolicy(
-      new iam.PolicyStatement({
-        effect: iam.Effect.ALLOW,
-        actions: ["secretsmanager:GetSecretValue", "secretsmanager:DescribeSecret"],
-        resources: [authSecretArn],
-      }),
-    );
-
     // Grant Bedrock permissions for title generation (Nova Micro)
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
@@ -1116,6 +1173,228 @@ export class AppApiStack extends cdk.Stack {
         resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
       })
     );
+    // Grant permissions for auth provider management
+    authProvidersTable.grantReadWriteData(taskDefinition.taskRole);
+    authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
+    authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
+
+    // ============================================================
+    // Runtime Provisioner Lambda
+    // ============================================================
+
+    // Create Lambda function for runtime provisioning
+    const runtimeProvisionerFunction = new lambda.Function(this, "RuntimeProvisionerFunction", {
+      functionName: getResourceName(config, "runtime-provisioner"),
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "lambda_function.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-provisioner"),
+      timeout: cdk.Duration.minutes(5),
+      memorySize: 512,
+      architecture: lambda.Architecture.ARM_64,
+      environment: {
+        PROJECT_PREFIX: config.projectPrefix,
+        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant DynamoDB Stream read permissions
+    authProvidersTable.grantStreamRead(runtimeProvisionerFunction);
+
+    // Grant DynamoDB UpdateItem permissions for Auth Providers table
+    authProvidersTable.grantReadWriteData(runtimeProvisionerFunction);
+
+    // Grant Bedrock AgentCore permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "BedrockAgentCoreRuntimeManagement",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock-agentcore:CreateAgentRuntime",
+          "bedrock-agentcore:UpdateAgentRuntime",
+          "bedrock-agentcore:DeleteAgentRuntime",
+          "bedrock-agentcore:GetAgentRuntime",
+        ],
+        resources: ["*"], // Runtime ARNs are not known at deployment time
+      })
+    );
+
+    // Grant SSM Parameter Store read/write permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SSMParameterAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+          "ssm:PutParameter",
+          "ssm:DeleteParameter",
+        ],
+        resources: [
+          `arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`,
+        ],
+      })
+    );
+
+    // Grant ECR read permissions
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ECRReadAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:GetAuthorizationToken",
+        ],
+        resources: ["*"], // ECR authorization token requires wildcard
+      })
+    );
+
+    // Grant IAM PassRole permission for runtime execution role
+    const runtimeExecutionRoleArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/inference-api/runtime-execution-role-arn`
+    );
+
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "IAMPassRoleForRuntime",
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:PassRole"],
+        resources: [runtimeExecutionRoleArn],
+        conditions: {
+          StringEquals: {
+            "iam:PassedToService": "bedrock-agentcore.amazonaws.com",
+          },
+        },
+      })
+    );
+
+    // Add DynamoDB Stream event source
+    runtimeProvisionerFunction.addEventSource(
+      new lambdaEventSources.DynamoEventSource(authProvidersTable, {
+        startingPosition: lambda.StartingPosition.LATEST,
+        batchSize: 1,
+        retryAttempts: 3,
+        bisectBatchOnError: true,
+      })
+    );
+
+    // Store Lambda function ARN in SSM
+    new ssm.StringParameter(this, "RuntimeProvisionerFunctionArnParameter", {
+      parameterName: `/${config.projectPrefix}/lambda/runtime-provisioner-arn`,
+      stringValue: runtimeProvisionerFunction.functionArn,
+      description: "Runtime Provisioner Lambda function ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
+    // Runtime Updater Lambda
+    // ============================================================
+
+    // Create SNS topic for runtime update alerts
+    const runtimeUpdateAlertsTopic = new sns.Topic(this, "RuntimeUpdateAlertsTopic", {
+      topicName: getResourceName(config, "runtime-update-alerts"),
+      displayName: "AgentCore Runtime Update Alerts",
+    });
+
+    // Create Lambda function for runtime updates
+    const runtimeUpdaterFunction = new lambda.Function(this, "RuntimeUpdaterFunction", {
+      functionName: getResourceName(config, "runtime-updater"),
+      runtime: lambda.Runtime.PYTHON_3_13,
+      handler: "lambda_function.lambda_handler",
+      code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-updater"),
+      timeout: cdk.Duration.minutes(15),
+      memorySize: 512,
+      architecture: lambda.Architecture.ARM_64,
+      environment: {
+        PROJECT_PREFIX: config.projectPrefix,
+        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+        SNS_TOPIC_ARN: runtimeUpdateAlertsTopic.topicArn,
+      },
+      logRetention: logs.RetentionDays.ONE_WEEK,
+    });
+
+    // Grant Bedrock AgentCore permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "BedrockAgentCoreRuntimeUpdates",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "bedrock-agentcore:GetAgentRuntime",
+          "bedrock-agentcore:UpdateAgentRuntime",
+        ],
+        resources: ["*"], // Runtime ARNs are not known at deployment time
+      })
+    );
+
+    // Grant DynamoDB Scan and UpdateItem permissions
+    authProvidersTable.grantReadWriteData(runtimeUpdaterFunction);
+
+    // Grant SSM Parameter Store read permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "SSMParameterReadAccess",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ssm:GetParameter",
+          "ssm:GetParameters",
+        ],
+        resources: [
+          `arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`,
+        ],
+      })
+    );
+
+    // Grant ECR read permissions
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "ECRReadAccessForUpdater",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "ecr:DescribeRepositories",
+          "ecr:DescribeImages",
+          "ecr:GetAuthorizationToken",
+        ],
+        resources: ["*"], // ECR authorization token requires wildcard
+      })
+    );
+
+    // Grant SNS Publish permissions
+    runtimeUpdateAlertsTopic.grantPublish(runtimeUpdaterFunction);
+
+    // Create EventBridge rule to detect SSM parameter changes
+    const imageTagChangeRule = new events.Rule(this, "ImageTagChangeRule", {
+      ruleName: getResourceName(config, "image-tag-change"),
+      description: "Triggers Runtime Updater when inference API image tag changes",
+      eventPattern: {
+        source: ["aws.ssm"],
+        detailType: ["Parameter Store Change"],
+        detail: {
+          name: [`/${config.projectPrefix}/inference-api/image-tag`],
+          operation: ["Update"],
+        },
+      },
+    });
+
+    // Add Lambda as target for EventBridge rule
+    imageTagChangeRule.addTarget(new targets.LambdaFunction(runtimeUpdaterFunction));
+
+    // Store Lambda function ARN in SSM
+    new ssm.StringParameter(this, "RuntimeUpdaterFunctionArnParameter", {
+      parameterName: `/${config.projectPrefix}/lambda/runtime-updater-arn`,
+      stringValue: runtimeUpdaterFunction.functionArn,
+      description: "Runtime Updater Lambda function ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // Store SNS topic ARN in SSM
+    new ssm.StringParameter(this, "RuntimeUpdateAlertsTopicArnParameter", {
+      parameterName: `/${config.projectPrefix}/sns/runtime-update-alerts-arn`,
+      stringValue: runtimeUpdateAlertsTopic.topicArn,
+      description: "SNS topic ARN for runtime update alerts",
+      tier: ssm.ParameterTier.STANDARD,
+    });
 
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(
@@ -1319,6 +1598,18 @@ export class AppApiStack extends cdk.Stack {
       description: "ARN of the assistants vector index",
     });
 
+    new cdk.CfnOutput(this, "AuthProvidersTableName", {
+      value: authProvidersTable.tableName,
+      description: "Auth providers configuration table name",
+      exportName: `${config.projectPrefix}-AuthProvidersTableName`,
+    });
+
+    new cdk.CfnOutput(this, "AuthProviderSecretsSecretArn", {
+      value: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
+    });
+
     new cdk.CfnOutput(this, "OAuthProvidersTableName", {
       value: oauthProvidersTableName,
       description: "OAuth providers configuration table name (imported from Infrastructure Stack)",
@@ -1341,6 +1632,24 @@ export class AppApiStack extends cdk.Stack {
       value: oauthClientSecretsArn,
       description: "Secrets Manager ARN for OAuth client secrets (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeProvisionerFunctionArn", {
+      value: runtimeProvisionerFunction.functionArn,
+      description: "Runtime Provisioner Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeProvisionerFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdaterFunctionArn", {
+      value: runtimeUpdaterFunction.functionArn,
+      description: "Runtime Updater Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeUpdaterFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdateAlertsTopicArn", {
+      value: runtimeUpdateAlertsTopic.topicArn,
+      description: "SNS topic ARN for runtime update alerts",
+      exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
     });
   }
 }

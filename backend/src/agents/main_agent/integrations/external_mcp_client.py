@@ -250,17 +250,20 @@ class ExternalMCPIntegration:
         self,
         enabled_tool_ids: List[str],
         user_id: Optional[str] = None,
+        auth_token: Optional[str] = None,
     ) -> List[MCPClient]:
         """
         Load external MCP clients for enabled tools.
 
         This method queries the tool catalog for tools with protocol='mcp_external'
         and creates MCP clients for them. For tools requiring OAuth, the user's
-        token is retrieved and injected into the client.
+        OAuth token is retrieved and injected. For tools with forward_auth_token,
+        the user's OIDC authentication token is forwarded instead.
 
         Args:
             enabled_tool_ids: List of enabled tool IDs
             user_id: User ID for OAuth token retrieval (required for OAuth-enabled tools)
+            auth_token: Raw OIDC token for forwarding (required for forward_auth_token tools)
 
         Returns:
             List of MCPClient instances to add to the agent's tools
@@ -284,18 +287,34 @@ class ExternalMCPIntegration:
                     logger.warning(f"Tool {tool_id} has protocol=mcp_external but no mcp_config")
                     continue
 
-                # Check if tool requires OAuth
+                # Determine auth mode: OIDC forwarding, OAuth, or none
+                forward_auth = bool(getattr(tool, "forward_auth_token", False))
                 requires_oauth = bool(tool.requires_oauth_provider)
-                cache_key = self._get_cache_key(tool_id, user_id, requires_oauth)
+                requires_user_auth = forward_auth or requires_oauth
+
+                cache_key = self._get_cache_key(tool_id, user_id, requires_user_auth)
 
                 # Check cache
                 if cache_key in self.clients:
                     clients.append(self.clients[cache_key])
                     continue
 
-                # Get OAuth token if required
-                oauth_token = None
-                if requires_oauth:
+                # Resolve token to use (OIDC forwarding takes precedence)
+                token_to_use = None
+
+                if forward_auth:
+                    # Forward the user's OIDC authentication token
+                    if not auth_token:
+                        logger.warning(
+                            f"Tool {tool_id} has forward_auth_token=true but no auth_token provided"
+                        )
+                        # Still create the client - server will reject unauthorized requests
+                    else:
+                        token_to_use = auth_token
+                        logger.info(f"Using OIDC token forwarding for tool {tool_id}")
+
+                elif requires_oauth:
+                    # Use stored OAuth token from provider
                     if not user_id:
                         logger.warning(
                             f"Tool {tool_id} requires OAuth provider '{tool.requires_oauth_provider}' "
@@ -303,12 +322,12 @@ class ExternalMCPIntegration:
                         )
                         continue
 
-                    oauth_token = await self._get_oauth_token(
+                    token_to_use = await self._get_oauth_token(
                         user_id=user_id,
                         provider_id=tool.requires_oauth_provider,
                     )
 
-                    if not oauth_token:
+                    if not token_to_use:
                         logger.warning(
                             f"User {user_id} not connected to OAuth provider "
                             f"'{tool.requires_oauth_provider}' for tool {tool_id}"
@@ -316,20 +335,22 @@ class ExternalMCPIntegration:
                         # Still create the client - it will fail gracefully when used
                         # The MCP server should return an appropriate error
 
-                # Create MCP client with optional OAuth token
+                # Create MCP client with optional token (works for both OAuth and OIDC)
                 client = create_external_mcp_client(
                     config=tool.mcp_config,
                     tool_definition=tool,
-                    oauth_token=oauth_token,
+                    oauth_token=token_to_use,
                 )
 
                 if client:
                     self.clients[cache_key] = client
                     clients.append(client)
-                    logger.info(
-                        f"✅ Loaded external MCP tool: {tool_id}"
-                        f"{' (with OAuth)' if oauth_token else ''}"
+                    auth_label = (
+                        " (with OIDC forwarding)" if forward_auth and token_to_use
+                        else " (with OAuth)" if requires_oauth and token_to_use
+                        else ""
                     )
+                    logger.info(f"✅ Loaded external MCP tool: {tool_id}{auth_label}")
 
             except Exception as e:
                 logger.error(f"Error loading external MCP tool {tool_id}: {e}")

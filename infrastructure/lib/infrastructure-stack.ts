@@ -685,6 +685,19 @@ export class InfrastructureStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Construct OAuth callback URL
+    const oauthCallbackUrl = config.domainName
+      ? `https://${config.domainName}/auth/callback`
+      : `${albUrl}/auth/callback`;
+
+    // Export OAuth callback URL for runtime provisioner
+    new ssm.StringParameter(this, 'OAuthCallbackUrlParameter', {
+      parameterName: `/${config.projectPrefix}/oauth/callback-url`,
+      stringValue: oauthCallbackUrl,
+      description: 'OAuth callback URL for authentication provider configuration',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // CloudFormation Output for ALB URL
     new cdk.CfnOutput(this, 'AlbUrl', {
       value: albUrl,

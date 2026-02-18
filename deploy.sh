@@ -191,7 +191,7 @@ configure_frontend() {
     echo ""
     
     prompt_for_config "CDK_FRONTEND_ENABLED" "Enable Frontend Stack (true/false)" ".frontend.enabled"
-    prompt_for_config "CDK_FRONTEND_DOMAIN_NAME" "Custom domain name (optional)" ".frontend.domainName"
+    prompt_for_config "CDK_DOMAIN_NAME" "Custom domain name (optional)" ".frontend.domainName"
     prompt_for_config "CDK_FRONTEND_ENABLE_ROUTE53" "Enable Route53 integration (true/false)" ".frontend.enableRoute53"
     prompt_for_config "CDK_FRONTEND_CERTIFICATE_ARN" "ACM Certificate ARN (optional)" ".frontend.certificateArn"
     prompt_for_config "CDK_FRONTEND_BUCKET_NAME" "S3 bucket name (optional, auto-generated if empty)" ".frontend.bucketName"

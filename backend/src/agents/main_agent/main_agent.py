@@ -52,6 +52,7 @@ class MainAgent:
         self,
         session_id: str,
         user_id: Optional[str] = None,
+        auth_token: Optional[str] = None,
         enabled_tools: Optional[List[str]] = None,
         model_id: Optional[str] = None,
         temperature: Optional[float] = None,
@@ -67,6 +68,7 @@ class MainAgent:
         Args:
             session_id: Session identifier for message persistence
             user_id: User identifier for cross-session preferences (defaults to session_id)
+            auth_token: Raw OIDC token for forwarding to external MCP tools (optional)
             enabled_tools: List of tool IDs to enable. If None, all tools are enabled.
             model_id: Model ID to use (format depends on provider)
                 - Bedrock: "us.anthropic.claude-haiku-4-5-20251001-v1:0"
@@ -83,6 +85,7 @@ class MainAgent:
         # Basic state
         self.session_id = session_id
         self.user_id = user_id or session_id
+        self.auth_token = auth_token
         self.enabled_tools = enabled_tools
         self.agent = None
 
@@ -142,7 +145,7 @@ class MainAgent:
                     local_tools = self.gateway_integration.add_to_tool_list(local_tools)
 
             # Load external MCP tools and add to tools list
-            # Pass user_id for OAuth token retrieval on OAuth-enabled tools
+            # Pass user_id for OAuth token retrieval and auth_token for OIDC forwarding
             if external_mcp_tool_ids:
                 import asyncio
 
@@ -160,7 +163,8 @@ class MainAgent:
                             asyncio.run,
                             external_integration.load_external_tools(
                                 external_mcp_tool_ids,
-                                user_id=self.user_id,  # Pass user_id for OAuth
+                                user_id=self.user_id,
+                                auth_token=self.auth_token,
                             ),
                         )
                         external_clients = future.result()
@@ -168,7 +172,8 @@ class MainAgent:
                     external_clients = loop.run_until_complete(
                         external_integration.load_external_tools(
                             external_mcp_tool_ids,
-                            user_id=self.user_id,  # Pass user_id for OAuth
+                            user_id=self.user_id,
+                            auth_token=self.auth_token,
                         )
                     )
 

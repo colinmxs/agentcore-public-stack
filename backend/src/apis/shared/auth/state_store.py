@@ -17,6 +17,7 @@ class OIDCStateData:
     redirect_uri: Optional[str] = None
     code_verifier: Optional[str] = None  # PKCE code verifier (S256)
     nonce: Optional[str] = None  # ID token nonce binding
+    provider_id: Optional[str] = None  # Auth provider that initiated this flow
 
 
 class StateStore(ABC):
@@ -161,6 +162,8 @@ class DynamoDBStateStore(StateStore):
                     item['code_verifier'] = data.code_verifier
                 if data.nonce:
                     item['nonce'] = data.nonce
+                if data.provider_id:
+                    item['provider_id'] = data.provider_id
 
             # Use expiresAt as TTL attribute (DynamoDB will auto-delete)
             self.table.put_item(Item=item)
@@ -230,6 +233,7 @@ class DynamoDBStateStore(StateStore):
                 redirect_uri=item.get('redirect_uri'),
                 code_verifier=item.get('code_verifier'),
                 nonce=item.get('nonce'),
+                provider_id=item.get('provider_id'),
             )
             return True, data
             

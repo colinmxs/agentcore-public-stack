@@ -37,18 +37,20 @@ export class FrontendStack extends cdk.Stack {
     applyStandardTags(this, config);
 
     // ============================================================================
+    // ============================================================================
     // SSM Parameter Imports - Backend URLs for Runtime Configuration
     // ============================================================================
     // These parameters are exported by the backend stacks and must exist before
     // this stack can be deployed. The frontend stack depends on:
     // 1. InfrastructureStack - exports ALB URL to SSM
-    // 2. InferenceApiStack - exports Runtime endpoint URL to SSM
     //
-    // Deployment order: InfrastructureStack → AppApiStack → InferenceApiStack → FrontendStack
+    // Deployment order: InfrastructureStack → AppApiStack → FrontendStack
+    //
+    // Note: The frontend only needs the App API URL (ALB). The inference API
+    // is accessed through the App API, not directly from the frontend.
     // ============================================================================
 
     let appApiUrl: string;
-    let inferenceApiUrl: string;
 
     try {
       // Import App API URL from SSM Parameter Store
@@ -68,28 +70,9 @@ export class FrontendStack extends cdk.Stack {
       );
     }
 
-    try {
-      // Import Inference API Runtime endpoint URL from SSM Parameter Store
-      // This parameter is created by InferenceApiStack after AgentCore Runtime creation
-      // Parameter format: /${projectPrefix}/inference-api/runtime-endpoint-url
-      // Example value: https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/RUNTIME_ARN
-      inferenceApiUrl = ssm.StringParameter.valueForStringParameter(
-        this,
-        `/${config.projectPrefix}/inference-api/runtime-endpoint-url`
-      );
-    } catch (error) {
-      throw new Error(
-        `Failed to import Inference API Runtime URL from SSM Parameter Store. ` +
-        `Ensure InferenceApiStack has been deployed and exports the parameter: ` +
-        `/${config.projectPrefix}/inference-api/runtime-endpoint-url. ` +
-        `Error: ${error}`
-      );
-    }
-
     // Log imported values for debugging (values will be tokens at synth time)
     console.log('📥 Imported backend URLs from SSM:');
     console.log(`   App API URL: ${appApiUrl}`);
-    console.log(`   Inference API URL: ${inferenceApiUrl}`);
 
     // ============================================================================
     // Runtime Configuration Generation
@@ -97,11 +80,13 @@ export class FrontendStack extends cdk.Stack {
     // Generate config.json content with backend URLs and environment settings.
     // This configuration will be deployed to S3 and fetched by the Angular app
     // at startup via APP_INITIALIZER, enabling environment-agnostic builds.
+    //
+    // Note: The frontend only needs the App API URL. The inference API is
+    // accessed through the App API backend, not directly from the frontend.
     // ============================================================================
 
     const runtimeConfig = {
       appApiUrl: appApiUrl,
-      inferenceApiUrl: inferenceApiUrl,
       enableAuthentication: true,
       environment: config.production ? 'production' : 'development',
     };
@@ -224,7 +209,7 @@ export class FrontendStack extends cdk.Stack {
     };
 
     // Add custom domain and certificate if configured
-    if (config.frontend.domainName && config.frontend.certificateArn) {
+    if (config.domainName && config.frontend.certificateArn) {
       const certificate = acm.Certificate.fromCertificateArn(
         this,
         'Certificate',
@@ -232,7 +217,7 @@ export class FrontendStack extends cdk.Stack {
       );
       distributionProps = {
         ...distributionProps,
-        domainNames: [config.frontend.domainName],
+        domainNames: [config.domainName],
         certificate: certificate,
       };
     }
@@ -259,16 +244,16 @@ export class FrontendStack extends cdk.Stack {
     this.distributionDomainName = this.distribution.distributionDomainName;
 
     // Create Route53 A record if domain is configured and Route53 is enabled
-    if (config.frontend.enableRoute53 && config.frontend.domainName) {
+    if (config.frontend.enableRoute53 && config.domainName) {
       // Look up the hosted zone
       const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-        domainName: config.frontend.domainName,
+        domainName: config.domainName,
       });
 
       // Create A record aliasing to CloudFront
       new route53.ARecord(this, 'FrontendARecord', {
         zone: hostedZone,
-        recordName: config.frontend.domainName,
+        recordName: config.domainName,
         target: route53.RecordTarget.fromAlias(
           new targets.CloudFrontTarget(this.distribution)
         ),
@@ -313,8 +298,21 @@ export class FrontendStack extends cdk.Stack {
 
     new ssm.StringParameter(this, 'FrontendUrlParameter', {
       parameterName: `/${config.projectPrefix}/frontend/url`,
-      stringValue: config.frontend.domainName || `https://${this.distributionDomainName}`,
+      stringValue: config.domainName || `https://${this.distributionDomainName}`,
       description: 'Frontend website URL',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // Construct CORS origins list
+    const corsOrigins = config.domainName
+      ? `https://${config.domainName}`
+      : `https://${this.distributionDomainName}`;
+
+    // Export CORS origins for runtime provisioner
+    new ssm.StringParameter(this, 'CorsOriginsParameter', {
+      parameterName: `/${config.projectPrefix}/frontend/cors-origins`,
+      stringValue: corsOrigins,
+      description: 'Comma-separated list of allowed CORS origins for OAuth flows',
       tier: ssm.ParameterTier.STANDARD,
     });
 
@@ -345,7 +343,7 @@ export class FrontendStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'WebsiteUrl', {
-      value: config.frontend.domainName || `https://${this.distributionDomainName}`,
+      value: config.domainName || `https://${this.distributionDomainName}`,
       description: 'Frontend Website URL',
       exportName: `${config.projectPrefix}-WebsiteUrl`,
     });

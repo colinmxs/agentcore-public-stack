@@ -6,12 +6,11 @@ export interface AppConfig {
   awsRegion: string;
   production: boolean; // Production environment flag (default: true)
   retainDataOnDelete: boolean;
-  vpcCidr: string;  
+  vpcCidr: string;
+  domainName?: string; // Primary domain name for the application (used for frontend, CORS, etc.)
   infrastructureHostedZoneDomain?: string;
   albSubdomain?: string; // Subdomain for ALB (e.g., 'api' for api.yourdomain.com)
   certificateArn?: string; // ACM certificate ARN for HTTPS on ALB
-  entraClientId: string; // Microsoft Entra (Azure AD) Client ID for OAuth
-  entraTenantId: string; // Microsoft Entra (Azure AD) Tenant ID
   frontend: FrontendConfig;
   appApi: AppApiConfig;
   inferenceApi: InferenceApiConfig;
@@ -23,7 +22,6 @@ export interface AppConfig {
 }
 
 export interface FrontendConfig {
-  domainName?: string;
   enableRoute53: boolean;
   certificateArn?: string;
   enabled: boolean;
@@ -48,7 +46,6 @@ export interface AppApiConfig {
   rdsEngine?: string;
   rdsDatabaseName?: string;
   imageTag: string;
-  entraRedirectUri: string;
 }
 
 export interface InferenceApiConfig {
@@ -152,14 +149,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
     awsRegion,
     production: parseBooleanEnv(process.env.CDK_PRODUCTION, true), // Default: true (production mode)
     retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE, true),
-    vpcCidr: scope.node.tryGetContext('vpcCidr'),    
+    vpcCidr: scope.node.tryGetContext('vpcCidr'),
+    domainName: process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName'),
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     albSubdomain: process.env.CDK_ALB_SUBDOMAIN || scope.node.tryGetContext('albSubdomain'),
     certificateArn: process.env.CDK_CERTIFICATE_ARN || scope.node.tryGetContext('certificateArn'),
-    entraClientId: process.env.CDK_ENTRA_CLIENT_ID || scope.node.tryGetContext('entraClientId'),
-    entraTenantId: process.env.CDK_ENTRA_TENANT_ID || scope.node.tryGetContext('entraTenantId'),
     frontend: {
-      domainName: process.env.CDK_FRONTEND_DOMAIN_NAME || scope.node.tryGetContext('frontend').domainName,
       enableRoute53: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLE_ROUTE53) ?? scope.node.tryGetContext('frontend').enableRoute53,
       certificateArn: process.env.CDK_FRONTEND_CERTIFICATE_ARN || scope.node.tryGetContext('frontend').certificateArn,
       enabled: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLED) ?? scope.node.tryGetContext('frontend')?.enabled,
@@ -175,7 +170,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
       databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
       enableRds: false,
-      entraRedirectUri: process.env.CDK_APP_API_ENTRA_REDIRECT_URI || scope.node.tryGetContext('appApi')?.entraRedirectUri,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,

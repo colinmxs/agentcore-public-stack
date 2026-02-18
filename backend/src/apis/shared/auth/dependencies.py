@@ -8,7 +8,6 @@ from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
 
-from .jwt_validator import get_validator
 from .models import User
 
 logger = logging.getLogger(__name__)
@@ -55,6 +54,75 @@ ENABLE_AUTHENTICATION = os.environ.get('ENABLE_AUTHENTICATION', 'true').lower() 
 ENVIRONMENT = os.environ.get('ENVIRONMENT', 'production').lower()
 IS_DEVELOPMENT = ENVIRONMENT in ('development', 'dev', 'local')
 
+# Lazy-initialized generic validator for multi-provider support
+_generic_validator = None
+_generic_validator_initialized = False
+
+
+def _get_generic_validator():
+    """
+    Get the GenericOIDCJWTValidator instance.
+
+    Returns None if the auth providers table is not configured.
+    """
+    global _generic_validator, _generic_validator_initialized
+    if _generic_validator_initialized:
+        return _generic_validator
+
+    _generic_validator_initialized = True
+    try:
+        from apis.shared.auth_providers.repository import get_auth_provider_repository
+        from .generic_jwt_validator import GenericOIDCJWTValidator
+
+        repo = get_auth_provider_repository()
+        if repo.enabled:
+            _generic_validator = GenericOIDCJWTValidator(repo)
+            logger.info("GenericOIDCJWTValidator initialized for multi-provider auth")
+        else:
+            logger.debug("Auth providers table not configured, generic validator disabled")
+    except Exception as e:
+        logger.debug(f"Generic validator not available: {e}")
+
+    return _generic_validator
+
+
+def _create_anonymous_dev_user() -> User:
+    """Create anonymous user for development auth bypass."""
+    return User(
+        email="anonymous@local.dev",
+        user_id="000000000",
+        name="Anonymous User (Dev)",
+        roles=["Developer"],
+        picture=None
+    )
+
+
+def _check_auth_bypass() -> Optional[User]:
+    """
+    Check if authentication should be bypassed for development.
+
+    Returns:
+        Anonymous User if auth bypass is allowed, None otherwise.
+
+    Raises:
+        HTTPException: If auth is disabled in a non-development environment.
+    """
+    if not ENABLE_AUTHENTICATION:
+        if not IS_DEVELOPMENT:
+            logger.error(
+                "SECURITY ERROR: ENABLE_AUTHENTICATION=false in non-development environment. "
+                "This is not allowed. Set ENVIRONMENT=development or enable authentication."
+            )
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Authentication service misconfigured."
+            )
+        logger.warning(
+            "Authentication is DISABLED (ENABLE_AUTHENTICATION=false, ENVIRONMENT=development)"
+        )
+        return _create_anonymous_dev_user()
+    return None
+
 
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
@@ -62,13 +130,11 @@ async def get_current_user(
     """
     FastAPI dependency to get the current authenticated user.
 
-    Extracts Bearer token from Authorization header and validates it.
-    Returns 401 Unauthorized if token is missing or invalid.
-    Returns 403 Forbidden if token is valid but user lacks required roles.
+    Validates the JWT token using the GenericOIDCJWTValidator, which
+    matches the token issuer to configured auth providers.
 
     When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
-    authentication for local development only. In production, auth bypass
-    is not allowed and will raise an error.
+    authentication for local development only.
 
     Args:
         credentials: HTTP Bearer token credentials (None if missing)
@@ -83,28 +149,10 @@ async def get_current_user(
             - 500 if auth is misconfigured (disabled in non-dev environment)
     """
     # Check if authentication is disabled
-    if not ENABLE_AUTHENTICATION:
-        if not IS_DEVELOPMENT:
-            # Fail closed in non-development environments
-            logger.error(
-                "SECURITY ERROR: ENABLE_AUTHENTICATION=false in non-development environment. "
-                "This is not allowed. Set ENVIRONMENT=development or enable authentication."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Authentication service misconfigured."
-            )
-        logger.warning(
-            "⚠️ Authentication is DISABLED (ENABLE_AUTHENTICATION=false, ENVIRONMENT=development)"
-        )
-        return User(
-            email="anonymous@local.dev",
-            user_id="000000000",
-            name="Anonymous User (Dev)",
-            roles=["Developer"],  # Give dev role for local testing
-            picture=None
-        )
-    
+    bypass_user = _check_auth_bypass()
+    if bypass_user:
+        return bypass_user
+
     # Check if credentials are missing
     if credentials is None:
         raise HTTPException(
@@ -112,37 +160,39 @@ async def get_current_user(
             detail="Authentication required. Please provide a valid Bearer token in the Authorization header.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
-    validator = get_validator()
-    
-    # Validator should always be available when auth is enabled
-    if validator is None:
-        logger.error("Validator is None but authentication is enabled - this should not happen")
-        raise HTTPException(
-            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-            detail="Authentication service misconfigured."
-        )
-    
-    try:
-        user = validator.validate_token(token)
 
-        # Fire-and-forget sync to Users table
-        sync_service = _get_user_sync_service()
-        if sync_service and sync_service.enabled:
-            # Use asyncio.create_task for fire-and-forget behavior
-            asyncio.create_task(_sync_user_background(sync_service, user))
+    # Use generic multi-provider validation
+    generic_validator = _get_generic_validator()
+    if generic_validator:
+        try:
+            provider = await generic_validator.resolve_provider_from_token(token)
+            if provider:
+                user = generic_validator.validate_token(token, provider)
+                user.raw_token = token
 
-        return user
-    except HTTPException:
-        # Re-raise HTTPExceptions (401 for invalid tokens, 403 for missing roles)
-        raise
-    except Exception as e:
-        logger.error(f"Unexpected error in authentication: {e}", exc_info=True)
-        raise HTTPException(
-            status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Authentication failed."
-        )
+                # Fire-and-forget sync to Users table
+                sync_service = _get_user_sync_service()
+                if sync_service and sync_service.enabled:
+                    asyncio.create_task(_sync_user_background(sync_service, user))
+
+                return user
+        except HTTPException:
+            raise
+        except Exception as e:
+            logger.error(f"Token validation failed: {e}", exc_info=True)
+            raise HTTPException(
+                status_code=status.HTTP_401_UNAUTHORIZED,
+                detail="Authentication failed."
+            )
+
+    # No validator available - no auth providers configured
+    logger.error("No JWT validator available. Ensure at least one OIDC auth provider is configured.")
+    raise HTTPException(
+        status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+        detail="Authentication service not configured. No OIDC auth providers have been set up."
+    )
 
 
 async def get_current_user_id(
@@ -150,16 +200,16 @@ async def get_current_user_id(
 ) -> str:
     """
     FastAPI dependency to get the current user's ID as a string.
-    
+
     This is a convenience wrapper around get_current_user that extracts
     just the user_id field. Useful when you only need the user ID and not
     the full User object.
-    
+
     When ENABLE_AUTHENTICATION=false, returns "anonymous".
-    
+
     Args:
         user: User object from get_current_user dependency
-    
+
     Returns:
         User ID string (or "anonymous" if auth disabled)
     """
@@ -171,53 +221,35 @@ async def get_current_user_trusted(
 ) -> User:
     """
     FastAPI dependency to get current user from pre-validated JWT.
-    
+
     Use this when JWT validation is already performed at the network level
     (e.g., by AWS Bedrock AgentCore Runtime's JWT authorizer). This method
     skips expensive signature verification and simply extracts claims from
-    the token.
-    
+    the token using the matching auth provider's claim mappings.
+
     Security: Only use this in services where the JWT validation
     is guaranteed. IE AgentCore Runtime with Inbound Auth. For services without pre-validation, use
     get_current_user() instead.
-    
+
     When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
     authentication for local development only.
-    
+
     Args:
         credentials: HTTP Bearer token credentials (None if missing)
-    
+
     Returns:
         User object with authenticated user information
-    
+
     Raises:
         HTTPException:
             - 401 if token is missing or malformed
             - 500 if auth is misconfigured (disabled in non-dev environment)
     """
     # Check if authentication is disabled
-    if not ENABLE_AUTHENTICATION:
-        if not IS_DEVELOPMENT:
-            # Fail closed in non-development environments
-            logger.error(
-                "SECURITY ERROR: ENABLE_AUTHENTICATION=false in non-development environment. "
-                "This is not allowed. Set ENVIRONMENT=development or enable authentication."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Authentication service misconfigured."
-            )
-        logger.warning(
-            "⚠️ Authentication is DISABLED (ENABLE_AUTHENTICATION=false, ENVIRONMENT=development)"
-        )
-        return User(
-            email="anonymous@local.dev",
-            user_id="000000000",
-            name="Anonymous User (Dev)",
-            roles=["Developer"],  # Give dev role for local testing
-            picture=None
-        )
-    
+    bypass_user = _check_auth_bypass()
+    if bypass_user:
+        return bypass_user
+
     # Check if credentials are missing
     if credentials is None:
         raise HTTPException(
@@ -225,56 +257,112 @@ async def get_current_user_trusted(
             detail="Authentication required. Please provide a valid Bearer token in the Authorization header.",
             headers={"WWW-Authenticate": "Bearer"},
         )
-    
+
     token = credentials.credentials
-    
+
     try:
         # Decode JWT without verification (network layer already validated it)
         payload = jwt.decode(token, options={"verify_signature": False})
-        
-        # Extract user information from claims
+
+        # Resolve provider for claim mappings
+        generic_validator = _get_generic_validator()
+        if generic_validator:
+            try:
+                provider = await generic_validator.resolve_provider_from_token(token)
+                if provider:
+                    # Use provider-specific claim extraction
+                    # Fall back to common OIDC claims if primary claim is absent
+                    email = (
+                        payload.get(provider.email_claim)
+                        or payload.get("preferred_username")
+                        or payload.get("upn")
+                    )
+                    name = payload.get(provider.name_claim)
+                    user_id = payload.get(provider.user_id_claim)
+                    roles = payload.get(provider.roles_claim, [])
+                    picture = payload.get(provider.picture_claim) if provider.picture_claim else None
+
+                    if not name and provider.first_name_claim and provider.last_name_claim:
+                        first = payload.get(provider.first_name_claim, "")
+                        last = payload.get(provider.last_name_claim, "")
+                        name = f"{first} {last}".strip()
+
+                    if isinstance(roles, str):
+                        roles = [roles]
+
+                    if not user_id:
+                        raise HTTPException(
+                            status_code=status.HTTP_401_UNAUTHORIZED,
+                            detail="Invalid user."
+                        )
+
+                    user = User(
+                        email=str(email).lower() if email else "",
+                        name=str(name) if name else "",
+                        user_id=str(user_id),
+                        roles=roles if isinstance(roles, list) else [],
+                        picture=picture,
+                        raw_token=token,
+                    )
+
+                    sync_service = _get_user_sync_service()
+                    if sync_service and sync_service.enabled:
+                        asyncio.create_task(_sync_user_background(sync_service, user))
+
+                    return user
+            except HTTPException:
+                raise
+            except Exception as e:
+                logger.error(f"Provider-based trusted extraction failed: {e}", exc_info=True)
+                raise HTTPException(
+                    status_code=status.HTTP_401_UNAUTHORIZED,
+                    detail="Authentication failed."
+                )
+
+        # No auth providers configured - use standard OIDC claim extraction
+        logger.warning("No auth providers configured for trusted token extraction, using standard OIDC claims")
         email = payload.get('email') or payload.get('preferred_username')
         name = payload.get('name') or (
             f"{payload.get('given_name', '')} {payload.get('family_name', '')}"
         ).strip()
-        user_id = payload.get('http://schemas.boisestate.edu/claims/employeenumber')
+        user_id = payload.get('sub')
         roles = payload.get('roles', [])
         picture = payload.get('picture')
-        
-        # Basic validation of user_id (should still be a 9-digit number)
-        if not user_id or not user_id.isdigit() or len(user_id) != 9:
-            logger.warning(f"Invalid emplId in network-validated token for user: {email}")
+
+        if not user_id:
+            logger.warning(f"Missing 'sub' claim in network-validated token for user: {email}")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid user."
             )
-        
+
         user = User(
             email=email.lower() if email else "",
             name=name,
-            user_id=user_id,
+            user_id=str(user_id),
             roles=roles,
-            picture=picture
+            picture=picture,
+            raw_token=token,
         )
-        
+
         # Fire-and-forget sync to Users table
         sync_service = _get_user_sync_service()
         if sync_service and sync_service.enabled:
-            # Use asyncio.create_task for fire-and-forget behavior
             asyncio.create_task(_sync_user_background(sync_service, user))
-        
+
         return user
-        
+
     except jwt.DecodeError as e:
         logger.error(f"Failed to decode JWT token: {e}")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Malformed token."
         )
+    except HTTPException:
+        raise
     except Exception as e:
         logger.error(f"Unexpected error extracting user from token: {e}", exc_info=True)
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication failed."
         )
-

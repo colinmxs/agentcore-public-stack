@@ -49,15 +49,13 @@
 /* Messages container for full-page mode */
 .chat-messages-container.full-page {
   position: relative;
-  padding-bottom: 7.5rem; /* pb-30 */
-  padding-top: 4rem; /* pt-16 */
   max-width: 720px;
   margin-left: auto;
   margin-right: auto;
   padding-left: 1rem;
   padding-right: 1rem;
-  padding-top: 1.5rem;
-  padding-bottom: 1.5rem;
+  padding-top: 3rem; /* Clear the fixed header (4rem) + small gap */
+  padding-bottom: 7.5rem; /* Space for fixed input */
   min-width: 0;
 }
 

@@ -1,9 +1,8 @@
-"""OIDC authentication service for Entra ID."""
+"""OIDC authentication service with multi-provider support."""
 
 import base64
 import hashlib
 import logging
-import os
 import secrets
 from typing import Any, Dict, Optional, Tuple
 from urllib.parse import urlencode
@@ -11,7 +10,7 @@ from urllib.parse import urlencode
 import httpx
 from fastapi import HTTPException, status
 
-from apis.shared.auth.state_store import OIDCStateData, StateStore, create_state_store
+from apis.shared.auth.state_store import OIDCStateData, create_state_store
 
 logger = logging.getLogger(__name__)
 
@@ -33,82 +32,55 @@ def generate_pkce_pair() -> Tuple[str, str]:
     return code_verifier, code_challenge
 
 
-class OIDCAuthService:
-    """Service for handling OIDC authentication with Entra ID."""
-    
-    def __init__(self):
-        """Initialize OIDC service with configuration from environment."""
-        self.tenant_id = os.getenv('ENTRA_TENANT_ID')
-        self.client_id = os.getenv('ENTRA_CLIENT_ID')
-        self.client_secret = os.getenv('ENTRA_CLIENT_SECRET')
-        self.redirect_uri = os.getenv('ENTRA_REDIRECT_URI')
-        
-        if not all([self.tenant_id, self.client_id, self.client_secret, self.redirect_uri]):
-            raise ValueError(
-                "ENTRA_TENANT_ID, ENTRA_CLIENT_ID, ENTRA_CLIENT_SECRET, and ENTRA_REDIRECT_URI "
-                "environment variables are required"
-            )
-        
-        # Use OIDC v2.0 endpoints (Microsoft Identity Platform)
-        self.authority = f"https://login.microsoftonline.com/{self.tenant_id}"
-        self.authorization_endpoint = f"{self.authority}/oauth2/v2.0/authorize"
-        self.token_endpoint = f"{self.authority}/oauth2/v2.0/token"
-        self.logout_endpoint = f"{self.authority}/oauth2/v2.0/logout"
-        
-        # Build scope string with API scope (matches frontend format)
-        # Format: openid profile email api://{client_id}/Read offline_access
-        self.scope = f"openid profile email api://{self.client_id}/Read offline_access"
-        
-        # Distributed state storage (DynamoDB in production, in-memory for local dev)
-        self.state_store: StateStore = create_state_store()
-        
-        # State TTL in seconds (10 minutes)
+class GenericOIDCAuthService:
+    """Provider-agnostic OIDC auth service for dynamically configured providers."""
+
+    def __init__(self, provider, client_secret: str, state_store):
+        """
+        Initialize with a specific auth provider configuration.
+
+        Args:
+            provider: AuthProvider from the database
+            client_secret: Client secret from Secrets Manager
+            state_store: StateStore instance for OIDC state management
+        """
+        self.provider = provider
+        self.client_secret = client_secret
+        self.client_id = provider.client_id
+        self.authorization_endpoint = provider.authorization_endpoint
+        self.token_endpoint = provider.token_endpoint
+        self.logout_endpoint = provider.end_session_endpoint
+        self.scope = provider.scopes
+        self.redirect_uri = provider.redirect_uri
+        self.pkce_enabled = provider.pkce_enabled
+        self.state_store = state_store
         self._state_ttl = 600
-    
+
     def generate_state(
         self,
         redirect_uri: Optional[str] = None
     ) -> Tuple[str, str, str]:
-        """
-        Generate secure state, PKCE verifier/challenge, and nonce for OAuth flow.
-
-        Args:
-            redirect_uri: Optional redirect URI to store with state
-
-        Returns:
-            Tuple of (state, code_challenge, nonce)
-        """
+        """Generate secure state, PKCE challenge, and nonce."""
         state = secrets.token_urlsafe(32)
         code_verifier, code_challenge = generate_pkce_pair()
         nonce = secrets.token_urlsafe(32)
 
-        # Store state with PKCE verifier and nonce for validation during callback
         self.state_store.store_state(
             state=state,
             data=OIDCStateData(
                 redirect_uri=redirect_uri,
-                code_verifier=code_verifier,
+                code_verifier=code_verifier if self.pkce_enabled else None,
                 nonce=nonce,
+                provider_id=self.provider.provider_id,
             ),
             ttl_seconds=self._state_ttl
         )
         return state, code_challenge, nonce
 
     def validate_state(self, state: str) -> Tuple[bool, Optional[OIDCStateData]]:
-        """
-        Validate state token and return associated OIDC data.
-
-        Uses distributed state store to ensure state validation works
-        across multiple instances in a distributed system.
-
-        Args:
-            state: State token to validate
-
-        Returns:
-            Tuple of (is_valid, OIDCStateData or None)
-        """
+        """Validate state token and return associated OIDC data."""
         return self.state_store.get_and_delete_state(state)
-    
+
     def build_authorization_url(
         self,
         state: str,
@@ -117,19 +89,7 @@ class OIDCAuthService:
         redirect_uri: Optional[str] = None,
         prompt: str = "select_account"
     ) -> str:
-        """
-        Build Entra ID authorization URL with PKCE and nonce.
-
-        Args:
-            state: CSRF protection state token
-            code_challenge: PKCE code challenge (S256)
-            nonce: ID token nonce binding
-            redirect_uri: Optional redirect URI (defaults to configured value)
-            prompt: Prompt parameter (select_account, login, consent, etc.)
-
-        Returns:
-            Complete authorization URL with PKCE parameters
-        """
+        """Build authorization URL with PKCE and nonce."""
         redirect = redirect_uri or self.redirect_uri
 
         params = {
@@ -137,68 +97,45 @@ class OIDCAuthService:
             "response_type": "code",
             "redirect_uri": redirect,
             "response_mode": "query",
-            "scope": self.scope,  # Includes API scope: api://{client_id}/Read
+            "scope": self.scope,
             "state": state,
-            "nonce": nonce,  # ID token binding
-            "code_challenge": code_challenge,  # PKCE
-            "code_challenge_method": "S256",  # PKCE method
+            "nonce": nonce,
             "prompt": prompt,
         }
 
-        # Returns OIDC v2.0 authorization URL format:
-        # https://login.microsoftonline.com/{tenant_id}/oauth2/v2.0/authorize?...
+        if self.pkce_enabled:
+            params["code_challenge"] = code_challenge
+            params["code_challenge_method"] = "S256"
+
         return f"{self.authorization_endpoint}?{urlencode(params)}"
-    
+
     async def exchange_code_for_tokens(
         self,
         code: str,
         state: str,
         redirect_uri: Optional[str] = None
     ) -> Dict[str, Any]:
-        """
-        Exchange authorization code for access and refresh tokens.
-
-        Validates state, retrieves stored PKCE code_verifier, and exchanges
-        the authorization code for tokens.
-
-        Args:
-            code: Authorization code from Entra ID
-            state: State token for CSRF protection
-            redirect_uri: Optional redirect URI (must match authorization request)
-
-        Returns:
-            Dictionary containing access_token, refresh_token, id_token, and expires_in
-
-        Raises:
-            HTTPException: If token exchange fails or state/nonce is invalid
-        """
-        # Validate state and retrieve stored OIDC data (code_verifier, nonce)
-        logger.debug(f"Validating state token: {state[:16]}..." if len(state) > 16 else f"Validating state token: {state}")
+        """Exchange authorization code for tokens."""
         is_valid, state_data = self.validate_state(state)
         if not is_valid or state_data is None:
-            logger.warning(f"Invalid or expired state token: {state[:16]}..." if len(state) > 16 else f"Invalid or expired state token: {state}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
                 detail="Invalid or expired state parameter. Please initiate login again."
             )
 
-        # Use stored redirect URI if available, otherwise use provided/default
         redirect = state_data.redirect_uri or redirect_uri or self.redirect_uri
 
-        # Prepare token request with OIDC v2.0 token endpoint
-        # Include PKCE code_verifier for validation
         token_data = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "code": code,
             "grant_type": "authorization_code",
             "redirect_uri": redirect,
-            "scope": self.scope,  # Must match authorization request scope
-            "code_verifier": state_data.code_verifier,  # PKCE verification
+            "scope": self.scope,
         }
 
-        logger.info(f"Token exchange request - scope: {self.scope}")
-        logger.debug(f"Token exchange - redirect_uri: {redirect}, has_code_verifier: {state_data.code_verifier is not None}")
+        if self.pkce_enabled and state_data.code_verifier:
+            token_data["code_verifier"] = state_data.code_verifier
 
         try:
             async with httpx.AsyncClient() as client:
@@ -216,101 +153,52 @@ class OIDCAuthService:
                 if id_token and state_data.nonce:
                     import jwt
                     try:
-                        # Decode without verification to check nonce
-                        # (Signature is validated by Entra ID during token exchange)
                         id_claims = jwt.decode(id_token, options={"verify_signature": False})
                         token_nonce = id_claims.get("nonce")
                         if token_nonce != state_data.nonce:
-                            logger.error(
-                                f"Nonce mismatch: expected={state_data.nonce[:8]}..., "
-                                f"got={token_nonce[:8] if token_nonce else 'None'}..."
-                            )
                             raise HTTPException(
                                 status_code=status.HTTP_400_BAD_REQUEST,
-                                detail="ID token nonce validation failed. Please try again."
+                                detail="ID token nonce validation failed."
                             )
-                    except jwt.DecodeError as e:
-                        logger.error(f"Failed to decode ID token for nonce validation: {e}")
+                    except jwt.DecodeError:
                         raise HTTPException(
                             status_code=status.HTTP_400_BAD_REQUEST,
-                            detail="Invalid ID token received. Please try again."
+                            detail="Invalid ID token received."
                         )
 
-                logger.info("Successfully exchanged authorization code for tokens")
-
-                # Log token details for debugging
-                access_token = token_response.get("access_token")
-                if access_token:
-                    try:
-                        # Decode without verification to log audience
-                        token_claims = jwt.decode(access_token, options={"verify_signature": False})
-                        logger.info(f"Access token audience: {token_claims.get('aud')}")
-                        logger.info(f"Access token scopes (scp): {token_claims.get('scp')}")
-                    except Exception as decode_err:
-                        logger.warning(f"Could not decode access token for logging: {decode_err}")
-
                 return {
-                    "access_token": access_token,
+                    "access_token": token_response.get("access_token"),
                     "refresh_token": token_response.get("refresh_token"),
                     "id_token": token_response.get("id_token"),
                     "token_type": token_response.get("token_type", "Bearer"),
                     "expires_in": token_response.get("expires_in", 3600),
                     "scope": token_response.get("scope", ""),
+                    "provider_id": self.provider.provider_id,
                 }
 
         except httpx.HTTPStatusError as e:
-            logger.error(f"Token exchange failed with status {e.response.status_code}: {e.response.text}")
+            logger.error(f"Token exchange failed for provider {self.provider.provider_id}: {e.response.status_code}")
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to exchange authorization code for tokens. Please try again."
+                detail="Failed to exchange authorization code for tokens."
             )
         except httpx.RequestError as e:
-            logger.error(f"Token exchange request failed: {e}")
+            logger.error(f"Token exchange request failed for provider {self.provider.provider_id}: {e}")
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable. Please try again later."
+                detail="Authentication service unavailable."
             )
-    
-    def build_logout_url(self, post_logout_redirect_uri: Optional[str] = None) -> str:
-        """
-        Build Entra ID logout URL.
-
-        Args:
-            post_logout_redirect_uri: URL to redirect to after logout (optional)
-
-        Returns:
-            Complete logout URL for Entra ID
-        """
-        params = {}
-        if post_logout_redirect_uri:
-            params["post_logout_redirect_uri"] = post_logout_redirect_uri
-
-        if params:
-            return f"{self.logout_endpoint}?{urlencode(params)}"
-        return self.logout_endpoint
 
     async def refresh_access_token(self, refresh_token: str) -> Dict[str, Any]:
-        """
-        Refresh access token using refresh token.
-        
-        Args:
-            refresh_token: Refresh token from previous authentication
-            
-        Returns:
-            Dictionary containing new access_token, refresh_token, id_token, and expires_in
-            
-        Raises:
-            HTTPException: If token refresh fails
-        """
-        # Refresh token request with OIDC v2.0 token endpoint
+        """Refresh access token using refresh token."""
         token_data = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
             "refresh_token": refresh_token,
             "grant_type": "refresh_token",
-            "scope": self.scope,  # Includes API scope: api://{client_id}/Read
+            "scope": self.scope,
         }
-        
+
         try:
             async with httpx.AsyncClient() as client:
                 response = await client.post(
@@ -321,9 +209,7 @@ class OIDCAuthService:
                 )
                 response.raise_for_status()
                 token_response = response.json()
-                
-                logger.info("Successfully refreshed access token")
-                
+
                 return {
                     "access_token": token_response.get("access_token"),
                     "refresh_token": token_response.get("refresh_token") or refresh_token,
@@ -331,10 +217,10 @@ class OIDCAuthService:
                     "token_type": token_response.get("token_type", "Bearer"),
                     "expires_in": token_response.get("expires_in", 3600),
                     "scope": token_response.get("scope", ""),
+                    "provider_id": self.provider.provider_id,
                 }
-                
+
         except httpx.HTTPStatusError as e:
-            logger.error(f"Token refresh failed with status {e.response.status_code}: {e.response.text}")
             if e.response.status_code == 400:
                 raise HTTPException(
                     status_code=status.HTTP_401_UNAUTHORIZED,
@@ -342,41 +228,70 @@ class OIDCAuthService:
                 )
             raise HTTPException(
                 status_code=status.HTTP_400_BAD_REQUEST,
-                detail="Failed to refresh access token. Please try again."
+                detail="Failed to refresh access token."
             )
-        except httpx.RequestError as e:
-            logger.error(f"Token refresh request failed: {e}")
+        except httpx.RequestError:
             raise HTTPException(
                 status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
-                detail="Authentication service unavailable. Please try again later."
+                detail="Authentication service unavailable."
             )
 
+    def build_logout_url(self, post_logout_redirect_uri: Optional[str] = None) -> str:
+        """Build logout URL for the provider."""
+        if not self.logout_endpoint:
+            return ""
 
-# Global service instance
-_service: Optional[OIDCAuthService] = None
+        params = {}
+        if post_logout_redirect_uri:
+            params["post_logout_redirect_uri"] = post_logout_redirect_uri
+
+        if params:
+            return f"{self.logout_endpoint}?{urlencode(params)}"
+        return self.logout_endpoint
 
 
-def _check_auth_config() -> None:
-    """Check if required authentication environment variables are set."""
-    required_vars = [
-        'ENTRA_TENANT_ID',
-        'ENTRA_CLIENT_ID',
-        'ENTRA_CLIENT_SECRET',
-        'ENTRA_REDIRECT_URI'
-    ]
-    missing_vars = [var for var in required_vars if not os.getenv(var)]
-    if missing_vars:
-        raise ValueError(
-            f"Missing required environment variables for authentication: {', '.join(missing_vars)}. "
-            f"Please set these variables to enable OIDC authentication with Entra ID."
+async def get_generic_auth_service(provider_id: str) -> GenericOIDCAuthService:
+    """
+    Create a GenericOIDCAuthService for a specific auth provider.
+
+    Args:
+        provider_id: The auth provider ID to create the service for
+
+    Returns:
+        GenericOIDCAuthService configured for the provider
+
+    Raises:
+        HTTPException: If provider not found or not enabled
+    """
+    from apis.shared.auth_providers.service import get_auth_provider_service
+
+    service = get_auth_provider_service()
+    provider = await service.get_provider(provider_id)
+
+    if not provider:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Authentication provider '{provider_id}' not found."
         )
 
+    if not provider.enabled:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Authentication provider '{provider_id}' is not enabled."
+        )
 
-def get_auth_service() -> OIDCAuthService:
-    """Get or create the global OIDC auth service instance."""
-    global _service
-    if _service is None:
-        _check_auth_config()
-        _service = OIDCAuthService()
-    return _service
+    client_secret = await service.get_client_secret(provider_id)
+    if not client_secret:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Client secret not configured for provider '{provider_id}'."
+        )
+
+    state_store = create_state_store()
+
+    return GenericOIDCAuthService(
+        provider=provider,
+        client_secret=client_secret,
+        state_store=state_store,
+    )
 

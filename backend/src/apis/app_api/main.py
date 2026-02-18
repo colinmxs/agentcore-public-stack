@@ -71,18 +71,19 @@ app = FastAPI(
 )
 
 # Add CORS middleware
-# Backend (ECS Fargate + ALB) is on api.beta.boisestate.ai
-# Frontend (CloudFront) is on beta.boisestate.ai - needs CORS for cross-origin requests
+# CORS origins are automatically configured based on FRONTEND_URL environment variable
 allowed_origins = []
 
-if os.getenv('ENVIRONMENT', 'development') == 'development':
-    allowed_origins.append("http://localhost:4200")  # Frontend dev server
-    logger.info("CORS: Added local development origin")
+# Read frontend URL from environment variable (set by CDK based on frontend.domainName)
+frontend_url = os.getenv('FRONTEND_URL', '')
+if frontend_url:
+    allowed_origins.append(frontend_url)
+    logger.info(f"CORS: Added frontend origin: {frontend_url}")
 
-# Always allow production frontend in non-local environments
-if os.getenv('ENVIRONMENT') != 'development':
-    allowed_origins.append("https://beta.boisestate.ai")
-    logger.info("CORS: Added production frontend origin")
+# Fallback: Add localhost for local development if no frontend URL configured
+if not allowed_origins:
+    allowed_origins.append("http://localhost:4200")
+    logger.info("CORS: Added local development origin (fallback)")
 
 if allowed_origins:
     app.add_middleware(

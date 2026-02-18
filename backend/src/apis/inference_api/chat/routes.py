@@ -28,6 +28,7 @@ from apis.shared.errors import (
 )
 from apis.shared.quota import (
     QuotaExceededEvent,
+    build_no_quota_configured_event,
     build_quota_exceeded_event,
     build_quota_warning_event,
     get_quota_checker,
@@ -206,6 +207,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     """
     input_data = request
     user_id = current_user.user_id
+    auth_token = current_user.raw_token
     logger.info(f"Invocation request - Session: {input_data.session_id}, User: {user_id}")
     logger.info(f"Message: {input_data.message[:50]}...")
 
@@ -248,9 +250,14 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             quota_result = await quota_checker.check_quota(user=current_user, session_id=input_data.session_id)
 
             if not quota_result.allowed:
-                # Quota exceeded - stream as SSE instead of 429 for better UX
-                logger.warning(f"Quota exceeded for user {user_id}: {quota_result.message}")
-                quota_exceeded_event = build_quota_exceeded_event(quota_result)
+                # Quota blocked - stream as SSE instead of 429 for better UX
+                logger.warning(f"Quota blocked for user {user_id}: {quota_result.message}")
+                if quota_result.tier is None:
+                    # No quota tier configured for this user
+                    quota_exceeded_event = build_no_quota_configured_event(quota_result)
+                else:
+                    # Quota limit exceeded
+                    quota_exceeded_event = build_quota_exceeded_event(quota_result)
             else:
                 # Check for warning level
                 quota_warning_event = build_quota_warning_event(quota_result)
@@ -483,6 +490,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         agent = get_agent(
             session_id=input_data.session_id,
             user_id=user_id,
+            auth_token=auth_token,
             enabled_tools=input_data.enabled_tools,
             model_id=input_data.model_id,
             temperature=input_data.temperature,

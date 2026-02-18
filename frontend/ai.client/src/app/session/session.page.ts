@@ -271,7 +271,7 @@ export class ConversationPage implements OnDestroy {
 
       // Add the session to cache so sidenav can show it
       const user = this.userService.currentUser();
-      const userId = user?.empl_id || 'anonymous';
+      const userId = user?.user_id || 'anonymous';
       this.sessionService.addSessionToCache(newSessionId, userId);
     }
   }

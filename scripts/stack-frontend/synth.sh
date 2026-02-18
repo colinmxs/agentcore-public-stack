@@ -43,7 +43,7 @@ cdk synth FrontendStack \
     --context production="${CDK_PRODUCTION}" \
     --context vpcCidr="${CDK_VPC_CIDR}" \
     --context infrastructureHostedZoneDomain="${CDK_HOSTED_ZONE_DOMAIN}" \
-    --context frontend.domainName="${CDK_FRONTEND_DOMAIN_NAME}" \
+    --context frontend.domainName="${CDK_DOMAIN_NAME}" \
     --context frontend.enableRoute53="${CDK_FRONTEND_ENABLE_ROUTE53}" \
     --context frontend.certificateArn="${CDK_FRONTEND_CERTIFICATE_ARN}" \
     --context frontend.bucketName="${CDK_FRONTEND_BUCKET_NAME}" \

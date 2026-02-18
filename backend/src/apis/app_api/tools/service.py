@@ -102,7 +102,6 @@ class ToolCatalogService:
                     display_name=tool.display_name,
                     description=tool.description,
                     category=tool.category,
-                    icon=tool.icon,
                     protocol=tool.protocol,
                     status=tool.status,
                     granted_by=granted_by,
@@ -213,6 +212,33 @@ class ToolCatalogService:
 
         return tool
 
+    def _validate_auth_config(self, tool: ToolDefinition) -> None:
+        """
+        Validate that auth configurations don't conflict.
+
+        Raises:
+            ValueError: If forward_auth_token and requires_oauth_provider are both set,
+                or if forward_auth_token is set with a non-'none' MCP auth type.
+        """
+        if tool.forward_auth_token and tool.requires_oauth_provider:
+            raise ValueError(
+                "Cannot enable both 'forward_auth_token' and 'requires_oauth_provider'. "
+                "Both use the Authorization header and are mutually exclusive."
+            )
+
+        if tool.forward_auth_token and tool.mcp_config:
+            auth_type = tool.mcp_config.auth_type
+            if isinstance(auth_type, str):
+                is_none = auth_type == "none"
+            else:
+                from .models import MCPAuthType
+                is_none = auth_type == MCPAuthType.NONE
+            if not is_none:
+                raise ValueError(
+                    "When 'forward_auth_token' is enabled, MCP auth type must be 'none'. "
+                    "The OIDC token will use the Authorization header."
+                )
+
     async def create_tool(
         self, tool: ToolDefinition, admin: User
     ) -> ToolDefinition:
@@ -225,7 +251,12 @@ class ToolCatalogService:
 
         Returns:
             Created ToolDefinition
+
+        Raises:
+            ValueError: If auth configuration is invalid
         """
+        self._validate_auth_config(tool)
+
         tool.created_by = admin.user_id
         tool.updated_by = admin.user_id
 
@@ -256,7 +287,26 @@ class ToolCatalogService:
 
         Returns:
             Updated ToolDefinition or None if not found
+
+        Raises:
+            ValueError: If the resulting auth configuration is invalid
         """
+        # Pre-validate auth config if relevant fields are being updated
+        if "forward_auth_token" in updates or "requires_oauth_provider" in updates or "mcp_config" in updates:
+            existing = await self.repository.get_tool(tool_id)
+            if existing:
+                # Build a preview of the updated tool for validation
+                preview = ToolDefinition(
+                    tool_id=existing.tool_id,
+                    display_name=existing.display_name,
+                    description=existing.description,
+                    protocol=existing.protocol,
+                    forward_auth_token=updates.get("forward_auth_token", existing.forward_auth_token),
+                    requires_oauth_provider=updates.get("requires_oauth_provider", existing.requires_oauth_provider),
+                    mcp_config=updates.get("mcp_config", existing.mcp_config),
+                )
+                self._validate_auth_config(preview)
+
         updated = await self.repository.update_tool(
             tool_id, updates, admin_user_id=admin.user_id
         )
@@ -458,14 +508,18 @@ class ToolCatalogService:
         self, admin: User, dry_run: bool = True
     ) -> SyncResult:
         """
-        Discover tools from backend registry and sync to catalog.
+        Discover new tools from the backend registry and add them to the catalog.
+
+        Only adds tools that are in the registry but not yet in the catalog.
+        Does NOT modify or deprecate existing catalog entries, since those may
+        include externally configured tools (MCP external, A2A, etc.).
 
         Args:
             admin: Admin user performing the action
             dry_run: If True, only report what would happen
 
         Returns:
-            SyncResult with discovered, orphaned, and unchanged tools
+            SyncResult with discovered and unchanged tools
         """
         # Get registered tools from in-memory catalog
         registered_tools = TOOL_CATALOG
@@ -487,14 +541,6 @@ class ToolCatalogService:
                     "action": "create",
                 })
 
-        orphaned = []
-        for tool in catalog_tools:
-            if tool.tool_id not in registered_ids:
-                orphaned.append({
-                    "tool_id": tool.tool_id,
-                    "action": "mark_deprecated",
-                })
-
         unchanged = list(catalog_ids & registered_ids)
 
         if not dry_run:
@@ -512,27 +558,18 @@ class ToolCatalogService:
                 )
                 await self.create_tool(tool, admin)
 
-            # Mark orphaned as deprecated
-            for item in orphaned:
-                await self.update_tool(
-                    item["tool_id"],
-                    {"status": ToolStatus.DEPRECATED},
-                    admin,
-                )
-
             logger.info(
                 f"Admin {admin.email} synced tool catalog",
                 extra={
                     "event": "tool_catalog_synced",
                     "admin_user_id": admin.user_id,
                     "discovered": len(discovered),
-                    "orphaned": len(orphaned),
                 },
             )
 
         return SyncResult(
             discovered=discovered,
-            orphaned=orphaned,
+            orphaned=[],
             unchanged=unchanged,
             dry_run=dry_run,
         )
@@ -569,7 +606,6 @@ class ToolCatalogService:
             display_name=legacy.name,
             description=legacy.description,
             category=self._map_legacy_category(legacy.category),
-            icon=legacy.icon,
             protocol=ToolProtocol.MCP_GATEWAY if legacy.is_gateway_tool else ToolProtocol.LOCAL,
             status=ToolStatus.ACTIVE,
             requires_oauth_provider=legacy.requires_oauth_provider,

@@ -152,6 +152,21 @@ export const routes: Routes = [
         canActivate: [adminGuard],
     },
     {
+        path: 'admin/auth-providers',
+        loadComponent: () => import('./admin/auth-providers/pages/provider-list.page').then(m => m.AuthProviderListPage),
+        canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/auth-providers/new',
+        loadComponent: () => import('./admin/auth-providers/pages/provider-form.page').then(m => m.AuthProviderFormPage),
+        canActivate: [adminGuard],
+    },
+    {
+        path: 'admin/auth-providers/edit/:providerId',
+        loadComponent: () => import('./admin/auth-providers/pages/provider-form.page').then(m => m.AuthProviderFormPage),
+        canActivate: [adminGuard],
+    },
+    {
         path: 'admin/oauth-providers',
         loadComponent: () => import('./admin/oauth-providers/pages/provider-list.page').then(m => m.ProviderListPage),
         canActivate: [adminGuard],

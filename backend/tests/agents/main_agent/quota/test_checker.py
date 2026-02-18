@@ -100,16 +100,16 @@ def sample_assignment():
 async def test_check_quota_no_quota_configured(
     checker, mock_resolver, sample_user
 ):
-    """Test quota check when no quota is configured"""
+    """Test quota check when no quota is configured (fail-closed)"""
     # No quota resolved
     mock_resolver.resolve_user_quota.return_value = None
 
     # Check quota
     result = await checker.check_quota(sample_user)
 
-    # Assertions
-    assert result.allowed is True
-    assert result.message == "No quota configured"
+    # Assertions - should block when no quota configured
+    assert result.allowed is False
+    assert result.message == "No quota tier configured. Please contact your administrator."
     assert result.tier is None
     assert result.current_usage == 0.0
 
