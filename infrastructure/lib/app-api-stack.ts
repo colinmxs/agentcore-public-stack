@@ -1223,6 +1223,7 @@ export class AppApiStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: [
           "bedrock-agentcore:CreateAgentRuntime",
+          "bedrock-agentcore:CreateAgentRuntimeEndpoint",
           "bedrock-agentcore:UpdateAgentRuntime",
           "bedrock-agentcore:DeleteAgentRuntime",
           "bedrock-agentcore:GetAgentRuntime",
