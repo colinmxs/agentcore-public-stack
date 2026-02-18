@@ -246,7 +246,7 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
             }
         },
         authorizerConfiguration={
-            'customJwtAuthorizer': {
+            'customJWTAuthorizer': {
                 'discoveryUrl': discovery_url,
                 'allowedAudience': [provider_config['client_id']]
             }
@@ -303,7 +303,7 @@ def update_runtime(runtime_id: str, provider_config: Dict[str, Any]) -> None:
         agentRuntimeId=runtime_id,
         agentRuntimeArtifact=current_artifact,
         authorizerConfiguration={
-            'customJwtAuthorizer': {
+            'customJWTAuthorizer': {
                 'discoveryUrl': discovery_url,
                 'allowedAudience': [provider_config['client_id']]
             }
