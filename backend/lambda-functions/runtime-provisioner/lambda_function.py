@@ -213,7 +213,21 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     image_tag = get_container_image_tag()
     
     # Construct runtime name (replace hyphens with underscores)
-    runtime_name = f"{PROJECT_PREFIX}_agentcore_runtime_{provider_id.replace('-', '_')}"
+    # Max length is 48 characters: [a-zA-Z][a-zA-Z0-9_]{0,47}
+    base_name = f"{PROJECT_PREFIX}_runtime_{provider_id.replace('-', '_')}"
+    
+    # Truncate if necessary to fit within 48 character limit
+    if len(base_name) > 48:
+        # Keep the provider_id recognizable by truncating the prefix
+        max_provider_id_length = 48 - len("_runtime_") - 1  # -1 for first character
+        truncated_provider_id = provider_id.replace('-', '_')[:max_provider_id_length]
+        runtime_name = f"r_{truncated_provider_id}"  # 'r_' prefix to ensure it starts with letter
+        # Ensure we're still under 48 chars
+        runtime_name = runtime_name[:48]
+    else:
+        runtime_name = base_name
+    
+    logger.info(f"Runtime name: {runtime_name} (length: {len(runtime_name)})")
     
     # Get container image URI from ECR
     image_uri = get_container_image_uri(image_tag)
