@@ -80,7 +80,7 @@ import { AuthProvider } from '../models/auth-provider.model';
     </div>
 
     <!-- Runtime Version Summary -->
-    @if (currentImageTag() && getProvidersWithRuntimes().length > 0) {
+    @if (currentImageTag() && hasAnyRuntimeInfo()) {
       <div class="mb-6 rounded-sm border border-blue-200 bg-blue-50 p-4 dark:border-blue-800 dark:bg-blue-900/20">
         <div class="flex items-start justify-between gap-4">
           <div class="flex items-start gap-3">
@@ -570,6 +570,10 @@ export class AuthProviderListPage {
 
   getProvidersWithRuntimes(): AuthProvider[] {
     return this.providers().filter(p => p.agentcore_runtime_status === 'READY');
+  }
+
+  hasAnyRuntimeInfo(): boolean {
+    return this.providers().some(p => this.hasRuntimeInfo(p));
   }
 
   getOutdatedRuntimesCount(): number {
