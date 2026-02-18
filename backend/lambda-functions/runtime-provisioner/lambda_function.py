@@ -212,15 +212,17 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     # Fetch container image tag from SSM
     image_tag = get_container_image_tag()
     
-    # Construct runtime name (replace hyphens with underscores)
+    # Construct runtime name (replace ALL hyphens with underscores for AWS validation)
     # Max length is 48 characters: [a-zA-Z][a-zA-Z0-9_]{0,47}
-    base_name = f"{PROJECT_PREFIX}_runtime_{provider_id.replace('-', '_')}"
+    safe_prefix = PROJECT_PREFIX.replace('-', '_')
+    safe_provider_id = provider_id.replace('-', '_')
+    base_name = f"{safe_prefix}_runtime_{safe_provider_id}"
     
     # Truncate if necessary to fit within 48 character limit
     if len(base_name) > 48:
         # Keep the provider_id recognizable by truncating the prefix
         max_provider_id_length = 48 - len("_runtime_") - 1  # -1 for first character
-        truncated_provider_id = provider_id.replace('-', '_')[:max_provider_id_length]
+        truncated_provider_id = safe_provider_id[:max_provider_id_length]
         runtime_name = f"r_{truncated_provider_id}"  # 'r_' prefix to ensure it starts with letter
         # Ensure we're still under 48 chars
         runtime_name = runtime_name[:48]
