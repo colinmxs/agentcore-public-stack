@@ -277,10 +277,14 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     runtime_arn = response['agentRuntimeArn']
     runtime_id = response['agentRuntimeId']
     
-    # Construct endpoint URL
-    endpoint_url = f"https://bedrock-agentcore.{AWS_REGION}.amazonaws.com/runtimes/{runtime_arn}/invocations"
+    # Construct endpoint URL with properly encoded runtime ARN
+    # The runtime ARN contains colons and slashes that must be URL-encoded
+    from urllib.parse import quote
+    encoded_runtime_arn = quote(runtime_arn, safe='')
+    endpoint_url = f"https://bedrock-agentcore.{AWS_REGION}.amazonaws.com/runtimes/{encoded_runtime_arn}/invocations"
     
     logger.info(f"Runtime created: {runtime_arn}")
+    logger.info(f"Endpoint URL: {endpoint_url}")
     
     return {
         'runtime_arn': runtime_arn,
