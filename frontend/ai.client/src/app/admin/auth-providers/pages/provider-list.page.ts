@@ -569,7 +569,7 @@ export class AuthProviderListPage {
   }
 
   getProvidersWithRuntimes(): AuthProvider[] {
-    return this.providers().filter(p => this.hasRuntimeInfo(p));
+    return this.providers().filter(p => p.agentcore_runtime_status === 'READY');
   }
 
   getOutdatedRuntimesCount(): number {

@@ -1224,6 +1224,7 @@ export class AppApiStack extends cdk.Stack {
         actions: [
           "bedrock-agentcore:CreateAgentRuntime",
           "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+          "bedrock-agentcore:CreateWorkloadIdentity",
           "bedrock-agentcore:UpdateAgentRuntime",
           "bedrock-agentcore:DeleteAgentRuntime",
           "bedrock-agentcore:GetAgentRuntime",
