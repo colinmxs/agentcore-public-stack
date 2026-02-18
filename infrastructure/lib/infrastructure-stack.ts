@@ -686,8 +686,8 @@ export class InfrastructureStack extends cdk.Stack {
     });
 
     // Construct OAuth callback URL
-    const oauthCallbackUrl = config.frontend?.domainName
-      ? `https://${config.frontend.domainName}/auth/callback`
+    const oauthCallbackUrl = config.domainName
+      ? `https://${config.domainName}/auth/callback`
       : `${albUrl}/auth/callback`;
 
     // Export OAuth callback URL for runtime provisioner
