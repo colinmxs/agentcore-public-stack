@@ -209,7 +209,7 @@ export class FrontendStack extends cdk.Stack {
     };
 
     // Add custom domain and certificate if configured
-    if (config.frontend.domainName && config.frontend.certificateArn) {
+    if (config.domainName && config.frontend.certificateArn) {
       const certificate = acm.Certificate.fromCertificateArn(
         this,
         'Certificate',
@@ -217,7 +217,7 @@ export class FrontendStack extends cdk.Stack {
       );
       distributionProps = {
         ...distributionProps,
-        domainNames: [config.frontend.domainName],
+        domainNames: [config.domainName],
         certificate: certificate,
       };
     }
@@ -244,16 +244,16 @@ export class FrontendStack extends cdk.Stack {
     this.distributionDomainName = this.distribution.distributionDomainName;
 
     // Create Route53 A record if domain is configured and Route53 is enabled
-    if (config.frontend.enableRoute53 && config.frontend.domainName) {
+    if (config.frontend.enableRoute53 && config.domainName) {
       // Look up the hosted zone
       const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-        domainName: config.frontend.domainName,
+        domainName: config.domainName,
       });
 
       // Create A record aliasing to CloudFront
       new route53.ARecord(this, 'FrontendARecord', {
         zone: hostedZone,
-        recordName: config.frontend.domainName,
+        recordName: config.domainName,
         target: route53.RecordTarget.fromAlias(
           new targets.CloudFrontTarget(this.distribution)
         ),
@@ -298,14 +298,14 @@ export class FrontendStack extends cdk.Stack {
 
     new ssm.StringParameter(this, 'FrontendUrlParameter', {
       parameterName: `/${config.projectPrefix}/frontend/url`,
-      stringValue: config.frontend.domainName || `https://${this.distributionDomainName}`,
+      stringValue: config.domainName || `https://${this.distributionDomainName}`,
       description: 'Frontend website URL',
       tier: ssm.ParameterTier.STANDARD,
     });
 
     // Construct CORS origins list
-    const corsOrigins = config.frontend.domainName
-      ? `https://${config.frontend.domainName}`
+    const corsOrigins = config.domainName
+      ? `https://${config.domainName}`
       : `https://${this.distributionDomainName}`;
 
     // Export CORS origins for runtime provisioner
@@ -343,7 +343,7 @@ export class FrontendStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, 'WebsiteUrl', {
-      value: config.frontend.domainName || `https://${this.distributionDomainName}`,
+      value: config.domainName || `https://${this.distributionDomainName}`,
       description: 'Frontend Website URL',
       exportName: `${config.projectPrefix}-WebsiteUrl`,
     });
