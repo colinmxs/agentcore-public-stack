@@ -202,8 +202,8 @@ build_cdk_context_params() {
     fi
     
     # Frontend optional parameters
-    if [ -n "${CDK_FRONTEND_DOMAIN_NAME:-}" ]; then
-        context_params="${context_params} --context frontend.domainName=\"${CDK_FRONTEND_DOMAIN_NAME}\""
+    if [ -n "${CDK_DOMAIN_NAME:-}" ]; then
+        context_params="${context_params} --context frontend.domainName=\"${CDK_DOMAIN_NAME}\""
     fi
     if [ -n "${CDK_FRONTEND_ENABLE_ROUTE53:-}" ]; then
         context_params="${context_params} --context frontend.enableRoute53=\"${CDK_FRONTEND_ENABLE_ROUTE53}\""

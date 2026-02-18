@@ -39,7 +39,7 @@ GitHub provides two mechanisms for storing configuration values:
 | CDK_FRONTEND_BUCKET_NAME | Secret | No | None | Frontend | S3 bucket name for frontend assets (defaults to generated name with account ID) |
 | CDK_FRONTEND_CERTIFICATE_ARN | Secret | No | None | Frontend | ACM certificate ARN for HTTPS on CloudFront (required for custom domain) |
 | CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS | Variable | No | `PriceClass_100` | Frontend | CloudFront price class (PriceClass_100, PriceClass_200, PriceClass_All) |
-| CDK_FRONTEND_DOMAIN_NAME | Variable | No | None | Frontend | Custom domain name for frontend (e.g., 'app.example.com') |
+| CDK_DOMAIN_NAME | Variable | No | None | Frontend | Custom domain name for frontend (e.g., 'app.example.com') |
 | CDK_FRONTEND_ENABLE_ROUTE53 | Variable | No | `false` | Frontend | Enable Route53 A record creation for custom domain |
 | CDK_FRONTEND_ENABLED | Variable | No | `true` | Frontend | Enable/disable Frontend stack deployment |
 | CDK_GATEWAY_API_TYPE | Variable | No | `HTTP` | Gateway | API Gateway type for Gateway (REST or HTTP) |
