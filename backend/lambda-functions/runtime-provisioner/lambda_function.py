@@ -267,6 +267,9 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
                 'allowedAudience': [provider_config['client_id']]
             }
         },
+        requestHeaderConfiguration={
+            'requestHeaderAllowlist': ['Authorization']
+        },
         roleArn=execution_role_arn,
         networkConfiguration={
             'networkMode': 'PUBLIC'
@@ -327,6 +330,9 @@ def update_runtime(runtime_id: str, provider_config: Dict[str, Any]) -> None:
                 'discoveryUrl': discovery_url,
                 'allowedAudience': [provider_config['client_id']]
             }
+        },
+        requestHeaderConfiguration={
+            'requestHeaderAllowlist': ['Authorization']
         },
         networkConfiguration=current_network_config,
         roleArn=current_role_arn
