@@ -1178,6 +1178,18 @@ export class AppApiStack extends cdk.Stack {
     authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
     authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
 
+    // Grant SSM read permissions for runtime image tag
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'SsmParameterReadAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/${config.projectPrefix}/inference-api/image-tag`,
+        ],
+      })
+    );
+
     // ============================================================
     // Runtime Provisioner Lambda
     // ============================================================
