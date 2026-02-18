@@ -66,7 +66,7 @@ async def get_runtime_image_tag(
     
     logger.info(f"Admin {admin_user.email} requesting runtime image tag")
     
-    project_prefix = os.environ.get("PROJECT_NAME", "agentcore")
+    project_prefix = os.environ.get("PROJECT_PREFIX", "agentcore")
     param_name = f"/{project_prefix}/inference-api/image-tag"
     
     try:
