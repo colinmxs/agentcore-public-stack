@@ -1040,6 +1040,16 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // Grant Bedrock permissions to list foundation models
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockListModels',
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:ListFoundationModels'],
+        resources: ['*'],
+      })
+    );
+
 
     // Grant permissions for quota management tables
     userQuotasTable.grantReadWriteData(taskDefinition.taskRole);
