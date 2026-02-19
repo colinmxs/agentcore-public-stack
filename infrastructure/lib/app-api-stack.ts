@@ -1197,7 +1197,7 @@ export class AppApiStack extends cdk.Stack {
     // Create Lambda function for runtime provisioning
     const runtimeProvisionerFunction = new lambda.Function(this, "RuntimeProvisionerFunction", {
       functionName: getResourceName(config, "runtime-provisioner"),
-      runtime: lambda.Runtime.PYTHON_3_13,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-provisioner"),
       timeout: cdk.Duration.minutes(5),
@@ -1315,7 +1315,7 @@ export class AppApiStack extends cdk.Stack {
     // Create Lambda function for runtime updates
     const runtimeUpdaterFunction = new lambda.Function(this, "RuntimeUpdaterFunction", {
       functionName: getResourceName(config, "runtime-updater"),
-      runtime: lambda.Runtime.PYTHON_3_13,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-updater"),
       timeout: cdk.Duration.minutes(15),
