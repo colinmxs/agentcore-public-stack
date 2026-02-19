@@ -253,6 +253,10 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     logger.info(f"Discovery URL: {discovery_url}")
     logger.info(f"Client ID: {provider_config['client_id']}")
     
+    # Log boto3 version for debugging
+    import boto3
+    logger.info(f"Boto3 version: {boto3.__version__}")
+    
     # Call CreateAgentRuntime API
     response = bedrock_agentcore.create_agent_runtime(
         agentRuntimeName=runtime_name,
