@@ -736,6 +736,13 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             f"/{PROJECT_PREFIX}/oauth/providers-table-name",
             f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name",
             f"/{PROJECT_PREFIX}/rag/assistants-table-name",
+            # Quota & cost tracking tables
+            f"/{PROJECT_PREFIX}/quota/user-quotas-table-name",
+            f"/{PROJECT_PREFIX}/quota/quota-events-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/sessions-metadata-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name",
+            f"/{PROJECT_PREFIX}/admin/managed-models-table-name",
             # OAuth configuration
             f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn",
             f"/{PROJECT_PREFIX}/oauth/client-secrets-arn",
@@ -775,6 +782,14 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/oauth/providers-table-name"],
             'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name"],
             'DYNAMODB_ASSISTANTS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/rag/assistants-table-name"],
+            
+            # Quota & cost tracking tables
+            'DYNAMODB_QUOTA_TABLE': params[f"/{PROJECT_PREFIX}/quota/user-quotas-table-name"],
+            'DYNAMODB_QUOTA_EVENTS_TABLE': params[f"/{PROJECT_PREFIX}/quota/quota-events-table-name"],
+            'DYNAMODB_SESSIONS_METADATA_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/sessions-metadata-table-name"],
+            'DYNAMODB_COST_SUMMARY_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name"],
+            'DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name"],
+            'DYNAMODB_MANAGED_MODELS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/admin/managed-models-table-name"],
             
             # OAuth configuration
             'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': params[f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn"],
