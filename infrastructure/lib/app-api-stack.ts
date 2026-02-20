@@ -16,6 +16,11 @@ import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
 import * as sns from "aws-cdk-lib/aws-sns";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
+import * as lambda from "aws-cdk-lib/aws-lambda";
+import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
+import * as sns from "aws-cdk-lib/aws-sns";
+import * as events from "aws-cdk-lib/aws-events";
+import * as targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
@@ -306,6 +311,20 @@ export class AppApiStack extends cdk.Stack {
       },
       sortKey: {
         name: "GSI4SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI6: AppRoleAssignmentIndex - Query quota assignments by AppRole ID
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "AppRoleAssignmentIndex",
+      partitionKey: {
+        name: "GSI6PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI6SK",
         type: dynamodb.AttributeType.STRING,
       },
       projectionType: dynamodb.ProjectionType.ALL,
@@ -702,6 +721,65 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
+    // Auth Providers Table (OIDC Authentication Providers)
+    // ============================================================
+
+    const authProvidersTable = new dynamodb.Table(this, "AuthProvidersTable", {
+      tableName: getResourceName(config, "auth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled auth providers for login page
+    authProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Secrets Manager for auth provider client secrets
+    const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
+      secretName: getResourceName(config, "auth-provider-secrets"),
+      description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store auth provider resource names in SSM
+    new ssm.StringParameter(this, "AuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
+      stringValue: authProvidersTable.tableName,
+      description: "Auth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
+      stringValue: authProvidersTable.tableArn,
+      description: "Auth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProviderSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
+      stringValue: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersStreamArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
+      stringValue: authProvidersTable.tableStreamArn!,
+      description: "DynamoDB Stream ARN for auth providers table",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
@@ -869,6 +947,7 @@ export class AppApiStack extends cdk.Stack {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
         FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
+        FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
         DYNAMODB_QUOTA_TABLE: userQuotasTable.tableName,
         DYNAMODB_EVENTS_TABLE: quotaEventsTable.tableName,
         DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,
@@ -908,6 +987,9 @@ export class AppApiStack extends cdk.Stack {
         ),
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
+        DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
+        AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
+        
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
         
@@ -1634,6 +1716,18 @@ export class AppApiStack extends cdk.Stack {
       exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
     });
 
+    new cdk.CfnOutput(this, "AuthProvidersTableName", {
+      value: authProvidersTable.tableName,
+      description: "Auth providers configuration table name",
+      exportName: `${config.projectPrefix}-AuthProvidersTableName`,
+    });
+
+    new cdk.CfnOutput(this, "AuthProviderSecretsSecretArn", {
+      value: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
+    });
+
     new cdk.CfnOutput(this, "OAuthProvidersTableName", {
       value: oauthProvidersTableName,
       description: "OAuth providers configuration table name (imported from Infrastructure Stack)",
@@ -1656,6 +1750,24 @@ export class AppApiStack extends cdk.Stack {
       value: oauthClientSecretsArn,
       description: "Secrets Manager ARN for OAuth client secrets (imported from Infrastructure Stack)",
       exportName: `${config.projectPrefix}-OAuthClientSecretsSecretArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeProvisionerFunctionArn", {
+      value: runtimeProvisionerFunction.functionArn,
+      description: "Runtime Provisioner Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeProvisionerFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdaterFunctionArn", {
+      value: runtimeUpdaterFunction.functionArn,
+      description: "Runtime Updater Lambda function ARN",
+      exportName: `${config.projectPrefix}-RuntimeUpdaterFunctionArn`,
+    });
+
+    new cdk.CfnOutput(this, "RuntimeUpdateAlertsTopicArn", {
+      value: runtimeUpdateAlertsTopic.topicArn,
+      description: "SNS topic ARN for runtime update alerts",
+      exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
     });
 
     new cdk.CfnOutput(this, "RuntimeProvisionerFunctionArn", {
