@@ -454,6 +454,7 @@ export class InferenceApiStack extends cdk.Stack {
         'dynamodb:GetItem',
         'dynamodb:PutItem',
         'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
         'dynamodb:Query',
         'dynamodb:Scan',
       ],
