@@ -1634,18 +1634,6 @@ export class AppApiStack extends cdk.Stack {
       exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
     });
 
-    new cdk.CfnOutput(this, "AuthProvidersTableName", {
-      value: authProvidersTable.tableName,
-      description: "Auth providers configuration table name",
-      exportName: `${config.projectPrefix}-AuthProvidersTableName`,
-    });
-
-    new cdk.CfnOutput(this, "AuthProviderSecretsSecretArn", {
-      value: authProviderSecretsSecret.secretArn,
-      description: "Secrets Manager ARN for auth provider client secrets",
-      exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
-    });
-
     new cdk.CfnOutput(this, "OAuthProvidersTableName", {
       value: oauthProvidersTableName,
       description: "OAuth providers configuration table name (imported from Infrastructure Stack)",
