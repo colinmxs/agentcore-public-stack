@@ -128,19 +128,19 @@ def extract_image_tag_from_event(event: Dict[str, Any]) -> Optional[str]:
         # EventBridge event structure for SSM parameter changes
         detail = event.get('detail', {})
         
-        # Get parameter name and value from event
+        # Get parameter name from event
         param_name = detail.get('name', '')
-        param_value = detail.get('value', '')
         
         # Verify this is the image tag parameter
         expected_param = f"/{PROJECT_PREFIX}/inference-api/image-tag"
         
         if param_name == expected_param:
-            return param_value
+            # SSM Parameter Store Change events don't include the value,
+            # so we always need to fetch it from SSM
+            return get_image_tag_from_ssm()
         
-        # Fallback: fetch directly from SSM
-        logger.warning(f"Event parameter name mismatch, fetching from SSM")
-        return get_image_tag_from_ssm()
+        logger.warning(f"Event parameter name mismatch: {param_name} != {expected_param}")
+        return None
         
     except Exception as e:
         logger.error(f"Error extracting image tag: {e}")
