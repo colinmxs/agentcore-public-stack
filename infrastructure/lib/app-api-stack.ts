@@ -1674,24 +1674,6 @@ export class AppApiStack extends cdk.Stack {
       value: runtimeUpdateAlertsTopic.topicArn,
       description: "SNS topic ARN for runtime update alerts",
       exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
-    });
-
-    new cdk.CfnOutput(this, "RuntimeProvisionerFunctionArn", {
-      value: runtimeProvisionerFunction.functionArn,
-      description: "Runtime Provisioner Lambda function ARN",
-      exportName: `${config.projectPrefix}-RuntimeProvisionerFunctionArn`,
-    });
-
-    new cdk.CfnOutput(this, "RuntimeUpdaterFunctionArn", {
-      value: runtimeUpdaterFunction.functionArn,
-      description: "Runtime Updater Lambda function ARN",
-      exportName: `${config.projectPrefix}-RuntimeUpdaterFunctionArn`,
-    });
-
-    new cdk.CfnOutput(this, "RuntimeUpdateAlertsTopicArn", {
-      value: runtimeUpdateAlertsTopic.topicArn,
-      description: "SNS topic ARN for runtime update alerts",
-      exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
-    });
+    });   
   }
 }
