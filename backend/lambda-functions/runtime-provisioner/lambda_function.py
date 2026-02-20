@@ -743,6 +743,8 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name",
             f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name",
             f"/{PROJECT_PREFIX}/admin/managed-models-table-name",
+            # Auth provider secrets
+            f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn",
             # OAuth configuration
             f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn",
             f"/{PROJECT_PREFIX}/oauth/client-secrets-arn",
@@ -791,6 +793,10 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name"],
             'DYNAMODB_MANAGED_MODELS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/admin/managed-models-table-name"],
             
+            # Auth providers
+            'DYNAMODB_AUTH_PROVIDERS_TABLE_NAME': AUTH_PROVIDERS_TABLE,
+            'AUTH_PROVIDER_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn"],
+            
             # OAuth configuration
             'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': params[f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn"],
             'OAUTH_CLIENT_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/oauth/client-secrets-arn"],
@@ -804,7 +810,7 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'GATEWAY_URL': shared_resources['gateway_url'],
             
             # AgentCore Memory configuration
-            'AGENTCORE_MEMORY_TYPE': 'bedrock',
+            'AGENTCORE_MEMORY_TYPE': 'dynamodb',
             'AGENTCORE_MEMORY_ID': shared_resources['memory_id'],
             
             # S3 storage

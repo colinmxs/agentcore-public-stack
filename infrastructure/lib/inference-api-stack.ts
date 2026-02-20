@@ -487,6 +487,45 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
+    // DynamoDB Auth Providers Table permissions (imported from App API Stack)
+    const authProvidersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-providers-table-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AuthProvidersTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        authProvidersTableArn,
+        `${authProvidersTableArn}/index/*`,
+      ],
+    }));
+
+    // Secrets Manager permissions for auth provider client secrets
+    const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-provider-secrets-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AuthProviderSecretsAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [
+        authProviderSecretsArn,
+        `${authProviderSecretsArn}*`,
+      ],
+    }));
+
     // ============================================================
     // IAM Execution Role for AgentCore Memory
     // ============================================================
