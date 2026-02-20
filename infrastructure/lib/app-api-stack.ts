@@ -699,7 +699,7 @@ export class AppApiStack extends cdk.Stack {
       stringValue: authProvidersTable.tableStreamArn!,
       description: "DynamoDB Stream ARN for auth providers table",
       tier: ssm.ParameterTier.STANDARD,
-    });
+    });   
 
     // ============================================================
     // File Upload Storage (S3 + DynamoDB)
@@ -910,7 +910,7 @@ export class AppApiStack extends cdk.Stack {
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
-        
+
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
@@ -1037,6 +1037,16 @@ export class AppApiStack extends cdk.Stack {
         resources: [
           `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.titan-embed-text-v2:0`,
         ],
+      })
+    );
+
+    // Grant Bedrock permissions to list foundation models
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockListModels',
+        effect: iam.Effect.ALLOW,
+        actions: ['bedrock:ListFoundationModels'],
+        resources: ['*'],
       })
     );
 
@@ -1178,6 +1188,18 @@ export class AppApiStack extends cdk.Stack {
     authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
     authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
 
+    // Grant SSM read permissions for runtime image tag
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'SsmParameterReadAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['ssm:GetParameter', 'ssm:GetParameters'],
+        resources: [
+          `arn:aws:ssm:${this.region}:${this.account}:parameter/${config.projectPrefix}/inference-api/image-tag`,
+        ],
+      })
+    );
+
     // ============================================================
     // Runtime Provisioner Lambda
     // ============================================================
@@ -1185,7 +1207,7 @@ export class AppApiStack extends cdk.Stack {
     // Create Lambda function for runtime provisioning
     const runtimeProvisionerFunction = new lambda.Function(this, "RuntimeProvisionerFunction", {
       functionName: getResourceName(config, "runtime-provisioner"),
-      runtime: lambda.Runtime.PYTHON_3_13,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-provisioner"),
       timeout: cdk.Duration.minutes(5),
@@ -1211,6 +1233,8 @@ export class AppApiStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: [
           "bedrock-agentcore:CreateAgentRuntime",
+          "bedrock-agentcore:CreateAgentRuntimeEndpoint",
+          "bedrock-agentcore:CreateWorkloadIdentity",
           "bedrock-agentcore:UpdateAgentRuntime",
           "bedrock-agentcore:DeleteAgentRuntime",
           "bedrock-agentcore:GetAgentRuntime",
@@ -1301,7 +1325,7 @@ export class AppApiStack extends cdk.Stack {
     // Create Lambda function for runtime updates
     const runtimeUpdaterFunction = new lambda.Function(this, "RuntimeUpdaterFunction", {
       functionName: getResourceName(config, "runtime-updater"),
-      runtime: lambda.Runtime.PYTHON_3_13,
+      runtime: lambda.Runtime.PYTHON_3_14,
       handler: "lambda_function.lambda_handler",
       code: lambda.Code.fromAsset("../backend/lambda-functions/runtime-updater"),
       timeout: cdk.Duration.minutes(15),
@@ -1650,6 +1674,6 @@ export class AppApiStack extends cdk.Stack {
       value: runtimeUpdateAlertsTopic.topicArn,
       description: "SNS topic ARN for runtime update alerts",
       exportName: `${config.projectPrefix}-RuntimeUpdateAlertsTopicArn`,
-    });
+    });   
   }
 }

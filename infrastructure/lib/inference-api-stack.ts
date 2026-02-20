@@ -405,6 +405,128 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
+    // DynamoDB Quota Tables permissions (imported from App API Stack)
+    const userQuotasTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/user-quotas-table-arn`
+    );
+    const quotaEventsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/quota-events-table-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'QuotaTablesAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        userQuotasTableArn,
+        `${userQuotasTableArn}/index/*`,
+        quotaEventsTableArn,
+        `${quotaEventsTableArn}/index/*`,
+      ],
+    }));
+
+    // DynamoDB Cost Tracking Tables permissions (imported from App API Stack)
+    const sessionsMetadataTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`
+    );
+    const userCostSummaryTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`
+    );
+    const systemCostRollupTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'CostTrackingTablesAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:DeleteItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        sessionsMetadataTableArn,
+        `${sessionsMetadataTableArn}/index/*`,
+        userCostSummaryTableArn,
+        `${userCostSummaryTableArn}/index/*`,
+        systemCostRollupTableArn,
+        `${systemCostRollupTableArn}/index/*`,
+      ],
+    }));
+
+    // DynamoDB Managed Models Table permissions (imported from App API Stack)
+    const managedModelsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/admin/managed-models-table-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ManagedModelsTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        managedModelsTableArn,
+        `${managedModelsTableArn}/index/*`,
+      ],
+    }));
+
+    // DynamoDB Auth Providers Table permissions (imported from App API Stack)
+    const authProvidersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-providers-table-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AuthProvidersTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        authProvidersTableArn,
+        `${authProvidersTableArn}/index/*`,
+      ],
+    }));
+
+    // Secrets Manager permissions for auth provider client secrets
+    const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-provider-secrets-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AuthProviderSecretsAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+      ],
+      resources: [
+        authProviderSecretsArn,
+        `${authProviderSecretsArn}*`,
+      ],
+    }));
+
     // ============================================================
     // IAM Execution Role for AgentCore Memory
     // ============================================================

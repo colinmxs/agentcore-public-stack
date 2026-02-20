@@ -48,6 +48,70 @@ async def list_auth_providers(
 
 
 @router.get(
+    "/runtime-image-tag",
+    summary="Get current runtime container image tag",
+)
+async def get_runtime_image_tag(
+    admin_user: User = Depends(require_system_admin),
+) -> dict:
+    """
+    Get the current container image tag used for AgentCore runtimes.
+    
+    This tag is stored in SSM Parameter Store and is used by the
+    Runtime Provisioner Lambda when creating new runtimes.
+    """
+    import os
+    import boto3
+    from botocore.exceptions import ClientError
+    
+    logger.info(f"Admin {admin_user.email} requesting runtime image tag")
+    
+    project_prefix = os.environ.get("PROJECT_PREFIX", "agentcore")
+    param_name = f"/{project_prefix}/inference-api/image-tag"
+    
+    try:
+        ssm = boto3.client("ssm")
+        response = ssm.get_parameter(Name=param_name)
+        image_tag = response["Parameter"]["Value"]
+        
+        return {"image_tag": image_tag}
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "ParameterNotFound":
+            logger.error(f"Image tag parameter not found: {param_name}")
+            raise HTTPException(
+                status_code=status.HTTP_404_NOT_FOUND,
+                detail=f"Runtime image tag not found in SSM: {param_name}",
+            )
+        else:
+            logger.error(f"Error fetching image tag from SSM: {e}")
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail="Failed to fetch runtime image tag",
+            )
+
+
+@router.post(
+    "/discover",
+    response_model=OIDCDiscoveryResponse,
+    summary="Discover OIDC endpoints",
+)
+async def discover_oidc_endpoints(
+    request: OIDCDiscoveryRequest,
+    admin_user: User = Depends(require_system_admin),
+) -> OIDCDiscoveryResponse:
+    """
+    Discover OIDC endpoints from an issuer URL.
+
+    Fetches the .well-known/openid-configuration document and returns
+    the discovered endpoints, supported scopes, and claims.
+    """
+    logger.info(f"Admin {admin_user.email} discovering OIDC endpoints for: {request.issuer_url}")
+
+    service = get_auth_provider_service()
+    return await service.discover_endpoints(request.issuer_url)
+
+
+@router.get(
     "/{provider_id}",
     response_model=AuthProviderResponse,
     summary="Get authentication provider",

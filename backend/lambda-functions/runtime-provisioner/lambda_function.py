@@ -14,6 +14,12 @@ import os
 import logging
 from typing import Dict, Any, Optional, List
 from datetime import datetime
+import sys
+
+# Install latest boto3 at runtime to get newest API support
+from pip._internal import main
+main(['install', '-I', '-q', 'boto3', '--target', '/tmp/', '--no-cache-dir', '--disable-pip-version-check'])
+sys.path.insert(0, '/tmp/')
 
 logger = logging.getLogger()
 logger.setLevel(logging.INFO)
@@ -212,8 +218,24 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     # Fetch container image tag from SSM
     image_tag = get_container_image_tag()
     
-    # Construct runtime name (replace hyphens with underscores)
-    runtime_name = f"{PROJECT_PREFIX}_agentcore_runtime_{provider_id.replace('-', '_')}"
+    # Construct runtime name (replace ALL hyphens with underscores for AWS validation)
+    # Max length is 48 characters: [a-zA-Z][a-zA-Z0-9_]{0,47}
+    safe_prefix = PROJECT_PREFIX.replace('-', '_')
+    safe_provider_id = provider_id.replace('-', '_')
+    base_name = f"{safe_prefix}_runtime_{safe_provider_id}"
+    
+    # Truncate if necessary to fit within 48 character limit
+    if len(base_name) > 48:
+        # Keep the provider_id recognizable by truncating the prefix
+        max_provider_id_length = 48 - len("_runtime_") - 1  # -1 for first character
+        truncated_provider_id = safe_provider_id[:max_provider_id_length]
+        runtime_name = f"r_{truncated_provider_id}"  # 'r_' prefix to ensure it starts with letter
+        # Ensure we're still under 48 chars
+        runtime_name = runtime_name[:48]
+    else:
+        runtime_name = base_name
+    
+    logger.info(f"Runtime name: {runtime_name} (length: {len(runtime_name)})")
     
     # Get container image URI from ECR
     image_uri = get_container_image_uri(image_tag)
@@ -237,6 +259,10 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     logger.info(f"Discovery URL: {discovery_url}")
     logger.info(f"Client ID: {provider_config['client_id']}")
     
+    # Log boto3 version for debugging
+    import boto3
+    logger.info(f"Boto3 version: {boto3.__version__}")
+    
     # Call CreateAgentRuntime API
     response = bedrock_agentcore.create_agent_runtime(
         agentRuntimeName=runtime_name,
@@ -246,10 +272,13 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
             }
         },
         authorizerConfiguration={
-            'customJwtAuthorizer': {
+            'customJWTAuthorizer': {
                 'discoveryUrl': discovery_url,
                 'allowedAudience': [provider_config['client_id']]
             }
+        },
+        requestHeaderConfiguration={
+            'requestHeaderAllowlist': ['Authorization']
         },
         roleArn=execution_role_arn,
         networkConfiguration={
@@ -261,10 +290,14 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     runtime_arn = response['agentRuntimeArn']
     runtime_id = response['agentRuntimeId']
     
-    # Construct endpoint URL
-    endpoint_url = f"https://bedrock-agentcore.{AWS_REGION}.amazonaws.com/runtimes/{runtime_arn}/invocations"
+    # Construct endpoint URL with properly encoded runtime ARN
+    # The runtime ARN contains colons and slashes that must be URL-encoded
+    from urllib.parse import quote
+    encoded_runtime_arn = quote(runtime_arn, safe='')
+    endpoint_url = f"https://bedrock-agentcore.{AWS_REGION}.amazonaws.com/runtimes/{encoded_runtime_arn}/invocations"
     
     logger.info(f"Runtime created: {runtime_arn}")
+    logger.info(f"Endpoint URL: {endpoint_url}")
     
     return {
         'runtime_arn': runtime_arn,
@@ -303,10 +336,13 @@ def update_runtime(runtime_id: str, provider_config: Dict[str, Any]) -> None:
         agentRuntimeId=runtime_id,
         agentRuntimeArtifact=current_artifact,
         authorizerConfiguration={
-            'customJwtAuthorizer': {
+            'customJWTAuthorizer': {
                 'discoveryUrl': discovery_url,
                 'allowedAudience': [provider_config['client_id']]
             }
+        },
+        requestHeaderConfiguration={
+            'requestHeaderAllowlist': ['Authorization']
         },
         networkConfiguration=current_network_config,
         roleArn=current_role_arn
@@ -700,6 +736,15 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             f"/{PROJECT_PREFIX}/oauth/providers-table-name",
             f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name",
             f"/{PROJECT_PREFIX}/rag/assistants-table-name",
+            # Quota & cost tracking tables
+            f"/{PROJECT_PREFIX}/quota/user-quotas-table-name",
+            f"/{PROJECT_PREFIX}/quota/quota-events-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/sessions-metadata-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name",
+            f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name",
+            f"/{PROJECT_PREFIX}/admin/managed-models-table-name",
+            # Auth provider secrets
+            f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn",
             # OAuth configuration
             f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn",
             f"/{PROJECT_PREFIX}/oauth/client-secrets-arn",
@@ -740,6 +785,18 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name"],
             'DYNAMODB_ASSISTANTS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/rag/assistants-table-name"],
             
+            # Quota & cost tracking tables
+            'DYNAMODB_QUOTA_TABLE': params[f"/{PROJECT_PREFIX}/quota/user-quotas-table-name"],
+            'DYNAMODB_QUOTA_EVENTS_TABLE': params[f"/{PROJECT_PREFIX}/quota/quota-events-table-name"],
+            'DYNAMODB_SESSIONS_METADATA_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/sessions-metadata-table-name"],
+            'DYNAMODB_COST_SUMMARY_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name"],
+            'DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name"],
+            'DYNAMODB_MANAGED_MODELS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/admin/managed-models-table-name"],
+            
+            # Auth providers
+            'DYNAMODB_AUTH_PROVIDERS_TABLE_NAME': AUTH_PROVIDERS_TABLE,
+            'AUTH_PROVIDER_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn"],
+            
             # OAuth configuration
             'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': params[f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn"],
             'OAUTH_CLIENT_SECRETS_ARN': params[f"/{PROJECT_PREFIX}/oauth/client-secrets-arn"],
@@ -753,7 +810,7 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'GATEWAY_URL': shared_resources['gateway_url'],
             
             # AgentCore Memory configuration
-            'AGENTCORE_MEMORY_TYPE': 'bedrock',
+            'AGENTCORE_MEMORY_TYPE': 'dynamodb',
             'AGENTCORE_MEMORY_ID': shared_resources['memory_id'],
             
             # S3 storage
