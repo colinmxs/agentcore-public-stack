@@ -1109,6 +1109,7 @@ export class AppApiStack extends cdk.Stack {
           'dynamodb:DeleteItem',
           'dynamodb:Query',
           'dynamodb:Scan',
+          'dynamodb:BatchWriteItem',
         ],
         resources: [appRolesTableArn, `${appRolesTableArn}/index/*`],
       })
