@@ -138,13 +138,13 @@ const lambdaSecurityGroup = new ec2.SecurityGroup(this, 'LambdaSg', {
 ## Lambda for MCP Gateway
 
 ```typescript
-const mcpFunction = new lambda.Function(this, 'GoogleSearchFunction', {
-  functionName: getResourceName(config, 'mcp-google-search'),
-  description: 'Google Custom Search for web and images',
+const mcpFunction = new lambda.Function(this, 'MyMcpFunction', {
+  functionName: getResourceName(config, 'mcp-my-tool'),
+  description: 'MCP tool Lambda function',
 
   runtime: lambda.Runtime.PYTHON_3_13,
   handler: 'lambda_function.lambda_handler',
-  code: lambda.Code.fromAsset('../backend/lambda-functions/google-search'),
+  code: lambda.Code.fromAsset('../backend/lambda-functions/my-tool'),
 
   role: lambdaRole,
   architecture: lambda.Architecture.ARM_64,
@@ -153,7 +153,6 @@ const mcpFunction = new lambda.Function(this, 'GoogleSearchFunction', {
   memorySize: 512,
 
   environment: {
-    GOOGLE_CREDENTIALS_SECRET_NAME: googleSecret.secretName,
     LOG_LEVEL: config.gateway?.logLevel || 'INFO',
   },
 });

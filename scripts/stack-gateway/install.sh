@@ -36,14 +36,4 @@ npm ci --silent || {
 
 log_success "CDK dependencies installed"
 
-# ============================================================
-# Install Python Dependencies for Lambda
-# ============================================================
-
-log_info "Checking Python dependencies for Lambda..."
-
-# Note: Lambda dependencies are packaged by CDK automatically from requirements.txt
-# No manual installation needed for deployment
-# For local testing, developers can manually install from backend/lambda-functions/google-search/requirements.txt
-
 log_success "Gateway Stack dependencies installation complete"

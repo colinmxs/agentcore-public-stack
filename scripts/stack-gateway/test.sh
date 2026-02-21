@@ -121,35 +121,6 @@ else
 fi
 
 # ============================================================
-# Test Lambda Function
-# ============================================================
-
-log_info "Testing Lambda function..."
-
-FUNCTION_NAME="${CDK_PROJECT_PREFIX}-mcp-google-search"
-
-set +e
-FUNCTION_INFO=$(aws lambda get-function \
-    --function-name "${FUNCTION_NAME}" \
-    --region "${CDK_AWS_REGION}" \
-    --output json 2>&1)
-GET_FUNCTION_EXIT=$?
-set -e
-
-if [ $GET_FUNCTION_EXIT -ne 0 ]; then
-    log_error "Lambda function not found: ${FUNCTION_NAME}"
-    log_error "Error: ${FUNCTION_INFO}"
-    exit 1
-fi
-
-FUNCTION_STATE=$(echo "${FUNCTION_INFO}" | jq -r '.Configuration.State // "UNKNOWN"')
-log_success "Lambda Function State: ${FUNCTION_STATE}"
-
-if [ "${FUNCTION_STATE}" != "Active" ]; then
-    log_warning "Lambda function is not Active. Current state: ${FUNCTION_STATE}"
-fi
-
-# ============================================================
 # Summary
 # ============================================================
 
@@ -159,6 +130,5 @@ log_info "Gateway Stack Test Summary"
 log_info "============================================================"
 log_success "✓ Gateway is accessible (Status: ${GATEWAY_STATUS})"
 log_success "✓ Gateway has ${TARGET_COUNT} targets configured"
-log_success "✓ Lambda function is deployed (State: ${FUNCTION_STATE})"
 log_info ""
 log_success "All Gateway Stack tests passed!"
