@@ -140,7 +140,7 @@ async def update_tool_preferences(
 @router.get("/catalog", response_model=LegacyToolListResponse)
 async def list_all_tools(
     category: Optional[str] = Query(
-        None, description="Filter by category (search, browser, data, utilities, code, gateway)"
+        None, description="Filter by category (search, data, utilities, code, gateway)"
     ),
     user: User = Depends(get_current_user),
 ):
@@ -218,7 +218,7 @@ async def get_my_tool_permissions(
 @router.get("/available", response_model=LegacyToolListResponse)
 async def list_available_tools(
     category: Optional[str] = Query(
-        None, description="Filter by category (search, browser, data, utilities, code, gateway)"
+        None, description="Filter by category (search, data, utilities, code, gateway)"
     ),
     user: User = Depends(get_current_user),
 ):

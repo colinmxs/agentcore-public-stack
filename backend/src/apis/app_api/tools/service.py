@@ -617,7 +617,6 @@ class ToolCatalogService:
         """Map legacy category to new category enum."""
         mapping = {
             LegacyToolCategory.SEARCH: ToolCategory.SEARCH,
-            LegacyToolCategory.BROWSER: ToolCategory.BROWSER,
             LegacyToolCategory.DATA: ToolCategory.DATA,
             LegacyToolCategory.UTILITIES: ToolCategory.UTILITY,
             LegacyToolCategory.CODE: ToolCategory.CODE,

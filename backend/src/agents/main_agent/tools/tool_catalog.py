@@ -12,7 +12,6 @@ from enum import Enum
 class ToolCategory(str, Enum):
     """Categories for organizing tools in the UI."""
     SEARCH = "search"
-    BROWSER = "browser"
     DATA = "data"
     UTILITIES = "utilities"
     CODE = "code"
@@ -96,36 +95,6 @@ TOOL_CATALOG: Dict[str, ToolMetadata] = {
         description="Generate diagrams, charts, and visualizations using Python code in a sandboxed environment.",
         category=ToolCategory.CODE,
         icon="code-bracket",
-    ),
-
-    # --- Built-in Tools (Browser Automation) ---
-    "browser_navigate": ToolMetadata(
-        tool_id="browser_navigate",
-        name="Browser Navigate",
-        description="Navigate browser to URLs and capture page screenshots.",
-        category=ToolCategory.BROWSER,
-        icon="globe-alt",
-    ),
-    "browser_act": ToolMetadata(
-        tool_id="browser_act",
-        name="Browser Action",
-        description="Execute browser actions using natural language instructions (AI-powered).",
-        category=ToolCategory.BROWSER,
-        icon="cursor-arrow-rays",
-    ),
-    "browser_extract": ToolMetadata(
-        tool_id="browser_extract",
-        name="Browser Extract",
-        description="Extract structured data from web pages using natural language and JSON schema.",
-        category=ToolCategory.BROWSER,
-        icon="document-magnifying-glass",
-    ),
-    "browser_get_page_info": ToolMetadata(
-        tool_id="browser_get_page_info",
-        name="Browser Page Info",
-        description="Get structured information about the current page state.",
-        category=ToolCategory.BROWSER,
-        icon="information-circle",
     ),
 
     # --- Gateway/MCP Tools ---
