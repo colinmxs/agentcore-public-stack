@@ -37,7 +37,7 @@ dependencies = [
 agentcore = [
     "strands-agents>=1.27.0",
     "strands-agents-tools==0.2.20",
-    "ddgs>=9.0.0",
+
     # "aws-opentelemetry-distro>=0.10.1",
     "bedrock-agentcore",
     # NOTE: nova-act temporarily disabled due to strands-agents version conflict

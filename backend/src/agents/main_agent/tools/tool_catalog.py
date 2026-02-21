@@ -49,13 +49,6 @@ class ToolMetadata:
 
 TOOL_CATALOG: Dict[str, ToolMetadata] = {
     # --- Local Tools (Search & Web) ---
-    "ddg_web_search": ToolMetadata(
-        tool_id="ddg_web_search",
-        name="Web Search",
-        description="Search the web using DuckDuckGo for general information, news, and research.",
-        category=ToolCategory.SEARCH,
-        icon="magnifying-glass",
-    ),
     "fetch_url_content": ToolMetadata(
         tool_id="fetch_url_content",
         name="URL Fetcher",

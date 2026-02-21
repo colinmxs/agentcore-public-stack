@@ -453,7 +453,7 @@ from agentcore.local_tools.weather import get_weather
 - bedrock-agentcore
 - nova-act 2.3.18.0
 - aws-opentelemetry-distro
-- ddgs (DuckDuckGo search)
+
 
 ### Development Dependencies (optional)
 - pytest

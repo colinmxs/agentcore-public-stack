@@ -630,7 +630,6 @@ class ToolCatalogService:
         public_tools = {
             "calculator",
             "get_current_weather",
-            "ddg_web_search",
         }
         return tool_id in public_tools
 
