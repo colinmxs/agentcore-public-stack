@@ -17,6 +17,7 @@ import {
   heroCheck,
   heroExclamationTriangle,
   heroArrowPath,
+  heroKey,
 } from '@ng-icons/heroicons/outline';
 import { ConnectionsService } from './services';
 import { OAuthConnection, OAuthProviderType } from './models';
@@ -36,6 +37,7 @@ import { ToastService } from '../../services/toast/toast.service';
       heroCheck,
       heroExclamationTriangle,
       heroArrowPath,
+      heroKey,
     }),
   ],
   host: {
@@ -60,6 +62,30 @@ import { ToastService } from '../../services/toast/toast.service';
             Connect your accounts to enable tools that require third-party authentication.
           </p>
         </div>
+
+        <!-- API Connections -->
+        <div class="mb-8">
+          <a
+            routerLink="/api-keys"
+            class="block rounded-sm border border-gray-200 bg-white p-6 transition-colors hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:hover:bg-gray-700"
+          >
+            <div class="flex items-start gap-4">
+              <div class="flex size-12 shrink-0 items-center justify-center rounded-sm bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400">
+                <ng-icon name="heroKey" class="size-6" />
+              </div>
+              <div class="min-w-0 flex-1">
+                <h3 class="text-lg/7 font-semibold text-gray-900 dark:text-white">Connect through API</h3>
+                <p class="mt-1 text-sm/6 text-gray-600 dark:text-gray-400">
+                  Access AI models programmatically using API keys. Generate and manage your authentication tokens for direct integration.
+                </p>
+              </div>
+              <div class="flex items-center text-gray-400 dark:text-gray-500">
+                <ng-icon name="heroArrowLeft" class="size-5 rotate-180" />
+              </div>
+            </div>
+          </a>
+        </div>
+
 
         <!-- Loading State -->
         @if (connectionsResource.isLoading() && connections().length === 0) {

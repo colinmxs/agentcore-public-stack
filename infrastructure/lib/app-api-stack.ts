@@ -614,6 +614,16 @@ export class AppApiStack extends cdk.Stack {
       `/${config.projectPrefix}/rbac/app-roles-table-arn`
     );
 
+    // API Keys table (imported from Infrastructure Stack)
+    const apiKeysTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/api-keys-table-name`
+    );
+    const apiKeysTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/api-keys-table-arn`
+    );
+
     const oauthProvidersTableName = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/oauth/providers-table-name`
@@ -906,6 +916,7 @@ export class AppApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/inference-api/memory-id`
         ),
+        DYNAMODB_API_KEYS_TABLE_NAME: apiKeysTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
@@ -1184,6 +1195,23 @@ export class AppApiStack extends cdk.Stack {
         resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
       })
     );
+    // Grant permissions for API Keys table (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'ApiKeysTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+        ],
+        resources: [apiKeysTableArn, `${apiKeysTableArn}/index/*`],
+      })
+    );
+
     // Grant permissions for auth provider management
     authProvidersTable.grantReadWriteData(taskDefinition.taskRole);
     authProviderSecretsSecret.grantRead(taskDefinition.taskRole);

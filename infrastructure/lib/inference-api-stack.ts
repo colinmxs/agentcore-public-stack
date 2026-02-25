@@ -307,6 +307,28 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [oauthTokenEncryptionKeyArn],
     }));
 
+    // DynamoDB API Keys Table permissions (imported from Infrastructure Stack)
+    const apiKeysTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/api-keys-table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'ApiKeysTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:PutItem',
+        'dynamodb:UpdateItem',
+        'dynamodb:Query',
+        'dynamodb:Scan',
+      ],
+      resources: [
+        apiKeysTableArn,
+        `${apiKeysTableArn}/index/*`, // GSI permissions (KeyHashIndex)
+      ],
+    }));
+
     // DynamoDB Assistants Table permissions (imported from RagIngestionStack)
     const assistantsTableArn = ssm.StringParameter.valueForStringParameter(
       this,

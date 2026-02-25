@@ -7,11 +7,25 @@ This backend uses a unified dependency management approach with a single `pyproj
 ### For App API (Authentication Service)
 
 The App API only needs core dependencies (FastAPI, auth utilities):
-
+##### Linux/Mac
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
+pip install -e "."
+```
+##### PowerShell
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\Activate.ps1
+pip install -e "."
+```
+##### Command Prompt (CMD)
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\activate.bat
 pip install -e "."
 ```
 
@@ -19,10 +33,25 @@ pip install -e "."
 
 The Inference API needs core dependencies + AgentCore-specific packages:
 
+##### Linux/Mac
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
+pip install -e ".[agentcore]"
+```
+##### PowerShell
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\Activate.ps1
+pip install -e ".[agentcore]"
+```
+##### Command Prompt (CMD)
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\activate.bat
 pip install -e ".[agentcore]"
 ```
 
@@ -30,10 +59,25 @@ pip install -e ".[agentcore]"
 
 Install everything including pytest, black, ruff, mypy:
 
+##### Linux/Mac
 ```bash
 cd backend
 python3 -m venv venv
 source venv/bin/activate
+pip install -e ".[agentcore,dev]"
+```
+##### PowerShell
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\Activate.ps1
+pip install -e ".[agentcore,dev]"
+```
+##### Command Prompt (CMD)
+```bash
+cd backend
+python3 -m venv venv
+venv\Scripts\activate.bat
 pip install -e ".[agentcore,dev]"
 ```
 
@@ -42,6 +86,7 @@ pip install -e ".[agentcore,dev]"
 This project requires AWS credentials for Bedrock and other AWS services.
 
 **Quick Setup:**
+##### Linux/Mac/Powershell
 ```bash
 # Configure AWS CLI profile
 aws configure --profile my-profile
@@ -53,7 +98,7 @@ echo "AWS_PROFILE=my-profile" >> src/.env
 export AWS_PROFILE=my-profile
 ```
 
-📖 **See [AWS_PROFILE_GUIDE.md](../AWS_PROFILE_GUIDE.md) for detailed configuration options including:**
+📖 **See [AWS_PROFILE_GUIDE.md](../docs/AWS_PROFILE_GUIDE.md) for detailed configuration options including:**
 - Multiple AWS accounts/profiles
 - AWS SSO (IAM Identity Center)
 - Environment variable fallback

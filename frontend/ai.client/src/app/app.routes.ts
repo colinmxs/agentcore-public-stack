@@ -23,6 +23,11 @@ export const routes: Routes = [
         loadComponent: () => import('./auth/callback/callback.page').then(m => m.CallbackPage),
     },
     {
+        path: 'api-keys',
+        loadComponent: () => import('./auth/api-keys/api-keys.page').then(m => m.ApiKeysPage),
+        canActivate: [authGuard],
+    },
+    {
         path: 'admin',
         loadComponent: () => import('./admin/admin.page').then(m => m.AdminPage),
         canActivate: [adminGuard],

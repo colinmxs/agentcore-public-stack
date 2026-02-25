@@ -494,6 +494,48 @@ export class InfrastructureStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // ApiKeys Table - API keys for programmatic access to models
+    const apiKeysTable = new dynamodb.Table(this, "ApiKeysTable", {
+      tableName: getResourceName(config, "api-keys"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // KeyHashIndex - O(1) lookup by key hash for API key authentication
+    apiKeysTable.addGlobalSecondaryIndex({
+      indexName: "KeyHashIndex",
+      partitionKey: {
+        name: "keyHash",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store API Keys table name in SSM
+    new ssm.StringParameter(this, "ApiKeysTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/api-keys-table-name`,
+      stringValue: apiKeysTable.tableName,
+      description: "API Keys table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "ApiKeysTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/api-keys-table-arn`,
+      stringValue: apiKeysTable.tableArn,
+      description: "API Keys table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // KMS Key for encrypting OAuth user tokens at rest
     const oauthTokenEncryptionKey = new kms.Key(this, "OAuthTokenEncryptionKey", {
       alias: getResourceName(config, "oauth-token-key"),
