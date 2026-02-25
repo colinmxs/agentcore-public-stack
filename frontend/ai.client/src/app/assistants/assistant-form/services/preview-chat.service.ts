@@ -1,7 +1,9 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { v4 as uuidv4 } from 'uuid';
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
+import { firstValueFrom } from 'rxjs';
 import { AuthService } from '../../../auth/auth.service';
+import { AuthApiService } from '../../../auth/auth-api.service';
 import { ConfigService } from '../../../services/config.service';
 import { Message } from '../../../session/services/models/message.model';
 import { PREVIEW_SESSION_PREFIX } from '../../../shared/constants/session.constants';
@@ -27,6 +29,7 @@ import {
 @Injectable()
 export class PreviewChatService {
   private authService = inject(AuthService);
+  private authApiService = inject(AuthApiService);
   private config = inject(ConfigService);
 
   // Local state signals (isolated from global ChatStateService)
@@ -68,6 +71,27 @@ export class PreviewChatService {
     }
 
     return token;
+  }
+
+  /**
+   * Get the runtime endpoint URL for inference API calls.
+   * Uses the same pattern as ChatHttpService - fetches dynamically from App API
+   * when authentication is enabled, otherwise falls back to static config.
+   */
+  private async getRuntimeEndpointUrl(): Promise<string> {
+    // If authentication is disabled, use the static inference API URL from config
+    if (!this.config.enableAuthentication()) {
+      return `${this.config.inferenceApiUrl()}/invocations`;
+    }
+
+    // Fetch runtime endpoint from App API (same as main chat service)
+    const response = await firstValueFrom(this.authApiService.getRuntimeEndpoint());
+
+    if (!response || !response.runtime_endpoint_url) {
+      throw new Error('Invalid runtime endpoint response from server');
+    }
+
+    return response.runtime_endpoint_url;
   }
 
   /**
@@ -187,7 +211,7 @@ export class PreviewChatService {
 
     try {
       const token = await this.getBearerTokenForStreamingResponse();
-      const url = `${this.config.inferenceApiUrl()}/invocations?qualifier=DEFAULT`;
+      const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
 
       const requestBody = {
         message: userMessage,
@@ -197,7 +221,7 @@ export class PreviewChatService {
         enabled_tools: [], // No tools in preview
       };
 
-      await fetchEventSource(url, {
+      await fetchEventSource(`${runtimeEndpointUrl}?qualifier=DEFAULT`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

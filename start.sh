@@ -107,7 +107,7 @@ if command -v aws &> /dev/null; then
     if [ "$PROFILE_TO_USE" != "default" ]; then
         echo "Using AWS profile: $PROFILE_TO_USE"
         export AWS_PROFILE="$PROFILE_TO_USE"
-        
+
         if aws sts get-caller-identity &> /dev/null; then
             echo "✅ AWS profile '$PROFILE_TO_USE' is valid and credentials are working"
         else
