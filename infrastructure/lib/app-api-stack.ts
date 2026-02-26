@@ -234,352 +234,11 @@ export class AppApiStack extends cdk.Stack {
 
     // Note: Lambda function for document ingestion is now created in RagIngestionStack
 
-    // ============================================================
-    // Quota Management Tables
-    // ============================================================
 
-    // UserQuotas Table
-    const userQuotasTable = new dynamodb.Table(this, "UserQuotasTable", {
-      tableName: getResourceName(config, "user-quotas"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
 
-    // GSI1: AssignmentTypeIndex - Query assignments by type, sorted by priority
-    userQuotasTable.addGlobalSecondaryIndex({
-      indexName: "AssignmentTypeIndex",
-      partitionKey: {
-        name: "GSI1PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI1SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
 
-    // GSI2: UserAssignmentIndex - Query direct user assignments (O(1) lookup)
-    userQuotasTable.addGlobalSecondaryIndex({
-      indexName: "UserAssignmentIndex",
-      partitionKey: {
-        name: "GSI2PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI2SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
 
-    // GSI3: RoleAssignmentIndex - Query role-based assignments, sorted by priority
-    userQuotasTable.addGlobalSecondaryIndex({
-      indexName: "RoleAssignmentIndex",
-      partitionKey: {
-        name: "GSI3PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI3SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
 
-    // GSI4: UserOverrideIndex - Query active overrides by user, sorted by expiry
-    userQuotasTable.addGlobalSecondaryIndex({
-      indexName: "UserOverrideIndex",
-      partitionKey: {
-        name: "GSI4PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI4SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // GSI6: AppRoleAssignmentIndex - Query quota assignments by AppRole ID
-    userQuotasTable.addGlobalSecondaryIndex({
-      indexName: "AppRoleAssignmentIndex",
-      partitionKey: {
-        name: "GSI6PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI6SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // QuotaEvents Table
-    const quotaEventsTable = new dynamodb.Table(this, "QuotaEventsTable", {
-      tableName: getResourceName(config, "quota-events"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI5: TierEventIndex - Query events by tier for analytics
-    quotaEventsTable.addGlobalSecondaryIndex({
-      indexName: "TierEventIndex",
-      partitionKey: {
-        name: "GSI5PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI5SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // Store quota table names in SSM
-    new ssm.StringParameter(this, "UserQuotasTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/quota/user-quotas-table-name`,
-      stringValue: userQuotasTable.tableName,
-      description: "UserQuotas table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "UserQuotasTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/quota/user-quotas-table-arn`,
-      stringValue: userQuotasTable.tableArn,
-      description: "UserQuotas table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "QuotaEventsTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/quota/quota-events-table-name`,
-      stringValue: quotaEventsTable.tableName,
-      description: "QuotaEvents table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "QuotaEventsTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/quota/quota-events-table-arn`,
-      stringValue: quotaEventsTable.tableArn,
-      description: "QuotaEvents table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
-    // Cost Tracking Tables
-    // ============================================================
-
-    // SessionsMetadata Table - Message-level metadata for cost tracking
-    const sessionsMetadataTable = new dynamodb.Table(this, "SessionsMetadataTable", {
-      tableName: getResourceName(config, "sessions-metadata"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      timeToLiveAttribute: "ttl",
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI1: UserTimestampIndex - Query messages by user and time range
-    sessionsMetadataTable.addGlobalSecondaryIndex({
-      indexName: "UserTimestampIndex",
-      partitionKey: {
-        name: "GSI1PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI1SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // SessionLookupIndex - Direct session lookup by ID and per-session cost queries
-    // Enables:
-    //   - O(1) session lookup: GSI_PK=SESSION#{session_id}, GSI_SK=META
-    //   - Per-session costs: GSI_PK=SESSION#{session_id}, GSI_SK begins_with C#
-    sessionsMetadataTable.addGlobalSecondaryIndex({
-      indexName: "SessionLookupIndex",
-      partitionKey: {
-        name: "GSI_PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI_SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // UserCostSummary Table - Pre-aggregated cost summaries for fast quota checks
-    const userCostSummaryTable = new dynamodb.Table(this, "UserCostSummaryTable", {
-      tableName: getResourceName(config, "user-cost-summary"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI2: PeriodCostIndex - Query top users by cost for admin dashboard
-    // Enables efficient "top N users by cost" queries without table scans
-    userCostSummaryTable.addGlobalSecondaryIndex({
-      indexName: "PeriodCostIndex",
-      partitionKey: {
-        name: "GSI2PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI2SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.INCLUDE,
-      nonKeyAttributes: ["userId", "totalCost", "totalRequests", "lastUpdated"],
-    });
-
-    // SystemCostRollup Table - Pre-aggregated system-wide metrics for admin dashboard
-    const systemCostRollupTable = new dynamodb.Table(this, "SystemCostRollupTable", {
-      tableName: getResourceName(config, "system-cost-rollup"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // Store cost tracking table names in SSM
-    new ssm.StringParameter(this, "SessionsMetadataTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`,
-      stringValue: sessionsMetadataTable.tableName,
-      description: "SessionsMetadata table name for message-level cost tracking",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "SessionsMetadataTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`,
-      stringValue: sessionsMetadataTable.tableArn,
-      description: "SessionsMetadata table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "UserCostSummaryTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-name`,
-      stringValue: userCostSummaryTable.tableName,
-      description: "UserCostSummary table name for aggregated cost summaries",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "UserCostSummaryTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`,
-      stringValue: userCostSummaryTable.tableArn,
-      description: "UserCostSummary table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "SystemCostRollupTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`,
-      stringValue: systemCostRollupTable.tableName,
-      description: "SystemCostRollup table name for admin dashboard aggregates",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "SystemCostRollupTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`,
-      stringValue: systemCostRollupTable.tableArn,
-      description: "SystemCostRollup table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    // ============================================================
-    // Managed Models Table
-    // ============================================================
-
-    // ManagedModels Table - Model management and pricing data
-    const managedModelsTable = new dynamodb.Table(this, "ManagedModelsTable", {
-      tableName: getResourceName(config, "managed-models"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    // GSI1: ModelIdIndex - Query by modelId for duplicate checking
-    managedModelsTable.addGlobalSecondaryIndex({
-      indexName: "ModelIdIndex",
-      partitionKey: {
-        name: "GSI1PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI1SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
-
-    // Store managed models table name in SSM
-    new ssm.StringParameter(this, "ManagedModelsTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/admin/managed-models-table-name`,
-      stringValue: managedModelsTable.tableName,
-      description: "Managed models table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, "ManagedModelsTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/admin/managed-models-table-arn`,
-      stringValue: managedModelsTable.tableArn,
-      description: "Managed models table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // ============================================================
     // Import Core Tables from Infrastructure Stack
@@ -652,64 +311,79 @@ export class AppApiStack extends cdk.Stack {
       `/${config.projectPrefix}/oauth/client-secrets-arn`
     );
 
-    // ============================================================
-    // Auth Providers Table (OIDC Authentication Providers)
-    // ============================================================
+    // Import shared tables from Infrastructure Stack
+    // These tables were moved from AppApiStack to InfrastructureStack to eliminate circular dependencies
+    const userQuotasTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/user-quotas-table-name`
+    );
+    const userQuotasTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/user-quotas-table-arn`
+    );
 
-    const authProvidersTable = new dynamodb.Table(this, "AuthProvidersTable", {
-      tableName: getResourceName(config, "auth-providers"),
-      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
+    const quotaEventsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/quota-events-table-name`
+    );
+    const quotaEventsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/quota/quota-events-table-arn`
+    );
 
-    // GSI1: EnabledProvidersIndex - Query enabled auth providers for login page
-    authProvidersTable.addGlobalSecondaryIndex({
-      indexName: "EnabledProvidersIndex",
-      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
-      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
+    const sessionsMetadataTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`
+    );
+    const sessionsMetadataTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`
+    );
 
-    // Secrets Manager for auth provider client secrets
-    const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
-      secretName: getResourceName(config, "auth-provider-secrets"),
-      description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-    });
+    const userCostSummaryTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-name`
+    );
+    const userCostSummaryTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`
+    );
 
-    // Store auth provider resource names in SSM
-    new ssm.StringParameter(this, "AuthProvidersTableNameParameter", {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
-      stringValue: authProvidersTable.tableName,
-      description: "Auth providers table name",
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    const systemCostRollupTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`
+    );
+    const systemCostRollupTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`
+    );
 
-    new ssm.StringParameter(this, "AuthProvidersTableArnParameter", {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
-      stringValue: authProvidersTable.tableArn,
-      description: "Auth providers table ARN",
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    const managedModelsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/admin/managed-models-table-name`
+    );
+    const managedModelsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/admin/managed-models-table-arn`
+    );
 
-    new ssm.StringParameter(this, "AuthProviderSecretsArnParameter", {
-      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
-      stringValue: authProviderSecretsSecret.secretArn,
-      description: "Secrets Manager ARN for auth provider client secrets",
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    const authProvidersTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-providers-table-name`
+    );
+    const authProvidersTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-providers-table-arn`
+    );
+    const authProvidersStreamArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-providers-stream-arn`
+    );
 
-    new ssm.StringParameter(this, "AuthProvidersStreamArnParameter", {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
-      stringValue: authProvidersTable.tableStreamArn!,
-      description: "DynamoDB Stream ARN for auth providers table",
-      tier: ssm.ParameterTier.STANDARD,
-    });   
+    const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/auth-provider-secrets-arn`
+    );
 
     // ============================================================
     // File Upload Storage (S3 + DynamoDB)
@@ -879,13 +553,13 @@ export class AppApiStack extends cdk.Stack {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
         FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
-        DYNAMODB_QUOTA_TABLE: userQuotasTable.tableName,
-        DYNAMODB_EVENTS_TABLE: quotaEventsTable.tableName,
+        DYNAMODB_QUOTA_TABLE: userQuotasTableName,
+        DYNAMODB_EVENTS_TABLE: quotaEventsTableName,
         DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,
-        DYNAMODB_MANAGED_MODELS_TABLE_NAME: managedModelsTable.tableName,
-        DYNAMODB_SESSIONS_METADATA_TABLE_NAME: sessionsMetadataTable.tableName,
-        DYNAMODB_COST_SUMMARY_TABLE_NAME: userCostSummaryTable.tableName,
-        DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME: systemCostRollupTable.tableName,
+        DYNAMODB_MANAGED_MODELS_TABLE_NAME: managedModelsTableName,
+        DYNAMODB_SESSIONS_METADATA_TABLE_NAME: sessionsMetadataTableName,
+        DYNAMODB_COST_SUMMARY_TABLE_NAME: userCostSummaryTableName,
+        DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME: systemCostRollupTableName,
         DYNAMODB_USERS_TABLE_NAME: usersTableName,
         DYNAMODB_APP_ROLES_TABLE_NAME: appRolesTableName,
         DYNAMODB_USER_FILES_TABLE_NAME: userFilesTable.tableName,
@@ -919,8 +593,8 @@ export class AppApiStack extends cdk.Stack {
         DYNAMODB_API_KEYS_TABLE_NAME: apiKeysTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
-        DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTable.tableName,
-        AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsSecret.secretArn,
+        DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTableName,
+        AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsArn,
 
         // DATABASE_TYPE: config.appApi.databaseType,
         // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
@@ -1062,9 +736,48 @@ export class AppApiStack extends cdk.Stack {
     );
 
 
-    // Grant permissions for quota management tables
-    userQuotasTable.grantReadWriteData(taskDefinition.taskRole);
-    quotaEventsTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for quota management tables (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'UserQuotasTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          userQuotasTableArn,
+          `${userQuotasTableArn}/index/*`,
+        ],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'QuotaEventsTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          quotaEventsTableArn,
+          `${quotaEventsTableArn}/index/*`,
+        ],
+      })
+    );
 
     // Grant permissions for OIDC state table (imported from Infrastructure Stack)
     taskDefinition.taskRole.addToPrincipalPolicy(
@@ -1083,13 +796,91 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // Grant permissions for managed models table
-    managedModelsTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for managed models table (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'ManagedModelsTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          managedModelsTableArn,
+          `${managedModelsTableArn}/index/*`,
+        ],
+      })
+    );
 
-    // Grant permissions for cost tracking tables
-    sessionsMetadataTable.grantReadWriteData(taskDefinition.taskRole);
-    userCostSummaryTable.grantReadWriteData(taskDefinition.taskRole);
-    systemCostRollupTable.grantReadWriteData(taskDefinition.taskRole);
+    // Grant permissions for cost tracking tables (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'SessionsMetadataTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          sessionsMetadataTableArn,
+          `${sessionsMetadataTableArn}/index/*`,
+        ],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'UserCostSummaryTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          userCostSummaryTableArn,
+          `${userCostSummaryTableArn}/index/*`,
+        ],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'SystemCostRollupTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          systemCostRollupTableArn,
+          `${systemCostRollupTableArn}/index/*`,
+        ],
+      })
+    );
 
     // Grant permissions for users table (imported from Infrastructure Stack)
     taskDefinition.taskRole.addToPrincipalPolicy(
@@ -1230,10 +1021,36 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // Grant permissions for auth provider management
-    authProvidersTable.grantReadWriteData(taskDefinition.taskRole);
-    authProviderSecretsSecret.grantRead(taskDefinition.taskRole);
-    authProviderSecretsSecret.grantWrite(taskDefinition.taskRole);
+    // Grant permissions for auth provider management (imported from Infrastructure Stack)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'AuthProvidersTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+          'dynamodb:Scan',
+          'dynamodb:BatchGetItem',
+          'dynamodb:BatchWriteItem',
+        ],
+        resources: [
+          authProvidersTableArn,
+          `${authProvidersTableArn}/index/*`,
+        ],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'AuthProviderSecretsAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue', 'secretsmanager:PutSecretValue', 'secretsmanager:DescribeSecret'],
+        resources: [`${authProviderSecretsArn}*`], // Wildcard for random suffix
+      })
+    );
 
     // Grant SSM read permissions for runtime image tag
     taskDefinition.taskRole.addToPrincipalPolicy(
@@ -1251,6 +1068,13 @@ export class AppApiStack extends cdk.Stack {
     // Runtime Provisioner Lambda
     // ============================================================
 
+    // Reconstruct AuthProviders table reference for DynamoDB Stream event source
+    const authProvidersTable = dynamodb.Table.fromTableAttributes(this, 'ImportedAuthProvidersTable', {
+      tableName: authProvidersTableName,
+      tableArn: authProvidersTableArn,
+      tableStreamArn: authProvidersStreamArn,
+    });
+
     // Create Lambda function for runtime provisioning
     const runtimeProvisionerFunction = new lambda.Function(this, "RuntimeProvisionerFunction", {
       functionName: getResourceName(config, "runtime-provisioner"),
@@ -1262,7 +1086,7 @@ export class AppApiStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       environment: {
         PROJECT_PREFIX: config.projectPrefix,
-        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+        AUTH_PROVIDERS_TABLE: authProvidersTableName,
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
     });
@@ -1380,7 +1204,7 @@ export class AppApiStack extends cdk.Stack {
       architecture: lambda.Architecture.ARM_64,
       environment: {
         PROJECT_PREFIX: config.projectPrefix,
-        AUTH_PROVIDERS_TABLE: authProvidersTable.tableName,
+        AUTH_PROVIDERS_TABLE: authProvidersTableName,
         SNS_TOPIC_ARN: runtimeUpdateAlertsTopic.topicArn,
       },
       logRetention: logs.RetentionDays.ONE_WEEK,
@@ -1587,13 +1411,13 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "UserQuotasTableName", {
-      value: userQuotasTable.tableName,
+      value: userQuotasTableName,
       description: "UserQuotas table name",
       exportName: `${config.projectPrefix}-UserQuotasTableName`,
     });
 
     new cdk.CfnOutput(this, "QuotaEventsTableName", {
-      value: quotaEventsTable.tableName,
+      value: quotaEventsTableName,
       description: "QuotaEvents table name",
       exportName: `${config.projectPrefix}-QuotaEventsTableName`,
     });
@@ -1605,25 +1429,25 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "ManagedModelsTableName", {
-      value: managedModelsTable.tableName,
+      value: managedModelsTableName,
       description: "Managed models table name",
       exportName: `${config.projectPrefix}-ManagedModelsTableName`,
     });
 
     new cdk.CfnOutput(this, "SessionsMetadataTableName", {
-      value: sessionsMetadataTable.tableName,
+      value: sessionsMetadataTableName,
       description: "SessionsMetadata table name for cost tracking",
       exportName: `${config.projectPrefix}-SessionsMetadataTableName`,
     });
 
     new cdk.CfnOutput(this, "UserCostSummaryTableName", {
-      value: userCostSummaryTable.tableName,
+      value: userCostSummaryTableName,
       description: "UserCostSummary table name for cost aggregation",
       exportName: `${config.projectPrefix}-UserCostSummaryTableName`,
     });
 
     new cdk.CfnOutput(this, "SystemCostRollupTableName", {
-      value: systemCostRollupTable.tableName,
+      value: systemCostRollupTableName,
       description: "SystemCostRollup table name for admin dashboard",
       exportName: `${config.projectPrefix}-SystemCostRollupTableName`,
     });
@@ -1670,13 +1494,13 @@ export class AppApiStack extends cdk.Stack {
     });
 
     new cdk.CfnOutput(this, "AuthProvidersTableName", {
-      value: authProvidersTable.tableName,
+      value: authProvidersTableName,
       description: "Auth providers configuration table name",
       exportName: `${config.projectPrefix}-AuthProvidersTableName`,
     });
 
     new cdk.CfnOutput(this, "AuthProviderSecretsSecretArn", {
-      value: authProviderSecretsSecret.secretArn,
+      value: authProviderSecretsArn,
       description: "Secrets Manager ARN for auth provider client secrets",
       exportName: `${config.projectPrefix}-AuthProviderSecretsSecretArn`,
     });
