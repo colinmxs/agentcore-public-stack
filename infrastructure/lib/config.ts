@@ -91,7 +91,7 @@ export interface FileUploadConfig {
 export interface RagIngestionConfig {
   enabled: boolean;              // Enable/disable RAG stack
   corsOrigins: string;           // Comma-separated CORS origins
-  lambdaMemorySize: number;      // Lambda memory in MB (default: 10240)
+  lambdaMemorySize: number;      // Lambda memory in MB (default: 3008)
   lambdaTimeout: number;         // Lambda timeout in seconds (default: 900)
   embeddingModel: string;        // Bedrock model ID (default: "amazon.titan-embed-text-v2")
   vectorDimension: number;       // Embedding dimension (default: 1024)
@@ -215,7 +215,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
     ragIngestion: {
       enabled: parseBooleanEnv(process.env.CDK_RAG_ENABLED) ?? scope.node.tryGetContext('ragIngestion')?.enabled ?? true,
       corsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.corsOrigins || '',
-      lambdaMemorySize: parseIntEnv(process.env.CDK_RAG_LAMBDA_MEMORY) || scope.node.tryGetContext('ragIngestion')?.lambdaMemorySize || 10240,
+      lambdaMemorySize: parseIntEnv(process.env.CDK_RAG_LAMBDA_MEMORY) || scope.node.tryGetContext('ragIngestion')?.lambdaMemorySize || 3008,
       lambdaTimeout: parseIntEnv(process.env.CDK_RAG_LAMBDA_TIMEOUT) || scope.node.tryGetContext('ragIngestion')?.lambdaTimeout || 900,
       embeddingModel: process.env.CDK_RAG_EMBEDDING_MODEL || scope.node.tryGetContext('ragIngestion')?.embeddingModel || 'amazon.titan-embed-text-v2',
       vectorDimension: parseIntEnv(process.env.CDK_RAG_VECTOR_DIMENSION) || scope.node.tryGetContext('ragIngestion')?.vectorDimension || 1024,
