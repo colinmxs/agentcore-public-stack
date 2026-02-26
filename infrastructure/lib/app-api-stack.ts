@@ -1069,8 +1069,8 @@ export class AppApiStack extends cdk.Stack {
     // ============================================================
 
     // Reconstruct AuthProviders table reference for DynamoDB Stream event source
+    // Note: fromTableAttributes accepts either tableName OR tableArn, not both
     const authProvidersTable = dynamodb.Table.fromTableAttributes(this, 'ImportedAuthProvidersTable', {
-      tableName: authProvidersTableName,
       tableArn: authProvidersTableArn,
       tableStreamArn: authProvidersStreamArn,
     });
