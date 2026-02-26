@@ -19,7 +19,7 @@ export interface ContentFile {
 }
 
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class ChatRequestService {
   // private conversationService = inject(ConversationService);
@@ -33,22 +33,22 @@ export class ChatRequestService {
   private fileUploadService = inject(FileUploadService);
   private router = inject(Router);
   // TODO: Inject proper logging service
-  
+
   async submitChatRequest(
     userInput: string,
     sessionId: string | null,
     fileUploadIds?: string[],
-    assistantId?: string
+    assistantId?: string,
   ): Promise<void> {
     // Ensure conversation exists and get its ID
     // Update URL to reflect current conversation
     const isNewSession = !sessionId;
     sessionId = sessionId || uuidv4();
 
-    // Preserve assistantId in URL when navigating to new session
-    this.navigateToSession(sessionId, assistantId);
-
     // If this is a new session, add it to the session cache optimistically
+    // IMPORTANT: This must happen BEFORE navigation to prevent a race condition
+    // where the route subscription tries to fetch metadata before the session
+    // is marked as "new" in the newSessionIds set
     if (isNewSession) {
       // Get the current user from UserService
       const user = this.userService.getUser();
@@ -57,6 +57,9 @@ export class ChatRequestService {
       // Add the new session to the cache so it appears in the sidenav immediately
       this.sessionService.addSessionToCache(sessionId, userId);
     }
+
+    // Preserve assistantId in URL when navigating to new session
+    this.navigateToSession(sessionId, assistantId);
 
     // Get file attachment metadata for display in user message
     const fileAttachments = this.getFileAttachments(fileUploadIds);
@@ -68,7 +71,12 @@ export class ChatRequestService {
     this.messageMapService.startStreaming(sessionId);
 
     // Build and send request with file upload IDs and assistant ID
-    const requestObject = this.buildChatRequestObject(userInput, sessionId, fileUploadIds, assistantId);
+    const requestObject = this.buildChatRequestObject(
+      userInput,
+      sessionId,
+      fileUploadIds,
+      assistantId,
+    );
 
     try {
       await this.chatHttpService.sendChatRequest(requestObject);
@@ -92,19 +100,19 @@ export class ChatRequestService {
     if (assistantId) {
       queryParams['assistantId'] = assistantId;
     }
-    
-    this.router.navigate(['s', sessionId], { 
+
+    this.router.navigate(['s', sessionId], {
       replaceUrl: true,
       queryParams,
-      queryParamsHandling: 'merge'
-    })
+      queryParamsHandling: 'merge',
+    });
   }
 
   private buildChatRequestObject(
     message: string,
     session_id: string,
     fileUploadIds?: string[],
-    assistantId?: string
+    assistantId?: string,
   ) {
     const selectedModel = this.modelService.getSelectedModel();
 
@@ -123,7 +131,7 @@ export class ChatRequestService {
       session_id,
       model_id: isDefaultModel ? null : selectedModel.modelId,
       enabled_tools: enabledTools,
-      provider: isDefaultModel ? null : selectedModel.provider
+      provider: isDefaultModel ? null : selectedModel.provider,
     };
 
     // Add file upload IDs if present
@@ -158,7 +166,7 @@ export class ChatRequestService {
           uploadId: fileMeta.uploadId,
           filename: fileMeta.filename,
           mimeType: fileMeta.mimeType,
-          sizeBytes: fileMeta.sizeBytes
+          sizeBytes: fileMeta.sizeBytes,
         });
       }
     }
