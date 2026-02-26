@@ -15,6 +15,7 @@ import {
   heroQuestionMarkCircle,
 } from '@ng-icons/heroicons/outline';
 import { ToastService } from '../../services/toast/toast.service';
+import { ConfigService } from '../../services/config.service';
 import { ModelService } from '../../session/services/model/model.service';
 import { ApiKeyService, ApiKey, CreateApiKeyResponse } from './api-key.service';
 
@@ -420,6 +421,7 @@ type TooltipField = 'responseType' | 'exampleFormat' | 'optionalParams' | null;
 export class ApiKeysPage {
   private toast = inject(ToastService);
   private apiKeyService = inject(ApiKeyService);
+  private configService = inject(ConfigService);
   readonly modelService = inject(ModelService);
 
   readonly showCreateDialog = signal(false);
@@ -485,20 +487,29 @@ export class ApiKeysPage {
     this.languages.find(l => l.id === this.selectedLanguage())?.label ?? ''
   );
 
+  readonly apiBaseUrl = computed(() => {
+    const appApiUrl = this.configService.appApiUrl();
+    if (appApiUrl) {
+      return appApiUrl.replace(/\/+$/, '');
+    }
+    return window.location.origin;
+  });
+
   readonly codeExample = computed(() => {
     const model = this.selectedModelForExample();
     const streaming = this.selectedResponseType() === 'streaming';
     const conversation = this.selectedFormat() === 'conversation';
     const lang = this.selectedLanguage();
+    const baseUrl = this.apiBaseUrl();
     const opts = {
       temperature: this.paramTemperature().trim(),
       maxTokens: this.paramMaxTokens().trim(),
       topP: this.paramTopP().trim(),
       systemPrompt: this.paramSystemPrompt().trim(),
     };
-    if (lang === 'curl') return this.buildCurlExample(model, conversation, streaming, opts);
-    if (lang === 'python') return this.buildPythonExample(model, conversation, streaming, opts);
-    return this.buildJsExample(model, conversation, streaming, opts);
+    if (lang === 'curl') return this.buildCurlExample(model, conversation, streaming, opts, baseUrl);
+    if (lang === 'python') return this.buildPythonExample(model, conversation, streaming, opts, baseUrl);
+    return this.buildJsExample(model, conversation, streaming, opts, baseUrl);
   });
 
   handleCreateClick(): void {
@@ -602,7 +613,7 @@ export class ApiKeysPage {
     return lines.length ? ',\n' + lines.join(',\n') : '';
   }
 
-  private buildCurlExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }): string {
+  private buildCurlExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }, baseUrl: string): string {
     const messages = conversation
       ? `[
       {"role": "user", "content": "What is quantum computing?"},
@@ -615,7 +626,7 @@ export class ApiKeysPage {
     const streamFlag = streaming ? `,\n    "stream": true` : '';
     const optFields = this.buildOptionalFields('    ', opts, 'json');
     const curlStream = streaming ? ' \\\n  --no-buffer' : '';
-    return `curl -X POST "https://your-api-domain/chat/api-converse"${curlStream} \\
+    return `curl -X POST "${baseUrl}/chat/api-converse"${curlStream} \\
   -H "Content-Type: application/json" \\
   -H "X-API-Key: YOUR_API_KEY" \\
   -d '{
@@ -624,7 +635,7 @@ export class ApiKeysPage {
   }'`;
   }
 
-  private buildPythonExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }): string {
+  private buildPythonExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }, baseUrl: string): string {
     const messages = conversation
       ? `[
         {"role": "user", "content": "What is quantum computing?"},
@@ -649,7 +660,7 @@ export class ApiKeysPage {
       return `import requests
 import json
 
-url = "https://your-api-domain/chat/api-converse"
+url = "${baseUrl}/chat/api-converse"
 headers = {
     "Content-Type": "application/json",
     "X-API-Key": "YOUR_API_KEY",
@@ -674,7 +685,7 @@ with requests.post(url, json=payload, headers=headers, stream=True) as resp:
     }
     return `import requests
 
-url = "https://your-api-domain/chat/api-converse"
+url = "${baseUrl}/chat/api-converse"
 headers = {
     "Content-Type": "application/json",
     "X-API-Key": "YOUR_API_KEY",
@@ -700,7 +711,7 @@ if data.get("usage"):
     print(f"Tokens — in: {u.get('inputTokens')}, out: {u.get('outputTokens')}")`;
   }
 
-  private buildJsExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }): string {
+  private buildJsExample(model: string, conversation: boolean, streaming: boolean, opts: { temperature: string; maxTokens: string; topP: string; systemPrompt: string }, baseUrl: string): string {
     const messages = conversation
       ? `[
       { role: "user", content: "What is quantum computing?" },
@@ -722,7 +733,7 @@ if data.get("usage"):
     const optBlock = optLines.length ? '\n' + optLines.join('\n') : '';
 
     if (streaming) {
-      return `const response = await fetch("https://your-api-domain/chat/api-converse", {
+      return `const response = await fetch("${baseUrl}/chat/api-converse", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
@@ -761,7 +772,7 @@ while (true) {
   }
 }`;
     }
-    return `const response = await fetch("https://your-api-domain/chat/api-converse", {
+    return `const response = await fetch("${baseUrl}/chat/api-converse", {
   method: "POST",
   headers: {
     "Content-Type": "application/json",
