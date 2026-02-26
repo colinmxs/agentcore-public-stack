@@ -25,6 +25,13 @@ To deploy the AgentCore Public Stack via GitHub Actions, you need to configure t
 |------|------|-------------|
 | AWS_ROLE_ARN | Secret | AWS IAM role ARN for GitHub OIDC authentication |
 
+To set up OIDC between GitHub and AWS:
+1. Create an IAM OIDC identity provider in your AWS account for `token.actions.githubusercontent.com`
+2. Create an IAM role that trusts the GitHub OIDC provider, scoped to your repository
+3. Store the role ARN as the `AWS_ROLE_ARN` secret
+
+AWS provides a step-by-step guide: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+
 ## Quick Deploy
 
 Once you've set the required values above:
