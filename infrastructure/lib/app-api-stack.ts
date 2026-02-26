@@ -1145,6 +1145,24 @@ export class AppApiStack extends cdk.Stack {
       }),
     );
 
+    // Grant Bedrock permissions for API-key converse endpoint (/chat/api-converse)
+    // This allows the App API to call Bedrock Converse directly for API key users,
+    // matching the same permissions the AgentCore Runtime execution role has.
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BedrockApiKeyConverse',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock:InvokeModel',
+          'bedrock:InvokeModelWithResponseStream',
+        ],
+        resources: [
+          `arn:aws:bedrock:*::foundation-model/*`,
+          `arn:aws:bedrock:*:${config.awsAccount}:inference-profile/*`,
+        ],
+      }),
+    );
+
     // Grant permissions for OAuth provider management (imported from Infrastructure Stack)
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
