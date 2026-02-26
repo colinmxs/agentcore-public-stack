@@ -225,10 +225,12 @@ export class PreviewChatService {
       const token = await this.getBearerTokenForStreamingResponse();
       const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
 
+      // NOTE: Field name is 'rag_assistant_id' to avoid collision with AWS Bedrock
+      // AgentCore Runtime's internal 'assistant_id' field handling (causes 424 error)
       const requestBody = {
         message: userMessage,
         session_id: this.sessionIdSignal(),
-        assistant_id: assistantId,
+        rag_assistant_id: assistantId,
         model_id: null, // Use default model
         enabled_tools: [], // No tools in preview
       };

@@ -140,8 +140,10 @@ export class ChatRequestService {
     }
 
     // Add assistant ID if present
+    // NOTE: Field name is 'rag_assistant_id' to avoid collision with AWS Bedrock
+    // AgentCore Runtime's internal 'assistant_id' field handling (causes 424 error)
     if (assistantId) {
-      requestObject['assistant_id'] = assistantId;
+      requestObject['rag_assistant_id'] = assistantId;
     }
 
     return requestObject;
