@@ -248,13 +248,20 @@ export function loadConfig(scope: cdk.App): AppConfig {
 }
 
 /**
- * Parse boolean environment variable with validation
+ * Parse boolean environment variable with validation.
+ * 
+ * When called WITHOUT a defaultValue, returns undefined for missing/empty
+ * env vars so that nullish coalescing (??) can fall through to context defaults.
+ * When called WITH a defaultValue, returns that default for missing/empty env vars.
+ * 
  * @param value The environment variable value to parse
- * @param defaultValue The default value to use if undefined
- * @returns The parsed boolean value
- * @throws Error if the value is invalid
+ * @param defaultValue Optional default when env var is not set
+ * @returns The parsed boolean, or undefined if unset and no default provided
+ * @throws Error if the value is present but invalid
  */
-export function parseBooleanEnv(value: string | undefined, defaultValue: boolean = false): boolean {
+export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean;
+export function parseBooleanEnv(value: string | undefined): boolean | undefined;
+export function parseBooleanEnv(value: string | undefined, defaultValue?: boolean): boolean | undefined {
   if (value === undefined || value === '') {
     return defaultValue;
   }
