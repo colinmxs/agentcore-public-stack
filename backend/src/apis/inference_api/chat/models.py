@@ -6,7 +6,7 @@ Contains Pydantic models for chat API requests and responses.
 import json
 from typing import Any, Dict, List, Optional
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel
 
 
 class FileContent(BaseModel):
@@ -31,14 +31,11 @@ class InvocationRequest(BaseModel):
     file_upload_ids: Optional[List[str]] = None  # Upload IDs to resolve from S3
     provider: Optional[str] = None  # LLM provider: "bedrock", "openai", or "gemini"
     max_tokens: Optional[int] = None  # Maximum tokens to generate
-    # NOTE: Field name is 'rag_assistant_id' over the wire to avoid collision with
-    # AWS Bedrock AgentCore Runtime's internal 'assistant_id' field handling.
+    # NOTE: Field name is 'rag_assistant_id' to avoid collision with AWS Bedrock
+    # AgentCore Runtime's internal 'assistant_id' field handling.
     # AgentCore Runtime returns 424 when it sees a non-empty 'assistant_id' field,
     # likely trying to resolve it as an AWS Bedrock Agent ID.
-    assistant_id: Optional[str] = Field(default=None, alias="rag_assistant_id")
-
-    class Config:
-        populate_by_name = True  # Allow both 'assistant_id' and 'rag_assistant_id'
+    rag_assistant_id: Optional[str] = None
 
 
 # class InvocationRequest(BaseModel):
