@@ -1,32 +1,59 @@
-import { Component, ChangeDetectionStrategy, inject, signal, computed, OnInit, OnDestroy } from '@angular/core';
+import {
+  Component,
+  ChangeDetectionStrategy,
+  inject,
+  signal,
+  computed,
+  OnInit,
+  OnDestroy,
+} from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, FormGroup, FormArray, FormControl, Validators } from '@angular/forms';
+import {
+  ReactiveFormsModule,
+  FormBuilder,
+  FormGroup,
+  FormArray,
+  FormControl,
+  Validators,
+} from '@angular/forms';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
 import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroArrowLeft, heroChevronRight, heroFaceSmile, heroXMark } from '@ng-icons/heroicons/outline';
+import {
+  heroArrowLeft,
+  heroChevronRight,
+  heroFaceSmile,
+  heroXMark,
+} from '@ng-icons/heroicons/outline';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 import { ThemeService } from '../../components/topnav/components/theme-toggle/theme.service';
-
 
 @Component({
   selector: 'app-assistant-form-page',
   templateUrl: './assistant-form.page.html',
   styleUrl: './assistant-form.page.css',
   changeDetection: ChangeDetectionStrategy.OnPush,
-  imports: [ReactiveFormsModule, AssistantPreviewComponent, NgIcon, RouterLink, PickerComponent, CdkOverlayOrigin, CdkConnectedOverlay],
+  imports: [
+    ReactiveFormsModule,
+    AssistantPreviewComponent,
+    NgIcon,
+    RouterLink,
+    PickerComponent,
+    CdkOverlayOrigin,
+    CdkConnectedOverlay,
+  ],
   providers: [
     provideIcons({
       heroArrowLeft,
       heroChevronRight,
       heroFaceSmile,
-      heroXMark
-    })
-  ]
+      heroXMark,
+    }),
+  ],
 })
 export class AssistantFormPage implements OnInit, OnDestroy {
   private route = inject(ActivatedRoute);
@@ -44,9 +71,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   readonly isDarkMode = this.themeService.theme;
 
   readonly assistantId = signal<string | null>(null);
-  readonly mode = computed<'create' | 'edit'>(() => 
-    this.assistantId() ? 'edit' : 'create'
-  );
+  readonly mode = computed<'create' | 'edit'>(() => (this.assistantId() ? 'edit' : 'create'));
 
   readonly uploadedDocuments = signal<Document[]>([]);
   readonly isLoadingDocuments = signal<boolean>(false);
@@ -67,15 +92,15 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       originY: 'bottom',
       overlayX: 'start',
       overlayY: 'top',
-      offsetY: 8
+      offsetY: 8,
     },
     {
       originX: 'start',
       originY: 'top',
       overlayX: 'start',
       overlayY: 'bottom',
-      offsetY: -8
-    }
+      offsetY: -8,
+    },
   ];
 
   get starters(): FormArray {
@@ -100,7 +125,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       tags: [[]],
       starters: this.fb.array([]),
       emoji: [''],
-      status: ['DRAFT']
+      status: ['DRAFT'],
     });
 
     // If editing, load the assistant data and documents
@@ -119,7 +144,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     try {
       // First check local cache
       let assistant = this.assistantService.getAssistantById(id);
-      
+
       // If not in cache, fetch from API
       if (!assistant) {
         const response = await this.assistantService.getAssistant(id);
@@ -135,13 +160,13 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           visibility: assistant.visibility,
           tags: assistant.tags,
           emoji: assistant.emoji || '',
-          status: assistant.status
+          status: assistant.status,
         });
 
         // Populate starters FormArray
         this.starters.clear();
         if (assistant.starters && assistant.starters.length > 0) {
-          assistant.starters.forEach(starter => {
+          assistant.starters.forEach((starter) => {
             this.starters.push(new FormControl(starter, Validators.required));
           });
         }
@@ -170,7 +195,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
         // Set status to COMPLETE when saving from draft
         const updateData = {
           ...formData,
-          status: 'COMPLETE' as const
+          status: 'COMPLETE' as const,
         };
         await this.assistantService.updateAssistant(this.assistantId()!, updateData);
       }
@@ -213,7 +238,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   }
 
   toggleEmojiPicker(): void {
-    this.isEmojiPickerOpen.update(open => !open);
+    this.isEmojiPickerOpen.update((open) => !open);
   }
 
   closeEmojiPicker(): void {
@@ -232,7 +257,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   async onFileSelected(event: Event): Promise<void> {
     const input = event.target as HTMLInputElement;
     const file = input.files?.[0];
-    
+
     if (!file) {
       return;
     }
@@ -244,7 +269,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
         file,
         progress: 0,
         status: 'error',
-        error: `File size exceeds 10MB limit. File size: ${this.formatBytes(file.size)}`
+        error: `File size exceeds 10MB limit. File size: ${this.formatBytes(file.size)}`,
       });
       // Clear the input
       input.value = '';
@@ -257,11 +282,11 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       try {
         // Create a draft assistant first
         const draft = await this.assistantService.createDraft({
-          name: this.form.get('name')?.value || 'Untitled Assistant'
+          name: this.form.get('name')?.value || 'Untitled Assistant',
         });
         assistantId = draft.assistantId;
         this.assistantId.set(assistantId);
-        
+
         // Update form with draft data
         this.form.patchValue({
           name: draft.name,
@@ -270,7 +295,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           vectorIndexId: draft.vectorIndexId,
           visibility: draft.visibility,
           tags: draft.tags,
-          status: draft.status
+          status: draft.status,
         });
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to create assistant';
@@ -278,7 +303,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           file,
           progress: 0,
           status: 'error',
-          error: errorMessage
+          error: errorMessage,
         });
         input.value = '';
         return;
@@ -287,7 +312,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
     // Upload the document
     await this.uploadDocument(file, assistantId);
-    
+
     // Clear the input to allow re-selecting the same file
     input.value = '';
   }
@@ -297,7 +322,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     this.currentUpload.set({
       file,
       progress: 0,
-      status: 'uploading'
+      status: 'uploading',
     });
 
     try {
@@ -305,22 +330,18 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       const uploadUrlResponse = await this.documentService.requestUploadUrl(assistantId, file);
 
       // Step 2: Upload to S3 with progress tracking
-      await this.documentService.uploadToS3(
-        uploadUrlResponse.uploadUrl,
-        file,
-        (progress) => {
-          this.currentUpload.update(current => {
-            if (!current) return current;
-            return { ...current, progress };
-          });
-        }
-      );
+      await this.documentService.uploadToS3(uploadUrlResponse.uploadUrl, file, (progress) => {
+        this.currentUpload.update((current) => {
+          if (!current) return current;
+          return { ...current, progress };
+        });
+      });
 
       // Step 3: Mark upload as complete
       this.currentUpload.set({
         file,
         progress: 100,
-        status: 'complete'
+        status: 'complete',
       });
 
       // Step 4: Reload documents list to get the new document
@@ -334,17 +355,18 @@ export class AssistantFormPage implements OnInit, OnDestroy {
         this.currentUpload.set(null);
       }, 2000);
     } catch (error) {
-      const errorMessage = error instanceof DocumentUploadError
-        ? error.message
-        : error instanceof Error
-        ? error.message
-        : 'Upload failed';
-      
+      const errorMessage =
+        error instanceof DocumentUploadError
+          ? error.message
+          : error instanceof Error
+            ? error.message
+            : 'Upload failed';
+
       this.currentUpload.set({
         file,
         progress: this.currentUpload()?.progress || 0,
         status: 'error',
-        error: errorMessage
+        error: errorMessage,
       });
     }
   }
@@ -360,9 +382,13 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     try {
       const response = await this.documentService.listDocuments(assistantId);
       this.uploadedDocuments.set(response.documents);
-      
+
       // Start polling for any documents that are still processing
-      const processingStates: Array<'uploading' | 'chunking' | 'embedding'> = ['uploading', 'chunking', 'embedding'];
+      const processingStates: Array<'uploading' | 'chunking' | 'embedding'> = [
+        'uploading',
+        'chunking',
+        'embedding',
+      ];
       for (const doc of response.documents) {
         if (processingStates.includes(doc.status as 'uploading' | 'chunking' | 'embedding')) {
           // Only start polling if not already polling
@@ -397,31 +423,34 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   async startPollingDocument(documentId: string, assistantId: string): Promise<void> {
     // Add to polling set
-    this.pollingDocuments.update(set => new Set(set).add(documentId));
+    this.pollingDocuments.update((set) => new Set(set).add(documentId));
 
     try {
-      await this.documentService.pollDocumentStatus(
-        assistantId,
-        documentId,
-        (document) => {
-          // Update the document in the list
-          this.uploadedDocuments.update(docs =>
-            docs.map(doc =>
-              doc.documentId === documentId ? document : doc
-            )
-          );
-        }
-      );
+      await this.documentService.pollDocumentStatus(assistantId, documentId, (document) => {
+        // Update the document in the list
+        this.uploadedDocuments.update((docs) =>
+          docs.map((doc) => (doc.documentId === documentId ? document : doc)),
+        );
+      });
 
       // Polling completed - reload full list to ensure consistency
       await this.loadDocuments();
     } catch (error) {
-      console.error('Error polling document status:', error);
-      // Reload list anyway to get current state
-      await this.loadDocuments();
+      // Handle document/assistant deletion gracefully
+      if (error instanceof DocumentUploadError && error.code === 'DOCUMENT_NOT_FOUND') {
+        console.warn('Document or assistant was deleted during polling:', documentId);
+        // Remove the document from the local list immediately
+        this.uploadedDocuments.update((docs) =>
+          docs.filter((doc) => doc.documentId !== documentId),
+        );
+      } else {
+        console.error('Error polling document status:', error);
+        // Reload list anyway to get current state
+        await this.loadDocuments();
+      }
     } finally {
       // Remove from polling set
-      this.pollingDocuments.update(set => {
+      this.pollingDocuments.update((set) => {
         const newSet = new Set(set);
         newSet.delete(documentId);
         return newSet;
@@ -453,4 +482,3 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     }
   }
 }
-

@@ -16,8 +16,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.responses import StreamingResponse
 
 from agents.main_agent.session.session_factory import SessionFactory
-from apis.shared.models.managed_models import list_managed_models
-from apis.shared.files.file_resolver import ResolvedFileContent, get_file_resolver
 from apis.shared.auth.dependencies import get_current_user, get_current_user_trusted
 from apis.shared.auth.models import User
 from apis.shared.errors import (
@@ -26,6 +24,8 @@ from apis.shared.errors import (
     build_conversational_error_event,
     create_error_response,
 )
+from apis.shared.files.file_resolver import ResolvedFileContent, get_file_resolver
+from apis.shared.models.managed_models import list_managed_models
 from apis.shared.quota import (
     QuotaExceededEvent,
     build_no_quota_configured_event,
@@ -291,30 +291,30 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     system_prompt = input_data.system_prompt  # Start with provided system prompt
 
     logger.info(
-        f"Invocation request - Session: {input_data.session_id}, Assistant ID: {input_data.assistant_id}, Message: {input_data.message[:50]}..."
+        f"Invocation request - Session: {input_data.session_id}, Assistant ID: {input_data.rag_assistant_id}, Message: {input_data.message[:50]}..."
     )
 
-    if input_data.assistant_id:
+    if input_data.rag_assistant_id:
         # Local imports to avoid circular dependency
-        from apis.shared.assistants.service import (
-            get_assistant_with_access_check,
-            mark_share_as_interacted,
-        )
         from apis.shared.assistants.rag_service import (
             augment_prompt_with_context,
             search_assistant_knowledgebase_with_formatting,
         )
-        from apis.shared.sessions.models import (
-            SessionMetadata,
-            SessionPreferences,
+        from apis.shared.assistants.service import (
+            get_assistant_with_access_check,
+            mark_share_as_interacted,
         )
         from apis.shared.sessions.messages import get_messages
         from apis.shared.sessions.metadata import (
             get_session_metadata,
             store_session_metadata,
         )
+        from apis.shared.sessions.models import (
+            SessionMetadata,
+            SessionPreferences,
+        )
 
-        logger.info(f"Assistant RAG requested - Assistant: {input_data.assistant_id}, Session: {input_data.session_id}")
+        logger.info(f"Assistant RAG requested - Assistant: {input_data.rag_assistant_id}, Session: {input_data.session_id}")
 
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
@@ -327,15 +327,15 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
 
                 if existing_assistant_id:
                     # Session already has an assistant - verify it's the same one
-                    if existing_assistant_id != input_data.assistant_id:
+                    if existing_assistant_id != input_data.rag_assistant_id:
                         logger.warning(
-                            f"Attempted to change assistant from {existing_assistant_id} to {input_data.assistant_id} in session {input_data.session_id}"
+                            f"Attempted to change assistant from {existing_assistant_id} to {input_data.rag_assistant_id} in session {input_data.session_id}"
                         )
                         raise HTTPException(
                             status_code=400, detail="Cannot change assistants mid-session. Start a new session to use a different assistant."
                         )
                     # Same assistant - allow it to continue
-                    logger.info(f"Continuing with existing assistant {input_data.assistant_id} in session {input_data.session_id}")
+                    logger.info(f"Continuing with existing assistant {input_data.rag_assistant_id} in session {input_data.session_id}")
                 else:
                     # No assistant attached - verify session has no messages (can only attach to new sessions)
                     messages_response = await get_messages(
@@ -345,7 +345,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                     )
                     if messages_response.messages and len(messages_response.messages) > 0:
                         logger.warning(
-                            f"Attempted to attach assistant {input_data.assistant_id} to session {input_data.session_id} with existing messages"
+                            f"Attempted to attach assistant {input_data.rag_assistant_id} to session {input_data.session_id} with existing messages"
                         )
                         raise HTTPException(
                             status_code=400, detail="Assistants can only be attached to new sessions, start a new session to chat with this assistant"
@@ -359,39 +359,30 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             logger.info(f"🔍 Preview session - skipping session state validation")
 
         # 2. Load assistant with access check
-        assistant = await get_assistant_with_access_check(
-            assistant_id=input_data.assistant_id,
-            user_id=user_id,
-            user_email=current_user.email
-        )
-        
+        assistant = await get_assistant_with_access_check(assistant_id=input_data.rag_assistant_id, user_id=user_id, user_email=current_user.email)
+
         if not assistant:
             # Check if assistant exists at all to provide better error message
             from apis.shared.assistants.service import assistant_exists
-            exists = await assistant_exists(input_data.assistant_id)
-            
+
+            exists = await assistant_exists(input_data.rag_assistant_id)
+
             if not exists:
-                logger.warning(f"❌ Assistant {input_data.assistant_id} does not exist (404)")
-                raise HTTPException(
-                    status_code=404,
-                    detail=f"Assistant not found: {input_data.assistant_id}"
-                )
+                logger.warning(f"❌ Assistant {input_data.rag_assistant_id} does not exist (404)")
+                raise HTTPException(status_code=404, detail=f"Assistant not found: {input_data.rag_assistant_id}")
             else:
-                logger.warning(f"🔒 Access denied: user {user_id} ({current_user.email}) cannot access assistant {input_data.assistant_id} (403)")
-                raise HTTPException(
-                    status_code=403,
-                    detail=f"Access denied: You do not have permission to access this assistant"
-                )
-        
+                logger.warning(f"🔒 Access denied: user {user_id} ({current_user.email}) cannot access assistant {input_data.rag_assistant_id} (403)")
+                raise HTTPException(status_code=403, detail=f"Access denied: You do not have permission to access this assistant")
+
         # Mark as viewed if this is a shared assistant (not owned)
         if assistant.owner_id != user_id:
-            await mark_share_as_interacted(assistant_id=input_data.assistant_id, user_email=current_user.email)
-        
+            await mark_share_as_interacted(assistant_id=input_data.rag_assistant_id, user_email=current_user.email)
+
         # 3. Search assistant knowledge base
         try:
-            logger.info(f"Searching knowledge base for assistant {input_data.assistant_id} with query: {input_data.message[:100]}...")
+            logger.info(f"Searching knowledge base for assistant {input_data.rag_assistant_id} with query: {input_data.message[:100]}...")
             context_chunks = await search_assistant_knowledgebase_with_formatting(
-                assistant_id=input_data.assistant_id, query=input_data.message, top_k=5
+                assistant_id=input_data.rag_assistant_id, query=input_data.message, top_k=5
             )
             logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
 
@@ -402,7 +393,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                     f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(input_data.message)}, Augmented length: {len(augmented_message)}"
                 )
             else:
-                logger.info(f"⚠️ No context chunks found for assistant {input_data.assistant_id} - using original message without augmentation")
+                logger.info(f"⚠️ No context chunks found for assistant {input_data.rag_assistant_id} - using original message without augmentation")
         except Exception as e:
             logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
             # Continue without RAG context rather than failing
@@ -429,7 +420,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 base_prompt_builder = SystemPromptBuilder()
                 system_prompt = base_prompt_builder.build(include_date=True)
             logger.info(
-                f"⚠️ Assistant {input_data.assistant_id} has no instructions - using {'provided' if system_prompt else 'default'} system prompt"
+                f"⚠️ Assistant {input_data.rag_assistant_id} has no instructions - using {'provided' if system_prompt else 'default'} system prompt"
             )
 
         # 6. Save assistant_id to session preferences (persist for future loads)
@@ -440,17 +431,17 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 if existing_metadata:
                     # Update existing metadata with assistant_id in preferences
                     prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
-                    prefs_dict["assistant_id"] = input_data.assistant_id
+                    prefs_dict["assistant_id"] = input_data.rag_assistant_id
                     preferences = SessionPreferences(**prefs_dict)
 
-                    updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.assistant_id})
+                    updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.rag_assistant_id})
 
                 else:
                     # Create new metadata with assistant_id in preferences
                     from datetime import datetime, timezone
 
                     now = datetime.now(timezone.utc).isoformat()
-                    preferences = SessionPreferences(assistantId=input_data.assistant_id)
+                    preferences = SessionPreferences(assistantId=input_data.rag_assistant_id)
 
                     updated_metadata = SessionMetadata(
                         sessionId=input_data.session_id,
@@ -468,7 +459,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                     )
 
                 await store_session_metadata(session_id=input_data.session_id, user_id=user_id, session_metadata=updated_metadata)
-                logger.info(f"💾 Saved assistant_id {input_data.assistant_id} to session {input_data.session_id} preferences")
+                logger.info(f"💾 Saved assistant_id {input_data.rag_assistant_id} to session {input_data.session_id} preferences")
             except Exception as e:
                 logger.error(f"Failed to save assistant_id to session preferences: {e}", exc_info=True)
                 # Continue - not critical if metadata save fails
@@ -506,7 +497,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             for chunk in context_chunks:
                 citations_for_storage.append(
                     {
-                        "assistantId": input_data.assistant_id,
+                        "assistantId": input_data.rag_assistant_id,
                         "documentId": chunk.get("metadata", {}).get("document_id", ""),
                         "fileName": chunk.get("metadata", {}).get("source", "Unknown Source"),
                         "text": chunk.get("text", "")[:500],  # Limit excerpt length
