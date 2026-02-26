@@ -8,7 +8,7 @@ import {
   UploadUrlResponse,
   Document,
   DocumentsListResponse,
-  DownloadUrlResponse
+  DownloadUrlResponse,
 } from '../models/document.model';
 
 /**
@@ -18,7 +18,7 @@ export class DocumentUploadError extends Error {
   constructor(
     message: string,
     public readonly code: string,
-    public readonly details?: Record<string, unknown>
+    public readonly details?: Record<string, unknown>,
   ) {
     super(message);
     this.name = 'DocumentUploadError';
@@ -35,7 +35,7 @@ export class DocumentUploadError extends Error {
  * 4. Document status is automatically updated by backend after upload
  */
 @Injectable({
-  providedIn: 'root'
+  providedIn: 'root',
 })
 export class DocumentService {
   private http = inject(HttpClient);
@@ -57,15 +57,15 @@ export class DocumentService {
     const request: CreateDocumentRequest = {
       filename: file.name,
       contentType: file.type || 'application/octet-stream',
-      sizeBytes: file.size
+      sizeBytes: file.size,
     };
 
     try {
       return await firstValueFrom(
         this.http.post<UploadUrlResponse>(
           `${this.baseUrl()}/${assistantId}/documents/upload-url`,
-          request
-        )
+          request,
+        ),
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to get upload URL');
@@ -84,7 +84,7 @@ export class DocumentService {
   async uploadToS3(
     presignedUrl: string,
     file: File,
-    onProgress: (progress: number) => void
+    onProgress: (progress: number) => void,
   ): Promise<void> {
     try {
       // Extract Content-Type from presigned URL if present
@@ -92,9 +92,9 @@ export class DocumentService {
       const urlObj = new URL(presignedUrl);
       const contentTypeFromUrl = urlObj.searchParams.get('content-type');
       // Use Content-Type from URL (what was used to sign) or fall back to file type
-      const contentType = contentTypeFromUrl 
+      const contentType = contentTypeFromUrl
         ? decodeURIComponent(contentTypeFromUrl)
-        : (file.type || 'application/octet-stream');
+        : file.type || 'application/octet-stream';
 
       // Use XMLHttpRequest for progress tracking
       await new Promise<void>((resolve, reject) => {
@@ -131,23 +131,18 @@ export class DocumentService {
                 errorMessage = `S3 upload failed: ${xhr.responseText}`;
               }
             }
-            reject(new DocumentUploadError(
-              errorMessage,
-              'S3_UPLOAD_FAILED',
-              { 
+            reject(
+              new DocumentUploadError(errorMessage, 'S3_UPLOAD_FAILED', {
                 status: xhr.status,
                 statusText: xhr.statusText,
-                responseText: xhr.responseText
-              }
-            ));
+                responseText: xhr.responseText,
+              }),
+            );
           }
         };
 
         xhr.onerror = () => {
-          reject(new DocumentUploadError(
-            'Network error during S3 upload',
-            'NETWORK_ERROR'
-          ));
+          reject(new DocumentUploadError('Network error during S3 upload', 'NETWORK_ERROR'));
         };
 
         xhr.open('PUT', presignedUrl);
@@ -157,11 +152,9 @@ export class DocumentService {
       });
     } catch (err) {
       if (err instanceof DocumentUploadError) throw err;
-      throw new DocumentUploadError(
-        'Failed to upload to S3',
-        'S3_UPLOAD_FAILED',
-        { originalError: String(err) }
-      );
+      throw new DocumentUploadError('Failed to upload to S3', 'S3_UPLOAD_FAILED', {
+        originalError: String(err),
+      });
     }
   }
 
@@ -177,28 +170,26 @@ export class DocumentService {
   async listDocuments(
     assistantId: string,
     limit?: number,
-    nextToken?: string
+    nextToken?: string,
   ): Promise<DocumentsListResponse> {
     await this.authService.ensureAuthenticated();
 
     try {
       let url = `${this.baseUrl()}/${assistantId}/documents`;
       const params: string[] = [];
-      
+
       if (limit !== undefined) {
         params.push(`limit=${limit}`);
       }
       if (nextToken) {
         params.push(`next_token=${encodeURIComponent(nextToken)}`);
       }
-      
+
       if (params.length > 0) {
         url += `?${params.join('&')}`;
       }
 
-      return await firstValueFrom(
-        this.http.get<DocumentsListResponse>(url)
-      );
+      return await firstValueFrom(this.http.get<DocumentsListResponse>(url));
     } catch (err) {
       throw this.handleApiError(err, 'Failed to list documents');
     }
@@ -217,7 +208,7 @@ export class DocumentService {
 
     try {
       return await firstValueFrom(
-        this.http.get<Document>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`)
+        this.http.get<Document>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`),
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to get document');
@@ -239,8 +230,8 @@ export class DocumentService {
     try {
       return await firstValueFrom(
         this.http.get<DownloadUrlResponse>(
-          `${this.baseUrl()}/${assistantId}/documents/${documentId}/download`
-        )
+          `${this.baseUrl()}/${assistantId}/documents/${documentId}/download`,
+        ),
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to get download URL');
@@ -260,7 +251,7 @@ export class DocumentService {
 
     try {
       await firstValueFrom(
-        this.http.delete<void>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`)
+        this.http.delete<void>(`${this.baseUrl()}/${assistantId}/documents/${documentId}`),
       );
     } catch (err) {
       throw this.handleApiError(err, 'Failed to delete document');
@@ -286,17 +277,22 @@ export class DocumentService {
     onStatusUpdate?: (document: Document) => void,
     maxPollTime: number = 5 * 60 * 1000, // 5 minutes
     initialInterval: number = 500, // 500ms - start fast to catch quick status changes
-    maxInterval: number = 10000 // 10 seconds
+    maxInterval: number = 10000, // 10 seconds
   ): Promise<Document> {
     const startTime = Date.now();
     let currentInterval = initialInterval;
     const terminalStates: Array<'complete' | 'failed'> = ['complete', 'failed'];
     let pollCount = 0;
+    let consecutive404Count = 0;
+    const max404Retries = 5; // Stop polling after 5 consecutive 404s (document/assistant likely deleted)
 
     while (Date.now() - startTime < maxPollTime) {
       try {
         const document = await this.getDocument(assistantId, documentId);
-        
+
+        // Reset 404 counter on successful response
+        consecutive404Count = 0;
+
         // Call update callback
         if (onStatusUpdate) {
           onStatusUpdate(document);
@@ -308,7 +304,7 @@ export class DocumentService {
         }
 
         pollCount++;
-        
+
         // For the first few polls, use shorter intervals to catch quick status changes
         // After 5 polls, switch to exponential backoff
         if (pollCount < 5) {
@@ -317,13 +313,25 @@ export class DocumentService {
           // Increase interval for next poll (exponential backoff, capped at maxInterval)
           currentInterval = Math.min(currentInterval * 1.5, maxInterval);
         }
-        
+
         // Wait before next poll
-        await new Promise(resolve => setTimeout(resolve, currentInterval));
+        await new Promise((resolve) => setTimeout(resolve, currentInterval));
       } catch (err) {
-        // If it's a 404, the document might not exist yet, continue polling
+        // If it's a 404, track consecutive failures
+        // The document might not exist yet initially, but if we keep getting 404s,
+        // the document or assistant was likely deleted
         if (err instanceof DocumentUploadError && err.code === 'HTTP_404') {
-          await new Promise(resolve => setTimeout(resolve, currentInterval));
+          consecutive404Count++;
+
+          if (consecutive404Count >= max404Retries) {
+            throw new DocumentUploadError(
+              `Document or assistant no longer exists after ${consecutive404Count} consecutive 404 errors`,
+              'DOCUMENT_NOT_FOUND',
+              { documentId, assistantId, consecutive404Count },
+            );
+          }
+
+          await new Promise((resolve) => setTimeout(resolve, currentInterval));
           continue;
         }
         throw err;
@@ -335,11 +343,11 @@ export class DocumentService {
     if (onStatusUpdate) {
       onStatusUpdate(finalDocument);
     }
-    
+
     throw new DocumentUploadError(
       `Document processing timed out after ${maxPollTime / 1000}s. Current status: ${finalDocument.status}`,
       'POLL_TIMEOUT',
-      { documentId, finalStatus: finalDocument.status }
+      { documentId, finalStatus: finalDocument.status },
     );
   }
 
@@ -350,27 +358,16 @@ export class DocumentService {
     if (err instanceof HttpErrorResponse) {
       const status = err.status;
       const message = err.error?.detail || err.error?.message || err.message || defaultMessage;
-      
-      return new DocumentUploadError(
-        message,
-        `HTTP_${status}`,
-        { status, error: err.error }
-      );
+
+      return new DocumentUploadError(message, `HTTP_${status}`, { status, error: err.error });
     }
-    
+
     if (err instanceof Error) {
-      return new DocumentUploadError(
-        err.message || defaultMessage,
-        'UNKNOWN_ERROR',
-        { originalError: err }
-      );
+      return new DocumentUploadError(err.message || defaultMessage, 'UNKNOWN_ERROR', {
+        originalError: err,
+      });
     }
-    
-    return new DocumentUploadError(
-      defaultMessage,
-      'UNKNOWN_ERROR',
-      { originalError: String(err) }
-    );
+
+    return new DocumentUploadError(defaultMessage, 'UNKNOWN_ERROR', { originalError: String(err) });
   }
 }
-
