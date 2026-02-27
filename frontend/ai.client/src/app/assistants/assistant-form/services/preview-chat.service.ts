@@ -75,13 +75,25 @@ export class PreviewChatService {
 
   /**
    * Get the runtime endpoint URL for inference API calls.
-   * Uses the same pattern as ChatHttpService - fetches dynamically from App API
-   * when authentication is enabled, otherwise falls back to static config.
+   * Uses the same pattern as ChatHttpService:
+   * 1. If inferenceApiUrl is configured (local dev), use it as override
+   * 2. Otherwise, fetch dynamically from App API (production multi-provider)
    */
   private async getRuntimeEndpointUrl(): Promise<string> {
-    // If authentication is disabled, use the static inference API URL from config
+    // If inferenceApiUrl is explicitly configured, use it as an override.
+    // This enables local development with real OIDC auth but local inference.
+    // In production, this should be empty/undefined to use provider-based routing.
+    const configuredInferenceUrl = this.config.inferenceApiUrl();
+    if (configuredInferenceUrl) {
+      // Add /invocations if not already present
+      return configuredInferenceUrl.endsWith('/invocations')
+        ? configuredInferenceUrl
+        : `${configuredInferenceUrl}/invocations`;
+    }
+
+    // If authentication is disabled and no inference URL configured, error
     if (!this.config.enableAuthentication()) {
-      return `${this.config.inferenceApiUrl()}/invocations`;
+      throw new Error('Inference API URL must be configured when authentication is disabled');
     }
 
     // Fetch runtime endpoint from App API (same as main chat service)
@@ -213,10 +225,12 @@ export class PreviewChatService {
       const token = await this.getBearerTokenForStreamingResponse();
       const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
 
+      // NOTE: Field name is 'rag_assistant_id' to avoid collision with AWS Bedrock
+      // AgentCore Runtime's internal 'assistant_id' field handling (causes 424 error)
       const requestBody = {
         message: userMessage,
         session_id: this.sessionIdSignal(),
-        assistant_id: assistantId,
+        rag_assistant_id: assistantId,
         model_id: null, // Use default model
         enabled_tools: [], // No tools in preview
       };
