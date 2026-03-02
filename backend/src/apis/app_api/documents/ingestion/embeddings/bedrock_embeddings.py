@@ -49,6 +49,114 @@ BEDROCK_EMBEDDING_CONFIG = {
 
 logger = logging.getLogger(__name__)
 
+# --- Token validation safety net (Layer 2) ---
+
+_tiktoken_encoder = None
+
+
+def _get_tiktoken_encoder():
+    global _tiktoken_encoder
+    if _tiktoken_encoder is None:
+        import tiktoken
+
+        _tiktoken_encoder = tiktoken.get_encoding("cl100k_base")
+    return _tiktoken_encoder
+
+
+def _count_tokens(text: str) -> int:
+    return len(_get_tiktoken_encoder().encode(text))
+
+
+def _split_oversized_chunk(chunk: str, max_tokens: int) -> List[str]:
+    """
+    Split a single oversized chunk into pieces that fit within max_tokens.
+    Tries paragraph boundaries first, then sentence boundaries, then hard-cuts.
+    """
+    enc = _get_tiktoken_encoder()
+
+    # Try splitting by paragraphs
+    paragraphs = chunk.split("\n\n")
+    if len(paragraphs) > 1:
+        pieces = []
+        current = ""
+        for para in paragraphs:
+            candidate = (current + "\n\n" + para).strip() if current else para
+            if _count_tokens(candidate) <= max_tokens:
+                current = candidate
+            else:
+                if current:
+                    pieces.append(current)
+                # If this paragraph alone is too big, split it further
+                if _count_tokens(para) > max_tokens:
+                    pieces.extend(_split_by_sentences(para, max_tokens, enc))
+                else:
+                    current = para
+        if current:
+            pieces.append(current)
+        return pieces
+
+    # Single paragraph — split by sentences
+    return _split_by_sentences(chunk, max_tokens, enc)
+
+
+def _split_by_sentences(text: str, max_tokens: int, enc) -> List[str]:
+    """Split text by sentence boundaries, falling back to hard token cuts."""
+    import re
+
+    sentences = re.split(r"(?<=[.!?])\s+", text)
+    if len(sentences) <= 1:
+        # Hard cut by tokens
+        return _hard_split(text, max_tokens, enc)
+
+    pieces = []
+    current = ""
+    for sent in sentences:
+        candidate = (current + " " + sent).strip() if current else sent
+        if _count_tokens(candidate) <= max_tokens:
+            current = candidate
+        else:
+            if current:
+                pieces.append(current)
+            if _count_tokens(sent) > max_tokens:
+                pieces.extend(_hard_split(sent, max_tokens, enc))
+            else:
+                current = sent
+    if current:
+        pieces.append(current)
+    return pieces
+
+
+def _hard_split(text: str, max_tokens: int, enc) -> List[str]:
+    """Last resort: split by token count."""
+    tokens = enc.encode(text)
+    pieces = []
+    for i in range(0, len(tokens), max_tokens):
+        pieces.append(enc.decode(tokens[i : i + max_tokens]))
+    return pieces
+
+
+def _validate_and_split_chunks(chunks: List[str], max_tokens: int = 8000) -> List[str]:
+    """
+    Validate all chunks are within the token limit.
+    Any oversized chunks are automatically split.
+    Uses 8000 as default (safe margin under Titan's 8192 hard limit).
+    """
+    validated = []
+    split_count = 0
+    for chunk in chunks:
+        token_count = _count_tokens(chunk)
+        if token_count <= max_tokens:
+            validated.append(chunk)
+        else:
+            logger.warning(f"Chunk exceeds token limit ({token_count} > {max_tokens}), splitting")
+            sub_chunks = _split_oversized_chunk(chunk, max_tokens)
+            validated.extend(sub_chunks)
+            split_count += 1
+
+    if split_count > 0:
+        logger.info(f"Token validation: split {split_count} oversized chunk(s), {len(chunks)} -> {len(validated)} chunks")
+    return validated
+
 
 def _get_aws_region() -> str:
     """Get AWS region from environment, defaulting to us-west-2"""
@@ -73,6 +181,9 @@ async def generate_embeddings(
     Raises:
         Exception: If Bedrock API call fails
     """
+    # Layer 2 safety net: split any chunks that exceed the Titan token limit
+    chunks = _validate_and_split_chunks(chunks)
+
     bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
     logger.info(f"Generating embeddings for {len(chunks)} chunks in parallel...")

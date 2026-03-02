@@ -172,6 +172,20 @@ async def process_with_docling(
     if mime_type in TEXT_BASED_MIME_TYPES:
         file_bytes = _ensure_utf8_bytes(file_bytes, mime_type)
 
+    # CSV-specific path: bypass Docling, use row-based chunker
+    if mime_type == "text/csv" or (filename and filename.lower().endswith(".csv")):
+        logger.info("Detected CSV file, using CSV-specific chunker (bypassing Docling)")
+        _ensure_tiktoken_cache()
+        from .csv_chunker import chunk_csv
+
+        chunks = chunk_csv(file_bytes, max_tokens=900)
+
+        if progress_callback:
+            await progress_callback(len(chunks))
+
+        logger.info(f"CSV chunking complete. Total chunks: {len(chunks)}")
+        return chunks
+
     # Import inside function to avoid heavy load at cold start if not needed immediately
     import torch
 
