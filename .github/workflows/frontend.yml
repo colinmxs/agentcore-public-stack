@@ -212,6 +212,9 @@ jobs:
           echo "CDK_DOMAIN_NAME is set: ${{ env.CDK_DOMAIN_NAME != '' }}"
           echo "CDK_FRONTEND_ENABLE_ROUTE53 is set: ${{ env.CDK_FRONTEND_ENABLE_ROUTE53 != '' }}"
           echo "CDK_FRONTEND_CERTIFICATE_ARN is set: ${{ env.CDK_FRONTEND_CERTIFICATE_ARN != '' }}"
+          echo "CDK_DOMAIN_NAME value: ${CDK_DOMAIN_NAME}"
+          echo "CDK_FRONTEND_ENABLE_ROUTE53 value: ${CDK_FRONTEND_ENABLE_ROUTE53}"
+          echo "CDK_FRONTEND_CERTIFICATE_ARN length: ${#CDK_FRONTEND_CERTIFICATE_ARN}"
 
       - name: Synthesize CloudFormation template
         run: |
