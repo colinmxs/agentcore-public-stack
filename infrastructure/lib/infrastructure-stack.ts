@@ -1036,15 +1036,17 @@ export class InfrastructureStack extends cdk.Stack {
     });
 
     // ============================================================
-    // Route53 Hosted Zone (Optional)
+    // Route53 Hosted Zone Lookup (Optional)
     // ============================================================
+    // The hosted zone and certificates are created outside this stack
+    // (manually or via a separate DNS stack). This stack looks up the
+    // existing hosted zone and creates A records for the ALB.
     if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
-      const hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
-        zoneName: config.infrastructureHostedZoneDomain,
-        comment: `Hosted zone for ${config.projectPrefix}`,
+      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+        domainName: config.infrastructureHostedZoneDomain,
       });
 
-      // Export Hosted Zone ID to SSM
+      // Export Hosted Zone ID to SSM for cross-stack references
       new ssm.StringParameter(this, 'HostedZoneIdParameter', {
         parameterName: `/${config.projectPrefix}/network/hosted-zone-id`,
         stringValue: hostedZone.hostedZoneId,
@@ -1060,27 +1062,13 @@ export class InfrastructureStack extends cdk.Stack {
         tier: ssm.ParameterTier.STANDARD,
       });
 
-      // CloudFormation Output for Hosted Zone
-      new cdk.CfnOutput(this, 'HostedZoneId', {
-        value: hostedZone.hostedZoneId,
-        description: 'Route53 Hosted Zone ID',
-        exportName: `${config.projectPrefix}-hosted-zone-id`,
-      });
-
-      new cdk.CfnOutput(this, 'HostedZoneNameServers', {
-        value: cdk.Fn.join(', ', hostedZone.hostedZoneNameServers || []),
-        description: 'Route53 Hosted Zone Name Servers',
-        exportName: `${config.projectPrefix}-hosted-zone-ns`,
-      });
-
       // ============================================================
       // Route53 A Record for ALB (Optional)
       // ============================================================
       if (config.albSubdomain) {
         const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
-        const protocol = config.certificateArn ? 'https' : 'http';
         
-        const albARecord = new route53.ARecord(this, 'AlbARecord', {
+        new route53.ARecord(this, 'AlbARecord', {
           zone: hostedZone,
           recordName: config.albSubdomain,
           target: route53.RecordTarget.fromAlias(
@@ -1089,7 +1077,6 @@ export class InfrastructureStack extends cdk.Stack {
           comment: `A record for ALB - points ${albRecordName} to load balancer`,
         });
 
-        // Additional HTTPS URL output when certificate is provided
         if (config.certificateArn) {
           new cdk.CfnOutput(this, 'AlbUrlHttps', {
             value: `https://${albRecordName}`,
