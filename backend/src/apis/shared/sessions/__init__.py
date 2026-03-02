@@ -42,7 +42,6 @@ from .metadata import (
 from .messages import (
     get_messages,
     get_messages_from_cloud,
-    get_messages_from_local,
 )
 
 __all__ = [
@@ -76,5 +75,4 @@ __all__ = [
     # Message operations
     "get_messages",
     "get_messages_from_cloud",
-    "get_messages_from_local",
 ]
