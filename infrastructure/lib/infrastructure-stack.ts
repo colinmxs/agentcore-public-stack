@@ -1038,54 +1038,59 @@ export class InfrastructureStack extends cdk.Stack {
     // ============================================================
     // Route53 Hosted Zone Lookup (Optional)
     // ============================================================
+    // TEMPORARILY COMMENTED OUT: Uncomment after deploying once to let
+    // CloudFormation remove the old hosted zone resource, then delete
+    // the duplicate zone manually, then uncomment and redeploy.
+    //
     // The hosted zone and certificates are created outside this stack
     // (manually or via a separate DNS stack). This stack looks up the
     // existing hosted zone and creates A records for the ALB.
-    if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
-      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
-        domainName: config.infrastructureHostedZoneDomain,
-      });
-
-      // Export Hosted Zone ID to SSM for cross-stack references
-      new ssm.StringParameter(this, 'HostedZoneIdParameter', {
-        parameterName: `/${config.projectPrefix}/network/hosted-zone-id`,
-        stringValue: hostedZone.hostedZoneId,
-        description: 'Route53 Hosted Zone ID',
-        tier: ssm.ParameterTier.STANDARD,
-      });
-
-      // Export Hosted Zone Name to SSM
-      new ssm.StringParameter(this, 'HostedZoneNameParameter', {
-        parameterName: `/${config.projectPrefix}/network/hosted-zone-name`,
-        stringValue: hostedZone.zoneName,
-        description: 'Route53 Hosted Zone Name',
-        tier: ssm.ParameterTier.STANDARD,
-      });
-
-      // ============================================================
-      // Route53 A Record for ALB (Optional)
-      // ============================================================
-      if (config.albSubdomain) {
-        const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
-        
-        new route53.ARecord(this, 'AlbARecord', {
-          zone: hostedZone,
-          recordName: config.albSubdomain,
-          target: route53.RecordTarget.fromAlias(
-            new route53Targets.LoadBalancerTarget(this.alb)
-          ),
-          comment: `A record for ALB - points ${albRecordName} to load balancer`,
-        });
-
-        if (config.certificateArn) {
-          new cdk.CfnOutput(this, 'AlbUrlHttps', {
-            value: `https://${albRecordName}`,
-            description: 'Application Load Balancer HTTPS URL (HTTP redirects here)',
-            exportName: `${config.projectPrefix}-alb-url-https`,
-          });
-        }
-      }
-    }
+    //
+    // if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
+    //   const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+    //     domainName: config.infrastructureHostedZoneDomain,
+    //   });
+    //
+    //   // Export Hosted Zone ID to SSM for cross-stack references
+    //   new ssm.StringParameter(this, 'HostedZoneIdParameter', {
+    //     parameterName: `/${config.projectPrefix}/network/hosted-zone-id`,
+    //     stringValue: hostedZone.hostedZoneId,
+    //     description: 'Route53 Hosted Zone ID',
+    //     tier: ssm.ParameterTier.STANDARD,
+    //   });
+    //
+    //   // Export Hosted Zone Name to SSM
+    //   new ssm.StringParameter(this, 'HostedZoneNameParameter', {
+    //     parameterName: `/${config.projectPrefix}/network/hosted-zone-name`,
+    //     stringValue: hostedZone.zoneName,
+    //     description: 'Route53 Hosted Zone Name',
+    //     tier: ssm.ParameterTier.STANDARD,
+    //   });
+    //
+    //   // ============================================================
+    //   // Route53 A Record for ALB (Optional)
+    //   // ============================================================
+    //   if (config.albSubdomain) {
+    //     const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
+    //
+    //     new route53.ARecord(this, 'AlbARecord', {
+    //       zone: hostedZone,
+    //       recordName: config.albSubdomain,
+    //       target: route53.RecordTarget.fromAlias(
+    //         new route53Targets.LoadBalancerTarget(this.alb)
+    //       ),
+    //       comment: `A record for ALB - points ${albRecordName} to load balancer`,
+    //     });
+    //
+    //     if (config.certificateArn) {
+    //       new cdk.CfnOutput(this, 'AlbUrlHttps', {
+    //         value: `https://${albRecordName}`,
+    //         description: 'Application Load Balancer HTTPS URL (HTTP redirects here)',
+    //         exportName: `${config.projectPrefix}-alb-url-https`,
+    //       });
+    //     }
+    //   }
+    // }
 
     // ============================================================
     // ALB URL Export (Always)
