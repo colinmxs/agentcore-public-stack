@@ -1,9 +1,7 @@
 """
-Session manager factory for selecting appropriate session storage
+Session manager factory for creating AgentCore Memory session managers
 """
 import logging
-import os
-from pathlib import Path
 from typing import Optional, Any, Dict, Tuple
 from functools import lru_cache
 
@@ -97,33 +95,31 @@ class SessionFactory:
             compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
-            Session manager instance (TurnBasedSessionManager, LocalSessionBuffer, or PreviewSessionManager)
+            Session manager instance (TurnBasedSessionManager or PreviewSessionManager)
         """
         # Check for preview session first - these use in-memory storage only
         if is_preview_session(session_id):
             logger.info(f"🔍 Preview session detected: {session_id}")
             return PreviewSessionManager(session_id=session_id, user_id=user_id)
 
-        # Load memory configuration from environment
+        if not AGENTCORE_MEMORY_AVAILABLE:
+            raise RuntimeError(
+                "bedrock_agentcore package is required. "
+                "Install with: pip install -e '.[agentcore]'"
+            )
+
+        # Load memory configuration from environment (raises if AGENTCORE_MEMORY_ID not set)
         config = load_memory_config()
 
-        if config.is_cloud_mode and AGENTCORE_MEMORY_AVAILABLE:
-            # Cloud deployment: Use AgentCore Memory (AWS-managed DynamoDB)
-            return SessionFactory._create_cloud_session_manager(
-                memory_id=config.memory_id,
-                session_id=session_id,
-                user_id=user_id,
-                aws_region=config.region,
-                caching_enabled=caching_enabled,
-                compaction_enabled=compaction_enabled,
-                compaction_threshold=compaction_threshold,
-            )
-        else:
-            # Local development: Use file-based session manager with buffering
-            return SessionFactory._create_local_session_manager(
-                session_id=session_id,
-                user_id=user_id,
-            )
+        return SessionFactory._create_cloud_session_manager(
+            memory_id=config.memory_id,
+            session_id=session_id,
+            user_id=user_id,
+            aws_region=config.region,
+            caching_enabled=caching_enabled,
+            compaction_enabled=compaction_enabled,
+            compaction_threshold=compaction_threshold,
+        )
 
     @staticmethod
     def _create_cloud_session_manager(
@@ -238,61 +234,17 @@ class SessionFactory:
         return session_manager
 
     @staticmethod
-    def _create_local_session_manager(
-        session_id: str,
-        user_id: str = "local-user",
-    ) -> Any:
-        """
-        Create file-based session manager with buffering
-
-        Note: Compaction is not supported in local mode since it requires
-        DynamoDB for state persistence.
-
-        Args:
-            session_id: Session identifier
-            user_id: User identifier
-
-        Returns:
-            LocalSessionBuffer wrapping FileSessionManager
-        """
-        from strands.session.file_session_manager import FileSessionManager
-        from agents.main_agent.session.local_session_buffer import LocalSessionBuffer
-
-        logger.info(f"💻 Local mode: Using FileSessionManager with buffering")
-
-        # Determine sessions directory
-        sessions_dir = Path(__file__).parent.parent.parent.parent / "sessions"
-        sessions_dir.mkdir(exist_ok=True)
-
-        # Create base file manager
-        base_file_manager = FileSessionManager(
-            session_id=session_id,
-            storage_dir=str(sessions_dir)
-        )
-
-        # Wrap with local buffering manager for stop functionality
-        session_manager = LocalSessionBuffer(
-            base_manager=base_file_manager,
-            session_id=session_id
-        )
-
-        logger.info(f"✅ FileSessionManager with buffering initialized: {sessions_dir}")
-        logger.info(f"   • Session: {session_id}")
-        logger.info(f"   • File-based persistence: {sessions_dir}")
-        logger.info(f"   • Compaction: Not supported in local mode")
-
-        return session_manager
-
-    @staticmethod
     def is_cloud_mode() -> bool:
         """
-        Check if running in cloud mode
+        Check if running in cloud mode (AgentCore Memory available and configured).
 
         Returns:
-            bool: True if AgentCore Memory is available and configured for DynamoDB
+            bool: True if AgentCore Memory package is available and AGENTCORE_MEMORY_ID is set
         """
+        if not AGENTCORE_MEMORY_AVAILABLE:
+            return False
         try:
-            config = load_memory_config()
-            return config.is_cloud_mode and AGENTCORE_MEMORY_AVAILABLE
+            load_memory_config()
+            return True
         except Exception:
             return False

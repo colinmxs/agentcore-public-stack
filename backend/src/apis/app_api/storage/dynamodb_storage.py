@@ -578,7 +578,7 @@ class DynamoDBStorage(MetadataStorage):
                     item_float.pop(key, None)
 
                 # Flatten nested structures for aggregation compatibility
-                # (matches local_file_storage.get_user_messages_in_range format)
+                # Flatten nested structures for aggregation compatibility
                 model_info = item_float.get("modelInfo", {})
                 token_usage = item_float.get("tokenUsage", {})
 

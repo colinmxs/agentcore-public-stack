@@ -1,10 +1,8 @@
 """Assistant service layer
 
-This service handles storing and retrieving assistant data.
-It supports both local file storage and cloud DynamoDB storage.
+This service handles storing and retrieving assistant data using DynamoDB.
 
 Architecture:
-- Local: Stores assistants as individual JSON files in backend/src/assistants/
 - Cloud: Stores assistants in DynamoDB table specified by DYNAMODB_ASSISTANTS_TABLE_NAME
 """
 
@@ -14,10 +12,7 @@ import logging
 import os
 import uuid
 from datetime import datetime
-from pathlib import Path
 from typing import List, Optional, Tuple
-
-from apis.shared.storage.paths import get_assistant_path, get_assistants_root
 
 from .models import Assistant
 
@@ -74,11 +69,10 @@ async def create_assistant_draft(owner_id: str, owner_name: str, name: Optional[
 
     # Store the draft assistant
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        await _create_assistant_cloud(assistant, assistants_table)
-    else:
-        await _create_assistant_local(assistant)
+    await _create_assistant_cloud(assistant, assistants_table)
 
     return assistant
 
@@ -139,37 +133,12 @@ async def create_assistant(
 
     # Store the assistant
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        await _create_assistant_cloud(assistant, assistants_table)
-    else:
-        await _create_assistant_local(assistant)
+    await _create_assistant_cloud(assistant, assistants_table)
 
     return assistant
-
-
-async def _create_assistant_local(assistant: Assistant) -> None:
-    """
-    Store assistant in local file storage
-
-    Args:
-        assistant: Assistant object to store
-    """
-    assistant_file = get_assistant_path(assistant.assistant_id)
-
-    # Ensure parent directory exists
-    assistant_file.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        # Write assistant data to file
-        with open(assistant_file, "w") as f:
-            json.dump(assistant.model_dump(by_alias=True, exclude_none=True), f, indent=2)
-
-        logger.info(f"💾 Stored assistant {assistant.assistant_id} in {assistant_file}")
-
-    except Exception as e:
-        logger.error(f"Failed to store assistant in local file: {e}")
-        raise
 
 
 async def _create_assistant_cloud(assistant: Assistant, table_name: str) -> None:
@@ -225,11 +194,10 @@ async def get_assistant(assistant_id: str, owner_id: str) -> Optional[Assistant]
         Assistant object if found and owned by user, None otherwise
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        return await _get_assistant_cloud(assistant_id, owner_id, assistants_table)
-    else:
-        return await _get_assistant_local(assistant_id, owner_id)
+    return await _get_assistant_cloud(assistant_id, owner_id, assistants_table)
 
 
 async def get_assistant_with_access_check(assistant_id: str, user_id: str, user_email: str = None) -> Optional[Assistant]:
@@ -253,12 +221,11 @@ async def get_assistant_with_access_check(assistant_id: str, user_id: str, user_
         - Access denied (403 for PRIVATE assistant not owned by user, or SHARED without share record)
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     # Get assistant without ownership check first
-    if assistants_table:
-        assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
-    else:
-        assistant = await _get_assistant_local_without_ownership_check(assistant_id)
+    assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
 
     if not assistant:
         # Assistant not found
@@ -300,88 +267,13 @@ async def assistant_exists(assistant_id: str) -> bool:
         True if assistant exists, False otherwise
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
-    else:
-        assistant = await _get_assistant_local_without_ownership_check(assistant_id)
+    assistant = await _get_assistant_cloud_without_ownership_check(assistant_id, assistants_table)
 
     return assistant is not None
 
-
-# NOTE: This function is not fully implemented - the helper functions
-# _get_all_assistants_local and _get_all_assistants_cloud don't exist
-# Commenting out to avoid import errors
-# async def get_all_assistants() -> List[Assistant]:
-#     """
-#     Retrieve all assistants
-#
-#     Returns:
-#         List of Assistant objects
-#     """
-#     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
-#     if assistants_table:
-#         return await _get_all_assistants_cloud(assistants_table)
-#     else:
-#         return await _get_all_assistants_local()
-
-
-async def _get_assistant_local(assistant_id: str, owner_id: str) -> Optional[Assistant]:
-    """
-    Retrieve assistant from local file storage
-
-    Args:
-        assistant_id: Assistant identifier
-        owner_id: User identifier (for ownership verification)
-
-    Returns:
-        Assistant object if found and owned by user, None otherwise
-    """
-    assistant_file = get_assistant_path(assistant_id)
-
-    if not assistant_file.exists():
-        return None
-
-    try:
-        with open(assistant_file, "r") as f:
-            data = json.load(f)
-
-        # Verify ownership
-        if data.get("ownerId") != owner_id:
-            logger.warning(f"Access denied: assistant {assistant_id} not owned by user {owner_id}")
-            return None
-
-        return Assistant.model_validate(data)
-
-    except Exception as e:
-        logger.error(f"Failed to read assistant from local file: {e}")
-        return None
-
-
-async def _get_assistant_local_without_ownership_check(assistant_id: str) -> Optional[Assistant]:
-    """
-    Retrieve assistant from local file storage without ownership verification
-
-    Args:
-        assistant_id: Assistant identifier
-
-    Returns:
-        Assistant object if found, None otherwise
-    """
-    assistant_file = get_assistant_path(assistant_id)
-
-    if not assistant_file.exists():
-        return None
-
-    try:
-        with open(assistant_file, "r") as f:
-            data = json.load(f)
-
-        return Assistant.model_validate(data)
-
-    except Exception as e:
-        logger.error(f"Failed to read assistant from local file: {e}")
-        return None
 
 
 async def _get_assistant_cloud(assistant_id: str, owner_id: str, table_name: str) -> Optional[Assistant]:
@@ -548,33 +440,12 @@ async def update_assistant(
 
     # Store updated assistant
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        await _update_assistant_cloud(updated_assistant, assistants_table)
-    else:
-        await _update_assistant_local(updated_assistant)
+    await _update_assistant_cloud(updated_assistant, assistants_table)
 
     return updated_assistant
-
-
-async def _update_assistant_local(assistant: Assistant) -> None:
-    """
-    Update assistant in local file storage
-
-    Args:
-        assistant: Updated assistant object
-    """
-    assistant_file = get_assistant_path(assistant.assistant_id)
-
-    try:
-        with open(assistant_file, "w") as f:
-            json.dump(assistant.model_dump(by_alias=True, exclude_none=True), f, indent=2)
-
-        logger.info(f"💾 Updated assistant {assistant.assistant_id} in {assistant_file}")
-
-    except Exception as e:
-        logger.error(f"Failed to update assistant in local file: {e}")
-        raise
 
 
 async def _update_assistant_cloud(assistant: Assistant, table_name: str) -> None:
@@ -711,26 +582,18 @@ async def list_user_assistants(
     include_public = False
 
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        return await _list_user_assistants_cloud(
-            owner_id,
-            table_name=assistants_table,
-            limit=limit,
-            next_token=next_token,
-            include_archived=include_archived,
-            include_drafts=include_drafts,
-            include_public=include_public,
-        )
-    else:
-        return await _list_user_assistants_local(
-            owner_id,
-            limit=limit,
-            next_token=next_token,
-            include_archived=include_archived,
-            include_drafts=include_drafts,
-            include_public=include_public,
-        )
+    return await _list_user_assistants_cloud(
+        owner_id,
+        table_name=assistants_table,
+        limit=limit,
+        next_token=next_token,
+        include_archived=include_archived,
+        include_drafts=include_drafts,
+        include_public=include_public,
+    )
 
 
 def _apply_pagination(
@@ -782,79 +645,6 @@ def _apply_pagination(
         next_token = None
 
     return paginated_assistants, next_token
-
-
-async def _list_user_assistants_local(
-    owner_id: str,
-    limit: Optional[int] = None,
-    next_token: Optional[str] = None,
-    include_archived: bool = False,
-    include_drafts: bool = False,
-    include_public: bool = False,
-) -> Tuple[List[Assistant], Optional[str]]:
-    """
-    List assistants for a user from local file storage with pagination
-
-    Args:
-        owner_id: User identifier
-        limit: Maximum number of assistants to return (optional)
-        next_token: Pagination token (optional)
-        include_archived: Whether to include archived assistants
-        include_drafts: Whether to include draft assistants
-        include_public: Ignored.
-
-    Returns:
-        Tuple of (list of Assistant objects, next_token if more exist)
-    """
-    assistants_root = get_assistants_root()
-
-    if not assistants_root.exists():
-        logger.info(f"Assistants directory does not exist: {assistants_root}")
-        return [], None
-
-    assistants = []
-
-    try:
-        # Iterate through all assistant files
-        for assistant_file in assistants_root.glob("assistant_*.json"):
-            try:
-                with open(assistant_file, "r") as f:
-                    data = json.load(f)
-
-                # Parse assistant
-                assistant = Assistant.model_validate(data)
-
-                # Filter logic: include if owned by user
-                is_owner = data.get("ownerId") == owner_id
-
-                if not is_owner:
-                    continue
-
-                # Filter by status
-                if not include_archived and assistant.status == "ARCHIVED":
-                    continue
-                if not include_drafts and assistant.status == "DRAFT":
-                    continue
-
-                assistants.append(assistant)
-
-            except Exception as e:
-                logger.warning(f"Failed to read assistant file {assistant_file}: {e}")
-                continue
-
-        # Sort by created_at descending (most recent first)
-        assistants.sort(key=lambda x: x.created_at, reverse=True)
-
-        logger.info(f"Found {len(assistants)} assistants for user {owner_id}")
-
-        # Apply pagination
-        paginated_assistants, next_page_token = _apply_pagination(assistants, limit, next_token)
-
-        return paginated_assistants, next_page_token
-
-    except Exception as e:
-        logger.error(f"Failed to list user assistants from local storage: {e}")
-        return [], None
 
 
 async def _list_user_assistants_cloud(
@@ -999,36 +789,10 @@ async def delete_assistant(assistant_id: str, owner_id: str) -> bool:
         return False
 
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
+    if not assistants_table:
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
-    if assistants_table:
-        return await _delete_assistant_cloud(assistant_id, assistants_table)
-    else:
-        return await _delete_assistant_local(assistant_id)
-
-
-async def _delete_assistant_local(assistant_id: str) -> bool:
-    """
-    Delete assistant from local file storage
-
-    Args:
-        assistant_id: Assistant identifier
-
-    Returns:
-        True if deleted successfully, False otherwise
-    """
-    assistant_file = get_assistant_path(assistant_id)
-
-    if not assistant_file.exists():
-        return False
-
-    try:
-        assistant_file.unlink()
-        logger.info(f"🗑️ Deleted assistant {assistant_id} from {assistant_file}")
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to delete assistant from local file: {e}")
-        return False
+    return await _delete_assistant_cloud(assistant_id, assistants_table)
 
 
 async def _delete_assistant_cloud(assistant_id: str, table_name: str) -> bool:
@@ -1092,8 +856,7 @@ async def share_assistant(assistant_id: str, owner_id: str, emails: List[str]) -
 
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.error("Cannot share assistant: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
-        return False
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
@@ -1157,10 +920,8 @@ async def unshare_assistant(assistant_id: str, owner_id: str, emails: List[str])
         return False
 
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
-
     if not assistants_table:
-        logger.error("Cannot unshare assistant: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
-        return False
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
@@ -1213,8 +974,7 @@ async def list_assistant_shares(assistant_id: str, owner_id: str) -> List[str]:
 
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot list shares: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
-        return []
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
@@ -1260,7 +1020,7 @@ async def check_share_access(assistant_id: str, user_email: str) -> bool:
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        return False
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
@@ -1308,8 +1068,7 @@ async def mark_share_as_interacted(assistant_id: str, user_email: str) -> bool:
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot mark share as interacted: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
-        return False
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
@@ -1358,8 +1117,7 @@ async def list_shared_with_user(user_email: str) -> List[Assistant]:
     """
     assistants_table = os.environ.get("DYNAMODB_ASSISTANTS_TABLE_NAME")
     if not assistants_table:
-        logger.debug("Cannot list shared assistants: DYNAMODB_ASSISTANTS_TABLE_NAME not configured")
-        return []
+        raise RuntimeError("DYNAMODB_ASSISTANTS_TABLE_NAME environment variable is required")
 
     try:
         import boto3
