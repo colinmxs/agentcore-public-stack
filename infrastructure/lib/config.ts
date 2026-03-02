@@ -240,14 +240,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
   console.log(`   App API Enabled: ${config.appApi.enabled}`);
   console.log(`   Inference API Enabled: ${config.inferenceApi.enabled}`);
   console.log(`   Gateway Enabled: ${config.gateway.enabled}`);
-  console.log(`   Domain Name: ${config.domainName || '(not set)'}`);
-  console.log(`   Frontend Certificate ARN: ${config.frontend.certificateArn || '(not set)'}`);
-  console.log(`   Frontend Enable Route53: ${config.frontend.enableRoute53}`);
-  console.log(`   [DEBUG] process.env.CDK_DOMAIN_NAME: ${process.env.CDK_DOMAIN_NAME || '(not set)'}`);
-  console.log(`   [DEBUG] process.env.CDK_FRONTEND_CERTIFICATE_ARN: ${process.env.CDK_FRONTEND_CERTIFICATE_ARN ? '(set, length=' + process.env.CDK_FRONTEND_CERTIFICATE_ARN.length + ')' : '(not set)'}`);
-  console.log(`   [DEBUG] process.env.CDK_FRONTEND_ENABLE_ROUTE53: ${process.env.CDK_FRONTEND_ENABLE_ROUTE53 || '(not set)'}`);
-  console.log(`   [DEBUG] context frontend.certificateArn: ${scope.node.tryGetContext('frontend')?.certificateArn || '(not set)'}`);
-  console.log(`   [DEBUG] context frontend.enableRoute53: ${scope.node.tryGetContext('frontend')?.enableRoute53}`);
 
   // Validate configuration
   validateConfig(config);
