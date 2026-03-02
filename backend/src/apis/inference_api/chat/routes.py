@@ -314,7 +314,8 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             SessionPreferences,
         )
 
-        logger.info(f"Assistant RAG requested - Assistant: {input_data.rag_assistant_id}, Session: {input_data.session_id}")
+        logger.info(f"🔍 DEBUG: Assistant RAG requested - Assistant: {input_data.rag_assistant_id}, Session: {input_data.session_id}")
+        logger.info(f"🔍 DEBUG: User ID: {user_id}, User Email: {current_user.email}")
 
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
@@ -359,9 +360,11 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             logger.info(f"🔍 Preview session - skipping session state validation")
 
         # 2. Load assistant with access check
+        logger.info(f"🔍 DEBUG: Loading assistant {input_data.rag_assistant_id} with access check...")
         assistant = await get_assistant_with_access_check(assistant_id=input_data.rag_assistant_id, user_id=user_id, user_email=current_user.email)
 
         if not assistant:
+            logger.warning(f"🔍 DEBUG: get_assistant_with_access_check returned None for {input_data.rag_assistant_id}")
             # Check if assistant exists at all to provide better error message
             from apis.shared.assistants.service import assistant_exists
 
@@ -374,17 +377,32 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 logger.warning(f"🔒 Access denied: user {user_id} ({current_user.email}) cannot access assistant {input_data.rag_assistant_id} (403)")
                 raise HTTPException(status_code=403, detail=f"Access denied: You do not have permission to access this assistant")
 
+        # Log assistant details for debugging
+        logger.info(f"🔍 DEBUG: Assistant loaded successfully!")
+        logger.info(f"🔍 DEBUG: Assistant ID: {assistant.assistant_id}")
+        logger.info(f"🔍 DEBUG: Assistant Name: {assistant.name}")
+        logger.info(f"🔍 DEBUG: Assistant Owner ID: {assistant.owner_id}")
+        logger.info(f"🔍 DEBUG: Assistant Visibility: {assistant.visibility}")
+        logger.info(f"🔍 DEBUG: Assistant Instructions: {assistant.instructions[:200] if assistant.instructions else 'NONE'}...")
+        logger.info(f"🔍 DEBUG: Assistant Instructions Length: {len(assistant.instructions) if assistant.instructions else 0}")
+        logger.info(f"🔍 DEBUG: Assistant Vector Index ID: {assistant.vector_index_id}")
+
         # Mark as viewed if this is a shared assistant (not owned)
         if assistant.owner_id != user_id:
             await mark_share_as_interacted(assistant_id=input_data.rag_assistant_id, user_email=current_user.email)
 
         # 3. Search assistant knowledge base
+        logger.info(f"🔍 DEBUG: Starting knowledge base search for assistant {input_data.rag_assistant_id}...")
         try:
-            logger.info(f"Searching knowledge base for assistant {input_data.rag_assistant_id} with query: {input_data.message[:100]}...")
+            logger.info(f"🔍 DEBUG: Searching knowledge base for assistant {input_data.rag_assistant_id} with query: {input_data.message[:100]}...")
             context_chunks = await search_assistant_knowledgebase_with_formatting(
                 assistant_id=input_data.rag_assistant_id, query=input_data.message, top_k=5
             )
-            logger.info(f"Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
+            logger.info(f"🔍 DEBUG: Knowledge base search returned {len(context_chunks) if context_chunks else 0} chunks")
+            if context_chunks:
+                for i, chunk in enumerate(context_chunks):
+                    logger.info(f"🔍 DEBUG: Chunk {i + 1}: {chunk.get('text', '')[:100]}...")
+                    logger.info(f"🔍 DEBUG: Chunk {i + 1} metadata: {chunk.get('metadata', {})}")
 
             # 4. Augment message with context
             if context_chunks:
@@ -392,13 +410,16 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 logger.info(
                     f"✅ Augmented message with {len(context_chunks)} context chunks. Original length: {len(input_data.message)}, Augmented length: {len(augmented_message)}"
                 )
+                logger.info(f"🔍 DEBUG: Augmented message preview: {augmented_message[:500]}...")
             else:
                 logger.info(f"⚠️ No context chunks found for assistant {input_data.rag_assistant_id} - using original message without augmentation")
         except Exception as e:
             logger.error(f"❌ Error searching assistant knowledge base: {e}", exc_info=True)
+            logger.error(f"🔍 DEBUG: Exception type: {type(e).__name__}")
             # Continue without RAG context rather than failing
 
         # 5. Append assistant's instructions to the base system prompt (don't replace)
+        logger.info(f"🔍 DEBUG: Checking assistant instructions... assistant.instructions is {'truthy' if assistant.instructions else 'falsy'}")
         if assistant.instructions:
             # Import here to avoid circular dependency
             from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
@@ -412,8 +433,10 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             logger.info(
                 f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})"
             )
+            logger.info(f"🔍 DEBUG: Final system prompt preview (last 500 chars): ...{system_prompt[-500:]}")
         else:
             # No assistant instructions - use base prompt if no system_prompt provided
+            logger.warning(f"🔍 DEBUG: No instructions found on assistant {input_data.rag_assistant_id}!")
             if not system_prompt:
                 from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
 
