@@ -172,11 +172,12 @@ jobs:
         run: |
           bash scripts/stack-infrastructure/synth.sh
 
-      - name: Save synthesized templates cache
-        uses: actions/cache/save@v4
+      - name: Upload synthesized templates
+        uses: actions/upload-artifact@v4
         with:
-          path: infrastructure/cdk.out
-          key: infrastructure-synth-${{ github.sha }}
+          name: infrastructure-cdk-synth
+          path: infrastructure/cdk.out/
+          retention-days: 7
 
   test:
     name: Validate CloudFormation Template
@@ -229,11 +230,11 @@ jobs:
             infrastructure/bin/**/*.d.ts
           key: infrastructure-build-${{ github.sha }}
 
-      - name: Restore synthesized templates
-        uses: actions/cache/restore@v4
+      - name: Download synthesized templates
+        uses: actions/download-artifact@v4
         with:
-          path: infrastructure/cdk.out
-          key: infrastructure-synth-${{ github.sha }}
+          name: infrastructure-cdk-synth
+          path: infrastructure/cdk.out/
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
@@ -317,11 +318,11 @@ jobs:
             infrastructure/bin/**/*.d.ts
           key: infrastructure-build-${{ github.sha }}
 
-      - name: Restore synthesized templates
-        uses: actions/cache/restore@v4
+      - name: Download synthesized templates
+        uses: actions/download-artifact@v4
         with:
-          path: infrastructure/cdk.out
-          key: infrastructure-synth-${{ github.sha }}
+          name: infrastructure-cdk-synth
+          path: infrastructure/cdk.out/
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials

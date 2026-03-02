@@ -171,9 +171,28 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // ============================================================
+    // CORS Origins Helper
+    // Build CORS origins from explicit config + auto-derived domain
+    // ============================================================
+    const buildCorsOrigins = (explicitOrigins?: string): string[] => {
+      const origins = new Set<string>();
+      // Always allow localhost for local development
+      origins.add('http://localhost:4200');
+      // Add domain-based origin if configured
+      if (config.domainName) {
+        origins.add(`https://${config.domainName}`);
+      }
+      // Add any explicitly configured origins
+      if (explicitOrigins) {
+        explicitOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
+      }
+      return Array.from(origins);
+    };
+
+    // ============================================================
     // Assistants Document Drop Bucket (RAG Injestion Drop Bucket)
     // ============================================================
-    const origins = config.assistants?.corsOrigins.split(",").map((o) => o.trim());
+    const assistantsCorsOrigins = buildCorsOrigins(config.assistants?.corsOrigins);
 
     const assistantsDocumentsBucket = new s3.Bucket(this, "AssistantsDocumentBucket", {
       bucketName: getResourceName(config, "assistants-documents"),
@@ -184,7 +203,7 @@ export class AppApiStack extends cdk.Stack {
       autoDeleteObjects: false,
       cors: [
         {
-          allowedOrigins: config.assistants?.corsOrigins.split(",").map((o) => o.trim()),
+          allowedOrigins: assistantsCorsOrigins,
           allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
           allowedHeaders: ["Content-Type", "Content-Length", "x-amz-*"],
           exposedHeaders: ["ETag", "Content-Length", "Content-Type"],
@@ -389,11 +408,8 @@ export class AppApiStack extends cdk.Stack {
     // File Upload Storage (S3 + DynamoDB)
     // ============================================================
 
-    // Determine allowed CORS origins from configuration
-    // Determine allowed CORS origins from configuration
-    const fileUploadCorsOrigins = config.fileUpload?.corsOrigins
-      ? config.fileUpload.corsOrigins.split(",").map((o) => o.trim())
-      : ["http://localhost:4200"];
+    // Build CORS origins for file upload bucket
+    const fileUploadCorsOrigins = buildCorsOrigins(config.fileUpload?.corsOrigins);
 
     // S3 Bucket for user file uploads
     const userFilesBucket = new s3.Bucket(this, "UserFilesBucket", {
