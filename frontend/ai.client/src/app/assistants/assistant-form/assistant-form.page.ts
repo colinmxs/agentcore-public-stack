@@ -16,6 +16,7 @@ import {
   FormControl,
   Validators,
 } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document } from '../models/document.model';
@@ -72,6 +73,16 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => (this.assistantId() ? 'edit' : 'create'));
+
+  // Live form value signals — kept in sync via form.valueChanges so the
+  // preview component (OnPush) receives updates as the user types.
+  readonly liveFormName = signal('');
+  readonly liveFormDescription = signal('');
+  readonly liveFormInstructions = signal('');
+  readonly liveFormEmoji = signal('');
+  readonly liveFormStarters = signal<string[]>([]);
+
+  private formSub?: Subscription;
 
   readonly uploadedDocuments = signal<Document[]>([]);
   readonly isLoadingDocuments = signal<boolean>(false);
@@ -133,11 +144,25 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       this.loadAssistant(id);
       this.loadDocuments();
     }
+
+    // Sync form changes into signals so the preview (OnPush) updates live
+    this.syncFormToSignals();
+    this.formSub = this.form.valueChanges.subscribe(() => this.syncFormToSignals());
+  }
+
+  /** Push current form values into the live signals */
+  private syncFormToSignals(): void {
+    this.liveFormName.set(this.form.get('name')?.value || '');
+    this.liveFormDescription.set(this.form.get('description')?.value || '');
+    this.liveFormInstructions.set(this.form.get('instructions')?.value || '');
+    this.liveFormEmoji.set(this.form.get('emoji')?.value || '');
+    this.liveFormStarters.set(this.starters.value || []);
   }
 
   ngOnDestroy(): void {
     // Show sidenav when leaving the form page
     this.sidenavService.show();
+    this.formSub?.unsubscribe();
   }
 
   async loadAssistant(id: string): Promise<void> {

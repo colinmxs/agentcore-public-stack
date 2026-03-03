@@ -395,11 +395,11 @@
     <div class="hidden lg:flex lg:flex-col flex-1 min-h-0 bg-gray-50 dark:bg-gray-900">
       <app-assistant-preview
         [assistantId]="assistantId()"
-        [name]="form.get('name')?.value || ''"
-        [description]="form.get('description')?.value || ''"
-        [instructions]="form.get('instructions')?.value || ''"
-        [emoji]="form.get('emoji')?.value || ''"
-        [starters]="starters.value"
+        [name]="liveFormName()"
+        [description]="liveFormDescription()"
+        [instructions]="liveFormInstructions()"
+        [emoji]="liveFormEmoji()"
+        [starters]="liveFormStarters()"
       />
     </div>
   </main>

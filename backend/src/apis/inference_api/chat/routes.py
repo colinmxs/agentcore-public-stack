@@ -419,8 +419,13 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             # Continue without RAG context rather than failing
 
         # 5. Append assistant's instructions to the base system prompt (don't replace)
+        # For preview sessions, prefer the system_prompt from the request (live form edits)
+        # over the saved assistant instructions, so users can test changes before saving.
         logger.info(f"🔍 DEBUG: Checking assistant instructions... assistant.instructions is {'truthy' if assistant.instructions else 'falsy'}")
-        if assistant.instructions:
+        preview_instructions_override = input_data.system_prompt if is_preview_session(input_data.session_id) and input_data.system_prompt else None
+        effective_instructions = preview_instructions_override or assistant.instructions
+
+        if effective_instructions:
             # Import here to avoid circular dependency
             from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
 
@@ -429,10 +434,15 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             base_prompt = base_prompt_builder.build(include_date=True)
 
             # Append assistant instructions to the base prompt
-            system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{assistant.instructions}"
-            logger.info(
-                f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(assistant.instructions)}, total: {len(system_prompt)})"
-            )
+            system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{effective_instructions}"
+            if preview_instructions_override:
+                logger.info(
+                    f"✅ Using live preview instructions override (length: {len(effective_instructions)})"
+                )
+            else:
+                logger.info(
+                    f"✅ Appended assistant instructions to base system prompt (base: {len(base_prompt)}, assistant: {len(effective_instructions)}, total: {len(system_prompt)})"
+                )
             logger.info(f"🔍 DEBUG: Final system prompt preview (last 500 chars): ...{system_prompt[-500:]}")
         else:
             # No assistant instructions - use base prompt if no system_prompt provided
