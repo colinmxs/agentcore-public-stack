@@ -94,6 +94,11 @@ class MainAgent:
             model_id=model_id, temperature=temperature, caching_enabled=caching_enabled, provider=provider, max_tokens=max_tokens
         )
 
+        # Load retry configuration from environment variables
+        # This controls both botocore-level and Strands SDK-level retry behavior
+        from agents.main_agent.core.model_config import RetryConfig
+        self.model_config.retry_config = RetryConfig.from_env()
+
         # Initialize system prompt builder
         if system_prompt:
             # User provided prompt (BFF already added date)
