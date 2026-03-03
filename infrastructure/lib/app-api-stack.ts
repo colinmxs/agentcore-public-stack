@@ -1130,6 +1130,22 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // Grant permission to create service-linked role for Bedrock AgentCore
+    // Required on first CreateAgentRuntime call in an account
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "CreateServiceLinkedRoleForAgentCore",
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:CreateServiceLinkedRole"],
+        resources: ["arn:aws:iam::*:role/aws-service-role/bedrock-agentcore.amazonaws.com/*"],
+        conditions: {
+          StringEquals: {
+            "iam:AWSServiceName": "bedrock-agentcore.amazonaws.com",
+          },
+        },
+      })
+    );
+
     // Grant SSM Parameter Store read/write permissions
     runtimeProvisionerFunction.addToRolePolicy(
       new iam.PolicyStatement({
