@@ -1269,6 +1269,21 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // Grant IAM PassRole permission for runtime execution role
+    runtimeUpdaterFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "IAMPassRoleForRuntime",
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:PassRole"],
+        resources: [runtimeExecutionRoleArn],
+        conditions: {
+          StringEquals: {
+            "iam:PassedToService": "bedrock-agentcore.amazonaws.com",
+          },
+        },
+      })
+    );
+
     // Grant DynamoDB Scan and UpdateItem permissions
     authProvidersTable.grantReadWriteData(runtimeUpdaterFunction);
 
