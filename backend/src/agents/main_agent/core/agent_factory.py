@@ -123,6 +123,24 @@ class AgentFactory:
         else:
             raise ValueError(f"Unsupported model provider: {provider}")
 
+        # Build SDK-level retry strategy for Bedrock provider
+        # This is the second retry layer (agent event loop), retries on ModelThrottledException
+        # with exponential backoff. Only applies to Bedrock; other providers handle retries internally.
+        retry_strategy = None
+        if provider == ModelProvider.BEDROCK and model_config.retry_config:
+            from strands import ModelRetryStrategy
+            retry_strategy = ModelRetryStrategy(
+                max_attempts=model_config.retry_config.sdk_max_attempts,
+                initial_delay=model_config.retry_config.sdk_initial_delay,
+                max_delay=model_config.retry_config.sdk_max_delay,
+            )
+            logger.info(
+                f"Configured retry strategy: boto={model_config.retry_config.boto_max_attempts} attempts "
+                f"({model_config.retry_config.boto_retry_mode}), "
+                f"sdk={model_config.retry_config.sdk_max_attempts} attempts "
+                f"({model_config.retry_config.sdk_initial_delay}s-{model_config.retry_config.sdk_max_delay}s backoff)"
+            )
+
         # Create agent with session manager, hooks, and system prompt
         # Use SequentialToolExecutor to prevent concurrent browser operations
         # This prevents "Failed to start and initialize Playwright" errors with NovaAct
@@ -132,7 +150,8 @@ class AgentFactory:
             tools=tools,
             tool_executor=SequentialToolExecutor(),
             session_manager=session_manager,
-            hooks=hooks if hooks else None
+            hooks=hooks if hooks else None,
+            retry_strategy=retry_strategy,
         )
 
         return agent

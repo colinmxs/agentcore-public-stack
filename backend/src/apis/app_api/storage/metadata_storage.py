@@ -1,10 +1,6 @@
 """Abstract interface for message metadata storage
 
-This module provides a storage abstraction layer that supports:
-- Local file storage for development
-- DynamoDB storage for production
-
-This enables seamless switching between environments without code changes.
+This module provides the storage abstraction layer for DynamoDB-backed metadata storage.
 """
 
 import logging
@@ -159,38 +155,20 @@ class MetadataStorage(ABC):
 
 def get_metadata_storage() -> MetadataStorage:
     """
-    Get appropriate storage backend based on environment
-
-    Returns:
-        MetadataStorage: Either LocalFileStorage or DynamoDBStorage
+    Get DynamoDB storage backend.
 
     Environment Variables:
-        AGENTCORE_MEMORY_TYPE: Set to "dynamodb" to use DynamoDB (consistent with session storage)
         DYNAMODB_SESSIONS_METADATA_TABLE_NAME: DynamoDB table name for message metadata
         DYNAMODB_COST_SUMMARY_TABLE_NAME: DynamoDB table for cost summaries
-
-    Note:
-        Uses AGENTCORE_MEMORY_TYPE for consistency with AgentCore Memory session storage.
-        DynamoDB is used when AGENTCORE_MEMORY_TYPE=dynamodb AND the required table names are set.
     """
     import os
 
-    memory_type = os.environ.get("AGENTCORE_MEMORY_TYPE", "file").lower()
     sessions_table = os.environ.get("DYNAMODB_SESSIONS_METADATA_TABLE_NAME")
     cost_summary_table = os.environ.get("DYNAMODB_COST_SUMMARY_TABLE_NAME")
 
-    # Use DynamoDB if memory type is dynamodb and at least one table is configured
-    if memory_type == "dynamodb" and (sessions_table or cost_summary_table):
-        logger.info(
-            f"Using DynamoDB metadata storage - "
-            f"sessions_table={sessions_table}, cost_summary_table={cost_summary_table}"
-        )
-        from .dynamodb_storage import DynamoDBStorage
-        return DynamoDBStorage()
-    else:
-        logger.info(
-            f"Using local file metadata storage - "
-            f"memory_type={memory_type}, tables_configured={bool(sessions_table or cost_summary_table)}"
-        )
-        from .local_file_storage import LocalFileStorage
-        return LocalFileStorage()
+    logger.info(
+        f"Using DynamoDB metadata storage - "
+        f"sessions_table={sessions_table}, cost_summary_table={cost_summary_table}"
+    )
+    from .dynamodb_storage import DynamoDBStorage
+    return DynamoDBStorage()

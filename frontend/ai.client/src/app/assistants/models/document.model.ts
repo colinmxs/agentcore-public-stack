@@ -4,6 +4,22 @@
 export type DocumentStatus = 'uploading' | 'chunking' | 'embedding' | 'complete' | 'failed';
 
 /**
+ * Statuses that indicate a document is still being processed.
+ */
+export const PROCESSING_STATUSES: readonly DocumentStatus[] = [
+  'uploading',
+  'chunking',
+  'embedding',
+] as const;
+
+/**
+ * Threshold (ms) after which a processing document is considered stale.
+ * Must exceed the Lambda ingestion timeout (900s / 15 min) to avoid
+ * killing in-flight jobs. Matches backend STALE_PROCESSING_TIMEOUT_MINUTES (20 min).
+ */
+export const STALE_DOCUMENT_THRESHOLD_MS = 20 * 60 * 1000;
+
+/**
  * Request body for POST /assistants/{assistantId}/documents/upload-url
  */
 export interface CreateDocumentRequest {

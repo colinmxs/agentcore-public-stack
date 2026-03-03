@@ -9,6 +9,7 @@ import {
   Document,
   DocumentsListResponse,
   DownloadUrlResponse,
+  STALE_DOCUMENT_THRESHOLD_MS,
 } from '../models/document.model';
 
 /**
@@ -285,6 +286,7 @@ export class DocumentService {
     let pollCount = 0;
     let consecutive404Count = 0;
     const max404Retries = 5; // Stop polling after 5 consecutive 404s (document/assistant likely deleted)
+    const STALE_THRESHOLD_MS = STALE_DOCUMENT_THRESHOLD_MS;
 
     while (Date.now() - startTime < maxPollTime) {
       try {
@@ -301,6 +303,20 @@ export class DocumentService {
         // Check if we've reached a terminal state
         if (terminalStates.includes(document.status as 'complete' | 'failed')) {
           return document;
+        }
+
+        // Check if the document's updatedAt is stale — if the backend hasn't
+        // updated it in 10+ minutes, processing is dead. The backend already
+        // auto-fails stale documents on read, so the response we just got
+        // should already be marked 'failed'. If for some reason it isn't
+        // (clock skew, etc.), bail out and return what we have.
+        try {
+          const updatedAt = new Date(document.updatedAt).getTime();
+          if (Date.now() - updatedAt > STALE_THRESHOLD_MS) {
+            return document;
+          }
+        } catch {
+          // If timestamp parsing fails, continue polling normally
         }
 
         pollCount++;

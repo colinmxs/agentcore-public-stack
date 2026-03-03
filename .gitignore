@@ -36,6 +36,9 @@ pip-wheel-metadata/
 # Pytest
 .pytest_cache/
 
+# Hypothesis (property-based testing cache — machine-local)
+.hypothesis/
+
 # Coverage
 .coverage
 .coverage.*

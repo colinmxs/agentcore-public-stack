@@ -1,10 +1,9 @@
 """Metadata storage service for messages and conversations
 
 This service handles storing message metadata (token usage, latency) after
-streaming completes. It supports both local file storage and cloud DynamoDB storage.
+streaming completes. It uses DynamoDB for all storage operations.
 
 Architecture:
-- Local: Embeds metadata in message JSON files
 - Cloud: Stores metadata in DynamoDB table specified by DYNAMODB_SESSIONS_METADATA_TABLE_NAME
 """
 
@@ -13,11 +12,9 @@ import json
 import os
 import base64
 from typing import Optional, Tuple, Any, Dict
-from pathlib import Path
 from decimal import Decimal
 
 from apis.shared.sessions.models import MessageMetadata, SessionMetadata
-from apis.shared.storage.paths import get_message_path, get_session_metadata_path, get_sessions_root, get_message_metadata_path
 
 logger = logging.getLogger(__name__)
 
@@ -63,8 +60,7 @@ async def store_message_metadata(
     """
     Store message metadata after streaming completes
 
-    This function embeds metadata into existing message files (local)
-    or updates DynamoDB records (cloud).
+    This function updates DynamoDB records with message cost and usage metadata.
 
     Args:
         session_id: Session identifier
@@ -77,86 +73,16 @@ async def store_message_metadata(
         ensuring the message file exists before we try to update it.
     """
     sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
+    if not sessions_metadata_table:
+        raise RuntimeError("DYNAMODB_SESSIONS_METADATA_TABLE_NAME environment variable is required")
 
-    if sessions_metadata_table:
-        await _store_message_metadata_cloud(
-            session_id=session_id,
-            user_id=user_id,
-            message_id=message_id,
-            message_metadata=message_metadata,
-            table_name=sessions_metadata_table
-        )
-    else:
-        await _store_message_metadata_local(
-            session_id=session_id,
-            user_id=user_id,
-            message_id=message_id,
-            message_metadata=message_metadata
-        )
-
-
-async def _store_message_metadata_local(
-    session_id: str,
-    user_id: str,
-    message_id: int,
-    message_metadata: MessageMetadata
-) -> None:
-    """
-    Store message metadata in local file storage
-
-    Strategy: Store metadata in a separate message-metadata.json file
-    to better simulate the cloud architecture where metadata is stored
-    in a separate DynamoDB table.
-
-    File structure (message-metadata.json):
-    {
-      "0": { "latency": {...}, "tokenUsage": {...}, "modelInfo": {...}, "attribution": {...} },
-      "1": { "latency": {...}, "tokenUsage": {...}, "modelInfo": {...}, "attribution": {...} },
-      ...
-    }
-
-    Args:
-        session_id: Session identifier
-        user_id: User identifier
-        message_id: Message number (0-based sequence)
-        message_metadata: MessageMetadata to store
-    """
-    metadata_file = get_message_metadata_path(session_id)
-
-    # Ensure parent directory exists
-    metadata_file.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        # Read existing metadata index if it exists
-        metadata_index = {}
-        if metadata_file.exists():
-            with open(metadata_file, 'r') as f:
-                metadata_index = json.load(f)
-
-        # Add or update metadata for this message
-        # Use string key for JSON compatibility
-        message_key = str(message_id)
-        metadata_index[message_key] = message_metadata.model_dump(by_alias=True, exclude_none=True)
-
-        # Write back to file atomically
-        with open(metadata_file, 'w') as f:
-            json.dump(metadata_index, f, indent=2)
-
-        logger.info(f"💾 Stored message metadata for message {message_id} in {metadata_file}")
-
-        # Update cost summary in local storage (for consistency with cloud behavior)
-        # This updates the pre-aggregated cost summary using the local file storage backend
-        timestamp = message_metadata.attribution.timestamp if message_metadata.attribution else None
-        if timestamp:
-            await _update_cost_summary_async(
-                user_id=user_id,
-                timestamp=timestamp,
-                message_metadata=message_metadata
-            )
-
-    except Exception as e:
-        logger.error(f"Failed to store message metadata in local file: {e}")
-        # Don't raise - metadata storage failures shouldn't break the app
+    await _store_message_metadata_cloud(
+        session_id=session_id,
+        user_id=user_id,
+        message_id=message_id,
+        message_metadata=message_metadata,
+        table_name=sessions_metadata_table
+    )
 
 
 async def _store_message_metadata_cloud(
@@ -514,8 +440,7 @@ async def store_session_metadata(
     """
     Store or update session metadata
 
-    This function creates or updates session metadata in local storage
-    or DynamoDB (cloud).
+    This function creates or updates session metadata in DynamoDB.
 
     Args:
         session_id: Session identifier
@@ -527,83 +452,15 @@ async def store_session_metadata(
         explicitly overwritten by new values.
     """
     sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
+    if not sessions_metadata_table:
+        raise RuntimeError("DYNAMODB_SESSIONS_METADATA_TABLE_NAME environment variable is required")
 
-    if sessions_metadata_table:
-        await _store_session_metadata_cloud(
-            session_id=session_id,
-            user_id=user_id,
-            session_metadata=session_metadata,
-            table_name=sessions_metadata_table
-        )
-    else:
-        await _store_session_metadata_local(
-            session_id=session_id,
-            session_metadata=session_metadata
-        )
-
-
-async def _store_session_metadata_local(
-    session_id: str,
-    session_metadata: SessionMetadata
-) -> None:
-    """
-    Store session metadata in local file storage
-
-    Strategy: Store in session-metadata.json at the session root directory.
-    Performs a deep merge to preserve existing fields.
-    
-    Note: Uses separate file from session.json (used by Strands library)
-    to avoid conflicts when running in local mode.
-
-    File structure:
-    {
-      "sessionId": "session_abc123",
-      "userId": "user123",
-      "title": "Conversation Title",
-      "status": "active",
-      "createdAt": "2025-01-15T10:30:00Z",
-      "lastMessageAt": "2025-01-15T10:35:00Z",
-      "messageCount": 5,
-      "starred": false,
-      "tags": ["weather"],
-      "preferences": {
-        "lastModel": "claude-3-sonnet",
-        "lastTemperature": 0.7,
-        "enabledTools": ["weather", "search"]
-      }
-    }
-
-    Args:
-        session_id: Session identifier
-        session_metadata: SessionMetadata to store
-    """
-    session_file = get_session_metadata_path(session_id)
-
-    # Ensure parent directory exists
-    session_file.parent.mkdir(parents=True, exist_ok=True)
-
-    try:
-        # Read existing metadata if it exists
-        existing_data = {}
-        if session_file.exists():
-            with open(session_file, 'r') as f:
-                existing_data = json.load(f)
-
-        # Convert new metadata to dict
-        new_data = session_metadata.model_dump(by_alias=True, exclude_none=True)
-
-        # Deep merge: new data overwrites existing, but preserves other fields
-        merged_data = _deep_merge(existing_data, new_data)
-
-        # Write merged data to file
-        with open(session_file, 'w') as f:
-            json.dump(merged_data, f, indent=2)
-
-        logger.info(f"💾 Stored session metadata in {session_file}")
-
-    except Exception as e:
-        logger.error(f"Failed to store session metadata in local file: {e}")
-        # Don't raise - metadata storage failures shouldn't break the app
+    await _store_session_metadata_cloud(
+        session_id=session_id,
+        user_id=user_id,
+        session_metadata=session_metadata,
+        table_name=sessions_metadata_table
+    )
 
 
 async def _store_session_metadata_cloud(
@@ -799,49 +656,31 @@ async def get_session_metadata(session_id: str, user_id: str) -> Optional[Sessio
         SessionMetadata object if found, None otherwise
     """
     sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
+    if not sessions_metadata_table:
+        raise RuntimeError("DYNAMODB_SESSIONS_METADATA_TABLE_NAME environment variable is required")
 
-    if sessions_metadata_table:
-        return await _get_session_metadata_cloud(
-            session_id=session_id,
-            user_id=user_id,
-            table_name=sessions_metadata_table
-        )
-    else:
-        return await _get_session_metadata_local(session_id=session_id)
+    return await _get_session_metadata_cloud(
+        session_id=session_id,
+        user_id=user_id,
+        table_name=sessions_metadata_table
+    )
 
 
 async def get_all_message_metadata(session_id: str, user_id: str) -> Dict[str, Any]:
     """
     Retrieve all message metadata for a session.
-    
-    In cloud mode, queries the DynamoDB table for all records matching the 
-    session_id prefix in the sort key.
-    
-    In local mode, reads the message-metadata.json file.
-    
+
+    Queries the DynamoDB table for all records matching the session_id prefix
+    in the sort key.
+
     Returns:
         Dictionary mapping message_id (str) to metadata dict
     """
     sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
+    if not sessions_metadata_table:
+        raise RuntimeError("DYNAMODB_SESSIONS_METADATA_TABLE_NAME environment variable is required")
 
-    if sessions_metadata_table:
-        return await _get_all_message_metadata_cloud(session_id, user_id, sessions_metadata_table)
-    else:
-        return await _get_all_message_metadata_local(session_id)
-
-
-async def _get_all_message_metadata_local(session_id: str) -> Dict[str, Any]:
-    """Retrieve all message metadata from local file storage"""
-    from apis.shared.storage.paths import get_message_metadata_path
-    metadata_file = get_message_metadata_path(session_id)
-    if not metadata_file.exists():
-        return {}
-    try:
-        with open(metadata_file, 'r') as f:
-            return json.load(f)
-    except Exception as e:
-        logger.error(f"Failed to read local message metadata index: {e}")
-        return {}
+    return await _get_all_message_metadata_cloud(session_id, user_id, sessions_metadata_table)
 
 
 async def _get_all_message_metadata_cloud(session_id: str, user_id: str, table_name: str) -> Dict[str, Any]:
@@ -911,32 +750,6 @@ async def _get_all_message_metadata_cloud(session_id: str, user_id: str, table_n
     except Exception as e:
         logger.error(f"Failed to query message metadata from DynamoDB: {e}", exc_info=True)
         return {}
-
-
-async def _get_session_metadata_local(session_id: str) -> Optional[SessionMetadata]:
-    """
-    Retrieve session metadata from local file storage
-
-    Args:
-        session_id: Session identifier
-
-    Returns:
-        SessionMetadata object if found, None otherwise
-    """
-    session_file = get_session_metadata_path(session_id)
-
-    if not session_file.exists():
-        return None
-
-    try:
-        with open(session_file, 'r') as f:
-            data = json.load(f)
-
-        return SessionMetadata.model_validate(data)
-
-    except Exception as e:
-        logger.error(f"Failed to read session metadata from local file: {e}")
-        return None
 
 
 async def _get_session_metadata_cloud(
@@ -1077,90 +890,15 @@ async def list_user_sessions(
         Sessions are sorted by last_message_at descending (most recent first)
     """
     sessions_metadata_table = os.environ.get('DYNAMODB_SESSIONS_METADATA_TABLE_NAME')
+    if not sessions_metadata_table:
+        raise RuntimeError("DYNAMODB_SESSIONS_METADATA_TABLE_NAME environment variable is required")
 
-    if sessions_metadata_table:
-        return await _list_user_sessions_cloud(
-            user_id=user_id,
-            table_name=sessions_metadata_table,
-            limit=limit,
-            next_token=next_token
-        )
-    else:
-        return await _list_user_sessions_local(
-            user_id=user_id,
-            limit=limit,
-            next_token=next_token
-        )
-
-
-async def _list_user_sessions_local(
-    user_id: str,
-    limit: Optional[int] = None,
-    next_token: Optional[str] = None
-) -> Tuple[list[SessionMetadata], Optional[str]]:
-    """
-    List sessions for a user from local file storage with pagination
-
-    Args:
-        user_id: User identifier
-        limit: Maximum number of sessions to return (optional)
-        next_token: Pagination token for retrieving next page (optional)
-
-    Returns:
-        Tuple of (list of SessionMetadata objects, next_token if more sessions exist)
-        Sessions are sorted by last_message_at descending (most recent first)
-    """
-    sessions_root = get_sessions_root()
-
-    if not sessions_root.exists():
-        logger.info(f"Sessions directory does not exist: {sessions_root}")
-        return [], None
-
-    sessions = []
-
-    try:
-        # Iterate through all session directories
-        for session_dir in sessions_root.iterdir():
-            if not session_dir.is_dir() or not session_dir.name.startswith('session_'):
-                continue
-
-            # Extract session_id from directory name (session_<id>)
-            session_id = session_dir.name.replace('session_', '', 1)
-
-            # Read session metadata file
-            session_file = get_session_metadata_path(session_id)
-            if not session_file.exists():
-                continue
-
-            try:
-                with open(session_file, 'r') as f:
-                    data = json.load(f)
-
-                # Filter by user_id
-                if data.get('userId') != user_id:
-                    continue
-
-                # Parse and add to list
-                metadata = SessionMetadata.model_validate(data)
-                sessions.append(metadata)
-
-            except Exception as e:
-                logger.warning(f"Failed to read session metadata from {session_file}: {e}")
-                continue
-
-        # Sort by last_message_at descending (most recent first)
-        sessions.sort(key=lambda x: x.last_message_at, reverse=True)
-
-        logger.info(f"Found {len(sessions)} sessions for user {user_id}")
-
-        # Apply pagination
-        paginated_sessions, next_page_token = _apply_pagination(sessions, limit, next_token)
-
-        return paginated_sessions, next_page_token
-
-    except Exception as e:
-        logger.error(f"Failed to list user sessions from local storage: {e}")
-        return [], None
+    return await _list_user_sessions_cloud(
+        user_id=user_id,
+        table_name=sessions_metadata_table,
+        limit=limit,
+        next_token=next_token
+    )
 
 
 async def _list_user_sessions_cloud(

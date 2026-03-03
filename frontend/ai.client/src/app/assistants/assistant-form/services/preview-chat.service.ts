@@ -181,8 +181,10 @@ export class PreviewChatService {
   /**
    * Send a message in the preview chat.
    * Uses the inference API /invocations endpoint with the preview session ID.
+   * Passes current form instructions as system_prompt so the backend uses
+   * the live (unsaved) version instead of the persisted one.
    */
-  async sendMessage(userMessage: string, assistantId: string): Promise<void> {
+  async sendMessage(userMessage: string, assistantId: string, liveInstructions?: string): Promise<void> {
     if (!userMessage.trim() || this.loadingSignal()) {
       return;
     }
@@ -231,6 +233,7 @@ export class PreviewChatService {
         message: userMessage,
         session_id: this.sessionIdSignal(),
         rag_assistant_id: assistantId,
+        system_prompt: liveInstructions || null, // Send live form instructions for preview
         model_id: null, // Use default model
         enabled_tools: [], // No tools in preview
       };

@@ -16,9 +16,10 @@ import {
   FormControl,
   Validators,
 } from '@angular/forms';
+import { Subscription } from 'rxjs';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
-import { Document } from '../models/document.model';
+import { Document, PROCESSING_STATUSES, STALE_DOCUMENT_THRESHOLD_MS } from '../models/document.model';
 import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
@@ -72,6 +73,16 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => (this.assistantId() ? 'edit' : 'create'));
+
+  // Live form value signals — kept in sync via form.valueChanges so the
+  // preview component (OnPush) receives updates as the user types.
+  readonly liveFormName = signal('');
+  readonly liveFormDescription = signal('');
+  readonly liveFormInstructions = signal('');
+  readonly liveFormEmoji = signal('');
+  readonly liveFormStarters = signal<string[]>([]);
+
+  private formSub?: Subscription;
 
   readonly uploadedDocuments = signal<Document[]>([]);
   readonly isLoadingDocuments = signal<boolean>(false);
@@ -133,11 +144,25 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       this.loadAssistant(id);
       this.loadDocuments();
     }
+
+    // Sync form changes into signals so the preview (OnPush) updates live
+    this.syncFormToSignals();
+    this.formSub = this.form.valueChanges.subscribe(() => this.syncFormToSignals());
+  }
+
+  /** Push current form values into the live signals */
+  private syncFormToSignals(): void {
+    this.liveFormName.set(this.form.get('name')?.value || '');
+    this.liveFormDescription.set(this.form.get('description')?.value || '');
+    this.liveFormInstructions.set(this.form.get('instructions')?.value || '');
+    this.liveFormEmoji.set(this.form.get('emoji')?.value || '');
+    this.liveFormStarters.set(this.starters.value || []);
   }
 
   ngOnDestroy(): void {
     // Show sidenav when leaving the form page
     this.sidenavService.show();
+    this.formSub?.unsubscribe();
   }
 
   async loadAssistant(id: string): Promise<void> {
@@ -371,6 +396,20 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     }
   }
 
+  /**
+   * Check if a document in a processing state is stale (updatedAt too old).
+   * Matches the backend's 10-minute threshold so the frontend can skip
+   * polling for documents that the backend will auto-fail on next fetch.
+   */
+  private isDocumentStale(doc: Document): boolean {
+    try {
+      const updatedAt = new Date(doc.updatedAt).getTime();
+      return Date.now() - updatedAt > STALE_DOCUMENT_THRESHOLD_MS;
+    } catch {
+      return true; // Can't parse timestamp — treat as stale
+    }
+  }
+
   async loadDocuments(): Promise<void> {
     const assistantId = this.assistantId();
     if (!assistantId) {
@@ -383,14 +422,14 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       const response = await this.documentService.listDocuments(assistantId);
       this.uploadedDocuments.set(response.documents);
 
-      // Start polling for any documents that are still processing
-      const processingStates: Array<'uploading' | 'chunking' | 'embedding'> = [
-        'uploading',
-        'chunking',
-        'embedding',
-      ];
+      // Start polling for any documents that are still processing (and not stale)
       for (const doc of response.documents) {
-        if (processingStates.includes(doc.status as 'uploading' | 'chunking' | 'embedding')) {
+        if (PROCESSING_STATUSES.includes(doc.status)) {
+          // Skip polling for stale documents — the backend will auto-fail them
+          // on the next fetch, so just let the current status show until refresh
+          if (this.isDocumentStale(doc)) {
+            continue;
+          }
           // Only start polling if not already polling
           if (!this.pollingDocuments().has(doc.documentId)) {
             this.startPollingDocument(doc.documentId, assistantId);

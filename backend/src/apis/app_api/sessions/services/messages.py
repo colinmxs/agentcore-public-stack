@@ -1,13 +1,11 @@
 """Messages service layer
 
-Retrieves conversation history from AgentCore Memory or local file storage.
+Retrieves conversation history from AgentCore Memory.
 """
 
 import base64
-import json
 import logging
 import os
-from pathlib import Path
 from typing import Any, Dict, List, Optional, Tuple
 
 from apis.shared.sessions.models import Message, MessageContent, MessageResponse, MessagesListResponse
@@ -23,7 +21,7 @@ try:
     AGENTCORE_MEMORY_AVAILABLE = True
 except ImportError:
     AGENTCORE_MEMORY_AVAILABLE = False
-    logger.info("AgentCore Memory not available - will use local file storage")
+    logger.warning("AgentCore Memory not available - install bedrock_agentcore package")
 
 
 def _ensure_image_base64(image_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -467,123 +465,9 @@ async def get_messages_from_cloud(
         raise
 
 
-async def get_messages_from_local(
-    session_id: str, user_id: str, limit: Optional[int] = None, next_token: Optional[str] = None
-) -> MessagesListResponse:
-    """
-    Retrieve messages from local file storage
-
-    FileSessionManager uses directory structure:
-    sessions/session_{session_id}/agents/agent_default/messages/message_N.json
-
-    Message metadata is stored separately in:
-    sessions/session_{session_id}/message-metadata.json
-
-    This simulates the cloud architecture where messages and metadata
-    are stored in separate tables/locations.
-
-    Args:
-        session_id: Session identifier
-        user_id: User identifier (for consistency, not used in file lookup)
-        limit: Maximum number of messages to return (optional)
-        next_token: Pagination token for retrieving next page (optional)
-
-    Returns:
-        MessagesListResponse with paginated conversation history
-    """
-    # Use centralized path utilities
-    from apis.shared.storage.paths import get_message_metadata_path, get_messages_dir
-
-    messages_dir = get_messages_dir(session_id)
-    metadata_file = get_message_metadata_path(session_id)
-
-    logger.info(f"Retrieving messages from local file - Session: {session_id}, Dir: {messages_dir}")
-
-    # Load metadata index once (simulates single query to metadata table)
-    metadata_index = {}
-    if metadata_file.exists():
-        try:
-            with open(metadata_file, "r") as f:
-                metadata_index = json.load(f)
-            logger.info(f"Loaded metadata for {len(metadata_index)} messages")
-        except Exception as e:
-            logger.warning(f"Failed to load message metadata index: {e}")
-
-    messages = []
-
-    if messages_dir.exists() and messages_dir.is_dir():
-        try:
-            # Get all message files sorted by message_id
-            message_files = sorted(
-                messages_dir.glob("message_*.json"),
-                key=lambda p: int(p.stem.split("_")[1]),  # Extract number from message_N.json
-            )
-
-            logger.info(f"Found {len(message_files)} message files")
-
-            # Read each message file
-            for message_file in message_files:
-                try:
-                    with open(message_file, "r") as f:
-                        data = json.load(f)
-
-                    # Extract the message object
-                    msg = data.get("message", {})
-
-                    # Add timestamp if available
-                    if "created_at" in data:
-                        msg["timestamp"] = data["created_at"]
-
-                    # Get message_id from filename
-                    message_id = int(message_file.stem.split("_")[1])
-
-                    # Lookup metadata from the index (simulates join with metadata table)
-                    metadata = metadata_index.get(str(message_id))
-
-                    # Convert to our Message model with metadata
-                    message_obj = _convert_message(msg, metadata=metadata)
-                    messages.append(message_obj)
-
-                except Exception as e:
-                    logger.error(f"Error reading message file {message_file}: {e}")
-                    continue
-
-            logger.info(f"Retrieved {len(messages)} messages from local file storage")
-
-        except Exception as e:
-            logger.error(f"Error reading session directory: {e}")
-            raise
-
-    else:
-        logger.info(f"Session messages directory does not exist yet: {messages_dir}")
-
-    # Apply pagination
-    paginated_messages, next_page_token = _apply_pagination(messages, limit, next_token)
-
-    # Convert to MessageResponse format
-    # Calculate starting index/sequence from next_token
-    start_index = 0
-    if next_token:
-        try:
-            decoded = base64.b64decode(next_token).decode("utf-8")
-            start_index = int(decoded)
-        except Exception:
-            start_index = 0
-
-    message_responses = []
-    for idx, msg_obj in enumerate(paginated_messages):
-        seq_num = start_index + idx
-        # Message ID is computed from session_id and sequence number (0-based)
-        message_responses.append(_convert_message_to_response(msg_obj, session_id, seq_num))
-
-    return MessagesListResponse(messages=message_responses, next_token=next_page_token)
-
-
 async def get_messages(session_id: str, user_id: str, limit: Optional[int] = None, next_token: Optional[str] = None) -> MessagesListResponse:
     """
-    Retrieve messages for a session and user with pagination support
-
-    Automatically selects cloud or local storage based on environment configuration.
+    Retrieve messages for a session and user with pagination support.
 
     Args:
         session_id: Session identifier
@@ -593,15 +477,13 @@ async def get_messages(session_id: str, user_id: str, limit: Optional[int] = Non
 
     Returns:
         MessagesListResponse with paginated conversation history
-    """
-    # Check AGENTCORE_MEMORY_TYPE to decide between cloud/local
-    memory_type = os.environ.get("AGENTCORE_MEMORY_TYPE", "file").lower()
-    memory_id = os.environ.get("AGENTCORE_MEMORY_ID")
 
-    # Use cloud if memory_type is dynamodb and library is available
-    if memory_type == "dynamodb" and memory_id and AGENTCORE_MEMORY_AVAILABLE:
-        logger.info(f"Using AgentCore Memory for session {session_id}")
-        return await get_messages_from_cloud(session_id, user_id, limit, next_token)
-    else:
-        logger.info(f"Using local file storage for session {session_id}")
-        return await get_messages_from_local(session_id, user_id, limit, next_token)
+    Raises:
+        RuntimeError: If AgentCore Memory package is not available
+    """
+    if not AGENTCORE_MEMORY_AVAILABLE:
+        raise RuntimeError(
+            "bedrock_agentcore package is required. "
+            "Install with: pip install -e '.[agentcore]'"
+        )
+    return await get_messages_from_cloud(session_id, user_id, limit, next_token)

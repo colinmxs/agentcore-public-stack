@@ -53,7 +53,7 @@ export class AuthService {
   readonly currentProviderId = signal<string | null>(null);
 
   constructor() {
-    // Initialize provider ID from sessionStorage
+    // Initialize provider ID from localStorage
     this.updateProviderIdFromStorage();
   }
 
@@ -173,7 +173,7 @@ export class AuthService {
     const expiryTime = Date.now() + response.expires_in * 1000;
     localStorage.setItem(this.tokenExpiryKey, expiryTime.toString());
 
-    // Update provider ID from sessionStorage (set during login)
+    // Update provider ID from localStorage (set during login)
     this.updateProviderIdFromStorage();
 
     // Dispatch custom event to notify UserService of token change in same tab
@@ -191,8 +191,8 @@ export class AuthService {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.refreshTokenKey);
     localStorage.removeItem(this.tokenExpiryKey);
-    sessionStorage.removeItem(this.providerIdKey);
-    
+    localStorage.removeItem(this.providerIdKey);
+
     // Clear provider ID signal
     this.currentProviderId.set(null);
 
@@ -212,11 +212,10 @@ export class AuthService {
   }
 
   /**
-   * Update provider ID from sessionStorage or clear it.
+   * Update provider ID from localStorage or clear it.
    * The provider ID is set during login and used for routing logout/refresh requests.
-   * 
-   * Note: The backend resolves the actual provider from the token's issuer claim.
-   * This stored provider_id is just for maintaining session context.
+   * Stored in localStorage (not sessionStorage) so it persists across tabs and
+   * browser restarts, matching the lifetime of the tokens it's used with.
    */
   private updateProviderIdFromStorage(): void {
     const storedProviderId = this.getStoredProviderId();
@@ -227,8 +226,8 @@ export class AuthService {
    * Initiates the OIDC login flow by calling the backend login endpoint
    * and redirecting the user to the IdP for authentication.
    *
-   * Stores the state token and provider ID in sessionStorage for CSRF
-   * protection and multi-provider routing.
+   * Stores the state token in sessionStorage for CSRF protection and
+   * the provider ID in localStorage for multi-provider routing.
    *
    * @param providerId Optional auth provider ID for multi-provider support
    * @param redirectUri Optional redirect URI override
@@ -261,9 +260,10 @@ export class AuthService {
       // Store state token in sessionStorage for CSRF protection
       sessionStorage.setItem(this.stateKey, response.state);
 
-      // Store provider ID for refresh/logout routing
+      // Store provider ID in localStorage for refresh/logout routing
+      // (must persist across tabs/restarts to match token lifetime)
       if (providerId) {
-        sessionStorage.setItem(this.providerIdKey, providerId);
+        localStorage.setItem(this.providerIdKey, providerId);
       }
 
       // Redirect to authorization URL
@@ -310,16 +310,16 @@ export class AuthService {
   }
 
   /**
-   * Get the stored provider ID from sessionStorage.
+   * Get the stored provider ID from localStorage.
    * Used to route refresh and logout requests to the correct provider.
    */
   getStoredProviderId(): string | null {
-    return sessionStorage.getItem(this.providerIdKey);
+    return localStorage.getItem(this.providerIdKey);
   }
 
   /**
    * Get the current provider ID from the signal.
-   * This is extracted from the JWT token or retrieved from sessionStorage.
+   * This is extracted from the JWT token or retrieved from localStorage.
    * @returns The current provider ID or null if not available
    */
   getProviderId(): string | null {

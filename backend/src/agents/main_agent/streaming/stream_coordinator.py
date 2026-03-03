@@ -615,8 +615,7 @@ class StreamCoordinator:
 
         The count is obtained from:
         1. TurnBasedSessionManager.message_count (initialized from AgentCore Memory at session start)
-        2. LocalSessionBuffer or FileSessionManager (via list_messages)
-        3. Fallback to 0 if no count is available
+        2. Fallback to 0 if no count is available
 
         Args:
             session_manager: Session manager instance
@@ -631,17 +630,17 @@ class StreamCoordinator:
             logger.debug(f"Using TurnBasedSessionManager.message_count: {count}")
             return count
 
-        # For LocalSessionBuffer: check the base manager
+        # Check wrapped session managers
         if hasattr(session_manager, "base_manager"):
             base_manager = session_manager.base_manager
 
-            # Check if base manager has message_count (e.g., if it's also a TurnBasedSessionManager)
+            # Check if base manager has message_count
             if hasattr(base_manager, "message_count"):
                 count = base_manager.message_count
                 logger.debug(f"Using base_manager.message_count: {count}")
                 return count
 
-            # For FileSessionManager: try to list messages
+            # Try list_messages if available
             if hasattr(base_manager, "list_messages"):
                 try:
                     # Get session_id from config or session_manager
@@ -694,40 +693,6 @@ class StreamCoordinator:
         if hasattr(session_manager, "_get_latest_message_id"):
             try:
                 return session_manager._get_latest_message_id()
-            except Exception:
-                pass
-
-        # For LocalSessionBuffer, check if base_manager has the method
-        if hasattr(session_manager, "base_manager"):
-            base_manager = session_manager.base_manager
-            if hasattr(base_manager, "_get_latest_message_id"):
-                try:
-                    return base_manager._get_latest_message_id()
-                except Exception:
-                    pass
-
-        # Fallback: Try to get message count from session manager
-        # This works for both TurnBasedSessionManager and LocalSessionBuffer
-        if hasattr(session_manager, "base_manager"):
-            try:
-                from pathlib import Path
-
-                from apis.app_api.storage.paths import get_messages_dir
-
-                # Get session_id from config
-                if hasattr(session_manager.base_manager, "config"):
-                    session_id = session_manager.base_manager.config.session_id
-                    messages_dir = get_messages_dir(session_id)
-
-                    if messages_dir.exists():
-                        # Get all message files sorted by number
-                        message_files = sorted(
-                            messages_dir.glob("message_*.json"), key=lambda p: int(p.stem.split("_")[1]) if p.stem.split("_")[1].isdigit() else 0
-                        )
-                        if message_files:
-                            latest_file = message_files[-1]
-                            message_num = int(latest_file.stem.split("_")[1])
-                            return message_num
             except Exception:
                 pass
 

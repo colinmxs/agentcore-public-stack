@@ -201,7 +201,7 @@ export class AssistantPreviewComponent {
       return;
     }
 
-    this.previewChatService.sendMessage(event.content, assistantId);
+    this.previewChatService.sendMessage(event.content, assistantId, this.instructions());
   }
 
   /**
@@ -226,6 +226,6 @@ export class AssistantPreviewComponent {
     if (!assistantId || !starter.trim()) {
       return;
     }
-    this.previewChatService.sendMessage(starter, assistantId);
+    this.previewChatService.sendMessage(starter, assistantId, this.instructions());
   }
 }
