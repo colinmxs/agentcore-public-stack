@@ -13,18 +13,14 @@ from pathlib import Path
 from dotenv import load_dotenv
 import os
 
-# Load environment variables from .env file only if not already set
-# In production (Docker/AWS), env vars are set directly in the container
-# In local development, we fall back to .env file
-if not os.getenv('AWS_REGION') or not os.getenv('AWS_DEFAULT_REGION'):
-    env_path = Path(__file__).parent.parent.parent / '.env'
-    if env_path.exists():
-        load_dotenv(dotenv_path=env_path)
-        print(f"Loaded environment variables from: {env_path}")
-    else:
-        print(f"Warning: .env file not found at {env_path}")
+# Load .env file from backend/src directory (parent of apis/)
+# load_dotenv defaults to override=False, so container-injected env vars take precedence in production.
+env_path = Path(__file__).parent.parent.parent / '.env'
+if env_path.exists():
+    load_dotenv(dotenv_path=env_path)
+    print(f"Loaded environment variables from: {env_path}")
 else:
-    print("Using environment variables from container runtime")
+    print(f"Warning: .env file not found at {env_path}")
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
