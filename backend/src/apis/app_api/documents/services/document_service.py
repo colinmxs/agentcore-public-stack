@@ -13,11 +13,16 @@ import logging
 import os
 import uuid
 from typing import Optional, Tuple, List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from apis.app_api.documents.models import Document, DocumentStatus
 
 logger = logging.getLogger(__name__)
+
+# Documents stuck in a processing state longer than this are considered stale.
+# Must exceed the Lambda timeout (900s / 15min) to avoid killing in-flight jobs.
+STALE_PROCESSING_TIMEOUT_MINUTES = 20
+PROCESSING_STATES: set[DocumentStatus] = {'uploading', 'chunking', 'embedding'}
 
 
 def _generate_document_id() -> str:
@@ -27,7 +32,57 @@ def _generate_document_id() -> str:
 
 def _get_current_timestamp() -> str:
     """Get current timestamp in ISO 8601 format"""
-    return datetime.utcnow().isoformat() + "Z"
+    return datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+
+
+def _is_document_stale(document: Document) -> bool:
+    """
+    Check if a document in a processing state has gone stale.
+    
+    A document is stale if it's in a non-terminal state (uploading, chunking, embedding)
+    and its updatedAt timestamp is older than STALE_PROCESSING_TIMEOUT_MINUTES.
+    
+    This catches cases where the Lambda ingestion pipeline crashed, timed out,
+    or otherwise failed without updating the document status to 'failed'.
+    """
+    if document.status not in PROCESSING_STATES:
+        return False
+    
+    try:
+        # Parse the updatedAt timestamp (ISO 8601 with Z suffix)
+        updated_str = document.updated_at.rstrip('Z')
+        updated_at = datetime.fromisoformat(updated_str).replace(tzinfo=timezone.utc)
+        now = datetime.now(timezone.utc)
+        elapsed_minutes = (now - updated_at).total_seconds() / 60
+        return elapsed_minutes > STALE_PROCESSING_TIMEOUT_MINUTES
+    except (ValueError, AttributeError) as e:
+        logger.warning(f"Failed to parse updatedAt for document {document.document_id}: {e}")
+        # Don't auto-fail on unparseable timestamps — the 5-min poll timeout
+        # on the frontend is still a backstop, and we'd rather not nuke a
+        # brand-new document with a malformed timestamp.
+        return False
+
+
+async def _auto_fail_stale_document(document: Document) -> Document:
+    """
+    Mark a stale processing document as failed and return the updated document.
+    
+    This is called when we detect a document stuck in a processing state
+    past the staleness threshold. The backend becomes the source of truth
+    so the frontend stops polling.
+    """
+    logger.warning(
+        f"Document {document.document_id} is stale (status={document.status}, "
+        f"updatedAt={document.updated_at}). Auto-marking as failed."
+    )
+    updated = await update_document_status(
+        assistant_id=document.assistant_id,
+        document_id=document.document_id,
+        status='failed',
+        error_message='Processing timed out. The document may need to be re-uploaded.',
+        error_details=f'Document was stuck in "{document.status}" state since {document.updated_at}',
+    )
+    return updated if updated else document
 
 
 async def create_document(
@@ -149,7 +204,13 @@ async def get_document(
             return None
         
         item = response['Item']
-        return Document.model_validate(item)
+        document = Document.model_validate(item)
+        
+        # Auto-fail stale processing documents
+        if _is_document_stale(document):
+            document = await _auto_fail_stale_document(document)
+        
+        return document
     
     except ClientError as e:
         error_code = e.response.get('Error', {}).get('Code', 'Unknown')
@@ -370,10 +431,20 @@ async def list_assistant_documents(
         documents = []
         for item in response.get('Items', []):
             try:
-                documents.append(Document.model_validate(item))
+                doc = Document.model_validate(item)
             except Exception as e:
                 logger.warning(f"Failed to parse document item: {e}")
                 continue
+            
+            # Auto-fail stale processing documents (separate from parse errors
+            # so a DynamoDB write failure doesn't silently drop the document)
+            try:
+                if _is_document_stale(doc):
+                    doc = await _auto_fail_stale_document(doc)
+            except Exception as e:
+                logger.error(f"Failed to auto-fail stale document {doc.document_id}: {e}")
+            
+            documents.append(doc)
         
         # Generate next_token from LastEvaluatedKey
         next_page_token = None
