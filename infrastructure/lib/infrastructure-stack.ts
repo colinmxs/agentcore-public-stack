@@ -634,15 +634,419 @@ export class InfrastructureStack extends cdk.Stack {
     });
 
     // ============================================================
-    // Route53 Hosted Zone (Optional)
+    // Shared DynamoDB Tables (Quota Management)
     // ============================================================
+    // These tables are shared by both App API and Inference API stacks
+    // to avoid circular dependencies. They must be created in the
+    // Infrastructure Stack (foundation layer) and imported by other stacks.
+
+    // UserQuotas Table - Quota assignments for users and roles
+    const userQuotasTable = new dynamodb.Table(this, "UserQuotasTable", {
+      tableName: getResourceName(config, "user-quotas"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: AssignmentTypeIndex - Query assignments by type, sorted by priority
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "AssignmentTypeIndex",
+      partitionKey: {
+        name: "GSI1PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI1SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI2: UserAssignmentIndex - Query direct user assignments (O(1) lookup)
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "UserAssignmentIndex",
+      partitionKey: {
+        name: "GSI2PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI2SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI3: RoleAssignmentIndex - Query role-based assignments, sorted by priority
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "RoleAssignmentIndex",
+      partitionKey: {
+        name: "GSI3PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI3SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI4: UserOverrideIndex - Query active overrides by user, sorted by expiry
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "UserOverrideIndex",
+      partitionKey: {
+        name: "GSI4PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI4SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // GSI6: AppRoleAssignmentIndex - Query quota assignments by AppRole ID
+    userQuotasTable.addGlobalSecondaryIndex({
+      indexName: "AppRoleAssignmentIndex",
+      partitionKey: {
+        name: "GSI6PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI6SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store UserQuotas table name and ARN in SSM
+    new ssm.StringParameter(this, "UserQuotasTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/quota/user-quotas-table-name`,
+      stringValue: userQuotasTable.tableName,
+      description: "UserQuotas table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "UserQuotasTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/quota/user-quotas-table-arn`,
+      stringValue: userQuotasTable.tableArn,
+      description: "UserQuotas table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // QuotaEvents Table - Quota usage event tracking
+    const quotaEventsTable = new dynamodb.Table(this, "QuotaEventsTable", {
+      tableName: getResourceName(config, "quota-events"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI5: TierEventIndex - Query events by tier for analytics
+    quotaEventsTable.addGlobalSecondaryIndex({
+      indexName: "TierEventIndex",
+      partitionKey: {
+        name: "GSI5PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI5SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store QuotaEvents table name and ARN in SSM
+    new ssm.StringParameter(this, "QuotaEventsTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/quota/quota-events-table-name`,
+      stringValue: quotaEventsTable.tableName,
+      description: "QuotaEvents table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "QuotaEventsTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/quota/quota-events-table-arn`,
+      stringValue: quotaEventsTable.tableArn,
+      description: "QuotaEvents table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // SessionsMetadata Table - Message-level metadata for cost tracking
+    const sessionsMetadataTable = new dynamodb.Table(this, "SessionsMetadataTable", {
+      tableName: getResourceName(config, "sessions-metadata"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      timeToLiveAttribute: "ttl",
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: UserTimestampIndex - Query messages by user and time range
+    sessionsMetadataTable.addGlobalSecondaryIndex({
+      indexName: "UserTimestampIndex",
+      partitionKey: {
+        name: "GSI1PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI1SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // SessionLookupIndex - Direct session lookup by ID and per-session cost queries
+    // Enables:
+    //   - O(1) session lookup: GSI_PK=SESSION#{session_id}, GSI_SK=META
+    //   - Per-session costs: GSI_PK=SESSION#{session_id}, GSI_SK begins_with C#
+    sessionsMetadataTable.addGlobalSecondaryIndex({
+      indexName: "SessionLookupIndex",
+      partitionKey: {
+        name: "GSI_PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI_SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store SessionsMetadata table name and ARN in SSM
+    new ssm.StringParameter(this, "SessionsMetadataTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`,
+      stringValue: sessionsMetadataTable.tableName,
+      description: "SessionsMetadata table name for message-level cost tracking",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "SessionsMetadataTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`,
+      stringValue: sessionsMetadataTable.tableArn,
+      description: "SessionsMetadata table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // UserCostSummary Table - Pre-aggregated cost summaries for fast quota checks
+    const userCostSummaryTable = new dynamodb.Table(this, "UserCostSummaryTable", {
+      tableName: getResourceName(config, "user-cost-summary"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI2: PeriodCostIndex - Query top users by cost for admin dashboard
+    // Enables efficient "top N users by cost" queries without table scans
+    userCostSummaryTable.addGlobalSecondaryIndex({
+      indexName: "PeriodCostIndex",
+      partitionKey: {
+        name: "GSI2PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI2SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.INCLUDE,
+      nonKeyAttributes: ["userId", "totalCost", "totalRequests", "lastUpdated"],
+    });
+
+    // Store UserCostSummary table name and ARN in SSM
+    new ssm.StringParameter(this, "UserCostSummaryTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-name`,
+      stringValue: userCostSummaryTable.tableName,
+      description: "UserCostSummary table name for aggregated cost summaries",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "UserCostSummaryTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`,
+      stringValue: userCostSummaryTable.tableArn,
+      description: "UserCostSummary table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // SystemCostRollup Table - Pre-aggregated system-wide metrics for admin dashboard
+    const systemCostRollupTable = new dynamodb.Table(this, "SystemCostRollupTable", {
+      tableName: getResourceName(config, "system-cost-rollup"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // Store SystemCostRollup table name and ARN in SSM
+    new ssm.StringParameter(this, "SystemCostRollupTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`,
+      stringValue: systemCostRollupTable.tableName,
+      description: "SystemCostRollup table name for admin dashboard aggregates",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "SystemCostRollupTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`,
+      stringValue: systemCostRollupTable.tableArn,
+      description: "SystemCostRollup table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ManagedModels Table - Model management and pricing data
+    const managedModelsTable = new dynamodb.Table(this, "ManagedModelsTable", {
+      tableName: getResourceName(config, "managed-models"),
+      partitionKey: {
+        name: "PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: ModelIdIndex - Query by modelId for duplicate checking
+    managedModelsTable.addGlobalSecondaryIndex({
+      indexName: "ModelIdIndex",
+      partitionKey: {
+        name: "GSI1PK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      sortKey: {
+        name: "GSI1SK",
+        type: dynamodb.AttributeType.STRING,
+      },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store ManagedModels table name and ARN in SSM
+    new ssm.StringParameter(this, "ManagedModelsTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/admin/managed-models-table-name`,
+      stringValue: managedModelsTable.tableName,
+      description: "ManagedModels table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "ManagedModelsTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/admin/managed-models-table-arn`,
+      stringValue: managedModelsTable.tableArn,
+      description: "ManagedModels table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // AuthProviders Table - OIDC authentication provider configuration
+    const authProvidersTable = new dynamodb.Table(this, "AuthProvidersTable", {
+      tableName: getResourceName(config, "auth-providers"),
+      partitionKey: { name: "PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "SK", type: dynamodb.AttributeType.STRING },
+      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
+      pointInTimeRecovery: true,
+      stream: dynamodb.StreamViewType.NEW_AND_OLD_IMAGES,
+      removalPolicy: getRemovalPolicy(config),
+      encryption: dynamodb.TableEncryption.AWS_MANAGED,
+    });
+
+    // GSI1: EnabledProvidersIndex - Query enabled auth providers for login page
+    authProvidersTable.addGlobalSecondaryIndex({
+      indexName: "EnabledProvidersIndex",
+      partitionKey: { name: "GSI1PK", type: dynamodb.AttributeType.STRING },
+      sortKey: { name: "GSI1SK", type: dynamodb.AttributeType.STRING },
+      projectionType: dynamodb.ProjectionType.ALL,
+    });
+
+    // Store AuthProviders table name and ARN in SSM
+    new ssm.StringParameter(this, "AuthProvidersTableNameParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
+      stringValue: authProvidersTable.tableName,
+      description: "Auth providers table name",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersTableArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
+      stringValue: authProvidersTable.tableArn,
+      description: "Auth providers table ARN",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, "AuthProvidersStreamArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
+      stringValue: authProvidersTable.tableStreamArn!,
+      description: "DynamoDB Stream ARN for auth providers table",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // Secrets Manager for auth provider client secrets
+    const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
+      secretName: getResourceName(config, "auth-provider-secrets"),
+      description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
+      removalPolicy: cdk.RemovalPolicy.RETAIN,
+    });
+
+    // Store auth provider secrets ARN in SSM
+    new ssm.StringParameter(this, "AuthProviderSecretsArnParameter", {
+      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
+      stringValue: authProviderSecretsSecret.secretArn,
+      description: "Secrets Manager ARN for auth provider client secrets",
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    // ============================================================
+    // Route53 Hosted Zone Lookup (Optional)
+    // ============================================================
+    // The hosted zone and certificates are created outside this stack
+    // (manually or via a separate DNS stack). This stack looks up the
+    // existing hosted zone and creates A records for the ALB.
     if (config.infrastructureHostedZoneDomain && config.infrastructureHostedZoneDomain.trim() !== '') {
-      const hostedZone = new route53.PublicHostedZone(this, 'HostedZone', {
-        zoneName: config.infrastructureHostedZoneDomain,
-        comment: `Hosted zone for ${config.projectPrefix}`,
+      const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
+        domainName: config.infrastructureHostedZoneDomain,
       });
 
-      // Export Hosted Zone ID to SSM
+      // Export Hosted Zone ID to SSM for cross-stack references
       new ssm.StringParameter(this, 'HostedZoneIdParameter', {
         parameterName: `/${config.projectPrefix}/network/hosted-zone-id`,
         stringValue: hostedZone.hostedZoneId,
@@ -658,27 +1062,13 @@ export class InfrastructureStack extends cdk.Stack {
         tier: ssm.ParameterTier.STANDARD,
       });
 
-      // CloudFormation Output for Hosted Zone
-      new cdk.CfnOutput(this, 'HostedZoneId', {
-        value: hostedZone.hostedZoneId,
-        description: 'Route53 Hosted Zone ID',
-        exportName: `${config.projectPrefix}-hosted-zone-id`,
-      });
-
-      new cdk.CfnOutput(this, 'HostedZoneNameServers', {
-        value: cdk.Fn.join(', ', hostedZone.hostedZoneNameServers || []),
-        description: 'Route53 Hosted Zone Name Servers',
-        exportName: `${config.projectPrefix}-hosted-zone-ns`,
-      });
-
       // ============================================================
       // Route53 A Record for ALB (Optional)
       // ============================================================
       if (config.albSubdomain) {
         const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;
-        const protocol = config.certificateArn ? 'https' : 'http';
-        
-        const albARecord = new route53.ARecord(this, 'AlbARecord', {
+
+        new route53.ARecord(this, 'AlbARecord', {
           zone: hostedZone,
           recordName: config.albSubdomain,
           target: route53.RecordTarget.fromAlias(
@@ -687,7 +1077,6 @@ export class InfrastructureStack extends cdk.Stack {
           comment: `A record for ALB - points ${albRecordName} to load balancer`,
         });
 
-        // Additional HTTPS URL output when certificate is provided
         if (config.certificateArn) {
           new cdk.CfnOutput(this, 'AlbUrlHttps', {
             value: `https://${albRecordName}`,

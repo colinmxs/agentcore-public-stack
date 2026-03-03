@@ -85,9 +85,16 @@ export class RagIngestionStack extends cdk.Stack {
     // S3 Documents Bucket
     // ============================================================
 
-    const corsOrigins = config.ragIngestion.corsOrigins
-      ? config.ragIngestion.corsOrigins.split(',').map((o) => o.trim())
-      : [];
+    // Build CORS origins: auto-include domain + localhost + any explicit config
+    const corsOrigins = new Set<string>();
+    corsOrigins.add('http://localhost:4200');
+    if (config.domainName) {
+      corsOrigins.add(`https://${config.domainName}`);
+    }
+    if (config.ragIngestion.corsOrigins) {
+      config.ragIngestion.corsOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => corsOrigins.add(o));
+    }
+    const ragCorsOrigins = Array.from(corsOrigins);
 
     this.documentsBucket = new s3.Bucket(this, 'RagDocumentsBucket', {
       bucketName: getResourceName(config, 'rag-documents'),
@@ -96,9 +103,9 @@ export class RagIngestionStack extends cdk.Stack {
       versioned: true,
       removalPolicy: cdk.RemovalPolicy.RETAIN,
       autoDeleteObjects: false,
-      cors: corsOrigins.length > 0 ? [
+      cors: ragCorsOrigins.length > 0 ? [
         {
-          allowedOrigins: corsOrigins,
+          allowedOrigins: ragCorsOrigins,
           allowedMethods: [
             s3.HttpMethods.GET,
             s3.HttpMethods.PUT,

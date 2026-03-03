@@ -85,7 +85,7 @@ describe('RagIngestionStack', () => {
       ragIngestion: {
         enabled: true,
         corsOrigins: 'http://localhost:3000,https://example.com',
-        lambdaMemorySize: 10240,
+        lambdaMemorySize: 3008,
         lambdaTimeout: 900,
         embeddingModel: 'amazon.titan-embed-text-v2',
         vectorDimension: 1024,
@@ -400,7 +400,7 @@ describe('RagIngestionStack', () => {
 
     test('configures memory size from config', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        MemorySize: 10240,
+        MemorySize: 3008,
       });
     });
 
