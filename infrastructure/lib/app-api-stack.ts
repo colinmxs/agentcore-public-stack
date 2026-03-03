@@ -1130,17 +1130,31 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // Grant permission to create service-linked role for Bedrock AgentCore
+    // Grant permission to create service-linked roles for Bedrock AgentCore
     // Required on first CreateAgentRuntime call in an account
     runtimeProvisionerFunction.addToRolePolicy(
       new iam.PolicyStatement({
-        sid: "CreateServiceLinkedRoleForAgentCore",
+        sid: "CreateNetworkServiceLinkedRole",
         effect: iam.Effect.ALLOW,
         actions: ["iam:CreateServiceLinkedRole"],
-        resources: ["*"],
+        resources: ["arn:aws:iam::*:role/aws-service-role/network.bedrock-agentcore.amazonaws.com/AWSServiceRoleForBedrockAgentCoreNetwork"],
+        conditions: {
+          StringLike: {
+            "iam:AWSServiceName": "network.bedrock-agentcore.amazonaws.com",
+          },
+        },
+      })
+    );
+
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "CreateIdentityServiceLinkedRole",
+        effect: iam.Effect.ALLOW,
+        actions: ["iam:CreateServiceLinkedRole"],
+        resources: ["arn:aws:iam::*:role/aws-service-role/runtime-identity.bedrock-agentcore.amazonaws.com/AWSServiceRoleForBedrockAgentCoreRuntimeIdentity"],
         conditions: {
           StringEquals: {
-            "iam:AWSServiceName": "bedrock-agentcore.amazonaws.com",
+            "iam:AWSServiceName": "runtime-identity.bedrock-agentcore.amazonaws.com",
           },
         },
       })
