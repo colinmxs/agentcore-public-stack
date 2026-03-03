@@ -1137,7 +1137,7 @@ export class AppApiStack extends cdk.Stack {
         sid: "CreateServiceLinkedRoleForAgentCore",
         effect: iam.Effect.ALLOW,
         actions: ["iam:CreateServiceLinkedRole"],
-        resources: ["arn:aws:iam::*:role/aws-service-role/bedrock-agentcore.amazonaws.com/*"],
+        resources: ["*"],
         conditions: {
           StringEquals: {
             "iam:AWSServiceName": "bedrock-agentcore.amazonaws.com",
