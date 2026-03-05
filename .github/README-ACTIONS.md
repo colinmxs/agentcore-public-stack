@@ -1,89 +1,127 @@
-# GitHub Actions Quick Start
+# GitHub Actions — Deploy Guide
 
-## Required Configuration
+This guide walks you through deploying the AgentCore Public Stack from a fork of this repository. Follow the steps in order — each one builds on the last.
 
-To deploy the AgentCore Public Stack via GitHub Actions, you need to configure these **required** values in your GitHub repository settings (Settings → Secrets and variables → Actions).
+## Step A: Prepare Your AWS Account
 
-### Minimum Required Setup
+Before touching GitHub, you need three things set up in AWS.
 
-| Name | Type | Example Value | Description |
-|------|------|---------------|-------------|
-| AWS_REGION | Variable | `us-west-2` | AWS region for all resource deployment |
-| CDK_AWS_ACCOUNT | Variable | `123456789012` | Your 12-digit AWS account ID |
-| CDK_PROJECT_PREFIX | Variable | `agentcore` | Unique prefix for all AWS resource names |
+### A1. Set Up AWS Authentication
 
-### Authentication (Choose One Method)
+Choose one of these two methods. Your GitHub workflows will use these credentials to deploy resources.
 
-**Option A: AWS Access Keys** (simpler, less secure)
-| Name | Type | Description |
-|------|------|-------------|
-| AWS_ACCESS_KEY_ID | Secret | AWS access key ID |
-| AWS_SECRET_ACCESS_KEY | Secret | AWS secret access key |
+**Option 1: OIDC Role (recommended)**
 
-**Option B: OIDC Role** (recommended, more secure)
-| Name | Type | Description |
-|------|------|-------------|
-| AWS_ROLE_ARN | Secret | AWS IAM role ARN for GitHub OIDC authentication |
+This is the more secure approach — no long-lived keys to rotate.
 
-To set up OIDC between GitHub and AWS:
-1. Create an IAM OIDC identity provider in your AWS account for `token.actions.githubusercontent.com`
+1. Create an IAM OIDC identity provider for `token.actions.githubusercontent.com`
 2. Create an IAM role that trusts the GitHub OIDC provider, scoped to your repository
-3. Store the role ARN as the `AWS_ROLE_ARN` secret
+3. Note the role ARN — you'll need it in Step B
 
-AWS provides a step-by-step guide: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+See: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
 
-## Account Prep
+**Option 2: IAM Access Keys (simpler, less secure)**
 
-Before deploying, your AWS account needs a Route 53 hosted zone and two ACM certificates.
+1. Create an IAM user with programmatic access and the necessary deployment permissions
+2. Generate an access key pair
+3. Note the Access Key ID and Secret Access Key — you'll need them in Step B
 
-### 1. Create a Route 53 Hosted Zone
+### A2. Create a Route 53 Hosted Zone
 
-Create a public hosted zone for your domain (e.g. `example.com`). See [Creating a public hosted zone](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingHostedZone.html).
+Create a public hosted zone for your domain (e.g. `example.com`).
 
-### 2. Create ACM Certificates
+See: [Creating a public hosted zone](https://docs.aws.amazon.com/Route53/latest/DeveloperGuide/CreatingHostedZone.html)
 
-You need two certificates for the hosted zone domain:
+### A3. Create ACM Certificates
 
-- **ALB certificate** — requested in your deployment region (e.g. `us-west-2`)
-- **CloudFront certificate** — requested in `us-east-1` (Virginia), required by CloudFront
+You need two certificates, both for the same domain:
 
-See [Requesting a public certificate](https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-request-public.html).
+| Certificate | Region | Used By |
+|-------------|--------|---------|
+| ALB certificate | Your deployment region (e.g. `us-west-2`) | Application Load Balancer |
+| CloudFront certificate | `us-east-1` (required by CloudFront) | Frontend CDN |
 
-### 3. Add Required Variables
+See: [Requesting a public certificate](https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-request-public.html)
 
-| Name | Type | Example Value | Description |
-|------|------|---------------|-------------|
-| CDK_HOSTED_ZONE_DOMAIN | Variable | `example.com` | Route 53 hosted zone domain name |
-| CDK_ALB_SUBDOMAIN | Variable | `api` | Subdomain for the ALB (e.g. `api.example.com`) |
-| CDK_CERTIFICATE_ARN | Secret | `arn:aws:acm:us-west-2:...` | ACM certificate ARN for the ALB (in deployment region) |
-| CDK_FRONTEND_CERTIFICATE_ARN | Secret | `arn:aws:acm:us-east-1:...` | ACM certificate ARN for CloudFront (must be us-east-1) |
-| CDK_FRONTEND_DOMAIN_NAME | Variable | `app.example.com` | Custom domain for the CloudFront distribution |
+---
 
-## Quick Deploy
+## Step B: Configure GitHub Repository
 
-Once you've set the required values above, go to the **Actions** tab in your GitHub repository and run the workflows in this order. Each step must complete before starting the next.
+Go to your forked repository: **Settings → Secrets and variables → Actions**
 
-| Order | Workflow Name | What It Deploys |
-|-------|--------------|-----------------|
-| 1 | Step 1 — Deploy Infrastructure (VPC, ALB, ECS) | Foundation layer: VPC, ALB, ECS Cluster, Security Groups |
-| 2 | Step 2 — Deploy RAG Ingestion | RAG ingestion pipeline (S3 Vector Buckets) |
-| 3 | Step 3 — Deploy Inference API (AgentCore Runtime) | Bedrock AgentCore Runtime (Strands Agent container) |
-| 4 | Step 4 — Deploy App API (Backend) | Application backend (Fargate service) |
-| 5 | Step 5 — Deploy Frontend (CloudFront) | Angular app (S3 + CloudFront distribution) |
-| 6 | Step 6 — Deploy Gateway (Lambda Tools) | Bedrock AgentCore Gateway + Lambda MCP tools |
-| 7 | Step 7 — Seed Bootstrap Data | Auth providers, quota tiers, default models |
+### Secrets
 
-All workflows default to the **production** environment when triggered manually. To tear down, run the workflows in reverse order (Step 7 → Step 1).
+These are encrypted values that never appear in logs.
 
-All other configuration values have sensible defaults and are optional.
+| Name | Required | Description |
+|------|:--------:|-------------|
+| `AWS_ROLE_ARN` | If using OIDC | IAM role ARN from Step A1 |
+| `AWS_ACCESS_KEY_ID` | If using keys | IAM access key from Step A1 |
+| `AWS_SECRET_ACCESS_KEY` | If using keys | IAM secret key from Step A1 |
+| `CDK_CERTIFICATE_ARN` | Yes | ACM certificate ARN for the ALB (from Step A3, in your deployment region) |
+| `CDK_FRONTEND_CERTIFICATE_ARN` | Yes | ACM certificate ARN for CloudFront (from Step A3, must be `us-east-1`) |
 
-## Next Steps
+### Variables
 
-- **Customize your deployment**: See [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for all available configuration options
-- **Seed bootstrap data**: Set `SEED_AUTH_ISSUER_URL` (Variable), `SEED_AUTH_CLIENT_ID` (Variable), and `SEED_AUTH_CLIENT_SECRET` (Secret) to configure an OIDC auth provider via the Bootstrap Data Seeding workflow
-- **Custom domains**: Configure `CDK_DOMAIN_NAME`, `CDK_HOSTED_ZONE_DOMAIN`, `CDK_CERTIFICATE_ARN`, and related domain settings
-- **External integrations**: Add `ENV_INFERENCE_API_TAVILY_API_KEY` for web search, `ENV_INFERENCE_API_NOVA_ACT_API_KEY` for browser automation
+These are non-sensitive configuration values.
 
-## Configuration Reference
+| Name | Required | Example | Description |
+|------|:--------:|---------|-------------|
+| `AWS_REGION` | Yes | `us-west-2` | AWS region for all resources |
+| `CDK_AWS_ACCOUNT` | Yes | `123456789012` | Your 12-digit AWS account ID |
+| `CDK_PROJECT_PREFIX` | Yes | `agentcore` | Unique prefix for all AWS resource names |
+| `CDK_HOSTED_ZONE_DOMAIN` | Yes | `example.com` | Route 53 hosted zone domain (from Step A2) |
+| `CDK_ALB_SUBDOMAIN` | Yes | `api` | Subdomain for the ALB (e.g. `api.example.com`) |
+| `CDK_DOMAIN_NAME` | Yes | `app.example.com` | Custom domain for the CloudFront distribution |
 
-For a complete list of all configuration options organized by stack, see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md).
+That's it for required config. All other values have sensible defaults — see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for the full list.
+
+---
+
+## Step C: Deploy
+
+Go to the **Actions** tab and run each workflow in order. Wait for each step to complete before starting the next.
+
+| Order | Workflow | Status |
+|:-----:|---------|--------|
+| 1 | [Deploy Infrastructure (VPC, ALB, ECS)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/infrastructure.yml) | [![Step 1](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/infrastructure.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/infrastructure.yml) |
+| 2 | [Deploy RAG Ingestion](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/rag-ingestion.yml) | [![Step 2](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/rag-ingestion.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/rag-ingestion.yml) |
+| 3 | [Deploy Inference API (AgentCore Runtime)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/inference-api.yml) | [![Step 3](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/inference-api.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/inference-api.yml) |
+| 4 | [Deploy App API (Backend)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/app-api.yml) | [![Step 4](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/app-api.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/app-api.yml) |
+| 5 | [Deploy Frontend (CloudFront)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/frontend.yml) | [![Step 5](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/frontend.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/frontend.yml) |
+| 6 | [Deploy Gateway (Lambda Tools)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml) | [![Step 6](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml) |
+| 7 | [Seed Bootstrap Data](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) | [![Step 7](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) |
+
+All workflows default to the **production** environment when triggered manually. To tear down, run them in reverse order (7 → 1).
+
+---
+
+## Step D: Configure Authentication (Optional)
+
+To set up an OIDC auth provider (e.g. Microsoft Entra ID) via the Bootstrap Data Seeding workflow, add these to your GitHub repository:
+
+| Name | Type | Example | Description |
+|------|------|---------|-------------|
+| `SEED_AUTH_PROVIDER_ID` | Variable | `entra-id` | Slug identifier for the auth provider |
+| `SEED_AUTH_DISPLAY_NAME` | Variable | `Microsoft Entra ID` | Display name on the login page |
+| `SEED_AUTH_ISSUER_URL` | Variable | `https://login.microsoftonline.com/TENANT/v2.0` | OIDC issuer URL |
+| `SEED_AUTH_CLIENT_ID` | Variable | `your-client-id` | OAuth client ID |
+| `SEED_AUTH_CLIENT_SECRET` | Secret | `your-client-secret` | OAuth client secret |
+| `SEED_AUTH_BUTTON_COLOR` | Variable | `#0078D4` | Login button color |
+
+Then re-run **Step 7 — Seed Bootstrap Data**.
+
+---
+
+## Optional Integrations
+
+| Name | Type | Description |
+|------|------|-------------|
+| `ENV_INFERENCE_API_TAVILY_API_KEY` | Secret | Tavily API key for web search |
+| `ENV_INFERENCE_API_NOVA_ACT_API_KEY` | Secret | Amazon Nova Act API key for browser automation |
+
+---
+
+## Full Configuration Reference
+
+For every available variable and secret (resource sizing, CORS, WAF, throttling, etc.), see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md).
