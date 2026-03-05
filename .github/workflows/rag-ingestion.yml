@@ -186,7 +186,7 @@ jobs:
       CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
       CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -251,7 +251,7 @@ jobs:
       CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
       CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -312,7 +312,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -373,7 +373,7 @@ jobs:
       CDK_RAG_ENABLED: ${{ vars.CDK_RAG_ENABLED }}
       CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

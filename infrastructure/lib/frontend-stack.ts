@@ -87,13 +87,11 @@ export class FrontendStack extends cdk.Stack {
 
     const runtimeConfig = {
       appApiUrl: appApiUrl,
-      enableAuthentication: true,
       environment: config.production ? 'production' : 'development',
     };
 
     console.log('🔧 Generated runtime configuration:');
     console.log(`   Environment: ${runtimeConfig.environment}`);
-    console.log(`   Authentication: ${runtimeConfig.enableAuthentication}`);
 
     // Generate bucket name with account ID to ensure global uniqueness
     const bucketName = config.frontend.bucketName || 
@@ -243,8 +241,8 @@ export class FrontendStack extends cdk.Stack {
     // Store distribution domain name
     this.distributionDomainName = this.distribution.distributionDomainName;
 
-    // Create Route53 A record if domain is configured and Route53 is enabled
-    if (config.frontend.enableRoute53 && config.domainName) {
+    // Create Route53 A record if domain is configured
+    if (config.domainName) {
       // Look up the hosted zone
       const hostedZone = route53.HostedZone.fromLookup(this, 'HostedZone', {
         domainName: config.domainName,

@@ -611,9 +611,6 @@ export class AppApiStack extends cdk.Stack {
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsArn,
-
-        // DATABASE_TYPE: config.appApi.databaseType,
-        // ...(databaseConnectionInfo && { DATABASE_CONNECTION: databaseConnectionInfo }),
       },
       portMappings: [
         {
@@ -631,10 +628,7 @@ export class AppApiStack extends cdk.Stack {
     });
 
     // Grant permissions for database access
-    if (config.appApi.databaseType === "dynamodb") {
-      // Grant DynamoDB permissions (will be added after table is created)
-      // This is a placeholder - actual permissions will be granted via IAM policy
-    }
+    // DynamoDB permissions are granted via IAM policy below
 
     // Grant permissions for assistants base table (local to this stack)
     assistantsTable.grantReadWriteData(taskDefinition.taskRole);

@@ -29,9 +29,9 @@ describe('RagIngestionStack', () => {
       production: false, // Test environment
       retainDataOnDelete: false,
       vpcCidr: '10.0.0.0/16',
+      corsOrigins: 'http://localhost:4200',
       frontend: {
         enabled: true,
-        enableRoute53: false,
         cloudFrontPriceClass: 'PriceClass_100',
       },
       appApi: {
@@ -40,8 +40,6 @@ describe('RagIngestionStack', () => {
         memory: 512,
         desiredCount: 1,
         maxCapacity: 4,
-        databaseType: 'none',
-        enableRds: false,
         imageTag: 'latest',
       },
       inferenceApi: {
@@ -50,19 +48,11 @@ describe('RagIngestionStack', () => {
         memory: 512,
         desiredCount: 1,
         maxCapacity: 4,
-        enableGpu: false,
         imageTag: 'latest',
-        enableAuthentication: 'true',
         logLevel: 'INFO',
-        uploadDir: '/tmp/uploads',
-        outputDir: '/tmp/outputs',
-        generatedImagesDir: '/tmp/images',
-        apiUrl: 'http://localhost:8000',
-        frontendUrl: 'http://localhost:3000',
         corsOrigins: 'http://localhost:3000',
         tavilyApiKey: 'test-key',
         novaActApiKey: 'test-key',
-        oauthCallbackUrl: 'http://localhost:8000/oauth/callback',
       },
       gateway: {
         enabled: true,
@@ -92,7 +82,6 @@ describe('RagIngestionStack', () => {
         vectorDistanceMetric: 'cosine',
       },
       tags: {
-        Project: 'test-project',
         ManagedBy: 'CDK',
       },
     };

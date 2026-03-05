@@ -48,10 +48,6 @@ async def lifespan(app: FastAPI):
     logger.info(f"Log Level: {os.getenv('LOG_LEVEL', 'INFO')}")
     logger.info(f"AWS Region: {os.getenv('AWS_REGION', 'not set')}")
     
-    # Log authentication settings
-    auth_enabled = os.getenv('ENABLE_AUTHENTICATION', 'false')
-    logger.info(f"Authentication: {'enabled' if auth_enabled.lower() == 'true' else 'disabled'}")
-    
     # Log AgentCore Runtime environment variables
     memory_arn = os.getenv('MEMORY_ARN')
     memory_id = os.getenv('AGENTCORE_MEMORY_ID')
@@ -74,10 +70,7 @@ async def lifespan(app: FastAPI):
     logger.info(f"Storage directories - Upload: {upload_dir}, Output: {output_dir_name}, Images: {generated_images_dir_name}")
     
     # Log API URLs (if configured)
-    api_url = os.getenv('API_URL')
     frontend_url = os.getenv('FRONTEND_URL')
-    if api_url:
-        logger.info(f"API URL: {api_url}")
     if frontend_url:
         logger.info(f"Frontend URL: {frontend_url}")
     

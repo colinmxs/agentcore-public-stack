@@ -1,5 +1,5 @@
 ---
-inclusion: always
+inclusion: fileMatch
 fileMatchPattern: [".github/actions/*", ".github/workflows/*", "scripts/*", "**/*.sh", "infrastructure/*"]
 ---
 # DevOps & Infrastructure Guide

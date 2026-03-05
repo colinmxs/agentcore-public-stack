@@ -8,8 +8,6 @@ describe('ConfigService', () => {
 
   const validConfig: RuntimeConfig = {
     appApiUrl: 'https://api.example.com',
-    inferenceApiUrl: 'https://bedrock-agentcore.us-west-2.amazonaws.com/runtimes/test-arn',
-    enableAuthentication: true,
     environment: 'production'
   };
 
@@ -40,16 +38,12 @@ describe('ConfigService', () => {
       expect(service.loaded()).toBe(true);
       expect(service.error()).toBeNull();
       expect(service.appApiUrl()).toBe(validConfig.appApiUrl);
-      expect(service.inferenceApiUrl()).toBe(validConfig.inferenceApiUrl);
-      expect(service.enableAuthentication()).toBe(validConfig.enableAuthentication);
       expect(service.environment()).toBe(validConfig.environment);
     });
 
     it('should validate configuration before storing', async () => {
       const invalidConfig = {
         appApiUrl: 'not-a-url',
-        inferenceApiUrl: 'https://valid.com',
-        enableAuthentication: true,
         environment: 'production'
       };
       
@@ -77,7 +71,6 @@ describe('ConfigService', () => {
       expect(service.loaded()).toBe(true);
       expect(service.error()).not.toBeNull();
       expect(service.appApiUrl()).toBe('http://localhost:8000'); // fallback value
-      expect(service.inferenceApiUrl()).toBe('http://localhost:8001'); // fallback value
     });
 
     it('should fall back to environment.ts on network error', async () => {
@@ -95,48 +88,6 @@ describe('ConfigService', () => {
 
     it('should handle missing appApiUrl', async () => {
       const invalidConfig = {
-        inferenceApiUrl: 'https://valid.com',
-        enableAuthentication: true,
-        environment: 'production'
-      };
-      
-      const loadPromise = service.loadConfig();
-      
-      const req = httpMock.expectOne('/config.json');
-      req.flush(invalidConfig);
-      
-      await loadPromise;
-      
-      // Should fall back due to validation error
-      expect(service.loaded()).toBe(true);
-      expect(service.error()).not.toBeNull();
-    });
-
-    it('should handle missing inferenceApiUrl', async () => {
-      const configWithoutInferenceUrl = {
-        appApiUrl: 'https://valid.com',
-        enableAuthentication: true,
-        environment: 'production'
-      };
-      
-      const loadPromise = service.loadConfig();
-      
-      const req = httpMock.expectOne('/config.json');
-      req.flush(configWithoutInferenceUrl);
-      
-      await loadPromise;
-      
-      // Should load successfully - inferenceApiUrl is optional
-      expect(service.loaded()).toBe(true);
-      expect(service.error()).toBeNull();
-      expect(service.appApiUrl()).toBe('https://valid.com');
-    });
-
-    it('should handle invalid enableAuthentication type', async () => {
-      const invalidConfig = {
-        appApiUrl: 'https://valid.com',
-        inferenceApiUrl: 'https://valid.com',
-        enableAuthentication: 'true', // should be boolean
         environment: 'production'
       };
       
@@ -154,9 +105,7 @@ describe('ConfigService', () => {
 
     it('should handle missing environment field', async () => {
       const invalidConfig = {
-        appApiUrl: 'https://valid.com',
-        inferenceApiUrl: 'https://valid.com',
-        enableAuthentication: true
+        appApiUrl: 'https://valid.com'
       };
       
       const loadPromise = service.loadConfig();
@@ -190,14 +139,6 @@ describe('ConfigService', () => {
       expect(service.appApiUrl()).toBe('');
     });
 
-    it('should return empty string for inferenceApiUrl when not loaded', () => {
-      expect(service.inferenceApiUrl()).toBe('');
-    });
-
-    it('should return true for enableAuthentication when not loaded', () => {
-      expect(service.enableAuthentication()).toBe(true);
-    });
-
     it('should return "development" for environment when not loaded', () => {
       expect(service.environment()).toBe('development');
     });
@@ -211,8 +152,6 @@ describe('ConfigService', () => {
       await loadPromise;
       
       expect(service.appApiUrl()).toBe(validConfig.appApiUrl);
-      expect(service.inferenceApiUrl()).toBe(validConfig.inferenceApiUrl);
-      expect(service.enableAuthentication()).toBe(validConfig.enableAuthentication);
       expect(service.environment()).toBe(validConfig.environment);
     });
   });
@@ -233,8 +172,6 @@ describe('ConfigService', () => {
       await loadPromise;
       
       expect(service.get('appApiUrl')).toBe(validConfig.appApiUrl);
-      expect(service.get('inferenceApiUrl')).toBe(validConfig.inferenceApiUrl);
-      expect(service.get('enableAuthentication')).toBe(validConfig.enableAuthentication);
       expect(service.get('environment')).toBe(validConfig.environment);
     });
   });

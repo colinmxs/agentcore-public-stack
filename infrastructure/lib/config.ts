@@ -7,6 +7,7 @@ export interface AppConfig {
   production: boolean; // Production environment flag (default: true)
   retainDataOnDelete: boolean;
   vpcCidr: string;
+  corsOrigins: string; // Top-level shared CORS origins (comma-separated), used as default for all sections
   domainName?: string; // Primary domain name for the application (used for frontend, CORS, etc.)
   infrastructureHostedZoneDomain?: string;
   albSubdomain?: string; // Subdomain for ALB (e.g., 'api' for api.yourdomain.com)
@@ -22,7 +23,6 @@ export interface AppConfig {
 }
 
 export interface FrontendConfig {
-  enableRoute53: boolean;
   certificateArn?: string;
   enabled: boolean;
   bucketName?: string;
@@ -40,11 +40,6 @@ export interface AppApiConfig {
   memory: number;
   desiredCount: number;
   maxCapacity: number;
-  databaseType: 'dynamodb' | 'rds' | 'none';
-  enableRds: boolean;
-  rdsInstanceClass?: string;
-  rdsEngine?: string;
-  rdsDatabaseName?: string;
   imageTag: string;
 }
 
@@ -54,20 +49,12 @@ export interface InferenceApiConfig {
   memory: number;
   desiredCount: number;
   maxCapacity: number;
-  enableGpu: boolean;
   imageTag: string;
   // Environment variables for runtime container
-  enableAuthentication: string;
   logLevel: string;
-  uploadDir: string;
-  outputDir: string;
-  generatedImagesDir: string;
-  apiUrl: string;
-  frontendUrl: string;
   corsOrigins: string;
   tavilyApiKey: string;
   novaActApiKey: string;
-  oauthCallbackUrl: string;        // OAuth callback URL for external MCP tools
 }
 
 export interface GatewayConfig {
@@ -143,19 +130,22 @@ export function loadConfig(scope: cdk.App): AppConfig {
   validateAwsAccount(awsAccount);
   validateAwsRegion(awsRegion);
 
+  // Top-level shared CORS origins — used as default for sections that don't override
+  const corsOrigins = process.env.CDK_CORS_ORIGINS || scope.node.tryGetContext('corsOrigins') || '';
+
   const config: AppConfig = {
     projectPrefix,
     awsAccount,
     awsRegion,
-    production: parseBooleanEnv(process.env.CDK_PRODUCTION, true), // Default: true (production mode)
-    retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE, true),
+    production: parseBooleanEnv(process.env.CDK_PRODUCTION) ?? scope.node.tryGetContext('production'),
+    retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE) ?? scope.node.tryGetContext('retainDataOnDelete'),
     vpcCidr: scope.node.tryGetContext('vpcCidr'),
+    corsOrigins,
     domainName: process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName'),
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     albSubdomain: process.env.CDK_ALB_SUBDOMAIN || scope.node.tryGetContext('albSubdomain'),
     certificateArn: process.env.CDK_CERTIFICATE_ARN || scope.node.tryGetContext('certificateArn'),
     frontend: {
-      enableRoute53: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLE_ROUTE53) ?? scope.node.tryGetContext('frontend').enableRoute53,
       certificateArn: process.env.CDK_FRONTEND_CERTIFICATE_ARN || scope.node.tryGetContext('frontend').certificateArn,
       enabled: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLED) ?? scope.node.tryGetContext('frontend')?.enabled,
       bucketName: process.env.CDK_FRONTEND_BUCKET_NAME || scope.node.tryGetContext('frontend')?.bucketName,
@@ -168,8 +158,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
       desiredCount: parseIntEnv(process.env.CDK_APP_API_DESIRED_COUNT) ?? scope.node.tryGetContext('appApi')?.desiredCount,
       imageTag: scope.node.tryGetContext('imageTag') || '',
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
-      databaseType: 'none', // Set to 'dynamodb' or 'rds' when database is needed
-      enableRds: false,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,
@@ -177,20 +165,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
       memory: parseIntEnv(process.env.CDK_INFERENCE_API_MEMORY) || scope.node.tryGetContext('inferenceApi')?.memory,
       desiredCount: parseIntEnv(process.env.CDK_INFERENCE_API_DESIRED_COUNT) ?? scope.node.tryGetContext('inferenceApi')?.desiredCount,
       maxCapacity: parseIntEnv(process.env.CDK_INFERENCE_API_MAX_CAPACITY) || scope.node.tryGetContext('inferenceApi')?.maxCapacity,
-      enableGpu: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLE_GPU) ?? scope.node.tryGetContext('inferenceApi')?.enableGpu,
       imageTag: scope.node.tryGetContext('imageTag') || '',
       // Environment variables from GitHub Secrets/Variables with context fallback
-      enableAuthentication: process.env.ENV_INFERENCE_API_ENABLE_AUTHENTICATION || scope.node.tryGetContext('inferenceApi')?.enableAuthentication,
       logLevel: process.env.ENV_INFERENCE_API_LOG_LEVEL || scope.node.tryGetContext('inferenceApi')?.logLevel,
-      uploadDir: process.env.ENV_INFERENCE_API_UPLOAD_DIR || scope.node.tryGetContext('inferenceApi')?.uploadDir,
-      outputDir: process.env.ENV_INFERENCE_API_OUTPUT_DIR || scope.node.tryGetContext('inferenceApi')?.outputDir,
-      generatedImagesDir: process.env.ENV_INFERENCE_API_GENERATED_IMAGES_DIR || scope.node.tryGetContext('inferenceApi')?.generatedImagesDir,
-      apiUrl: process.env.ENV_INFERENCE_API_API_URL || scope.node.tryGetContext('inferenceApi')?.apiUrl,
-      frontendUrl: process.env.ENV_INFERENCE_API_FRONTEND_URL || scope.node.tryGetContext('inferenceApi')?.frontendUrl,
       corsOrigins: process.env.ENV_INFERENCE_API_CORS_ORIGINS || scope.node.tryGetContext('inferenceApi')?.corsOrigins,
       tavilyApiKey: process.env.ENV_INFERENCE_API_TAVILY_API_KEY || scope.node.tryGetContext('inferenceApi')?.tavilyApiKey,
       novaActApiKey: process.env.ENV_INFERENCE_API_NOVA_ACT_API_KEY || scope.node.tryGetContext('inferenceApi')?.novaActApiKey,
-      oauthCallbackUrl: process.env.ENV_INFERENCE_API_OAUTH_CALLBACK_URL || scope.node.tryGetContext('inferenceApi')?.oauthCallbackUrl || '',
     },
     gateway: {
       enabled: parseBooleanEnv(process.env.CDK_GATEWAY_ENABLED) ?? scope.node.tryGetContext('gateway')?.enabled,
@@ -201,30 +181,28 @@ export function loadConfig(scope: cdk.App): AppConfig {
       logLevel: process.env.CDK_GATEWAY_LOG_LEVEL || scope.node.tryGetContext('gateway')?.logLevel,
     },
     fileUpload: {
-      enabled: parseBooleanEnv(process.env.CDK_FILE_UPLOAD_ENABLED) ?? scope.node.tryGetContext('fileUpload')?.enabled ?? true,
-      maxFileSizeBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILE_SIZE) || scope.node.tryGetContext('fileUpload')?.maxFileSizeBytes || 4 * 1024 * 1024, // 4MB
-      maxFilesPerMessage: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILES_PER_MESSAGE) || scope.node.tryGetContext('fileUpload')?.maxFilesPerMessage || 5,
-      userQuotaBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_USER_QUOTA) || scope.node.tryGetContext('fileUpload')?.userQuotaBytes || 1024 * 1024 * 1024, // 1GB
-      retentionDays: parseIntEnv(process.env.CDK_FILE_UPLOAD_RETENTION_DAYS) || scope.node.tryGetContext('fileUpload')?.retentionDays || 365,
-      corsOrigins: process.env.CDK_FILE_UPLOAD_CORS_ORIGINS || scope.node.tryGetContext('fileUpload')?.corsOrigins,
+      enabled: parseBooleanEnv(process.env.CDK_FILE_UPLOAD_ENABLED) ?? scope.node.tryGetContext('fileUpload')?.enabled,
+      maxFileSizeBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILE_SIZE) || scope.node.tryGetContext('fileUpload')?.maxFileSizeBytes,
+      maxFilesPerMessage: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILES_PER_MESSAGE) || scope.node.tryGetContext('fileUpload')?.maxFilesPerMessage,
+      userQuotaBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_USER_QUOTA) || scope.node.tryGetContext('fileUpload')?.userQuotaBytes,
+      retentionDays: parseIntEnv(process.env.CDK_FILE_UPLOAD_RETENTION_DAYS) || scope.node.tryGetContext('fileUpload')?.retentionDays,
+      corsOrigins: process.env.CDK_FILE_UPLOAD_CORS_ORIGINS || scope.node.tryGetContext('fileUpload')?.corsOrigins || corsOrigins,
     },
     assistants: {
-      enabled: parseBooleanEnv(process.env.CDK_ASSISTANTS_ENABLED) ?? scope.node.tryGetContext('assistants')?.enabled ?? true,
-      corsOrigins: process.env.CDK_ASSISTANTS_CORS_ORIGINS || scope.node.tryGetContext('assistants')?.corsOrigins,
+      enabled: parseBooleanEnv(process.env.CDK_ASSISTANTS_ENABLED) ?? scope.node.tryGetContext('assistants')?.enabled,
+      corsOrigins: process.env.CDK_ASSISTANTS_CORS_ORIGINS || scope.node.tryGetContext('assistants')?.corsOrigins || corsOrigins,
     },
     ragIngestion: {
-      enabled: parseBooleanEnv(process.env.CDK_RAG_ENABLED) ?? scope.node.tryGetContext('ragIngestion')?.enabled ?? true,
-      corsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.corsOrigins || '',
-      lambdaMemorySize: parseIntEnv(process.env.CDK_RAG_LAMBDA_MEMORY) || scope.node.tryGetContext('ragIngestion')?.lambdaMemorySize || 3008,
-      lambdaTimeout: parseIntEnv(process.env.CDK_RAG_LAMBDA_TIMEOUT) || scope.node.tryGetContext('ragIngestion')?.lambdaTimeout || 900,
-      embeddingModel: process.env.CDK_RAG_EMBEDDING_MODEL || scope.node.tryGetContext('ragIngestion')?.embeddingModel || 'amazon.titan-embed-text-v2',
-      vectorDimension: parseIntEnv(process.env.CDK_RAG_VECTOR_DIMENSION) || scope.node.tryGetContext('ragIngestion')?.vectorDimension || 1024,
-      vectorDistanceMetric: process.env.CDK_RAG_DISTANCE_METRIC || scope.node.tryGetContext('ragIngestion')?.vectorDistanceMetric || 'cosine',
+      enabled: parseBooleanEnv(process.env.CDK_RAG_ENABLED) ?? scope.node.tryGetContext('ragIngestion')?.enabled,
+      corsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.corsOrigins || corsOrigins,
+      lambdaMemorySize: parseIntEnv(process.env.CDK_RAG_LAMBDA_MEMORY) || scope.node.tryGetContext('ragIngestion')?.lambdaMemorySize,
+      lambdaTimeout: parseIntEnv(process.env.CDK_RAG_LAMBDA_TIMEOUT) || scope.node.tryGetContext('ragIngestion')?.lambdaTimeout,
+      embeddingModel: process.env.CDK_RAG_EMBEDDING_MODEL || scope.node.tryGetContext('ragIngestion')?.embeddingModel,
+      vectorDimension: parseIntEnv(process.env.CDK_RAG_VECTOR_DIMENSION) || scope.node.tryGetContext('ragIngestion')?.vectorDimension,
+      vectorDistanceMetric: process.env.CDK_RAG_DISTANCE_METRIC || scope.node.tryGetContext('ragIngestion')?.vectorDistanceMetric,
     },
     tags: {
-      Project: projectPrefix,
-      ManagedBy: 'CDK',
-      ...scope.node.tryGetContext('tags'),
+      ...(scope.node.tryGetContext('tags') || {}),
     },
   };
 
@@ -235,6 +213,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
   console.log(`   AWS Region: ${config.awsRegion}`);
   console.log(`   Production: ${config.production}`);
   console.log(`   Retain Data on Delete: ${config.retainDataOnDelete}`);
+  console.log(`   CORS Origins: ${config.corsOrigins || '(not set)'}`);
   console.log(`   File Upload CORS Origins: ${config.fileUpload.corsOrigins || '(not set)'}`);
   console.log(`   Frontend Enabled: ${config.frontend.enabled}`);
   console.log(`   App API Enabled: ${config.appApi.enabled}`);
@@ -259,13 +238,13 @@ export function loadConfig(scope: cdk.App): AppConfig {
  * @returns The parsed boolean, or undefined if unset and no default provided
  * @throws Error if the value is present but invalid
  */
-export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean;
 export function parseBooleanEnv(value: string | undefined): boolean | undefined;
+export function parseBooleanEnv(value: string | undefined, defaultValue: boolean): boolean;
 export function parseBooleanEnv(value: string | undefined, defaultValue?: boolean): boolean | undefined {
   if (value === undefined || value === '') {
     return defaultValue;
   }
-  
+
   const normalized = value.toLowerCase();
   if (normalized === 'true' || normalized === '1') {
     return true;
@@ -273,7 +252,7 @@ export function parseBooleanEnv(value: string | undefined, defaultValue?: boolea
   if (normalized === 'false' || normalized === '0') {
     return false;
   }
-  
+
   throw new Error(
     `Invalid boolean value: "${value}". ` +
     `Expected "true", "false", "1", or "0".`
@@ -406,15 +385,72 @@ function validateConfig(config: AppConfig): void {
     }
   }
 
-  // // Validate Route53 domain if enabled
-  // if (config.enableRoute53 && !config.domainName) {
-  //   throw new Error('domainName is required when enableRoute53 is true.');
-  // }
+  // Validate Gateway configuration
+  if (config.gateway.enabled) {
+    const validApiTypes = ['REST', 'HTTP'];
+    if (!config.gateway.apiType || !validApiTypes.includes(config.gateway.apiType)) {
+      throw new Error(
+        `Gateway stack requires apiType to be 'REST' or 'HTTP'. Got: '${config.gateway.apiType}'`
+      );
+    }
+  }
 
-  // // Validate certificate ARN if domain is configured
-  // if (config.domainName && !config.certificateArn) {
-  //   console.warn('Warning: domainName is set but certificateArn is not provided. HTTPS will not be configured.');
-  // }
+  // Validate File Upload CORS origins
+  if (config.fileUpload.enabled) {
+    const effectiveCors = config.fileUpload.corsOrigins || config.corsOrigins;
+    if (!effectiveCors || effectiveCors.trim() === '') {
+      throw new Error(
+        'File Upload stack requires CORS origins to be configured. ' +
+        'Set corsOrigins at the top level or in the fileUpload section.'
+      );
+    }
+  }
+
+  // Validate required fields for all enabled stacks
+  if (config.appApi.enabled) {
+    if (!config.appApi.cpu) {
+      throw new Error('App API stack requires "cpu" to be set.');
+    }
+    if (!config.appApi.memory) {
+      throw new Error('App API stack requires "memory" to be set.');
+    }
+    if (!config.appApi.desiredCount && config.appApi.desiredCount !== 0) {
+      throw new Error('App API stack requires "desiredCount" to be set.');
+    }
+    if (!config.appApi.maxCapacity) {
+      throw new Error('App API stack requires "maxCapacity" to be set.');
+    }
+  }
+
+  if (config.inferenceApi.enabled) {
+    if (!config.inferenceApi.cpu) {
+      throw new Error('Inference API stack requires "cpu" to be set.');
+    }
+    if (!config.inferenceApi.memory) {
+      throw new Error('Inference API stack requires "memory" to be set.');
+    }
+    if (!config.inferenceApi.desiredCount && config.inferenceApi.desiredCount !== 0) {
+      throw new Error('Inference API stack requires "desiredCount" to be set.');
+    }
+    if (!config.inferenceApi.maxCapacity) {
+      throw new Error('Inference API stack requires "maxCapacity" to be set.');
+    }
+  }
+
+  if (config.frontend.enabled) {
+    if (!config.frontend.cloudFrontPriceClass) {
+      throw new Error('Frontend stack requires "cloudFrontPriceClass" to be set.');
+    }
+  }
+
+  if (config.gateway.enabled) {
+    if (!config.gateway.throttleRateLimit) {
+      throw new Error('Gateway stack requires "throttleRateLimit" to be set.');
+    }
+    if (!config.gateway.throttleBurstLimit) {
+      throw new Error('Gateway stack requires "throttleBurstLimit" to be set.');
+    }
+  }
 }
 
 /**
@@ -459,6 +495,8 @@ export function getAutoDeleteObjects(config: AppConfig): boolean {
  * Apply standard tags to a stack
  */
 export function applyStandardTags(stack: cdk.Stack, config: AppConfig): void {
+  // Inject Project tag dynamically from projectPrefix (can't interpolate in context)
+  cdk.Tags.of(stack).add('Project', config.projectPrefix);
   Object.entries(config.tags).forEach(([key, value]) => {
     cdk.Tags.of(stack).add(key, value);
   });

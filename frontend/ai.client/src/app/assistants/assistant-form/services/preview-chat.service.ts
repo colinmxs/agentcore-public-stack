@@ -1,7 +1,7 @@
 import { Injectable, inject, signal, computed } from '@angular/core';
 import { v4 as uuidv4 } from 'uuid';
-import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 import { firstValueFrom } from 'rxjs';
+import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 import { AuthService } from '../../../auth/auth.service';
 import { AuthApiService } from '../../../auth/auth-api.service';
 import { ConfigService } from '../../../services/config.service';
@@ -225,7 +225,15 @@ export class PreviewChatService {
 
     try {
       const token = await this.getBearerTokenForStreamingResponse();
-      const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
+
+      // Resolve runtime endpoint dynamically via App API
+      const runtimeEndpoint = await firstValueFrom(
+        this.authApiService.getRuntimeEndpoint()
+      );
+      if (!runtimeEndpoint || !runtimeEndpoint.runtime_endpoint_url) {
+        throw new Error('Invalid runtime endpoint response from server');
+      }
+      const url = `${runtimeEndpoint.runtime_endpoint_url}?qualifier=DEFAULT`;
 
       // NOTE: Field name is 'rag_assistant_id' to avoid collision with AWS Bedrock
       // AgentCore Runtime's internal 'assistant_id' field handling (causes 424 error)

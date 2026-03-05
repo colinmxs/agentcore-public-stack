@@ -8,9 +8,7 @@
 #
 # For production deployment:
 #   - Set APP_API_URL (required)
-#   - Set INFERENCE_API_URL (required)
 #   - Set PRODUCTION (optional, defaults to true)
-#   - Set ENABLE_AUTHENTICATION (optional, defaults to true)
 
 set -euo pipefail
 
@@ -57,7 +55,7 @@ log_info "Build configuration: ${BUILD_CONFIG}"
 
 # Determine if this is a production deployment build
 IS_DEPLOYMENT_BUILD=false
-if [ -n "${APP_API_URL:-}" ] || [ -n "${INFERENCE_API_URL:-}" ]; then
+if [ -n "${APP_API_URL:-}" ]; then
     IS_DEPLOYMENT_BUILD=true
 fi
 
@@ -74,21 +72,12 @@ if [ "${IS_DEPLOYMENT_BUILD}" = true ]; then
         exit 1
     fi
     
-    if [ -z "${INFERENCE_API_URL:-}" ]; then
-        log_error "INFERENCE_API_URL is required for production deployment builds"
-        log_error "Example: export INFERENCE_API_URL='https://inference.example.com'"
-        exit 1
-    fi
-    
     # Set optional variables with defaults
     PRODUCTION="${PRODUCTION:-true}"
-    ENABLE_AUTHENTICATION="${ENABLE_AUTHENTICATION:-true}"
     
     log_info "Environment configuration:"
     log_info "  APP_API_URL: ${APP_API_URL}"
-    log_info "  INFERENCE_API_URL: ${INFERENCE_API_URL}"
     log_info "  PRODUCTION: ${PRODUCTION}"
-    log_info "  ENABLE_AUTHENTICATION: ${ENABLE_AUTHENTICATION}"
     
     # Backup original environment file
     if [ ! -f "${ENV_FILE}.backup" ]; then
@@ -102,8 +91,6 @@ if [ "${IS_DEPLOYMENT_BUILD}" = true ]; then
     # Create a temporary file with injected values
     sed -e "s|production: false|production: ${PRODUCTION}|g" \
         -e "s|appApiUrl: 'http://localhost:8000'|appApiUrl: '${APP_API_URL}'|g" \
-        -e "s|inferenceApiUrl: 'http://localhost:8001'|inferenceApiUrl: '${INFERENCE_API_URL}'|g" \
-        -e "s|enableAuthentication: true|enableAuthentication: ${ENABLE_AUTHENTICATION}|g" \
         "${ENV_FILE}.backup" > "${ENV_FILE}"
     
     log_info "Environment values injected successfully"

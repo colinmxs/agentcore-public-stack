@@ -92,23 +92,10 @@ export class AuthService {
   }
 
   /**
-   * Check if authentication is enabled.
-   * @returns True if authentication is enabled, false otherwise
-   */
-  isAuthenticationEnabled(): boolean {
-    return this.config.enableAuthentication();
-  }
-
-  /**
    * Check if user is authenticated (has a valid token).
-   * @returns True if user has a token that is not expired, or if authentication is disabled
+   * @returns True if user has a token that is not expired
    */
   isAuthenticated(): boolean {
-    // If authentication is disabled, always return true
-    if (!this.config.enableAuthentication()) {
-      return true;
-    }
-    
     const token = this.getAccessToken();
     if (!token) {
       return false;
@@ -348,11 +335,6 @@ export class AuthService {
    * ```
    */
   async ensureAuthenticated(): Promise<void> {
-    // If authentication is disabled, skip all checks
-    if (!this.config.enableAuthentication()) {
-      return;
-    }
-
     // Check if user is authenticated
     if (this.isAuthenticated()) {
       return; // User is authenticated, proceed
@@ -390,13 +372,6 @@ export class AuthService {
    * @throws Error if logout initiation fails
    */
   async logout(postLogoutRedirectUri?: string): Promise<void> {
-    // If authentication is disabled, just clear tokens and redirect home
-    if (!this.config.enableAuthentication()) {
-      this.clearTokens();
-      window.location.href = '/';
-      return;
-    }
-
     try {
       // Build query parameters
       const params = new URLSearchParams();

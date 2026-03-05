@@ -2,14 +2,19 @@
   "@aws-cdk/core:defaultStackSynthesizer": "VersionedStackSynthesizerCloudAssemblyContext",
   "@aws-cdk/core:enableAssetManifest": true,
   "@aws-cdk/core:checksumAssetForResourceTags": true,
+  "production": true,
+  "retainDataOnDelete": false,
   "projectPrefix": "agentcore",
   "awsAccount": "",
   "awsRegion": "us-west-2",
   "vpcCidr": "10.0.0.0/16",
+  "corsOrigins": "http://localhost:4200,http://localhost:8000",
+  "domainName": "",
   "infrastructureHostedZoneDomain": "",
+  "albSubdomain": "",
+  "certificateArn": "",
+  "imageTag": "",
   "frontend": {
-    "domainName": "",
-    "enableRoute53": false,
     "certificateArn": "",
     "enabled": true,
     "bucketName": "",
@@ -20,13 +25,7 @@
     "cpu": 512,
     "memory": 1024,
     "desiredCount": 1,
-    "maxCapacity": 10,
-    "databaseType": "dynamodb",
-    "enableRds": false,
-    "rdsInstanceClass": "t3.medium",
-    "rdsEngine": "aurora-postgresql",
-    "rdsDatabaseName": "appdb",
-    "imageTag": "latest"
+    "maxCapacity": 10
   },
   "inferenceApi": {
     "enabled": true,
@@ -34,14 +33,7 @@
     "memory": 2048,
     "desiredCount": 1,
     "maxCapacity": 5,
-    "enableGpu": false,
-    "enableAuthentication": "false",
     "logLevel": "INFO",
-    "uploadDir": "uploads",
-    "outputDir": "output",
-    "generatedImagesDir": "generated_images",
-    "apiUrl": "",
-    "frontendUrl": "",
     "corsOrigins": "",
     "tavilyApiKey": "",
     "novaActApiKey": ""
@@ -59,16 +51,13 @@
     "maxFileSizeBytes": 4194304,
     "maxFilesPerMessage": 5,
     "userQuotaBytes": 1073741824,
-    "retentionDays": 365,
-    "corsOrigins": "http://localhost:4200,http://localhost:8000,https://boisestate.ai,https://*.boisestate.ai"
+    "retentionDays": 365
   },
   "assistants": {
-    "enabled": true,
-    "corsOrigins": "http://localhost:4200,http://localhost:8000,https://boisestate.ai,https://*.boisestate.ai"
+    "enabled": true
   },
   "ragIngestion": {
     "enabled": true,
-    "corsOrigins": "http://localhost:4200,http://localhost:8000,https://boisestate.ai,https://*.boisestate.ai",
     "lambdaMemorySize": 3008,
     "lambdaTimeout": 900,
     "embeddingModel": "amazon.titan-embed-text-v2",
@@ -76,8 +65,6 @@
     "vectorDistanceMetric": "cosine"
   },
   "tags": {
-    "Environment": "dev",
-    "Project": "AgentCore",
     "ManagedBy": "CDK"
   },
   "availability-zones:account=490617140655:region=us-west-2": [

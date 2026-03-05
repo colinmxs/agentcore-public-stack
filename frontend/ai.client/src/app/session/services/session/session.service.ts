@@ -822,9 +822,9 @@ export class SessionService {
   }
 
   constructor() {
-    // Enable sessions loading if authentication is disabled or user is already authenticated
+    // Enable sessions loading if user is already authenticated
     // This prevents the resource from loading before authentication is ready
-    if (!this.authService.isAuthenticationEnabled() || this.authService.isAuthenticated()) {
+    if (this.authService.isAuthenticated()) {
       this.enableSessionsLoading();
     }
 

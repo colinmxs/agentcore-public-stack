@@ -240,49 +240,34 @@ export class ChatHttpService {
     return token;
   }
 
-  /**
-   * Get the runtime endpoint URL for the user's authentication provider.
-   *
-   * This method fetches the provider-specific AgentCore Runtime endpoint URL
-   * from the App API. Each provider has its own dedicated runtime with
-   * provider-specific JWT validation.
-   *
-   * Flow:
-   * 1. Call App API /auth/runtime-endpoint (authenticated request)
-   * 2. Backend extracts issuer from JWT and matches to provider
-   * 3. Backend returns runtime endpoint URL for that provider
-   * 4. Use this endpoint for all inference API calls
-   *
-   * @returns Promise resolving to the runtime endpoint URL
-   * @throws FatalError if provider not found or runtime not ready
-   * @throws FatalError if authentication is disabled (fallback to config)
-   *
-   * @example
-   * ```typescript
-   * const endpointUrl = await this.getRuntimeEndpointUrl();
-   * // Returns: "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3A.../invocations"
-   * ```
-   */
-  private async getRuntimeEndpointUrl(): Promise<string> {
-    // If inferenceApiUrl is explicitly configured, use it as an override.
-    // This enables local development with real OIDC auth but local inference.
-    // In production, this should be empty/undefined to use provider-based routing.
-    const configuredInferenceUrl = this.config.inferenceApiUrl();
-    if (configuredInferenceUrl) {
-      // Add /invocations if not already present
-      return configuredInferenceUrl.endsWith('/invocations')
-        ? configuredInferenceUrl
-        : `${configuredInferenceUrl}/invocations`;
-    }
-
-    // If authentication is disabled and no inference URL configured, error
-    if (!this.config.enableAuthentication()) {
-      throw new FatalError('Inference API URL must be configured when authentication is disabled');
-    }
-
-    try {
-      // Fetch runtime endpoint from App API
-      const response = await firstValueFrom(this.authApiService.getRuntimeEndpoint());
+    /**
+     * Get the runtime endpoint URL for the user's authentication provider.
+     * 
+     * This method fetches the provider-specific AgentCore Runtime endpoint URL
+     * from the App API. Each provider has its own dedicated runtime with
+     * provider-specific JWT validation.
+     * 
+     * Flow:
+     * 1. Call App API /auth/runtime-endpoint (authenticated request)
+     * 2. Backend extracts issuer from JWT and matches to provider
+     * 3. Backend returns runtime endpoint URL for that provider
+     * 4. Use this endpoint for all inference API calls
+     * 
+     * @returns Promise resolving to the runtime endpoint URL
+     * @throws FatalError if provider not found or runtime not ready
+     * 
+     * @example
+     * ```typescript
+     * const endpointUrl = await this.getRuntimeEndpointUrl();
+     * // Returns: "https://bedrock-agentcore.us-east-1.amazonaws.com/runtimes/arn%3Aaws%3A.../invocations"
+     * ```
+     */
+    private async getRuntimeEndpointUrl(): Promise<string> {
+        try {
+            // Fetch runtime endpoint from App API
+            const response = await firstValueFrom(
+                this.authApiService.getRuntimeEndpoint()
+            );
 
       if (!response || !response.runtime_endpoint_url) {
         throw new FatalError('Invalid runtime endpoint response from server');

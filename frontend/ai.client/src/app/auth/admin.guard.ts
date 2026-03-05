@@ -2,7 +2,6 @@ import { inject } from '@angular/core';
 import { Router, CanActivateFn } from '@angular/router';
 import { AuthService } from './auth.service';
 import { UserService } from './user.service';
-import { ConfigService } from '../services/config.service';
 
 /**
  * Route guard that protects admin routes requiring specific roles.
@@ -18,13 +17,6 @@ import { ConfigService } from '../services/config.service';
  * @returns True if user is authenticated and has required role, false otherwise
  */
 export const adminGuard: CanActivateFn = async (route, state) => {
-  const config = inject(ConfigService);
-  
-  // If authentication is disabled, allow access to all routes
-  if (!config.enableAuthentication()) {
-    return true;
-  }
-
   const authService = inject(AuthService);
   const userService = inject(UserService);
   const router = inject(Router);

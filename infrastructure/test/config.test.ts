@@ -26,13 +26,10 @@ describe('RAG Ingestion Configuration', () => {
     app.node.setContext('awsRegion', 'us-east-1');
     app.node.setContext('awsAccount', '123456789012');
     app.node.setContext('vpcCidr', '10.0.0.0/16');
-    app.node.setContext('entraClientId', 'test-client-id');
-    app.node.setContext('entraTenantId', 'test-tenant-id');
 
     // Set default context for other required fields
     app.node.setContext('frontend', {
       enabled: true,
-      enableRoute53: false,
       cloudFrontPriceClass: 'PriceClass_100',
     });
     app.node.setContext('appApi', {
@@ -41,7 +38,6 @@ describe('RAG Ingestion Configuration', () => {
       memory: 512,
       desiredCount: 1,
       maxCapacity: 4,
-      entraRedirectUri: 'http://localhost:3000/auth/callback',
     });
     app.node.setContext('inferenceApi', {
       enabled: true,
@@ -49,14 +45,7 @@ describe('RAG Ingestion Configuration', () => {
       memory: 512,
       desiredCount: 1,
       maxCapacity: 4,
-      enableGpu: false,
-      enableAuthentication: 'true',
       logLevel: 'INFO',
-      uploadDir: '/tmp/uploads',
-      outputDir: '/tmp/outputs',
-      generatedImagesDir: '/tmp/images',
-      apiUrl: 'http://localhost:8000',
-      frontendUrl: 'http://localhost:3000',
       corsOrigins: 'http://localhost:3000',
       tavilyApiKey: 'test-key',
       novaActApiKey: 'test-key',
@@ -78,6 +67,20 @@ describe('RAG Ingestion Configuration', () => {
       maxFilesPerMessage: 5,
       userQuotaBytes: 1073741824,
       retentionDays: 365,
+      corsOrigins: 'http://localhost:4200',
+    });
+
+    // Set default ragIngestion context (mirrors cdk.context.json defaults)
+    // Since task 1 removed hardcoded defaults from loadConfig(), tests must
+    // provide context defaults for fields they don't explicitly set via env vars.
+    app.node.setContext('ragIngestion', {
+      enabled: true,
+      corsOrigins: '',
+      lambdaMemorySize: 10240,
+      lambdaTimeout: 900,
+      embeddingModel: 'amazon.titan-embed-text-v2',
+      vectorDimension: 1024,
+      vectorDistanceMetric: 'cosine',
     });
   });
 
@@ -204,6 +207,10 @@ describe('RAG Ingestion Configuration', () => {
         enabled: false,
         corsOrigins: 'https://context.example.com',
         lambdaMemorySize: 8192,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       process.env.CDK_RAG_ENABLED = 'true';
@@ -223,6 +230,9 @@ describe('RAG Ingestion Configuration', () => {
         corsOrigins: 'https://context.example.com',
         lambdaMemorySize: 8192,
         lambdaTimeout: 600,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       process.env.CDK_RAG_ENABLED = 'true';
@@ -325,18 +335,22 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('awsRegion', 'us-east-1');
       testApp.node.setContext('awsAccount', '123456789012');
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
-      testApp.node.setContext('entraClientId', 'test-client-id');
-      testApp.node.setContext('entraTenantId', 'test-tenant-id');
-      testApp.node.setContext('frontend', { enabled: true, enableRoute53: false, cloudFrontPriceClass: 'PriceClass_100' });
-      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, entraRedirectUri: 'http://localhost:3000/auth/callback' });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, enableGpu: false, enableAuthentication: 'true', logLevel: 'INFO', uploadDir: '/tmp/uploads', outputDir: '/tmp/outputs', generatedImagesDir: '/tmp/images', apiUrl: 'http://localhost:8000', frontendUrl: 'http://localhost:3000', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
+      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
       
       process.env.CDK_RAG_ENABLED = 'true'; // Enable RAG to trigger validation
       testApp.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
+        lambdaMemorySize: 10240,
         lambdaTimeout: -1, // Negative (invalid)
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       expect(() => loadConfig(testApp)).toThrow(
@@ -351,18 +365,22 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('awsRegion', 'us-east-1');
       testApp.node.setContext('awsAccount', '123456789012');
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
-      testApp.node.setContext('entraClientId', 'test-client-id');
-      testApp.node.setContext('entraTenantId', 'test-tenant-id');
-      testApp.node.setContext('frontend', { enabled: true, enableRoute53: false, cloudFrontPriceClass: 'PriceClass_100' });
-      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, entraRedirectUri: 'http://localhost:3000/auth/callback' });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, enableGpu: false, enableAuthentication: 'true', logLevel: 'INFO', uploadDir: '/tmp/uploads', outputDir: '/tmp/outputs', generatedImagesDir: '/tmp/images', apiUrl: 'http://localhost:8000', frontendUrl: 'http://localhost:3000', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
+      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
       
       process.env.CDK_RAG_ENABLED = 'true'; // Enable RAG to trigger validation
       testApp.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
+        lambdaMemorySize: 10240,
         lambdaTimeout: 1000, // Too high
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       expect(() => loadConfig(testApp)).toThrow(
@@ -377,18 +395,22 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('awsRegion', 'us-east-1');
       testApp.node.setContext('awsAccount', '123456789012');
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
-      testApp.node.setContext('entraClientId', 'test-client-id');
-      testApp.node.setContext('entraTenantId', 'test-tenant-id');
-      testApp.node.setContext('frontend', { enabled: true, enableRoute53: false, cloudFrontPriceClass: 'PriceClass_100' });
-      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, entraRedirectUri: 'http://localhost:3000/auth/callback' });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, enableGpu: false, enableAuthentication: 'true', logLevel: 'INFO', uploadDir: '/tmp/uploads', outputDir: '/tmp/outputs', generatedImagesDir: '/tmp/images', apiUrl: 'http://localhost:8000', frontendUrl: 'http://localhost:3000', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
+      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
       
       process.env.CDK_RAG_ENABLED = 'true'; // Enable RAG to trigger validation
       testApp.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
+        lambdaMemorySize: 10240,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
         vectorDimension: -100, // Negative (invalid)
+        vectorDistanceMetric: 'cosine',
       });
 
       expect(() => loadConfig(testApp)).toThrow(
@@ -437,18 +459,22 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('awsRegion', 'us-east-1');
       testApp.node.setContext('awsAccount', '123456789012');
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
-      testApp.node.setContext('entraClientId', 'test-client-id');
-      testApp.node.setContext('entraTenantId', 'test-tenant-id');
-      testApp.node.setContext('frontend', { enabled: true, enableRoute53: false, cloudFrontPriceClass: 'PriceClass_100' });
-      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, entraRedirectUri: 'http://localhost:3000/auth/callback' });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, enableGpu: false, enableAuthentication: 'true', logLevel: 'INFO', uploadDir: '/tmp/uploads', outputDir: '/tmp/outputs', generatedImagesDir: '/tmp/images', apiUrl: 'http://localhost:8000', frontendUrl: 'http://localhost:3000', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
+      testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
       
       process.env.CDK_RAG_ENABLED = 'true'; // Enable RAG to trigger validation
       testApp.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
+        lambdaMemorySize: 10240,
+        lambdaTimeout: 900,
         embeddingModel: '   ', // Whitespace only
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       expect(() => loadConfig(testApp)).toThrow(
@@ -614,7 +640,13 @@ describe('RAG Ingestion Configuration', () => {
     test('precedence order: env > context > default', () => {
       // Set context value
       app.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
         lambdaMemorySize: 8192,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       // Set environment variable (should override context)
@@ -627,7 +659,13 @@ describe('RAG Ingestion Configuration', () => {
 
     test('context overrides default when env not set', () => {
       app.node.setContext('ragIngestion', {
+        enabled: true,
+        corsOrigins: '',
         lambdaMemorySize: 8192,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       const config = loadConfig(app);
@@ -646,6 +684,10 @@ describe('RAG Ingestion Configuration', () => {
         enabled: false,
         corsOrigins: 'https://context.example.com',
         lambdaMemorySize: 8192,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       process.env.CDK_RAG_ENABLED = 'true';
@@ -682,13 +724,18 @@ describe('RAG Ingestion Configuration', () => {
     test('handles partial context values', () => {
       app.node.setContext('ragIngestion', {
         enabled: false,
-        // Other fields missing
+        corsOrigins: '',
+        lambdaMemorySize: 10240,
+        lambdaTimeout: 900,
+        embeddingModel: 'amazon.titan-embed-text-v2',
+        vectorDimension: 1024,
+        vectorDistanceMetric: 'cosine',
       });
 
       const config = loadConfig(app);
 
       expect(config.ragIngestion.enabled).toBe(false); // from context
-      expect(config.ragIngestion.lambdaMemorySize).toBe(10240); // default
+      expect(config.ragIngestion.lambdaMemorySize).toBe(10240); // from context
     });
 
     test('handles RAG disabled configuration', () => {

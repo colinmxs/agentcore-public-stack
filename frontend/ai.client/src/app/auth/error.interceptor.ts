@@ -2,7 +2,6 @@ import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { catchError, throwError } from 'rxjs';
 import { ErrorService } from '../services/error/error.service';
-import { environment } from '../../environments/environment';
 
 /**
  * HTTP interceptor that handles errors from non-streaming HTTP requests

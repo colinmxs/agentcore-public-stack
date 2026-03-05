@@ -2,20 +2,12 @@ import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { from, catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
-import { ConfigService } from '../services/config.service';
 
 /**
  * HTTP interceptor that automatically adds the Authorization header to outgoing requests
  * and handles token refresh when the access token expires.
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
-  const config = inject(ConfigService);
-  
-  // If authentication is disabled, skip all token logic
-  if (!config.enableAuthentication()) {
-    return next(req);
-  }
-
   const authService = inject(AuthService);
 
   // Skip adding token for auth endpoints (login, token exchange, refresh)

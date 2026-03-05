@@ -18,13 +18,9 @@
  * 
  * Local Development Values:
  * - appApiUrl: http://localhost:8000 (App API backend)
- * - inferenceApiUrl: http://localhost:8001 (Inference API backend)
  * - production: false (development mode)
- * - enableAuthentication: true (auth enabled by default)
  */
 export const environment = {
     production: false,
-    appApiUrl: 'http://localhost:8000',
-    inferenceApiUrl: 'http://localhost:8001',
-    enableAuthentication: true
+    appApiUrl: 'http://localhost:8000'
 };

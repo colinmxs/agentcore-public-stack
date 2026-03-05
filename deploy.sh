@@ -155,9 +155,7 @@ configure_inference_api() {
     prompt_for_config "CDK_INFERENCE_API_ENABLED" "Enable Inference API Stack (true/false)" ".inferenceApi.enabled"
     prompt_for_config "CDK_INFERENCE_API_CPU" "CPU units (256, 512, 1024, 2048, 4096)" ".inferenceApi.cpu"
     prompt_for_config "CDK_INFERENCE_API_MEMORY" "Memory in MB (512, 1024, 2048, 4096, 8192)" ".inferenceApi.memory"
-    prompt_for_config "CDK_INFERENCE_API_ENABLE_GPU" "Enable GPU support (true/false)" ".inferenceApi.enableGpu"
     prompt_for_config "ENV_INFERENCE_API_LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)" ".inferenceApi.logLevel"
-    prompt_for_config "ENV_INFERENCE_API_ENABLE_AUTHENTICATION" "Enable authentication (true/false)" ".inferenceApi.enableAuthentication"
     prompt_for_config "ENV_INFERENCE_API_TAVILY_API_KEY" "Tavily API Key (optional)" ".inferenceApi.tavilyApiKey"
     prompt_for_config "ENV_INFERENCE_API_NOVA_ACT_API_KEY" "Nova Act API Key (optional)" ".inferenceApi.novaActApiKey"
     
@@ -191,8 +189,7 @@ configure_frontend() {
     echo ""
     
     prompt_for_config "CDK_FRONTEND_ENABLED" "Enable Frontend Stack (true/false)" ".frontend.enabled"
-    prompt_for_config "CDK_DOMAIN_NAME" "Custom domain name (optional)" ".frontend.domainName"
-    prompt_for_config "CDK_FRONTEND_ENABLE_ROUTE53" "Enable Route53 integration (true/false)" ".frontend.enableRoute53"
+    prompt_for_config "CDK_DOMAIN_NAME" "Custom domain name (optional)" ".domainName"
     prompt_for_config "CDK_FRONTEND_CERTIFICATE_ARN" "ACM Certificate ARN (optional)" ".frontend.certificateArn"
     prompt_for_config "CDK_FRONTEND_BUCKET_NAME" "S3 bucket name (optional, auto-generated if empty)" ".frontend.bucketName"
     prompt_for_config "CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS" "CloudFront price class (PriceClass_100/PriceClass_200/PriceClass_All)" ".frontend.cloudFrontPriceClass"

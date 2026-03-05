@@ -249,23 +249,15 @@ class EntraIDJWTValidator:
 # Global validator instance
 _validator: Optional[EntraIDJWTValidator] = None
 
-# Check if authentication is enabled (defaults to true for security)
-ENABLE_AUTHENTICATION = os.environ.get('ENABLE_AUTHENTICATION', 'true').lower() == 'true'
-
 
 def get_validator() -> Optional[EntraIDJWTValidator]:
     """
     Get or create the global validator instance.
-    
-    Returns None if authentication is disabled via ENABLE_AUTHENTICATION=false.
-    This allows the validator to skip initialization when Entra ID env vars are missing.
+
+    Returns None if Entra ID env vars are not configured.
     """
     global _validator
-    
-    # If authentication is disabled, don't initialize validator
-    if not ENABLE_AUTHENTICATION:
-        return None
-    
+
     if _validator is None:
         _validator = EntraIDJWTValidator()
     return _validator

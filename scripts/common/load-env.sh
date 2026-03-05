@@ -109,6 +109,10 @@ build_cdk_context_params() {
         context_params="${context_params} --context certificateArn=\"${CDK_CERTIFICATE_ARN}\""
     fi
     
+    if [ -n "${CDK_CORS_ORIGINS:-}" ]; then
+        context_params="${context_params} --context corsOrigins=\"${CDK_CORS_ORIGINS}\""
+    fi
+    
     # App API optional parameters
     if [ -n "${CDK_APP_API_ENABLED:-}" ]; then
         context_params="${context_params} --context appApi.enabled=\"${CDK_APP_API_ENABLED}\""
@@ -142,31 +146,10 @@ build_cdk_context_params() {
     if [ -n "${CDK_INFERENCE_API_MAX_CAPACITY:-}" ]; then
         context_params="${context_params} --context inferenceApi.maxCapacity=\"${CDK_INFERENCE_API_MAX_CAPACITY}\""
     fi
-    if [ -n "${CDK_INFERENCE_API_ENABLE_GPU:-}" ]; then
-        context_params="${context_params} --context inferenceApi.enableGpu=\"${CDK_INFERENCE_API_ENABLE_GPU}\""
-    fi
     
     # Inference API environment variables
-    if [ -n "${ENV_INFERENCE_API_ENABLE_AUTHENTICATION:-}" ]; then
-        context_params="${context_params} --context inferenceApi.enableAuthentication=\"${ENV_INFERENCE_API_ENABLE_AUTHENTICATION}\""
-    fi
     if [ -n "${ENV_INFERENCE_API_LOG_LEVEL:-}" ]; then
         context_params="${context_params} --context inferenceApi.logLevel=\"${ENV_INFERENCE_API_LOG_LEVEL}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_UPLOAD_DIR:-}" ]; then
-        context_params="${context_params} --context inferenceApi.uploadDir=\"${ENV_INFERENCE_API_UPLOAD_DIR}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_OUTPUT_DIR:-}" ]; then
-        context_params="${context_params} --context inferenceApi.outputDir=\"${ENV_INFERENCE_API_OUTPUT_DIR}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_GENERATED_IMAGES_DIR:-}" ]; then
-        context_params="${context_params} --context inferenceApi.generatedImagesDir=\"${ENV_INFERENCE_API_GENERATED_IMAGES_DIR}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_API_URL:-}" ]; then
-        context_params="${context_params} --context inferenceApi.apiUrl=\"${ENV_INFERENCE_API_API_URL}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_FRONTEND_URL:-}" ]; then
-        context_params="${context_params} --context inferenceApi.frontendUrl=\"${ENV_INFERENCE_API_FRONTEND_URL}\""
     fi
     if [ -n "${ENV_INFERENCE_API_CORS_ORIGINS:-}" ]; then
         context_params="${context_params} --context inferenceApi.corsOrigins=\"${ENV_INFERENCE_API_CORS_ORIGINS}\""
@@ -176,9 +159,6 @@ build_cdk_context_params() {
     fi
     if [ -n "${ENV_INFERENCE_API_NOVA_ACT_API_KEY:-}" ]; then
         context_params="${context_params} --context inferenceApi.novaActApiKey=\"${ENV_INFERENCE_API_NOVA_ACT_API_KEY}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_OAUTH_CALLBACK_URL:-}" ]; then
-        context_params="${context_params} --context inferenceApi.oauthCallbackUrl=\"${ENV_INFERENCE_API_OAUTH_CALLBACK_URL}\""
     fi
     
     # Gateway optional parameters
@@ -201,12 +181,9 @@ build_cdk_context_params() {
         context_params="${context_params} --context gateway.logLevel=\"${CDK_GATEWAY_LOG_LEVEL}\""
     fi
     
-    # Frontend optional parameters
+    # Domain name — top-level context key (used by config.ts as config.domainName)
     if [ -n "${CDK_DOMAIN_NAME:-}" ]; then
-        context_params="${context_params} --context frontend.domainName=\"${CDK_DOMAIN_NAME}\""
-    fi
-    if [ -n "${CDK_FRONTEND_ENABLE_ROUTE53:-}" ]; then
-        context_params="${context_params} --context frontend.enableRoute53=\"${CDK_FRONTEND_ENABLE_ROUTE53}\""
+        context_params="${context_params} --context domainName=\"${CDK_DOMAIN_NAME}\""
     fi
     if [ -n "${CDK_FRONTEND_CERTIFICATE_ARN:-}" ]; then
         context_params="${context_params} --context frontend.certificateArn=\"${CDK_FRONTEND_CERTIFICATE_ARN}\""
@@ -224,9 +201,6 @@ build_cdk_context_params() {
     # RAG Ingestion optional parameters
     if [ -n "${CDK_RAG_ENABLED:-}" ]; then
         context_params="${context_params} --context ragIngestion.enabled=\"${CDK_RAG_ENABLED}\""
-    fi
-    if [ -n "${CDK_RAG_CORS_ORIGINS:-}" ]; then
-        context_params="${context_params} --context ragIngestion.corsOrigins=\"${CDK_RAG_CORS_ORIGINS}\""
     fi
     if [ -n "${CDK_RAG_LAMBDA_MEMORY:-}" ]; then
         context_params="${context_params} --context ragIngestion.lambdaMemorySize=\"${CDK_RAG_LAMBDA_MEMORY}\""
@@ -281,17 +255,17 @@ export CDK_HOSTED_ZONE_DOMAIN="${CDK_HOSTED_ZONE_DOMAIN:-$(get_json_value "infra
 export CDK_ALB_SUBDOMAIN="${CDK_ALB_SUBDOMAIN:-$(get_json_value "albSubdomain" "${CONTEXT_FILE}")}"
 export CDK_CERTIFICATE_ARN="${CDK_CERTIFICATE_ARN:-$(get_json_value "certificateArn" "${CONTEXT_FILE}")}"
 
-# Behavior flags with defaults
-export CDK_RETAIN_DATA_ON_DELETE="${CDK_RETAIN_DATA_ON_DELETE:-true}"
-export CDK_ENABLE_AUTHENTICATION="${CDK_ENABLE_AUTHENTICATION:-true}"
+# Behavior flags — env var > context file (no hardcoded defaults)
+export CDK_RETAIN_DATA_ON_DELETE="${CDK_RETAIN_DATA_ON_DELETE:-$(get_json_value "retainDataOnDelete" "${CONTEXT_FILE}")}"
 
-# File upload configuration with defaults
-export CDK_FILE_UPLOAD_CORS_ORIGINS="${CDK_FILE_UPLOAD_CORS_ORIGINS:-http://localhost:4200}"
-export CDK_FILE_UPLOAD_MAX_SIZE_MB="${CDK_FILE_UPLOAD_MAX_SIZE_MB:-10}"
+# Shared CORS origins — env var > context file (no hardcoded defaults)
+export CDK_CORS_ORIGINS="${CDK_CORS_ORIGINS:-$(get_json_value "corsOrigins" "${CONTEXT_FILE}")}"
+
+# File upload configuration — env var > context file (no hardcoded defaults)
+export CDK_FILE_UPLOAD_MAX_SIZE_MB="${CDK_FILE_UPLOAD_MAX_SIZE_MB:-$(get_json_value "fileUpload.maxFileSizeBytes" "${CONTEXT_FILE}")}"
 
 # RAG Ingestion configuration
 export CDK_RAG_ENABLED="${CDK_RAG_ENABLED:-$(get_json_value "ragIngestion.enabled" "${CONTEXT_FILE}")}"
-export CDK_RAG_CORS_ORIGINS="${CDK_RAG_CORS_ORIGINS:-$(get_json_value "ragIngestion.corsOrigins" "${CONTEXT_FILE}")}"
 export CDK_RAG_LAMBDA_MEMORY="${CDK_RAG_LAMBDA_MEMORY:-$(get_json_value "ragIngestion.lambdaMemorySize" "${CONTEXT_FILE}")}"
 export CDK_RAG_LAMBDA_TIMEOUT="${CDK_RAG_LAMBDA_TIMEOUT:-$(get_json_value "ragIngestion.lambdaTimeout" "${CONTEXT_FILE}")}"
 
@@ -326,12 +300,6 @@ validate_config() {
         errors=$((errors + 1))
     fi
     
-    if [ -n "${CDK_ENABLE_AUTHENTICATION}" ] && ! [[ "${CDK_ENABLE_AUTHENTICATION}" =~ ^(true|false|1|0)$ ]]; then
-        log_error "Invalid CDK_ENABLE_AUTHENTICATION value: '${CDK_ENABLE_AUTHENTICATION}'"
-        log_error "  Expected 'true', 'false', '1', or '0'"
-        errors=$((errors + 1))
-    fi
-    
     if [ $errors -gt 0 ]; then
         log_error "Configuration validation failed with ${errors} error(s)"
         return 1
@@ -353,7 +321,7 @@ log_config "  AWS Region:     ${CDK_AWS_REGION}"
 log_config "  Production:     ${CDK_PRODUCTION:-true}"
 log_config "  VPC CIDR:       ${CDK_VPC_CIDR:-<not set>}"
 log_config "  Retain Data:    ${CDK_RETAIN_DATA_ON_DELETE}"
-log_config "  CORS Origins:   ${CDK_FILE_UPLOAD_CORS_ORIGINS}"
+log_config "  CORS Origins:   ${CDK_CORS_ORIGINS}"
 
 if [ -n "${CDK_HOSTED_ZONE_DOMAIN:-}" ]; then
     log_config "  Hosted Zone:    ${CDK_HOSTED_ZONE_DOMAIN}"

@@ -3,7 +3,6 @@
 import asyncio
 import jwt
 import logging
-import os
 from typing import Optional
 from fastapi import Depends, HTTPException, status
 from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
@@ -47,13 +46,6 @@ async def _sync_user_background(sync_service, user: User) -> None:
         # Log but don't fail - sync should never break authentication
         logger.warning(f"Failed to sync user {user.user_id}: {e}")
 
-# Check if authentication is enabled (defaults to true for security)
-ENABLE_AUTHENTICATION = os.environ.get('ENABLE_AUTHENTICATION', 'true').lower() == 'true'
-
-# Environment check - only allow auth bypass in development
-ENVIRONMENT = os.environ.get('ENVIRONMENT', 'production').lower()
-IS_DEVELOPMENT = ENVIRONMENT in ('development', 'dev', 'local')
-
 # Lazy-initialized generic validator for multi-provider support
 _generic_validator = None
 _generic_validator_initialized = False
@@ -86,44 +78,6 @@ def _get_generic_validator():
     return _generic_validator
 
 
-def _create_anonymous_dev_user() -> User:
-    """Create anonymous user for development auth bypass."""
-    return User(
-        email="anonymous@local.dev",
-        user_id="000000000",
-        name="Anonymous User (Dev)",
-        roles=["Developer"],
-        picture=None
-    )
-
-
-def _check_auth_bypass() -> Optional[User]:
-    """
-    Check if authentication should be bypassed for development.
-
-    Returns:
-        Anonymous User if auth bypass is allowed, None otherwise.
-
-    Raises:
-        HTTPException: If auth is disabled in a non-development environment.
-    """
-    if not ENABLE_AUTHENTICATION:
-        if not IS_DEVELOPMENT:
-            logger.error(
-                "SECURITY ERROR: ENABLE_AUTHENTICATION=false in non-development environment. "
-                "This is not allowed. Set ENVIRONMENT=development or enable authentication."
-            )
-            raise HTTPException(
-                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
-                detail="Authentication service misconfigured."
-            )
-        logger.warning(
-            "Authentication is DISABLED (ENABLE_AUTHENTICATION=false, ENVIRONMENT=development)"
-        )
-        return _create_anonymous_dev_user()
-    return None
-
-
 async def get_current_user(
     credentials: Optional[HTTPAuthorizationCredentials] = Depends(security)
 ) -> User:
@@ -132,9 +86,6 @@ async def get_current_user(
 
     Validates the JWT token using the GenericOIDCJWTValidator, which
     matches the token issuer to configured auth providers.
-
-    When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
-    authentication for local development only.
 
     Args:
         credentials: HTTP Bearer token credentials (None if missing)
@@ -146,13 +97,7 @@ async def get_current_user(
         HTTPException:
             - 401 if token is missing or invalid
             - 403 if user doesn't have required roles
-            - 500 if auth is misconfigured (disabled in non-dev environment)
     """
-    # Check if authentication is disabled
-    bypass_user = _check_auth_bypass()
-    if bypass_user:
-        return bypass_user
-
     # Check if credentials are missing
     if credentials is None:
         raise HTTPException(
@@ -205,13 +150,11 @@ async def get_current_user_id(
     just the user_id field. Useful when you only need the user ID and not
     the full User object.
 
-    When ENABLE_AUTHENTICATION=false, returns "anonymous".
-
     Args:
         user: User object from get_current_user dependency
 
     Returns:
-        User ID string (or "anonymous" if auth disabled)
+        User ID string
     """
     return user.user_id
 
@@ -231,9 +174,6 @@ async def get_current_user_trusted(
     is guaranteed. IE AgentCore Runtime with Inbound Auth. For services without pre-validation, use
     get_current_user() instead.
 
-    When ENABLE_AUTHENTICATION=false AND ENVIRONMENT=development, bypasses
-    authentication for local development only.
-
     Args:
         credentials: HTTP Bearer token credentials (None if missing)
 
@@ -243,13 +183,7 @@ async def get_current_user_trusted(
     Raises:
         HTTPException:
             - 401 if token is missing or malformed
-            - 500 if auth is misconfigured (disabled in non-dev environment)
     """
-    # Check if authentication is disabled
-    bypass_user = _check_auth_bypass()
-    if bypass_user:
-        return bypass_user
-
     # Check if credentials are missing
     if credentials is None:
         raise HTTPException(

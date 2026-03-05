@@ -61,7 +61,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
     
     steps:
       - name: Checkout code
@@ -95,7 +95,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
     
     steps:
       - name: Checkout code
@@ -143,7 +143,7 @@ jobs:
       CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
       CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
       CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
     
     steps:
       - name: Checkout code
@@ -204,7 +204,7 @@ jobs:
       CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
       CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
       CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -274,7 +274,7 @@ jobs:
       CDK_GATEWAY_THROTTLE_BURST_LIMIT: ${{ vars.CDK_GATEWAY_THROTTLE_BURST_LIMIT }}
       CDK_GATEWAY_ENABLE_WAF: ${{ vars.CDK_GATEWAY_ENABLE_WAF }}
       CDK_GATEWAY_LOG_LEVEL: ${{ vars.CDK_GATEWAY_LOG_LEVEL }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -369,7 +369,7 @@ jobs:
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_AWS_ACCOUNT: ${{ secrets.CDK_AWS_ACCOUNT }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

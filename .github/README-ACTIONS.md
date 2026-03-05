@@ -9,7 +9,7 @@ To deploy the AgentCore Public Stack via GitHub Actions, you need to configure t
 | Name | Type | Example Value | Description |
 |------|------|---------------|-------------|
 | AWS_REGION | Variable | `us-west-2` | AWS region for all resource deployment |
-| CDK_AWS_ACCOUNT | Secret | `123456789012` | Your 12-digit AWS account ID |
+| CDK_AWS_ACCOUNT | Variable | `123456789012` | Your 12-digit AWS account ID |
 | CDK_PROJECT_PREFIX | Variable | `agentcore` | Unique prefix for all AWS resource names |
 
 ### Authentication (Choose One Method)
@@ -70,14 +70,15 @@ Once you've set the required values above:
    - Inference API Stack
    - Frontend Stack
    - Gateway Stack
+4. Optionally, run **Bootstrap Data Seeding** to seed auth providers, quota tiers, and default models
 
 All other configuration values have sensible defaults and are optional.
 
 ## Next Steps
 
 - **Customize your deployment**: See [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for all available configuration options
-- **Enable authentication**: Set `CDK_ENTRA_CLIENT_ID` and `CDK_ENTRA_TENANT_ID` for Microsoft Entra ID
-- **Custom domains**: Configure `CDK_HOSTED_ZONE_DOMAIN`, `CDK_CERTIFICATE_ARN`, and related domain settings
+- **Seed bootstrap data**: Set `SEED_AUTH_ISSUER_URL` (Variable), `SEED_AUTH_CLIENT_ID` (Variable), and `SEED_AUTH_CLIENT_SECRET` (Secret) to configure an OIDC auth provider via the Bootstrap Data Seeding workflow
+- **Custom domains**: Configure `CDK_DOMAIN_NAME`, `CDK_HOSTED_ZONE_DOMAIN`, `CDK_CERTIFICATE_ARN`, and related domain settings
 - **External integrations**: Add `ENV_INFERENCE_API_TAVILY_API_KEY` for web search, `ENV_INFERENCE_API_NOVA_ACT_API_KEY` for browser automation
 
 ## Configuration Reference

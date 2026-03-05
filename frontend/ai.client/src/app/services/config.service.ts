@@ -14,12 +14,6 @@ export interface RuntimeConfig {
   /** App API backend URL (from ALB) */
   appApiUrl: string;
   
-  /** AgentCore Runtime endpoint URL */
-  inferenceApiUrl: string;
-  
-  /** Whether to enforce authentication */
-  enableAuthentication: boolean;
-  
   /** Environment identifier (dev/staging/production/local) */
   environment: string;
 }
@@ -69,19 +63,6 @@ export class ConfigService {
   readonly appApiUrl = computed(() => this.config()?.appApiUrl ?? '');
   
   /**
-   * Computed signal for Inference API URL
-   * Returns empty string if config not loaded
-   * Note: URL is stored in encoded form, no additional encoding needed on access
-   */
-  readonly inferenceApiUrl = computed(() => this.config()?.inferenceApiUrl ?? '');
-  
-  /**
-   * Computed signal for authentication flag
-   * Returns true by default (secure default)
-   */
-  readonly enableAuthentication = computed(() => this.config()?.enableAuthentication ?? true);
-  
-  /**
    * Computed signal for environment identifier
    * Returns 'development' if config not loaded
    */
@@ -123,21 +104,13 @@ export class ConfigService {
       // Validate configuration structure
       this.validateConfig(config);
       
-      // URI-encode the path portion of inferenceApiUrl (handles ARNs with colons)
-      const encodedConfig = {
-        ...config,
-        inferenceApiUrl: this.encodeUrlPath(config.inferenceApiUrl)
-      };
-      
       // Store validated configuration
-      this.config.set(encodedConfig);
+      this.config.set(config);
       this.isLoaded.set(true);
       this.loadError.set(null);
       
       console.log('✅ Runtime configuration loaded:', config.environment);
       console.log('   App API URL:', config.appApiUrl);
-      console.log('   Inference API URL:', config.inferenceApiUrl);
-      console.log('   Authentication:', config.enableAuthentication ? 'enabled' : 'disabled');
       
     } catch (error) {
       // Log warning but don't fail - use fallback
@@ -147,60 +120,15 @@ export class ConfigService {
       // Fallback to environment.ts for local development
       const fallbackConfig: RuntimeConfig = {
         appApiUrl: environment.appApiUrl || 'http://localhost:8000',
-        inferenceApiUrl: this.encodeUrlPath(environment.inferenceApiUrl || 'http://localhost:8001'),
-        enableAuthentication: environment.enableAuthentication ?? true,
         environment: environment.production ? 'production' : 'development',
       };
       
       console.log('📋 Using fallback configuration from environment.ts');
       console.log('   App API URL:', fallbackConfig.appApiUrl);
-      console.log('   Inference API URL:', fallbackConfig.inferenceApiUrl);
-      console.log('   Authentication:', fallbackConfig.enableAuthentication ? 'enabled' : 'disabled');
       
       this.config.set(fallbackConfig);
       this.isLoaded.set(true);
       this.loadError.set(errorMessage);
-    }
-  }
-  
-  /**
-   * Encode the path portion of a URL to handle special characters like colons and slashes in ARNs
-   * For AgentCore Runtime URLs, the ARN after /runtimes/ needs to be fully encoded
-   * 
-   * @param url - Full URL to encode
-   * @returns URL with encoded path
-   */
-  private encodeUrlPath(url: string): string {
-    try {
-      const urlObj = new URL(url);
-      
-      // Special handling for AgentCore Runtime URLs with ARNs
-      // Pattern: /runtimes/arn:aws:bedrock-agentcore:region:account:runtime/name
-      if (urlObj.pathname.includes('/runtimes/')) {
-        const [beforeArn, ...arnParts] = urlObj.pathname.split('/runtimes/');
-        if (arnParts.length > 0) {
-          const arn = arnParts.join('/runtimes/'); // Rejoin in case there are multiple occurrences
-          const encodedArn = encodeURIComponent(arn);
-          const encodedPath = `${beforeArn}/runtimes/${encodedArn}`;
-          // Remove trailing slash if original didn't have one
-          const finalPath = url.endsWith('/') ? encodedPath : encodedPath.replace(/\/$/, '');
-          return `${urlObj.protocol}//${urlObj.host}${finalPath}`;
-        }
-      }
-      
-      // Fallback: encode each path segment separately
-      const encodedPath = urlObj.pathname
-        .split('/')
-        .map(segment => encodeURIComponent(segment))
-        .join('/');
-      
-      // Remove trailing slash if original didn't have one
-      const finalPath = url.endsWith('/') ? encodedPath : encodedPath.replace(/\/$/, '');
-      return `${urlObj.protocol}//${urlObj.host}${finalPath}`;
-    } catch (error) {
-      // If URL parsing fails, return original
-      console.warn('Failed to encode URL path:', url, error);
-      return url;
     }
   }
   
@@ -222,12 +150,6 @@ export class ConfigService {
       } catch {
         errors.push(`appApiUrl is not a valid URL: "${config.appApiUrl}"`);
       }
-    }
-    
-    
-    // Validate enableAuthentication
-    if (typeof config.enableAuthentication !== 'boolean') {
-      errors.push('enableAuthentication is required and must be a boolean');
     }
     
     // Validate environment
@@ -254,7 +176,6 @@ export class ConfigService {
    * @example
    * ```typescript
    * const apiUrl = configService.get('appApiUrl');
-   * const authEnabled = configService.get('enableAuthentication');
    * ```
    */
   get<K extends keyof RuntimeConfig>(key: K): RuntimeConfig[K] {

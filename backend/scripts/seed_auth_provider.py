@@ -473,9 +473,8 @@ Examples:
     print(f"     are set in your backend environment.")
     print(f"  2. Ensure ADMIN_JWT_ROLES is set to a JWT role your IdP issues")
     print(f"     (e.g., ADMIN_JWT_ROLES='[\"Admin\"]').")
-    print(f"  3. Set ENABLE_AUTHENTICATION=true (or remove the variable).")
-    print(f"  4. Restart the backend service.")
-    print(f"  5. Log in through the new provider and verify admin access.")
+    print(f"  3. Restart the backend service.")
+    print(f"  4. Log in through the new provider and verify admin access.")
     print()
 
 
