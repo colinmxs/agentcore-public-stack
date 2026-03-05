@@ -24,6 +24,7 @@ describe('RagIngestionStack', () => {
     // Create test configuration
     config = {
       projectPrefix: 'test-project',
+      appVersion: '1.0.0-test',
       awsAccount: '123456789012',
       awsRegion: 'us-east-1',
       production: false, // Test environment

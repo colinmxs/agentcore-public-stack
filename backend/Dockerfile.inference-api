@@ -48,6 +48,10 @@ RUN useradd -m -u 1000 -s /bin/bash bedrock_agentcore && \
 # Switch to non-root user
 USER bedrock_agentcore
 
+# Version injection (defaults to "unknown" if not provided via --build-arg)
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src

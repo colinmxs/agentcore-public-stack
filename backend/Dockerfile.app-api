@@ -40,6 +40,10 @@ COPY backend/src /app/src
 # Create necessary directories
 RUN mkdir -p /app/output /app/uploads /app/generated_images
 
+# Version injection (defaults to "unknown" if not provided via --build-arg)
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 # Set environment variables
 ENV PYTHONUNBUFFERED=1
 ENV PYTHONPATH=/app/src

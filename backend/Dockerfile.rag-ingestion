@@ -93,6 +93,10 @@ COPY --from=builder /tmp/models/docling-artifacts /opt/ml/models/docling-artifac
 # Tiktoken Cache (Must copy contents to a folder; handler will move this to /tmp)
 COPY --from=builder /tmp/models/tiktoken_cache /opt/ml/models/tiktoken_cache/
 
+# Version injection (defaults to "unknown" if not provided via --build-arg)
+ARG APP_VERSION=unknown
+ENV APP_VERSION=${APP_VERSION}
+
 # 4. Set Environment Variables
 ENV DOCLING_ARTIFACTS_PATH=/opt/ml/models/docling-artifacts \
   # Point library to /tmp (handler copies files here at startup)

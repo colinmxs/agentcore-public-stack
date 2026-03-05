@@ -8,7 +8,8 @@ describe('ConfigService', () => {
 
   const validConfig: RuntimeConfig = {
     appApiUrl: 'https://api.example.com',
-    environment: 'production'
+    environment: 'production',
+    version: '1.0.0-beta.1'
   };
 
   beforeEach(() => {
@@ -143,6 +144,10 @@ describe('ConfigService', () => {
       expect(service.environment()).toBe('development');
     });
 
+    it('should return "unknown" for version when not loaded', () => {
+      expect(service.version()).toBe('unknown');
+    });
+
     it('should return correct values after loading', async () => {
       const loadPromise = service.loadConfig();
       
@@ -153,6 +158,7 @@ describe('ConfigService', () => {
       
       expect(service.appApiUrl()).toBe(validConfig.appApiUrl);
       expect(service.environment()).toBe(validConfig.environment);
+      expect(service.version()).toBe(validConfig.version);
     });
   });
 

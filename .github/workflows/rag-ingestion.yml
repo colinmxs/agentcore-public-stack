@@ -81,6 +81,7 @@ jobs:
     
     outputs:
       image-tag: ${{ steps.set-tag.outputs.IMAGE_TAG }}
+      app-version: ${{ steps.read-version.outputs.APP_VERSION }}
     
     env:
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
@@ -95,6 +96,13 @@ jobs:
           IMAGE_TAG=$(git rev-parse --short HEAD)
           echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
           echo "Building with tag: ${IMAGE_TAG}"
+
+      - name: Read VERSION file
+        id: read-version
+        run: |
+          APP_VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_OUTPUT
+          echo "App version: ${APP_VERSION}"
       
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -105,7 +113,11 @@ jobs:
           context: .
           file: backend/Dockerfile.rag-ingestion
           platforms: linux/arm64
-          tags: ${{ env.CDK_PROJECT_PREFIX }}-rag-ingestion:${{ steps.set-tag.outputs.IMAGE_TAG }}
+          tags: |
+            ${{ env.CDK_PROJECT_PREFIX }}-rag-ingestion:${{ steps.set-tag.outputs.IMAGE_TAG }}
+            ${{ env.CDK_PROJECT_PREFIX }}-rag-ingestion:${{ steps.read-version.outputs.APP_VERSION }}
+          build-args: |
+            APP_VERSION=${{ steps.read-version.outputs.APP_VERSION }}
           outputs: type=docker,dest=${{ runner.temp }}/rag-ingestion-image.tar
       
       - name: Upload Docker image artifact
@@ -168,7 +180,7 @@ jobs:
   synth-cdk:
     name: Synthesize CDK
     runs-on: ubuntu-24.04-arm  # Use ARM64-native runner for ARM64 Lambda builds
-    needs: build-cdk
+    needs: [build-cdk, build-docker]
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
@@ -188,6 +200,7 @@ jobs:
       CDK_RAG_CORS_ORIGINS: ${{ vars.CDK_RAG_CORS_ORIGINS }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_APP_VERSION: ${{ needs.build-docker.outputs.app-version }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -307,9 +320,11 @@ jobs:
     
     outputs:
       image-tag: ${{ needs.build-docker.outputs.image-tag }}
+      app-version: ${{ needs.build-docker.outputs.app-version }}
     
     env:
       IMAGE_TAG: ${{ needs.build-docker.outputs.image-tag }}
+      APP_VERSION: ${{ needs.build-docker.outputs.app-version }}
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
@@ -367,6 +382,7 @@ jobs:
     
     env:
       IMAGE_TAG: ${{ needs.push-to-ecr.outputs.image-tag }}
+      CDK_APP_VERSION: ${{ needs.push-to-ecr.outputs.app-version }}
       # Environment-scoped configuration
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}

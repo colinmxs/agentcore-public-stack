@@ -9,6 +9,7 @@ These endpoints are at the root level to comply with AWS Bedrock AgentCore Runti
 
 import json
 import logging
+import os
 from datetime import datetime, timezone
 from typing import AsyncGenerator, Union
 
@@ -188,7 +189,7 @@ async def stream_conversational_message(
 @router.get("/ping")
 async def ping():
     """Health check endpoint (required by AgentCore Runtime)"""
-    return {"status": "healthy"}
+    return {"status": "healthy", "version": os.environ.get("APP_VERSION", "unknown")}
 
 
 @router.post("/invocations")

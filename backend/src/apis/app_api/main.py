@@ -65,7 +65,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="Agent Core Public Stack - API",
-    version="2.0.0",
+    version=os.environ.get("APP_VERSION", "unknown"),
     description="Agent execution and tool orchestration service",
     lifespan=lifespan
 )

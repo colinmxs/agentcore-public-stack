@@ -126,14 +126,15 @@ ensure_ecr_repo() {
     fi
 }
 
-# Function to push Docker image to ECR
+# Function to push Docker image to ECR with dual tags (semver + SHA)
 push_to_ecr() {
     local local_image=$1
     local ecr_uri=$2
-    local image_tag=$3
-    local region=$4
+    local semver_tag=$3
+    local sha_tag=$4
+    local region=$5
     
-    log_info "Pushing ARM64 Docker image to ECR: ${ecr_uri}:${image_tag}"
+    log_info "Pushing ARM64 Docker image to ECR with dual tags: ${semver_tag}, ${sha_tag}"
     
     # Extract account from ECR URI
     local ecr_account=$(echo "${ecr_uri}" | cut -d'.' -f1 | cut -d'/' -f1)
@@ -143,25 +144,23 @@ push_to_ecr() {
     aws ecr get-login-password --region "${region}" | \
         docker login --username AWS --password-stdin "${ecr_account}.dkr.ecr.${region}.amazonaws.com"
     
-    # Tag image for ECR with version tag
-    local remote_image="${ecr_uri}:${image_tag}"
+    # Tag and push semver tag
+    local semver_image="${ecr_uri}:${semver_tag}"
+    log_info "Tagging image: ${local_image} -> ${semver_image}"
+    docker tag "${local_image}" "${semver_image}"
     
-    log_info "Tagging image: ${local_image} -> ${remote_image}"
-    docker tag "${local_image}" "${remote_image}"
+    log_info "Pushing semver-tagged image to ECR (this may take several minutes)..."
+    docker push "${semver_image}"
     
-    # Push versioned image
-    log_info "Pushing versioned image to ECR (this may take several minutes)..."
-    docker push "${remote_image}"
+    # Tag and push SHA tag
+    local sha_image="${ecr_uri}:${sha_tag}"
+    log_info "Tagging image: ${local_image} -> ${sha_image}"
+    docker tag "${local_image}" "${sha_image}"
     
-    # Also tag and push as 'latest' for convenience
-    # local latest_image="${ecr_uri}:latest"
-    # log_info "Tagging image as latest: ${latest_image}"
-    # docker tag "${local_image}" "${latest_image}"
+    log_info "Pushing SHA-tagged image to ECR..."
+    docker push "${sha_image}"
     
-    # log_info "Pushing latest image to ECR..."
-    # docker push "${latest_image}"
-    
-    log_success "Docker image pushed successfully to ECR with tags: ${image_tag}, latest"
+    log_success "Docker image pushed successfully to ECR with tags: ${semver_tag}, ${sha_tag}"
 }
 
 main() {
@@ -178,18 +177,29 @@ main() {
         exit 1
     fi
     
-    # Set image name and tag
+    # Set image name
     IMAGE_NAME="${CDK_PROJECT_PREFIX}-inference-api"
     
-    # Use git commit SHA as version tag (required - NOT latest)
-    if git rev-parse --git-dir > /dev/null 2>&1; then
-        IMAGE_TAG=$(git rev-parse --short HEAD)
+    # Read semver version from VERSION file
+    VERSION_FILE="${PROJECT_ROOT}/VERSION"
+    if [ -f "${VERSION_FILE}" ]; then
+        SEMVER_TAG=$(tr -d '[:space:]' < "${VERSION_FILE}")
+        SEMVER_TAG="${SEMVER_TAG:-unknown}"
     else
-        log_error "Not in a git repository. Cannot determine version tag."
+        log_error "VERSION file not found at ${VERSION_FILE}"
         exit 1
     fi
     
-    log_info "Version tag: ${IMAGE_TAG}"
+    # Use git commit SHA as secondary tag for traceability
+    if git rev-parse --git-dir > /dev/null 2>&1; then
+        SHA_TAG=$(git rev-parse --short HEAD)
+    else
+        log_error "Not in a git repository. Cannot determine SHA tag."
+        exit 1
+    fi
+    
+    log_info "Semver tag: ${SEMVER_TAG}"
+    log_info "SHA tag: ${SHA_TAG}"
     
     # Construct ECR URI
     REPO_NAME="${CDK_PROJECT_PREFIX}-inference-api"
@@ -198,32 +208,35 @@ main() {
     # Ensure ECR repository exists
     ensure_ecr_repo "${REPO_NAME}" "${CDK_AWS_REGION}"
     
-    # Push image to ECR with version tag
-    LOCAL_IMAGE="${IMAGE_NAME}:${IMAGE_TAG}"
-    push_to_ecr "${LOCAL_IMAGE}" "${ECR_URI}" "${IMAGE_TAG}" "${CDK_AWS_REGION}"
+    # Push image to ECR with both semver and SHA tags
+    LOCAL_IMAGE="${IMAGE_NAME}:${SHA_TAG}"
+    push_to_ecr "${LOCAL_IMAGE}" "${ECR_URI}" "${SEMVER_TAG}" "${SHA_TAG}" "${CDK_AWS_REGION}"
     
-    # Store image tag in SSM Parameter Store for CDK to use
+    # Store semver tag in SSM Parameter Store for CDK to use
     SSM_PARAM_NAME="/${CDK_PROJECT_PREFIX}/inference-api/image-tag"
-    log_info "Storing image tag in SSM Parameter: ${SSM_PARAM_NAME}"
+    log_info "Storing semver tag in SSM Parameter: ${SSM_PARAM_NAME}"
     
     aws ssm put-parameter \
         --name "${SSM_PARAM_NAME}" \
-        --value "${IMAGE_TAG}" \
+        --value "${SEMVER_TAG}" \
         --type "String" \
-        --description "Current image tag for Inference API deployed to ECR" \
+        --description "Current semver image tag for Inference API deployed to ECR" \
         --overwrite \
         --region "${CDK_AWS_REGION}"
     
-    log_success "Image tag stored in SSM: ${IMAGE_TAG}"
+    log_success "Image tag stored in SSM: ${SEMVER_TAG}"
     
-    # Output the image tag for use in deploy step
+    # Output the tags for use in deploy step
     echo ""
     log_success "Push completed successfully!"
-    log_info "Image tag: ${IMAGE_TAG}"
-    log_info "Full image URI: ${ECR_URI}:${IMAGE_TAG}"
-    log_info "SSM Parameter: ${SSM_PARAM_NAME}"
+    log_info "Semver tag: ${SEMVER_TAG}"
+    log_info "SHA tag: ${SHA_TAG}"
+    log_info "Full image URI (semver): ${ECR_URI}:${SEMVER_TAG}"
+    log_info "Full image URI (SHA): ${ECR_URI}:${SHA_TAG}"
+    log_info "SSM Parameter: ${SSM_PARAM_NAME} = ${SEMVER_TAG}"
     echo ""
-    echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_OUTPUT
+    echo "IMAGE_TAG=${SEMVER_TAG}" >> $GITHUB_OUTPUT
+    echo "SHA_TAG=${SHA_TAG}" >> $GITHUB_OUTPUT
 }
 
 main "$@"

@@ -24,6 +24,17 @@ log_success() {
 main() {
     log_info "Building Inference API Docker image..."
     
+    # Read version from VERSION file (default to "unknown" if missing)
+    VERSION_FILE="${PROJECT_ROOT}/VERSION"
+    if [ -f "${VERSION_FILE}" ]; then
+        APP_VERSION=$(tr -d '[:space:]' < "${VERSION_FILE}")
+        APP_VERSION="${APP_VERSION:-unknown}"
+    else
+        APP_VERSION="unknown"
+        log_info "VERSION file not found, defaulting APP_VERSION to 'unknown'"
+    fi
+    log_info "App version: ${APP_VERSION}"
+    
     # Set image name and tag
     IMAGE_NAME="${CDK_PROJECT_PREFIX:-agentcore}-inference-api"
     IMAGE_TAG="${IMAGE_TAG:-latest}"
@@ -55,6 +66,7 @@ main() {
         -t "${FULL_IMAGE_NAME}" \
         --build-arg BUILD_DATE="$(date -u +'%Y-%m-%dT%H:%M:%SZ')" \
         --build-arg VCS_REF="$(git rev-parse --short HEAD 2>/dev/null || echo 'unknown')" \
+        --build-arg APP_VERSION="${APP_VERSION}" \
         .; then
         log_success "Docker image built successfully: ${FULL_IMAGE_NAME}"
     else

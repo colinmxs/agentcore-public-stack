@@ -111,7 +111,7 @@ async def lifespan(app: FastAPI):
 # Create FastAPI app with lifespan
 app = FastAPI(
     title="AgentCore Runtime API",
-    version="2.0.0",
+    version=os.environ.get("APP_VERSION", "unknown"),
     description="AgentCore Runtime standard endpoints (ping, invocations) for AWS Bedrock AgentCore Runtime",
     lifespan=lifespan
 )

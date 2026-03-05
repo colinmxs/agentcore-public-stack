@@ -13,9 +13,12 @@ import { environment } from '../../environments/environment';
 export interface RuntimeConfig {
   /** App API backend URL (from ALB) */
   appApiUrl: string;
-  
+
   /** Environment identifier (dev/staging/production/local) */
   environment: string;
+
+  /** Application version from VERSION file (injected via config.json or environment fallback) */
+  version: string;
 }
 
 /**
@@ -67,6 +70,12 @@ export class ConfigService {
    * Returns 'development' if config not loaded
    */
   readonly environment = computed(() => this.config()?.environment ?? 'development');
+  
+  /**
+   * Computed signal for application version
+   * Returns 'unknown' if config not loaded or version not set
+   */
+  readonly version = computed(() => this.config()?.version ?? 'unknown');
   
   /**
    * Read-only signal indicating if configuration has been loaded
@@ -121,6 +130,7 @@ export class ConfigService {
       const fallbackConfig: RuntimeConfig = {
         appApiUrl: environment.appApiUrl || 'http://localhost:8000',
         environment: environment.production ? 'production' : 'development',
+        version: (environment as any).version || 'unknown',
       };
       
       console.log('📋 Using fallback configuration from environment.ts');

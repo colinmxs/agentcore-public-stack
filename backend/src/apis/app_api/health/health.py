@@ -1,5 +1,7 @@
 """Health check endpoint"""
 
+import os
+
 from fastapi import APIRouter
 
 router = APIRouter(tags=["health"])
@@ -10,5 +12,5 @@ async def health_check():
     return {
         "status": "healthy",
         "service": "agent-core",
-        "version": "2.0.0"
+        "version": os.environ.get("APP_VERSION", "unknown")
     }

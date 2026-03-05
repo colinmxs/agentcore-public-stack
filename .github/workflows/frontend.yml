@@ -113,9 +113,18 @@ jobs:
     name: Build CDK
     runs-on: ubuntu-latest
     needs: install
+    outputs:
+      app-version: ${{ steps.read-version.outputs.APP_VERSION }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
+
+      - name: Read VERSION file
+        id: read-version
+        run: |
+          APP_VERSION=$(tr -d '[:space:]' < VERSION)
+          echo "APP_VERSION=${APP_VERSION}" >> $GITHUB_OUTPUT
+          echo "App version: ${APP_VERSION}"
 
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v4
@@ -180,6 +189,7 @@ jobs:
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       CDK_FRONTEND_CERTIFICATE_ARN: ${{ vars.CDK_FRONTEND_CERTIFICATE_ARN }}
       CDK_FRONTEND_BUCKET_NAME: ${{ vars.CDK_FRONTEND_BUCKET_NAME }}
+      CDK_APP_VERSION: ${{ needs.build-cdk.outputs.app-version }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -278,7 +288,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
     runs-on: ubuntu-latest
-    needs: test-cdk
+    needs: [build-cdk, test-cdk]
     if: |
       always() && !cancelled() &&
       !contains(needs.*.result, 'failure') &&
@@ -306,6 +316,7 @@ jobs:
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       CDK_FRONTEND_CERTIFICATE_ARN: ${{ vars.CDK_FRONTEND_CERTIFICATE_ARN }}
       CDK_FRONTEND_BUCKET_NAME: ${{ vars.CDK_FRONTEND_BUCKET_NAME }}
+      CDK_APP_VERSION: ${{ needs.build-cdk.outputs.app-version }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

@@ -30,5 +30,6 @@ export const environment = {
     production: true,
     // Runtime values loaded from /config.json
     // These are placeholders for fallback only
-    appApiUrl: ''
+    appApiUrl: '',
+    version: ''
 };

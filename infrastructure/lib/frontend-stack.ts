@@ -88,6 +88,7 @@ export class FrontendStack extends cdk.Stack {
     const runtimeConfig = {
       appApiUrl: appApiUrl,
       environment: config.production ? 'production' : 'development',
+      version: config.appVersion,
     };
 
     console.log('🔧 Generated runtime configuration:');

@@ -7,6 +7,7 @@ import { AuthService } from '../../auth/auth.service';
 import { UserDropdownComponent } from '../topnav/components/user-dropdown.component';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
 import { TooltipDirective } from '../tooltip/tooltip.directive';
+import { ConfigService } from '../../services/config.service';
 
 @Component({
   selector: 'app-sidenav',
@@ -18,6 +19,7 @@ export class Sidenav {
   private router = inject(Router);
   private sessionService = inject(SessionService);
   private authService = inject(AuthService);
+  private configService = inject(ConfigService);
   protected sidenavService = inject(SidenavService);
   protected userService = inject(UserService);
 
@@ -38,6 +40,12 @@ export class Sidenav {
   protected isAdmin = computed(() => {
     const requiredRoles = ['Admin', 'SuperAdmin', 'DotNetDevelopers'];
     return this.userService.hasAnyRole(requiredRoles);
+  });
+
+  // Version display string with 'v' prefix
+  protected displayVersion = computed(() => {
+    const version = this.configService.version();
+    return version && version !== 'unknown' ? `v${version}` : '';
   });
 
   newSession() {

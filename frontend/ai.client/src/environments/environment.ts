@@ -22,5 +22,6 @@
  */
 export const environment = {
     production: false,
-    appApiUrl: 'http://localhost:8000'
+    appApiUrl: 'http://localhost:8000',
+    version: 'dev'
 };

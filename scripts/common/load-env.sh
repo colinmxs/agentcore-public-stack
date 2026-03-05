@@ -87,6 +87,7 @@ build_cdk_context_params() {
     context_params="${context_params} --context projectPrefix=\"${CDK_PROJECT_PREFIX}\""
     context_params="${context_params} --context awsAccount=\"${CDK_AWS_ACCOUNT}\""
     context_params="${context_params} --context awsRegion=\"${CDK_AWS_REGION}\""
+    context_params="${context_params} --context appVersion=\"${CDK_APP_VERSION}\""
     
     # Optional parameters - only include if set
     if [ -n "${CDK_PRODUCTION:-}" ]; then
@@ -250,6 +251,9 @@ validate_required_vars() {
     return 0
 }
 
+# Export app version from VERSION file (priority: env var > VERSION file)
+export CDK_APP_VERSION="${CDK_APP_VERSION:-$(tr -d '[:space:]' < "${REPO_ROOT}/VERSION" 2>/dev/null || echo 'unknown')}"
+
 # Export core configuration with defaults
 # Priority: Environment variables > cdk.context.json > defaults
 export CDK_PROJECT_PREFIX="${CDK_PROJECT_PREFIX:-$(get_json_value "projectPrefix" "${CONTEXT_FILE}")}"
@@ -323,6 +327,7 @@ log_info "📋 Configuration loaded successfully:"
 log_config "  Project Prefix: ${CDK_PROJECT_PREFIX}"
 log_config "  AWS Account:    ${CDK_AWS_ACCOUNT}"
 log_config "  AWS Region:     ${CDK_AWS_REGION}"
+log_config "  App Version:    ${CDK_APP_VERSION}"
 log_config "  Production:     ${CDK_PRODUCTION:-true}"
 log_config "  VPC CIDR:       ${CDK_VPC_CIDR:-<not set>}"
 log_config "  Retain Data:    ${CDK_RETAIN_DATA_ON_DELETE}"

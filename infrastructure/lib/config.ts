@@ -19,6 +19,7 @@ export interface AppConfig {
   assistants: AssistantsConfig;
   fileUpload: FileUploadConfig;
   ragIngestion: RagIngestionConfig;
+  appVersion: string;
   tags: { [key: string]: string };
 }
 
@@ -134,8 +135,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
   // Top-level shared CORS origins — used as default for sections that don't override
   const corsOrigins = process.env.CDK_CORS_ORIGINS || scope.node.tryGetContext('corsOrigins') || '';
 
+  // Load app version from environment variable or CDK context
+  const appVersion = process.env.CDK_APP_VERSION || scope.node.tryGetContext('appVersion') || 'unknown';
+
   const config: AppConfig = {
     projectPrefix,
+    appVersion,
     awsAccount,
     awsRegion,
     production: parseBooleanEnv(process.env.CDK_PRODUCTION) ?? scope.node.tryGetContext('production'),
@@ -221,6 +226,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
   console.log(`   App API Enabled: ${config.appApi.enabled}`);
   console.log(`   Inference API Enabled: ${config.inferenceApi.enabled}`);
   console.log(`   Gateway Enabled: ${config.gateway.enabled}`);
+  console.log(`   App Version: ${config.appVersion}`);
 
   // Validate configuration
   validateConfig(config);
@@ -499,6 +505,8 @@ export function getAutoDeleteObjects(config: AppConfig): boolean {
 export function applyStandardTags(stack: cdk.Stack, config: AppConfig): void {
   // Inject Project tag dynamically from projectPrefix (can't interpolate in context)
   cdk.Tags.of(stack).add('Project', config.projectPrefix);
+  // Add Version tag from appVersion (flows from VERSION file via CI/CD)
+  cdk.Tags.of(stack).add('Version', config.appVersion);
   Object.entries(config.tags).forEach(([key, value]) => {
     cdk.Tags.of(stack).add(key, value);
   });
