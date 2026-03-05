@@ -4,7 +4,6 @@ import { firstValueFrom } from 'rxjs';
 import { fetchEventSource, EventSourceMessage } from '@microsoft/fetch-event-source';
 import { AuthService } from '../../../auth/auth.service';
 import { AuthApiService } from '../../../auth/auth-api.service';
-import { ConfigService } from '../../../services/config.service';
 import { Message } from '../../../session/services/models/message.model';
 import { PREVIEW_SESSION_PREFIX } from '../../../shared/constants/session.constants';
 import {
@@ -30,7 +29,6 @@ import {
 export class PreviewChatService {
   private authService = inject(AuthService);
   private authApiService = inject(AuthApiService);
-  private config = inject(ConfigService);
 
   // Local state signals (isolated from global ChatStateService)
   private readonly messagesSignal = signal<Message[]>([]);
@@ -71,39 +69,6 @@ export class PreviewChatService {
     }
 
     return token;
-  }
-
-  /**
-   * Get the runtime endpoint URL for inference API calls.
-   * Uses the same pattern as ChatHttpService:
-   * 1. If inferenceApiUrl is configured (local dev), use it as override
-   * 2. Otherwise, fetch dynamically from App API (production multi-provider)
-   */
-  private async getRuntimeEndpointUrl(): Promise<string> {
-    // If inferenceApiUrl is explicitly configured, use it as an override.
-    // This enables local development with real OIDC auth but local inference.
-    // In production, this should be empty/undefined to use provider-based routing.
-    const configuredInferenceUrl = this.config.inferenceApiUrl();
-    if (configuredInferenceUrl) {
-      // Add /invocations if not already present
-      return configuredInferenceUrl.endsWith('/invocations')
-        ? configuredInferenceUrl
-        : `${configuredInferenceUrl}/invocations`;
-    }
-
-    // If authentication is disabled and no inference URL configured, error
-    if (!this.config.enableAuthentication()) {
-      throw new Error('Inference API URL must be configured when authentication is disabled');
-    }
-
-    // Fetch runtime endpoint from App API (same as main chat service)
-    const response = await firstValueFrom(this.authApiService.getRuntimeEndpoint());
-
-    if (!response || !response.runtime_endpoint_url) {
-      throw new Error('Invalid runtime endpoint response from server');
-    }
-
-    return response.runtime_endpoint_url;
   }
 
   /**
@@ -246,7 +211,7 @@ export class PreviewChatService {
         enabled_tools: [], // No tools in preview
       };
 
-      await fetchEventSource(`${runtimeEndpointUrl}?qualifier=DEFAULT`, {
+      await fetchEventSource(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
