@@ -8,23 +8,19 @@ Before touching GitHub, you need three things set up in AWS.
 
 ### A1. Set Up AWS Authentication
 
-Choose one of these two methods. Your GitHub workflows will use these credentials to deploy resources.
+Choose one method. Your GitHub workflows will use these credentials to deploy resources.
 
-**Option 1: OIDC Role (recommended)**
+**Option 1: OIDC Role (recommended)** — no long-lived keys to rotate.
 
-This is the more secure approach — no long-lived keys to rotate.
+Follow these guides to create an OIDC identity provider and an IAM role that GitHub Actions can assume:
+- [GitHub Docs: Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+- [AWS Docs: Create an OpenID Connect (OIDC) identity provider in IAM](https://docs.aws.amazon.com/IAM/latest/UserGuide/id_roles_providers_create_oidc.html)
 
-1. Create an IAM OIDC identity provider for `token.actions.githubusercontent.com`
-2. Create an IAM role that trusts the GitHub OIDC provider, scoped to your repository
-3. Note the role ARN — you'll need it in Step B
-
-See: [Configuring OpenID Connect in Amazon Web Services](https://docs.github.com/en/actions/security-for-github-actions/security-hardening-your-deployments/configuring-openid-connect-in-amazon-web-services)
+Make note of the IAM role ARN — you'll need it in Step B.
 
 **Option 2: IAM Access Keys (simpler, less secure)**
 
-1. Create an IAM user with programmatic access and the necessary deployment permissions
-2. Generate an access key pair
-3. Note the Access Key ID and Secret Access Key — you'll need them in Step B
+Create an IAM user with programmatic access and generate an access key pair. Make note of the Access Key ID and Secret Access Key — you'll need them in Step B.
 
 ### A2. Create a Route 53 Hosted Zone
 
@@ -34,12 +30,12 @@ See: [Creating a public hosted zone](https://docs.aws.amazon.com/Route53/latest/
 
 ### A3. Create ACM Certificates
 
-You need two certificates, both for the same domain:
+You need two certificates. Each should cover both your apex domain and subdomains (e.g. `example.com` and `*.example.com`). When requesting the certificate in ACM, add `*.example.com` as an additional domain name so it covers subdomains like `api.example.com` and `app.example.com`.
 
 | Certificate | Region | Used By |
 |-------------|--------|---------|
-| ALB certificate | Your deployment region (e.g. `us-west-2`) | Application Load Balancer |
-| CloudFront certificate | `us-east-1` (required by CloudFront) | Frontend CDN |
+| ALB certificate | Your deployment region (e.g. `us-west-2`) | Application Load Balancer (`api.example.com`) |
+| CloudFront certificate | `us-east-1` (required by CloudFront) | Frontend CDN (`app.example.com`) |
 
 See: [Requesting a public certificate](https://docs.aws.amazon.com/acm/latest/userguide/gs-acm-request-public.html)
 
@@ -58,8 +54,6 @@ These are encrypted values that never appear in logs.
 | `AWS_ROLE_ARN` | If using OIDC | IAM role ARN from Step A1 |
 | `AWS_ACCESS_KEY_ID` | If using keys | IAM access key from Step A1 |
 | `AWS_SECRET_ACCESS_KEY` | If using keys | IAM secret key from Step A1 |
-| `CDK_CERTIFICATE_ARN` | Yes | ACM certificate ARN for the ALB (from Step A3, in your deployment region) |
-| `CDK_FRONTEND_CERTIFICATE_ARN` | Yes | ACM certificate ARN for CloudFront (from Step A3, must be `us-east-1`) |
 
 ### Variables
 
@@ -73,6 +67,8 @@ These are non-sensitive configuration values.
 | `CDK_HOSTED_ZONE_DOMAIN` | Yes | `example.com` | Route 53 hosted zone domain (from Step A2) |
 | `CDK_ALB_SUBDOMAIN` | Yes | `api` | Subdomain for the ALB (e.g. `api.example.com`) |
 | `CDK_DOMAIN_NAME` | Yes | `app.example.com` | Custom domain for the CloudFront distribution |
+| `CDK_CERTIFICATE_ARN` | Yes | `arn:aws:acm:us-west-2:...` | ACM certificate ARN for the ALB (from Step A3, in your deployment region) |
+| `CDK_FRONTEND_CERTIFICATE_ARN` | Yes | `arn:aws:acm:us-east-1:...` | ACM certificate ARN for CloudFront (from Step A3, must be `us-east-1`) |
 
 That's it for required config. All other values have sensible defaults — see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for the full list.
 
@@ -92,11 +88,11 @@ Go to the **Actions** tab and run each workflow in order. Wait for each step to 
 | 6 | [Deploy Gateway (Lambda Tools)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml) | [![Step 6](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml) |
 | 7 | [Seed Bootstrap Data](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) | [![Step 7](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) |
 
-All workflows default to the **production** environment when triggered manually. To tear down, run them in reverse order (7 → 1).
+All workflows default to the **production** environment when triggered manually.
 
 ---
 
-## Step D: Configure Authentication (Optional)
+## Step D: Configure Authentication
 
 To set up an OIDC auth provider (e.g. Microsoft Entra ID) via the Bootstrap Data Seeding workflow, add these to your GitHub repository:
 
@@ -124,4 +120,4 @@ Then re-run **Step 7 — Seed Bootstrap Data**.
 
 ## Full Configuration Reference
 
-For every available variable and secret (resource sizing, CORS, WAF, throttling, etc.), see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md).
+For every available configuration variable, see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md).
