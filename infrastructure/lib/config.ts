@@ -41,6 +41,7 @@ export interface AppApiConfig {
   desiredCount: number;
   maxCapacity: number;
   imageTag: string;
+  adminJwtRoles?: string; // JSON array of JWT roles that grant system admin access (e.g. '["Admin"]')
 }
 
 export interface InferenceApiConfig {
@@ -158,6 +159,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       desiredCount: parseIntEnv(process.env.CDK_APP_API_DESIRED_COUNT) ?? scope.node.tryGetContext('appApi')?.desiredCount,
       imageTag: scope.node.tryGetContext('imageTag') || '',
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
+      adminJwtRoles: process.env.ENV_APP_API_ADMIN_JWT_ROLES || scope.node.tryGetContext('appApi')?.adminJwtRoles,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,

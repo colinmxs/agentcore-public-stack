@@ -29,7 +29,7 @@ class SystemAdminConfig:
         Configured via ADMIN_JWT_ROLES environment variable.
         Defaults to ["DotNetDevelopers"] for backwards compatibility.
         """
-        roles_json = os.getenv("ADMIN_JWT_ROLES", '["DotNetDevelopers"]')
+        roles_json = os.getenv("ADMIN_JWT_ROLES", '["Admin"]')
         try:
             roles = json.loads(roles_json)
             if isinstance(roles, list):
@@ -38,7 +38,7 @@ class SystemAdminConfig:
             logger.warning(
                 f"Invalid ADMIN_JWT_ROLES format: {roles_json}, using default"
             )
-        return ["DotNetDevelopers"]
+        return ["Admin"]
 
     @staticmethod
     def is_system_admin(user_roles: List[str]) -> bool:

@@ -70,6 +70,19 @@ These are non-sensitive configuration values.
 | `CDK_CERTIFICATE_ARN` | Yes | `arn:aws:acm:us-west-2:...` | ACM certificate ARN for the ALB (from Step A3, in your deployment region) |
 | `CDK_FRONTEND_CERTIFICATE_ARN` | Yes | `arn:aws:acm:us-east-1:...` | ACM certificate ARN for CloudFront (from Step A3, must be `us-east-1`) |
 
+### Identity Provider (for user login)
+
+These values come from your OIDC-compatible identity provider (e.g. Microsoft Entra ID, AWS Cognito, Okta). Step 7 uses them to seed the auth provider configuration so users can log in.
+
+| Name | Type | Required | Example | Description |
+|------|------|:--------:|---------|-------------|
+| `SEED_AUTH_PROVIDER_ID` | Variable | Yes | `entra-id` | Slug identifier for the provider |
+| `SEED_AUTH_DISPLAY_NAME` | Variable | Yes | `Microsoft Entra ID` | Display name shown on the login page |
+| `SEED_AUTH_ISSUER_URL` | Variable | Yes | `https://login.microsoftonline.com/TENANT/v2.0` | OIDC issuer URL from your IdP |
+| `SEED_AUTH_CLIENT_ID` | Variable | Yes | `your-client-id` | OAuth client ID from your IdP |
+| `SEED_AUTH_CLIENT_SECRET` | Secret | Yes | — | OAuth client secret from your IdP |
+| `ENV_APP_API_ADMIN_JWT_ROLES` | Variable | No | `["Admin"]` | JSON array of JWT roles that grant system admin access. Must match a role claim from your IdP. |
+
 That's it for required config. All other values have sensible defaults — see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for the full list.
 
 ---
@@ -89,23 +102,6 @@ Go to the **Actions** tab and run each workflow in order. Wait for each step to 
 | 7 | [Seed Bootstrap Data](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) | [![Step 7](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/bootstrap-data-seeding.yml) |
 
 All workflows default to the **production** environment when triggered manually.
-
----
-
-## Step D: Configure Authentication
-
-To set up an OIDC auth provider (e.g. Microsoft Entra ID) via the Bootstrap Data Seeding workflow, add these to your GitHub repository:
-
-| Name | Type | Example | Description |
-|------|------|---------|-------------|
-| `SEED_AUTH_PROVIDER_ID` | Variable | `entra-id` | Slug identifier for the auth provider |
-| `SEED_AUTH_DISPLAY_NAME` | Variable | `Microsoft Entra ID` | Display name on the login page |
-| `SEED_AUTH_ISSUER_URL` | Variable | `https://login.microsoftonline.com/TENANT/v2.0` | OIDC issuer URL |
-| `SEED_AUTH_CLIENT_ID` | Variable | `your-client-id` | OAuth client ID |
-| `SEED_AUTH_CLIENT_SECRET` | Secret | `your-client-secret` | OAuth client secret |
-| `SEED_AUTH_BUTTON_COLOR` | Variable | `#0078D4` | Login button color |
-
-Then re-run **Step 7 — Seed Bootstrap Data**.
 
 ---
 
