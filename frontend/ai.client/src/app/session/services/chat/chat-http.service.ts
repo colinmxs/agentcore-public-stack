@@ -53,16 +53,16 @@ export class ChatHttpService {
 
     const token = await this.getBearerTokenForStreamingResponse();
 
-    // Fetch runtime endpoint URL for the user's provider
-    // The endpoint URL already includes /invocations path
-    const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
+        // Fetch runtime endpoint URL for the user's provider
+        // The endpoint URL already includes /invocations path
+        const runtimeEndpointUrl = await this.getRuntimeEndpointUrl();
 
     return fetchEventSource(`${runtimeEndpointUrl}?qualifier=DEFAULT`, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${token}`,
-        Accept: 'text/event-stream',
+        Accept: 'text/event-stream',        
       },
       body: JSON.stringify(requestObject),
       signal: abortController.signal,
