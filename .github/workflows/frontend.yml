@@ -1,4 +1,4 @@
-name: FrontendStack.BuildTest.Deploy
+name: "Step 5 — Deploy Frontend (CloudFront)"
 
 on:
   push:
@@ -30,11 +30,12 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
+        default: 'production'
         type: choice
         options:
-          - development
-          - staging
           - production
+          - staging
+          - development
       skip_tests:
         description: 'Skip tests'
         required: false

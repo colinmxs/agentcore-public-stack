@@ -1,4 +1,4 @@
-name: InfrastructureStack.BuildTest.Deploy
+name: "Step 1 — Deploy Infrastructure (VPC, ALB, ECS)"
 
 on:
   push:
@@ -32,11 +32,12 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
+        default: 'production'
         type: choice
         options:
-          - development
-          - staging
           - production
+          - staging
+          - development
       skip_tests:
         description: 'Skip tests'
         required: false

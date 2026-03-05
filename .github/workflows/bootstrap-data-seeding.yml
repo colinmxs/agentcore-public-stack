@@ -1,4 +1,4 @@
-name: BootstrapDataSeeding
+name: "Step 7 — Seed Bootstrap Data"
 
 on:
   workflow_dispatch:
@@ -6,11 +6,12 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
+        default: 'production'
         type: choice
         options:
-          - development
-          - staging
           - production
+          - staging
+          - development
 
   workflow_call:
     inputs:

@@ -61,16 +61,19 @@ See [Requesting a public certificate](https://docs.aws.amazon.com/acm/latest/use
 
 ## Quick Deploy
 
-Once you've set the required values above:
+Once you've set the required values above, go to the **Actions** tab in your GitHub repository and run the workflows in this order. Each step must complete before starting the next.
 
-1. Go to **Actions** tab in your GitHub repository
-2. Select the **Infrastructure Stack** workflow and run it first
-3. After Infrastructure completes, run the other stacks in any order:
-   - App API Stack
-   - Inference API Stack
-   - Frontend Stack
-   - Gateway Stack
-4. Optionally, run **Bootstrap Data Seeding** to seed auth providers, quota tiers, and default models
+| Order | Workflow Name | What It Deploys |
+|-------|--------------|-----------------|
+| 1 | Step 1 — Deploy Infrastructure (VPC, ALB, ECS) | Foundation layer: VPC, ALB, ECS Cluster, Security Groups |
+| 2 | Step 2 — Deploy RAG Ingestion | RAG ingestion pipeline (S3 Vector Buckets) |
+| 3 | Step 3 — Deploy Inference API (AgentCore Runtime) | Bedrock AgentCore Runtime (Strands Agent container) |
+| 4 | Step 4 — Deploy App API (Backend) | Application backend (Fargate service) |
+| 5 | Step 5 — Deploy Frontend (CloudFront) | Angular app (S3 + CloudFront distribution) |
+| 6 | Step 6 — Deploy Gateway (Lambda Tools) | Bedrock AgentCore Gateway + Lambda MCP tools |
+| 7 | Step 7 — Seed Bootstrap Data | Auth providers, quota tiers, default models |
+
+All workflows default to the **production** environment when triggered manually. To tear down, run the workflows in reverse order (Step 7 → Step 1).
 
 All other configuration values have sensible defaults and are optional.
 

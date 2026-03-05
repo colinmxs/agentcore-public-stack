@@ -1,5 +1,7 @@
 # AgentCore Public Stack
 
+> 🚀 **Want to deploy this at your institution?** Fork the repo and follow the [GitHub Actions Quick Start](.github/README-ACTIONS.md) to get up and running.
+
 This open-source repository is the working codebase behind [boisestate.ai](https://boisestate.ai) at Boise State University. It is a **production-ready, full-stack Generative AI application** built on AWS Bedrock AgentCore with a **consumption-based pricing model** (pay for what you use) rather than per-seat subscriptions.
 
 By open-sourcing this platform, Boise State enables other institutions to adopt a cost-effective, privacy-respecting AI solution while retaining the flexibility to integrate their own tools and MCP servers to meet institutional needs.

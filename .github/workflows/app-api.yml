@@ -1,4 +1,4 @@
-name: AppApiStack.BuildTest.Deploy
+name: "Step 4 — Deploy App API (Backend)"
 
 on:
   push:
@@ -28,11 +28,12 @@ on:
       environment:
         description: 'Deployment environment'
         required: true
+        default: 'production'
         type: choice
         options:
-          - development
-          - staging
           - production
+          - staging
+          - development
       skip_tests:
         description: 'Skip tests'
         required: false
