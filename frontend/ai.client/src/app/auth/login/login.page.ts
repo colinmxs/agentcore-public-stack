@@ -224,8 +224,8 @@ interface AuthProviderPublicListResponse {
                         <span class="text-gray-500 dark:text-gray-400"> &mdash; set via CDK/SSM on deploy; only needed in <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">.env</code> for local dev</span>
                       </li>
                       <li>
-                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">ADMIN_JWT_ROLES=["YourAdminRole"]</code>
-                        <span class="text-gray-500 dark:text-gray-400"> &mdash; JSON array of JWT role names that grant system admin access. Must match a role your IdP issues in the token&rsquo;s <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">roles</code> claim. The first user who logs in with an admin role can then manage providers, models, and roles from the admin dashboard.</span>
+                        <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">SEED_ADMIN_JWT_ROLE=YourAdminRole</code>
+                        <span class="text-gray-500 dark:text-gray-400"> &mdash; set via the bootstrap seed script to map a JWT role to the system_admin AppRole. Must match a role your IdP issues in the token&rsquo;s <code class="px-1 py-0.5 bg-gray-100 dark:bg-gray-700 rounded-xs text-xs">roles</code> claim. The first user who logs in with this role can then manage providers, models, and roles from the admin dashboard.</span>
                       </li>
                     </ul>
                     <p class="mt-1.5 text-xs text-gray-500 dark:text-gray-400">

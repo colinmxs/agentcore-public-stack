@@ -195,7 +195,7 @@ pip install -e "."
 
 **1d. Register your application with your OIDC provider**
 
-Before running the seed script, you need a Client ID and Client Secret from your identity provider. You will also need to know which JWT claim your provider uses for roles so you can configure `ADMIN_JWT_ROLES`.
+Before running the seed script, you need a Client ID and Client Secret from your identity provider. You will also need to know which JWT claim your provider uses for roles so you can configure system admin access via the bootstrap seed script.
 
 <details>
 <summary><strong>Microsoft Entra ID setup</strong></summary>
@@ -341,20 +341,12 @@ AUTH_PROVIDER_SECRETS_ARN=arn:aws:secretsmanager:us-west-2:123456789:secret:my-a
 # DynamoDB table for OIDC login state (prevents CSRF, from CDK output)
 DYNAMODB_OIDC_STATE_TABLE_NAME=my-app-oidc-state-dev
 
-# --- Admin Access ---
-# JWT roles that grant system admin access. Must match a role your IdP issues.
-# This is a JSON array of role name strings.
-# Entra ID example (uses app roles):
-ADMIN_JWT_ROLES='["Admin"]'
-# Cognito example (uses Cognito groups):
-# ADMIN_JWT_ROLES='["Admins"]'
-
 # --- Authentication Toggle ---
 # Must be true for OIDC auth to be active
 ENABLE_AUTHENTICATION=true
 ```
 
-**About `ADMIN_JWT_ROLES`:** This environment variable determines which JWT role values grant system administrator access. When a user logs in, the backend checks if any of their JWT roles (from the claim configured via `--roles-claim`) match an entry in this array. System admins can manage auth providers, RBAC roles, models, and quotas through the Admin UI. The value must be a JSON array of strings. Make sure at least one user in your IdP is assigned a role that matches.
+**About system admin access:** System administrator access is configured via the bootstrap seed script, which maps a JWT role to the `system_admin` AppRole in DynamoDB. Set the `SEED_ADMIN_JWT_ROLE` GitHub variable (e.g., `Admin`) and run the "Seed Bootstrap Data" workflow. When a user logs in, the backend resolves their JWT roles against AppRole mappings. System admins can manage auth providers, RBAC roles, models, and quotas through the Admin UI. Make sure at least one user in your IdP is assigned the configured admin role.
 
 ---
 
@@ -367,7 +359,7 @@ cd backend/src/apis/app_api && python main.py
 1. Open `http://localhost:4200` in your browser
 2. The login page will display your configured provider
 3. Click the provider button and authenticate through your IdP
-4. If your JWT contains a role listed in `ADMIN_JWT_ROLES`, you will have admin access to manage providers, roles, models, and quotas through the Admin UI
+4. If your JWT contains a role mapped to the `system_admin` AppRole (configured via the bootstrap seed script), you will have admin access to manage providers, roles, models, and quotas through the Admin UI
 
 ---
 
@@ -419,7 +411,7 @@ These tell the platform which JWT claims to read for user identity. Different Id
 | `user_id_claim` | `--user-id-claim` | `sub` | JWT claim containing the unique user identifier. | `sub` | `sub` |
 | `email_claim` | `--email-claim` | `email` | JWT claim containing the user's email address. | `email` | `email` |
 | `name_claim` | `--name-claim` | `name` | JWT claim containing the user's display name. | `name` | `cognito:username` |
-| `roles_claim` | `--roles-claim` | `roles` | JWT claim containing the user's roles/groups array. Critical for `ADMIN_JWT_ROLES` matching. | `roles` | `cognito:groups` |
+| `roles_claim` | `--roles-claim` | `roles` | JWT claim containing the user's roles/groups array. Used by the AppRole system to resolve user permissions. | `roles` | `cognito:groups` |
 | `picture_claim` | `--picture-claim` | `picture` | JWT claim containing the user's profile picture URL. | `picture` | *(not available by default)* |
 | `first_name_claim` | `--first-name-claim` | `given_name` | JWT claim containing the user's first name. | `given_name` | `given_name` |
 | `last_name_claim` | `--last-name-claim` | `family_name` | JWT claim containing the user's last name. | `family_name` | `family_name` |

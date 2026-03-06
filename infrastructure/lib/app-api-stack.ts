@@ -611,7 +611,6 @@ export class AppApiStack extends cdk.Stack {
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsArn,
-        ADMIN_JWT_ROLES: config.appApi.adminJwtRoles || '["Admin"]',
       },
       portMappings: [
         {

@@ -58,7 +58,7 @@ GitHub provides two mechanisms for storing configuration values:
 | ENV_INFERENCE_API_LOG_LEVEL | Variable | No | `INFO` | Inference API | Log level for runtime container (DEBUG, INFO, WARNING, ERROR) |
 | ENV_INFERENCE_API_NOVA_ACT_API_KEY | Secret | No | None | Inference API | Amazon Nova Act API key for browser automation |
 | ENV_INFERENCE_API_TAVILY_API_KEY | Secret | No | None | Inference API | Tavily API key for web search integration |
-| ENV_APP_API_ADMIN_JWT_ROLES | Variable | No | `["Admin"]` | App API | JSON array of JWT roles that grant system admin access (e.g. `["Admin"]`) |
+| SEED_ADMIN_JWT_ROLE | Variable | No | None | Bootstrap Data Seeding | JWT role that grants system admin access (e.g., `Admin`). Maps to the `system_admin` AppRole. |
 | SEED_AUTH_BUTTON_COLOR | Variable | No | None | Bootstrap Data Seeding | Hex color for the auth provider login button (e.g., '#0078D4') |
 | SEED_AUTH_CLIENT_ID | Variable | No | None | Bootstrap Data Seeding | OAuth client ID for the initial OIDC auth provider |
 | SEED_AUTH_CLIENT_SECRET | Secret | No | None | Bootstrap Data Seeding | OAuth client secret for the initial OIDC auth provider |

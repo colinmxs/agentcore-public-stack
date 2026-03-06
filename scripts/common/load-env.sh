@@ -131,11 +131,6 @@ build_cdk_context_params() {
         context_params="${context_params} --context appApi.maxCapacity=\"${CDK_APP_API_MAX_CAPACITY}\""
     fi
     
-    # App API environment variables
-    if [ -n "${ENV_APP_API_ADMIN_JWT_ROLES:-}" ]; then
-        context_params="${context_params} --context appApi.adminJwtRoles=\"${ENV_APP_API_ADMIN_JWT_ROLES}\""
-    fi
-    
     # Inference API optional parameters
     if [ -n "${CDK_INFERENCE_API_ENABLED:-}" ]; then
         context_params="${context_params} --context inferenceApi.enabled=\"${CDK_INFERENCE_API_ENABLED}\""

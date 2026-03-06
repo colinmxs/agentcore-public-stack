@@ -55,6 +55,14 @@ main() {
         --output text)
     log_info "Managed models table: ${DDB_MANAGED_MODELS_TABLE}"
 
+    export DDB_APP_ROLES_TABLE
+    DDB_APP_ROLES_TABLE=$(aws ssm get-parameter \
+        --name "/${prefix}/rbac/app-roles-table-name" \
+        --region "${region}" \
+        --query "Parameter.Value" \
+        --output text)
+    log_info "App roles table: ${DDB_APP_ROLES_TABLE}"
+
     export AWS_REGION="${region}"
 
     # Invoke the Python seed script

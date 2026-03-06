@@ -54,6 +54,9 @@ jobs:
       SEED_AUTH_CLIENT_ID: ${{ vars.SEED_AUTH_CLIENT_ID }}
       SEED_AUTH_CLIENT_SECRET: ${{ secrets.SEED_AUTH_CLIENT_SECRET }}
 
+      # System admin JWT role mapping
+      SEED_ADMIN_JWT_ROLE: ${{ vars.SEED_ADMIN_JWT_ROLE }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

@@ -81,7 +81,7 @@ These values come from your OIDC-compatible identity provider (e.g. Microsoft En
 | `SEED_AUTH_ISSUER_URL` | Variable | Yes | `https://login.microsoftonline.com/TENANT/v2.0` | OIDC issuer URL from your IdP |
 | `SEED_AUTH_CLIENT_ID` | Variable | Yes | `your-client-id` | OAuth client ID from your IdP |
 | `SEED_AUTH_CLIENT_SECRET` | Secret | Yes | — | OAuth client secret from your IdP |
-| `ENV_APP_API_ADMIN_JWT_ROLES` | Variable | No | `["Admin"]` | JSON array of JWT roles that grant system admin access. Must match a role claim from your IdP. |
+| `SEED_ADMIN_JWT_ROLE` | Variable | No | `Admin` | JWT role that grants system admin access. Maps to the `system_admin` AppRole via the bootstrap seed script. Must match a role claim from your IdP. |
 
 That's it for required config. All other values have sensible defaults — see [ACTIONS-REFERENCE.md](./ACTIONS-REFERENCE.md) for the full list.
 

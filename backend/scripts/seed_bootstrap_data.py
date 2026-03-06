@@ -2,9 +2,10 @@
 """
 Bootstrap data seeding script for first-time platform deployment.
 
-Seeds auth providers, quota tiers, quota assignments, and Bedrock models
-into DynamoDB and Secrets Manager. Designed to be invoked by
-scripts/stack-bootstrap/seed.sh after infrastructure deployment.
+Seeds auth providers, quota tiers, quota assignments, Bedrock models,
+and system admin JWT role mappings into DynamoDB and Secrets Manager.
+Designed to be invoked by scripts/stack-bootstrap/seed.sh after
+infrastructure deployment.
 
 All operations are idempotent: re-running with identical inputs produces
 the same database state.
@@ -13,6 +14,7 @@ Environment variables:
     DDB_AUTH_PROVIDERS_TABLE  - Auth providers DynamoDB table name
     DDB_USER_QUOTAS_TABLE     - User quotas DynamoDB table name
     DDB_MANAGED_MODELS_TABLE  - Managed models DynamoDB table name
+    DDB_APP_ROLES_TABLE       - App roles DynamoDB table name
     SECRETS_AUTH_ARN          - Secrets Manager ARN for auth secrets
     AWS_REGION                - AWS region
 
@@ -22,6 +24,7 @@ Environment variables:
     SEED_AUTH_CLIENT_ID       - OAuth client ID
     SEED_AUTH_CLIENT_SECRET   - OAuth client secret
     SEED_AUTH_BUTTON_COLOR    - Hex color for login button (optional)
+    SEED_ADMIN_JWT_ROLE      - JWT role that grants system admin access (e.g., Admin)
 """
 
 from __future__ import annotations
@@ -440,6 +443,202 @@ def seed_default_models(
     return result
 
 
+def seed_system_admin_jwt_roles(
+    table_name: str,
+    region: str,
+    jwt_role: str,
+) -> SeedResult:
+    """Seed JWT role mapping for the system_admin AppRole.
+
+    Writes a JWT_MAPPING item to the app-roles table so that
+    AppRoleService.resolve_user_permissions() can resolve users with the
+    given JWT role to the system_admin AppRole via the JwtRoleMappingIndex GSI.
+
+    If the system_admin role definition does not yet exist, the full role
+    (DEFINITION + JWT_MAPPING + TOOL_GRANT + MODEL_GRANT items) is created.
+    If the role exists and already has the correct mapping, the operation is
+    skipped.  If it exists with a different mapping, the old mapping items
+    are replaced.
+    """
+    result = SeedResult(category="system_admin_jwt")
+    session = boto3.Session(region_name=region)
+    dynamodb = session.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    role_id = "system_admin"
+    pk = f"ROLE#{role_id}"
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    # Check for existing role definition
+    try:
+        existing = table.get_item(Key={"PK": pk, "SK": "DEFINITION"})
+    except ClientError as e:
+        msg = f"Failed to check existing system_admin role: {e}"
+        logger.error(msg)
+        result.failed = 1
+        result.details.append(msg)
+        return result
+
+    if "Item" in existing:
+        current_mappings = existing["Item"].get("jwtRoleMappings", [])
+        if jwt_role in current_mappings:
+            msg = f"system_admin already has JWT mapping '{jwt_role}' — skipped"
+            logger.info(msg)
+            result.skipped = 1
+            result.details.append(msg)
+            return result
+
+        # Update: replace old JWT mappings with new one
+        logger.info(
+            "Updating system_admin JWT mappings: %s -> ['%s']",
+            current_mappings,
+            jwt_role,
+        )
+
+        # Delete old JWT_MAPPING items
+        try:
+            query_resp = table.query(
+                KeyConditionExpression=(
+                    boto3.dynamodb.conditions.Key("PK").eq(pk)
+                    & boto3.dynamodb.conditions.Key("SK").begins_with("JWT_MAPPING#")
+                ),
+            )
+            with table.batch_writer() as batch:
+                for item in query_resp.get("Items", []):
+                    batch.delete_item(Key={"PK": item["PK"], "SK": item["SK"]})
+        except ClientError as e:
+            msg = f"Failed to delete old JWT_MAPPING items: {e}"
+            logger.error(msg)
+            result.failed = 1
+            result.details.append(msg)
+            return result
+
+        # Update DEFINITION item's jwtRoleMappings
+        try:
+            table.update_item(
+                Key={"PK": pk, "SK": "DEFINITION"},
+                UpdateExpression="SET jwtRoleMappings = :m, updatedAt = :u",
+                ExpressionAttributeValues={
+                    ":m": [jwt_role],
+                    ":u": now,
+                },
+            )
+        except ClientError as e:
+            msg = f"Failed to update system_admin jwtRoleMappings: {e}"
+            logger.error(msg)
+            result.failed = 1
+            result.details.append(msg)
+            return result
+
+        # Write new JWT_MAPPING item
+        try:
+            table.put_item(Item={
+                "PK": pk,
+                "SK": f"JWT_MAPPING#{jwt_role}",
+                "GSI1PK": f"JWT_ROLE#{jwt_role}",
+                "GSI1SK": pk,
+                "roleId": role_id,
+                "enabled": True,
+            })
+        except ClientError as e:
+            msg = f"Failed to write JWT_MAPPING item for '{jwt_role}': {e}"
+            logger.error(msg)
+            result.failed = 1
+            result.details.append(msg)
+            return result
+
+        result.created = 1
+        result.details.append(
+            f"system_admin JWT mapping updated to '{jwt_role}'"
+        )
+        return result
+
+    # Role does not exist — create full system_admin role
+    logger.info("system_admin role not found — creating with JWT mapping '%s'", jwt_role)
+
+    definition_item: dict[str, Any] = {
+        "PK": pk,
+        "SK": "DEFINITION",
+        "roleId": role_id,
+        "displayName": "System Administrator",
+        "description": "Full access to all system features. This role cannot be deleted.",
+        "jwtRoleMappings": [jwt_role],
+        "inheritsFrom": [],
+        "grantedTools": ["*"],
+        "grantedModels": ["*"],
+        "effectivePermissions": {
+            "tools": ["*"],
+            "models": ["*"],
+            "quotaTier": None,
+        },
+        "priority": 1000,
+        "isSystemRole": True,
+        "enabled": True,
+        "createdAt": now,
+        "updatedAt": now,
+        "createdBy": "bootstrap-seed",
+    }
+
+    jwt_mapping_item = {
+        "PK": pk,
+        "SK": f"JWT_MAPPING#{jwt_role}",
+        "GSI1PK": f"JWT_ROLE#{jwt_role}",
+        "GSI1SK": pk,
+        "roleId": role_id,
+        "enabled": True,
+    }
+
+    tool_grant_item = {
+        "PK": pk,
+        "SK": "TOOL_GRANT#*",
+        "GSI2PK": "TOOL#*",
+        "GSI2SK": pk,
+        "roleId": role_id,
+        "displayName": "System Administrator",
+        "enabled": True,
+    }
+
+    model_grant_item = {
+        "PK": pk,
+        "SK": "MODEL_GRANT#*",
+        "GSI3PK": "MODEL#*",
+        "GSI3SK": pk,
+        "roleId": role_id,
+        "displayName": "System Administrator",
+        "enabled": True,
+    }
+
+    try:
+        client = session.client("dynamodb")
+        client.transact_write_items(
+            TransactItems=[
+                {"Put": {"TableName": table_name, "Item": _serialize(definition_item)}},
+                {"Put": {"TableName": table_name, "Item": _serialize(jwt_mapping_item)}},
+                {"Put": {"TableName": table_name, "Item": _serialize(tool_grant_item)}},
+                {"Put": {"TableName": table_name, "Item": _serialize(model_grant_item)}},
+            ]
+        )
+        result.created = 1
+        result.details.append(
+            f"system_admin role created with JWT mapping '{jwt_role}'"
+        )
+    except ClientError as e:
+        msg = f"Failed to create system_admin role: {e}"
+        logger.error(msg)
+        result.failed = 1
+        result.details.append(msg)
+
+    return result
+
+
+def _serialize(item: dict[str, Any]) -> dict[str, Any]:
+    """Convert a high-level DynamoDB item dict to low-level client format."""
+    from boto3.dynamodb.types import TypeSerializer
+
+    serializer = TypeSerializer()
+    return {k: serializer.serialize(v) for k, v in item.items()}
+
+
 def print_summary(results: list[SeedResult]) -> None:
     """Print a structured summary of all seed operations."""
     print()
@@ -468,6 +667,7 @@ def main() -> None:
     auth_table = os.environ.get("DDB_AUTH_PROVIDERS_TABLE", "")
     quotas_table = os.environ.get("DDB_USER_QUOTAS_TABLE", "")
     models_table = os.environ.get("DDB_MANAGED_MODELS_TABLE", "")
+    app_roles_table = os.environ.get("DDB_APP_ROLES_TABLE", "")
     secrets_arn = os.environ.get("SECRETS_AUTH_ARN", "")
     region = os.environ.get("AWS_REGION", "us-east-1")
 
@@ -523,6 +723,24 @@ def main() -> None:
 
     # --- Model seeding ---
     results.append(seed_default_models(table_name=models_table, region=region))
+
+    # --- System admin JWT role seeding ---
+    admin_jwt_role = os.environ.get("SEED_ADMIN_JWT_ROLE", "")
+    if admin_jwt_role:
+        results.append(
+            seed_system_admin_jwt_roles(
+                table_name=app_roles_table,
+                region=region,
+                jwt_role=admin_jwt_role,
+            )
+        )
+    else:
+        logger.warning(
+            "Skipping system admin JWT role seeding — SEED_ADMIN_JWT_ROLE not set"
+        )
+        r = SeedResult(category="system_admin_jwt", skipped=1)
+        r.details.append("Skipped — SEED_ADMIN_JWT_ROLE not set")
+        results.append(r)
 
     # --- Summary ---
     print_summary(results)
