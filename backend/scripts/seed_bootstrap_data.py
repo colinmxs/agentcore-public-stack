@@ -327,12 +327,12 @@ def seed_default_quota_assignment(
 # Default Bedrock models to seed
 DEFAULT_MODELS: list[dict[str, Any]] = [
     {
-        "modelId": "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        "modelId": "global.anthropic.claude-haiku-4-5-20251001-v1:0",
         "modelName": "Claude Haiku 4.5",
         "provider": "bedrock",
-        "providerName": "Amazon Bedrock",
-        "inputModalities": ["text", "image"],
-        "outputModalities": ["text"],
+        "providerName": "Anthropic",
+        "inputModalities": ["TEXT", "IMAGE"],
+        "outputModalities": ["TEXT"],
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000,
         "inputPricePerMillionTokens": Decimal("1.00"),
@@ -344,12 +344,12 @@ DEFAULT_MODELS: list[dict[str, Any]] = [
         "isDefault": True,
     },
     {
-        "modelId": "us.anthropic.claude-sonnet-4-6",
+        "modelId": "global.anthropic.claude-sonnet-4-6",
         "modelName": "Claude Sonnet 4.6",
         "provider": "bedrock",
-        "providerName": "Amazon Bedrock",
-        "inputModalities": ["text", "image"],
-        "outputModalities": ["text"],
+        "providerName": "Anthropic",
+        "inputModalities": ["TEXT", "IMAGE"],
+        "outputModalities": ["TEXT"],
         "maxInputTokens": 200000,
         "maxOutputTokens": 64000,
         "inputPricePerMillionTokens": Decimal("3.00"),
