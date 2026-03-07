@@ -488,7 +488,6 @@ from agentcore.local_tools.weather import get_weather
 - strands-agents 1.14.0
 - strands-agents-tools 0.2.3
 - bedrock-agentcore
-- nova-act 2.3.18.0
 - aws-opentelemetry-distro
 
 

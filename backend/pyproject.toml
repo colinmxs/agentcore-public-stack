@@ -40,8 +40,6 @@ agentcore = [
 
     # "aws-opentelemetry-distro>=0.10.1",
     "bedrock-agentcore",
-    # NOTE: nova-act temporarily disabled due to strands-agents version conflict
-    # "nova-act==3.0.5.0",  # Requires strands-agents<=1.14.0
     # Multi-provider LLM support
     "openai>=1.0.0",  # For OpenAI models
     "google-genai>=1.0.0",  # For Google Gemini models

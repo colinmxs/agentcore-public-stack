@@ -55,14 +55,6 @@ TOOL_CATALOG: Dict[str, ToolMetadata] = {
         category=ToolCategory.SEARCH,
         icon="link",
     ),
-    "search_boise_state": ToolMetadata(
-        tool_id="search_boise_state",
-        name="Boise State Search",
-        description="Search Boise State University website and resources using Cludo search engine.",
-        category=ToolCategory.SEARCH,
-        icon="academic-cap",
-    ),
-
     # --- Local Tools (Data & Visualization) ---
     "get_current_weather": ToolMetadata(
         tool_id="get_current_weather",

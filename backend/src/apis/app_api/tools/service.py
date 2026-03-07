@@ -637,7 +637,6 @@ class ToolCatalogService:
         # Based on current frontend defaults
         enabled_by_default = {
             "fetch_url_content",
-            "search_boise_state",
             "calculator",
         }
         return tool_id in enabled_by_default

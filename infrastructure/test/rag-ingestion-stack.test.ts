@@ -52,8 +52,6 @@ describe('RagIngestionStack', () => {
         imageTag: 'latest',
         logLevel: 'INFO',
         corsOrigins: 'http://localhost:3000',
-        tavilyApiKey: 'test-key',
-        novaActApiKey: 'test-key',
       },
       gateway: {
         enabled: true,

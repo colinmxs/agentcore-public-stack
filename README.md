@@ -103,7 +103,6 @@ This reference architecture demonstrates building agentic workflows combining **
    - **Memory**: Persistent conversation storage with user preference retrieval
    - **Gateway**: MCP tool endpoints with SigV4 authentication
    - **Code Interpreter**: Python execution for charts and analysis
-   - **Browser**: Web automation via Nova Act model
 
 ## Key Features
 
@@ -253,7 +252,6 @@ Native support for visual and document content:
 | Demo | Description |
 |------|-------------|
 | **Finance Assistant** | Stock analysis with real-time quotes, charts, and Excel reports |
-| **Browser Automation** | Web navigation with Nova Act, screenshot capture |
 | **Academic Research** | Paper search via ArXiv and Wikipedia integration |
 | **Deep Research** | Multi-agent research with supervisor-worker pattern |
 -->

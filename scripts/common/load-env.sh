@@ -155,13 +155,7 @@ build_cdk_context_params() {
     if [ -n "${ENV_INFERENCE_API_CORS_ORIGINS:-}" ]; then
         context_params="${context_params} --context inferenceApi.corsOrigins=\"${ENV_INFERENCE_API_CORS_ORIGINS}\""
     fi
-    if [ -n "${ENV_INFERENCE_API_TAVILY_API_KEY:-}" ]; then
-        context_params="${context_params} --context inferenceApi.tavilyApiKey=\"${ENV_INFERENCE_API_TAVILY_API_KEY}\""
-    fi
-    if [ -n "${ENV_INFERENCE_API_NOVA_ACT_API_KEY:-}" ]; then
-        context_params="${context_params} --context inferenceApi.novaActApiKey=\"${ENV_INFERENCE_API_NOVA_ACT_API_KEY}\""
-    fi
-    
+
     # Gateway optional parameters
     if [ -n "${CDK_GATEWAY_ENABLED:-}" ]; then
         context_params="${context_params} --context gateway.enabled=\"${CDK_GATEWAY_ENABLED}\""

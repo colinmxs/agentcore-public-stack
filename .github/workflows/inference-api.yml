@@ -240,12 +240,10 @@ jobs:
       ENV_INFERENCE_API_CORS_ORIGINS: ${{ vars.ENV_INFERENCE_API_CORS_ORIGINS }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       CDK_APP_VERSION: ${{ needs.build-docker.outputs.app-version }}
-      ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
-      ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}      
-    
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
@@ -428,12 +426,10 @@ jobs:
       ENV_INFERENCE_API_LOG_LEVEL: ${{ vars.ENV_INFERENCE_API_LOG_LEVEL }}
       ENV_INFERENCE_API_CORS_ORIGINS: ${{ vars.ENV_INFERENCE_API_CORS_ORIGINS }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
-      ENV_INFERENCE_API_TAVILY_API_KEY: ${{ secrets.ENV_INFERENCE_API_TAVILY_API_KEY }}
-      ENV_INFERENCE_API_NOVA_ACT_API_KEY: ${{ secrets.ENV_INFERENCE_API_NOVA_ACT_API_KEY }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-    
+
     steps:
       - name: Checkout code
         uses: actions/checkout@v4

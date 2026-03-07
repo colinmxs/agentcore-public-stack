@@ -156,9 +156,7 @@ configure_inference_api() {
     prompt_for_config "CDK_INFERENCE_API_CPU" "CPU units (256, 512, 1024, 2048, 4096)" ".inferenceApi.cpu"
     prompt_for_config "CDK_INFERENCE_API_MEMORY" "Memory in MB (512, 1024, 2048, 4096, 8192)" ".inferenceApi.memory"
     prompt_for_config "ENV_INFERENCE_API_LOG_LEVEL" "Log level (DEBUG, INFO, WARNING, ERROR)" ".inferenceApi.logLevel"
-    prompt_for_config "ENV_INFERENCE_API_TAVILY_API_KEY" "Tavily API Key (optional)" ".inferenceApi.tavilyApiKey"
-    prompt_for_config "ENV_INFERENCE_API_NOVA_ACT_API_KEY" "Nova Act API Key (optional)" ".inferenceApi.novaActApiKey"
-    
+
     echo ""
     log_success "Configuration updated"
     echo ""

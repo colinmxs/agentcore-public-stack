@@ -833,15 +833,6 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'CORS_ORIGINS': params[f"/{PROJECT_PREFIX}/frontend/cors-origins"],
         }
         
-        # Add optional API keys if they exist
-        tavily_key = get_optional_parameter(f"/{PROJECT_PREFIX}/api-keys/tavily-api-key")
-        if tavily_key:
-            env_vars['TAVILY_API_KEY'] = tavily_key
-            
-        nova_act_key = get_optional_parameter(f"/{PROJECT_PREFIX}/api-keys/nova-act-api-key")
-        if nova_act_key:
-            env_vars['NOVA_ACT_API_KEY'] = nova_act_key
-        
         logger.info(f"Constructed {len(env_vars)} environment variables for runtime")
         return env_vars
         

@@ -105,13 +105,6 @@ All workflows default to the **production** environment when triggered manually.
 
 ---
 
-## Optional Integrations
-
-| Name | Type | Description |
-|------|------|-------------|
-| `ENV_INFERENCE_API_TAVILY_API_KEY` | Secret | Tavily API key for web search |
-| `ENV_INFERENCE_API_NOVA_ACT_API_KEY` | Secret | Amazon Nova Act API key for browser automation |
-
 ---
 
 ## Full Configuration Reference

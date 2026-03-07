@@ -34,9 +34,7 @@
     "desiredCount": 1,
     "maxCapacity": 5,
     "logLevel": "INFO",
-    "corsOrigins": "",
-    "tavilyApiKey": "",
-    "novaActApiKey": ""
+    "corsOrigins": ""
   },
   "gateway": {
     "enabled": true,

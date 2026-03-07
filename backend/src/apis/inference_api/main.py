@@ -79,18 +79,6 @@ async def lifespan(app: FastAPI):
     if cors_origins:
         logger.info(f"CORS Origins: {cors_origins}")
     
-    # Log API key availability (without exposing values)
-    tavily_key = os.getenv('TAVILY_API_KEY')
-    nova_key = os.getenv('NOVA_ACT_API_KEY')
-    if tavily_key:
-        logger.info(f"Tavily API Key: configured ({tavily_key[:10]}...)")
-    else:
-        logger.info("Tavily API Key: not configured")
-    if nova_key:
-        logger.info(f"Nova Act API Key: configured ({nova_key[:10]}...)")
-    else:
-        logger.info("Nova Act API Key: not configured")
-
     # Create output directories if they don't exist
     base_dir = Path(__file__).parent.parent
     output_dir = os.path.join(base_dir, "output")

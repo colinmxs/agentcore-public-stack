@@ -268,5 +268,4 @@ export const environment = {
 - AgentCore Gateway requires cloud deployment (not available locally)
 - AgentCore Memory uses local file storage in development
 - A2A Report Writer tools are work in progress
-- Browser automation requires Nova Act model access
 - Stream timeout: 600 seconds

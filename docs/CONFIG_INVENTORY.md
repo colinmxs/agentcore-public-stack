@@ -52,9 +52,6 @@ Complete inventory of all configuration variables across the AgentCore Public St
 | APP_ROLE_MAPPING_CACHE_TTL_MINUTES | No | `10` | `apis/shared/rbac/` |
 | OPENAI_API_KEY | No | — | `agents/main_agent/core/model_config.py` |
 | GOOGLE_GEMINI_API_KEY | No | — | `agents/main_agent/core/model_config.py` |
-| TAVILY_API_KEY | No | — | `agents/local_tools/web_search.py` |
-| TOOL_CLUDO_SITE_KEY | No | — | `agents/local_tools/cludo_search.py` |
-| NOVA_ACT_API_KEY | No | — | `agents/builtin_tools/browser_tools.py` |
 
 ## 2. CDK Context Keys (`infrastructure/cdk.context.json` → `config.ts`)
 
@@ -88,8 +85,6 @@ Complete inventory of all configuration variables across the AgentCore Public St
 | `inferenceApi.maxCapacity` | `CDK_INFERENCE_API_MAX_CAPACITY` | number | `5` | `config.inferenceApi.maxCapacity` |
 | `inferenceApi.logLevel` | `ENV_INFERENCE_API_LOG_LEVEL` | string | `INFO` | `config.inferenceApi.logLevel` |
 | `inferenceApi.corsOrigins` | `ENV_INFERENCE_API_CORS_ORIGINS` | string | `""` | `config.inferenceApi.corsOrigins` |
-| `inferenceApi.tavilyApiKey` | `ENV_INFERENCE_API_TAVILY_API_KEY` | string | `""` | `config.inferenceApi.tavilyApiKey` |
-| `inferenceApi.novaActApiKey` | `ENV_INFERENCE_API_NOVA_ACT_API_KEY` | string | `""` | `config.inferenceApi.novaActApiKey` |
 | `gateway.enabled` | `CDK_GATEWAY_ENABLED` | boolean | `true` | `config.gateway.enabled` |
 | `gateway.apiType` | `CDK_GATEWAY_API_TYPE` | `REST`\|`HTTP` | `HTTP` | `config.gateway.apiType` |
 | `gateway.throttleRateLimit` | `CDK_GATEWAY_THROTTLE_RATE_LIMIT` | number | `10000` | `config.gateway.throttleRateLimit` |

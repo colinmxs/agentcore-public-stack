@@ -47,8 +47,6 @@ describe('RAG Ingestion Configuration', () => {
       maxCapacity: 4,
       logLevel: 'INFO',
       corsOrigins: 'http://localhost:3000',
-      tavilyApiKey: 'test-key',
-      novaActApiKey: 'test-key',
     });
     app.node.setContext('gateway', {
       enabled: true,
@@ -337,7 +335,7 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
       testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
       testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
@@ -367,7 +365,7 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
       testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
       testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
@@ -397,7 +395,7 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
       testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
       testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
@@ -461,7 +459,7 @@ describe('RAG Ingestion Configuration', () => {
       testApp.node.setContext('vpcCidr', '10.0.0.0/16');
       testApp.node.setContext('frontend', { enabled: true, cloudFrontPriceClass: 'PriceClass_100' });
       testApp.node.setContext('appApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4 });
-      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000', tavilyApiKey: 'test-key', novaActApiKey: 'test-key' });
+      testApp.node.setContext('inferenceApi', { enabled: true, cpu: 256, memory: 512, desiredCount: 1, maxCapacity: 4, logLevel: 'INFO', corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('gateway', { enabled: true, apiType: 'REST', throttleRateLimit: 1000, throttleBurstLimit: 2000, enableWaf: false });
       testApp.node.setContext('assistants', { enabled: true, corsOrigins: 'http://localhost:3000' });
       testApp.node.setContext('fileUpload', { enabled: true, maxFileSizeBytes: 4194304, maxFilesPerMessage: 5, userQuotaBytes: 1073741824, retentionDays: 365 });
