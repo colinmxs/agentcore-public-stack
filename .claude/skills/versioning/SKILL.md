@@ -1,3 +1,7 @@
+---
+name: version
+description: Bump the monorepo version using SemVer. Use when creating releases, updating the VERSION file, or syncing version across package manifests.
+---
 # Version Bumping
 
 This monorepo uses a single `VERSION` file at the repo root as the source of truth.
