@@ -238,7 +238,7 @@ def seed_default_quota_tier(
         "PK": pk,
         "SK": sk,
         "tierId": "default",
-        "tierName": "Default Tier",
+        "tierName": "Default",
         "description": "Default quota tier for all users",
         "monthlyCostLimit": Decimal("5.0"),
         "periodType": "monthly",
