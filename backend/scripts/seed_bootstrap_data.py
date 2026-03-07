@@ -240,7 +240,7 @@ def seed_default_quota_tier(
         "tierId": "default",
         "tierName": "Default Tier",
         "description": "Default quota tier for all users",
-        "monthlyCostLimit": Decimal("50.00"),
+        "monthlyCostLimit": Decimal("5.0"),
         "periodType": "monthly",
         "softLimitPercentage": Decimal("80.0"),
         "actionOnLimit": "block",
