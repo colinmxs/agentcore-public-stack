@@ -19,6 +19,7 @@ import {
   heroLink
 } from '@ng-icons/heroicons/outline';
 import { ThemeService, ThemePreference } from './theme-toggle/theme.service';
+import { ConfigService } from '../../../services/config.service';
 
 export interface User {
   firstName: string;
@@ -271,6 +272,13 @@ export interface User {
                 <span>Logout</span>
               </button>
             </div>
+
+            <!-- Version -->
+            @if (displayVersion(); as version) {
+              <div class="border-t border-gray-200 px-3 py-2 dark:border-gray-700">
+                <span class="text-xs text-gray-400 dark:text-gray-500">{{ version }}</span>
+              </div>
+            }
           </div>
         </div>
       </ng-template>
@@ -311,6 +319,7 @@ export interface User {
 })
 export class UserDropdownComponent {
   private readonly themeService = inject(ThemeService);
+  private readonly configService = inject(ConfigService);
 
   // Inputs
   user = input.required<User>();
@@ -325,6 +334,13 @@ export class UserDropdownComponent {
   // Theme state
   protected readonly currentPreference = this.themeService.preference;
   protected readonly currentTheme = this.themeService.theme;
+
+  // Version
+  protected readonly displayVersion = computed(() => {
+    const version = this.configService.version();
+    if (!version || version === 'unknown') return '';
+    return version === 'dev' ? 'local' : `v${version}`;
+  });
 
   // Menu positioning - opens upward (for sidenav bottom placement)
   private readonly sidenavPositions: ConnectedPosition[] = [
