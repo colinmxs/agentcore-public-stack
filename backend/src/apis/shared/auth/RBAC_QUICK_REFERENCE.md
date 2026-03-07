@@ -126,7 +126,7 @@ curl http://localhost:8000/admin/me
 
 ## Common Roles in System
 
-Based on `jwt_validator.py:69-77`:
+Common roles configured in the OIDC auth providers:
 
 - `Admin` / `SuperAdmin` - Administrative access
 - `Faculty` - Faculty member

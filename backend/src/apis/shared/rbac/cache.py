@@ -158,7 +158,7 @@ class AppRoleCache:
             )
 
     async def invalidate_jwt_mapping(self, jwt_role: str):
-        """Invalidate JWT mapping cache."""
+        """Invalidate JWT mapping cache and clear all user permission caches."""
         key = f"jwt:{jwt_role}"
         if key in self._jwt_mapping_cache:
             del self._jwt_mapping_cache[key]
@@ -181,7 +181,6 @@ class AppRoleCache:
 
     def get_stats(self) -> Dict:
         """Get cache statistics for monitoring."""
-        now = datetime.utcnow()
         return {
             "userCacheSize": len(self._user_cache),
             "userCacheExpired": sum(

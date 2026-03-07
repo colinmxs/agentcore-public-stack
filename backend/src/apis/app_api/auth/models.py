@@ -17,7 +17,7 @@ class User:
 
 class TokenExchangeRequest(BaseModel):
     """Request model for token exchange endpoint."""
-    code: str = Field(..., description="Authorization code from Entra ID")
+    code: str = Field(..., description="Authorization code from the OIDC provider")
     state: str = Field(..., description="State token for CSRF protection")
     redirect_uri: Optional[str] = Field(None, description="Redirect URI (must match authorization request)")
 
@@ -55,7 +55,7 @@ class LoginResponse(BaseModel):
 
 class LogoutResponse(BaseModel):
     """Response model for logout endpoint."""
-    logout_url: str = Field(..., description="URL to redirect user to for Entra ID logout")
+    logout_url: str = Field(..., description="URL to redirect user to for OIDC provider logout")
 
 
 class RuntimeEndpointResponse(BaseModel):

@@ -60,7 +60,14 @@ class GenericOIDCAuthService:
         self,
         redirect_uri: Optional[str] = None
     ) -> Tuple[str, str, str]:
-        """Generate secure state, PKCE challenge, and nonce."""
+        """Generate secure state token, PKCE challenge, and nonce.
+
+        Stores the state in the state store with the provider_id,
+        code_verifier (if PKCE enabled), nonce, and optional redirect_uri.
+
+        Returns:
+            Tuple of (state, code_challenge, nonce)
+        """
         state = secrets.token_urlsafe(32)
         code_verifier, code_challenge = generate_pkce_pair()
         nonce = secrets.token_urlsafe(32)
@@ -115,7 +122,15 @@ class GenericOIDCAuthService:
         state: str,
         redirect_uri: Optional[str] = None
     ) -> Dict[str, Any]:
-        """Exchange authorization code for tokens."""
+        """Exchange authorization code for tokens.
+
+        Validates the state parameter, sends the code to the token endpoint,
+        verifies the nonce in the ID token if present, and returns the token dict.
+
+        Raises:
+            HTTPException(400): If state is invalid/expired or nonce mismatch.
+            HTTPException(503): If the token endpoint is unreachable.
+        """
         is_valid, state_data = self.validate_state(state)
         if not is_valid or state_data is None:
             raise HTTPException(
@@ -190,7 +205,12 @@ class GenericOIDCAuthService:
             )
 
     async def refresh_access_token(self, refresh_token: str) -> Dict[str, Any]:
-        """Refresh access token using refresh token."""
+        """Refresh access token using a refresh token.
+
+        Raises:
+            HTTPException(401): If the token endpoint returns 400 (expired/invalid refresh token).
+            HTTPException(503): If the token endpoint is unreachable.
+        """
         token_data = {
             "client_id": self.client_id,
             "client_secret": self.client_secret,
@@ -237,7 +257,10 @@ class GenericOIDCAuthService:
             )
 
     def build_logout_url(self, post_logout_redirect_uri: Optional[str] = None) -> str:
-        """Build logout URL for the provider."""
+        """Build logout URL for the provider.
+
+        Returns an empty string if no end_session_endpoint is configured.
+        """
         if not self.logout_endpoint:
             return ""
 

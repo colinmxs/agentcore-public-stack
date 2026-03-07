@@ -96,7 +96,7 @@ async def get_current_user(
     Raises:
         HTTPException:
             - 401 if token is missing or invalid
-            - 403 if user doesn't have required roles
+            - 500 if no JWT validator is available
     """
     # Check if credentials are missing
     if credentials is None:

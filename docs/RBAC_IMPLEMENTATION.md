@@ -9,9 +9,9 @@ This document describes the RBAC implementation for the AgentCore Public Stack b
 ### Flow Diagram
 
 ```
-JWT Token (from Entra ID)
+JWT Token (from OIDC Provider)
     ↓
-EntraIDJWTValidator (validates & extracts roles)
+GenericOIDCJWTValidator (validates & extracts roles)
     ↓
 User Model (email, user_id, name, roles[])
     ↓
@@ -22,11 +22,11 @@ Protected Route Handler
 
 ## Components
 
-### 1. JWT Validator (`apis/shared/auth/jwt_validator.py`)
+### 1. JWT Validator (`apis/shared/auth/generic_jwt_validator.py`)
 
-- Validates JWT tokens from Entra ID (Azure AD)
+- Validates JWT tokens from any configured OIDC provider
 - Extracts user information including roles array
-- Location: `jwt_validator.py:149` - Role extraction
+- Dynamically matches token issuer to configured providers
 
 ### 2. User Model (`apis/shared/auth/models.py`)
 
@@ -263,7 +263,7 @@ ENABLE_AUTHENTICATION=true
 
 The validator checks the `roles` claim in the JWT payload:
 ```python
-roles = payload.get('roles', [])  # Line 149 in jwt_validator.py
+roles = payload.get('roles', [])  # In generic_jwt_validator.py
 ```
 
 ## Adding New Role-Protected Endpoints
@@ -339,7 +339,7 @@ Potential improvements to the RBAC system:
 **Solution:**
 1. Verify `ENTRA_CLIENT_ID` matches app registration
 2. Check token was issued for correct application
-3. See `jwt_validator.py:55-59` for acceptable audiences
+3. See `generic_jwt_validator.py` for audience validation logic
 
 ### Issue: "Authentication service misconfigured"
 
@@ -353,7 +353,7 @@ Potential improvements to the RBAC system:
 ## File References
 
 - RBAC utilities: `backend/src/apis/shared/auth/rbac.py`
-- JWT validation: `backend/src/apis/shared/auth/jwt_validator.py`
+- JWT validation: `backend/src/apis/shared/auth/generic_jwt_validator.py`
 - User model: `backend/src/apis/shared/auth/models.py`
 - Auth dependencies: `backend/src/apis/shared/auth/dependencies.py`
 - Admin routes: `backend/src/apis/app_api/admin/routes.py`

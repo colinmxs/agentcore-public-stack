@@ -10,7 +10,7 @@ Since both APIs add `src` to the Python path in their `main.py` files, you can i
 
 ```python
 # Import authentication dependencies
-from apis.shared.auth import get_current_user, User, get_validator
+from apis.shared.auth import get_current_user, User
 
 # Import state store utilities
 from apis.shared.auth import create_state_store, StateStore
@@ -29,8 +29,7 @@ async def protected_route(user: User = Depends(get_current_user)):
 ### Available Exports
 
 - `get_current_user`: FastAPI dependency for extracting and validating JWT tokens
-- `User`: User dataclass with email, empl_id, name, roles, and picture
-- `get_validator`: Get the global JWT validator instance
+- `User`: User dataclass with email, user_id, name, roles, and picture
 - `create_state_store`: Factory function to create appropriate state store
 - `StateStore`: Abstract base class for state storage
 - `InMemoryStateStore`: In-memory state store (for local development)
