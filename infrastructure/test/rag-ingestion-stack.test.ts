@@ -152,7 +152,7 @@ describe('RagIngestionStack', () => {
         CorsConfiguration: {
           CorsRules: [
             {
-              AllowedOrigins: ['http://localhost:3000', 'https://example.com'],
+              AllowedOrigins: ['http://localhost:4200', 'http://localhost:3000', 'https://example.com'],
               AllowedMethods: ['GET', 'PUT', 'HEAD'],
               AllowedHeaders: ['Content-Type', 'Content-Length', 'x-amz-*'],
               ExposedHeaders: ['ETag', 'Content-Length', 'Content-Type'],
@@ -215,7 +215,7 @@ describe('RagIngestionStack', () => {
   describe('DynamoDB Assistants Table', () => {
     test('creates table with correct name', () => {
       template.hasResourceProperties('AWS::DynamoDB::Table', {
-        TableName: 'test-project-test-rag-assistants',
+        TableName: 'test-project-rag-assistants',
       });
     });
 
@@ -376,7 +376,7 @@ describe('RagIngestionStack', () => {
   describe('Lambda Function', () => {
     test('creates Lambda function with correct name', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        FunctionName: 'test-project-test-rag-ingestion',
+        FunctionName: 'test-project-rag-ingestion',
       });
     });
 
@@ -400,13 +400,13 @@ describe('RagIngestionStack', () => {
 
     test('configures all required environment variables', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        FunctionName: 'test-project-test-rag-ingestion',
+        FunctionName: 'test-project-rag-ingestion',
         Environment: {
           Variables: {
             S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: Match.anyValue(),
             DYNAMODB_ASSISTANTS_TABLE_NAME: Match.anyValue(),
-            S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: 'test-project-test-rag-vector-store-v1',
-            S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: 'test-project-test-rag-vector-index-v1',
+            S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: 'test-project-rag-vector-store-v1',
+            S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: 'test-project-rag-vector-index-v1',
             BEDROCK_REGION: 'us-east-1',
           },
         },
@@ -415,7 +415,7 @@ describe('RagIngestionStack', () => {
 
     test('uses Docker image from ECR', () => {
       template.hasResourceProperties('AWS::Lambda::Function', {
-        FunctionName: 'test-project-test-rag-ingestion',
+        FunctionName: 'test-project-rag-ingestion',
         PackageType: 'Image',
         Code: {
           ImageUri: Match.anyValue(),
@@ -601,7 +601,7 @@ describe('RagIngestionStack', () => {
       template.hasResourceProperties('AWS::SSM::Parameter', {
         Name: '/test-project/rag/vector-bucket-name',
         Type: 'String',
-        Value: 'test-project-test-rag-vector-store-v1',
+        Value: 'test-project-rag-vector-store-v1',
         Description: 'RAG vector store bucket name',
       });
     });
@@ -610,7 +610,7 @@ describe('RagIngestionStack', () => {
       template.hasResourceProperties('AWS::SSM::Parameter', {
         Name: '/test-project/rag/vector-index-name',
         Type: 'String',
-        Value: 'test-project-test-rag-vector-index-v1',
+        Value: 'test-project-rag-vector-index-v1',
         Description: 'RAG vector store index name',
       });
     });
@@ -701,7 +701,7 @@ describe('RagIngestionStack', () => {
       // Note: There are 2 Lambda functions - our RAG ingestion Lambda and the BucketNotifications handler
       const lambdas = template.findResources('AWS::Lambda::Function');
       const ragLambda = Object.values(lambdas).find(
-        (lambda: any) => lambda.Properties?.FunctionName === 'test-project-test-rag-ingestion'
+        (lambda: any) => lambda.Properties?.FunctionName === 'test-project-rag-ingestion'
       );
       expect(ragLambda).toBeDefined();
     });
