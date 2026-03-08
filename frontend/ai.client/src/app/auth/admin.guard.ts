@@ -4,17 +4,15 @@ import { AuthService } from './auth.service';
 import { UserService } from './user.service';
 
 /**
- * Route guard that protects admin routes requiring specific roles.
+ * Route guard that protects admin routes using backend RBAC resolution.
  *
- * Checks if the user is authenticated and has one of the required admin roles:
- * - Admin
- * - SuperAdmin
- * - DotNetDevelopers
+ * Checks if the user is authenticated and has the `system_admin` AppRole
+ * (resolved from the backend RBAC system, not raw JWT roles).
  *
  * If not authenticated, redirects to /auth/login.
- * If authenticated but lacks required role, redirects to home page.
+ * If authenticated but lacks system_admin AppRole, redirects to home page.
  *
- * @returns True if user is authenticated and has required role, false otherwise
+ * @returns True if user is authenticated and has system_admin AppRole, false otherwise
  */
 export const adminGuard: CanActivateFn = async (route, state) => {
   const authService = inject(AuthService);
@@ -45,13 +43,12 @@ export const adminGuard: CanActivateFn = async (route, state) => {
     }
   }
 
-  // User is authenticated, check for admin roles
-  const requiredRoles = ['Admin', 'SuperAdmin', 'DotNetDevelopers'];
-  const hasRequiredRole = userService.hasAnyRole(requiredRoles);
+  // Ensure permissions are resolved from backend RBAC before checking
+  await userService.ensurePermissionsLoaded();
 
-  if (!hasRequiredRole) {
-    // User doesn't have required role, redirect to home
-    console.warn('User lacks required admin role:', userService.getUser()?.roles);
+  // Check for system_admin AppRole (resolved from backend RBAC, not raw JWT roles)
+  if (!userService.isAdmin()) {
+    console.warn('User lacks system_admin AppRole:', userService.getUser()?.roles);
     router.navigate(['/']);
     return false;
   }

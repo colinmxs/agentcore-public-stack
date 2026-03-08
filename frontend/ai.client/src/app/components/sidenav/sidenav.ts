@@ -34,11 +34,8 @@ export class Sidenav {
     return session.title || 'Untitled Session';
   });
 
-  // Check if user has admin roles
-  protected isAdmin = computed(() => {
-    const requiredRoles = ['Admin', 'SuperAdmin', 'DotNetDevelopers'];
-    return this.userService.hasAnyRole(requiredRoles);
-  });
+  // Check if user has system_admin AppRole (resolved from backend RBAC)
+  protected isAdmin = this.userService.isAdmin;
 
   newSession() {
     this.sidenavService.close();

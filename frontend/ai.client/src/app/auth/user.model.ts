@@ -13,6 +13,18 @@ export interface User {
 }
 
 /**
+ * Effective permissions resolved from the backend AppRole RBAC system.
+ * Returned by GET /users/me/permissions.
+ */
+export interface UserPermissions {
+  appRoles: string[];
+  tools: string[];
+  models: string[];
+  quotaTier: string | null;
+  resolvedAt: string;
+}
+
+/**
  * Decoded JWT payload structure.
  * Uses an index signature to support dynamic claim names
  * from any OIDC provider.

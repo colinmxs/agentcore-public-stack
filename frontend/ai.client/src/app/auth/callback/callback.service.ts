@@ -67,6 +67,9 @@ export class CallbackService {
       // Refresh user data from new token
       this.userService.refreshUser();
 
+      // Ensure resolved permissions are available before navigating
+      await this.userService.ensurePermissionsLoaded();
+
       // Enable sessions loading now that user is authenticated
       this.sessionService.enableSessionsLoading();
 
