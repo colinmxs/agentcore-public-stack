@@ -1,6 +1,6 @@
 """User search models for sharing functionality."""
 
-from typing import List
+from typing import List, Optional
 from pydantic import BaseModel, Field, ConfigDict
 
 
@@ -18,3 +18,14 @@ class UserSearchResponse(BaseModel):
     model_config = ConfigDict(populate_by_name=True)
 
     users: List[UserSearchResult] = Field(..., description="List of matching users")
+
+
+class UserPermissionsResponse(BaseModel):
+    """Response model for user effective permissions resolved from AppRoles."""
+    model_config = ConfigDict(populate_by_name=True)
+
+    app_roles: List[str] = Field(..., alias="appRoles", description="Resolved application roles")
+    tools: List[str] = Field(..., description="Accessible tool IDs")
+    models: List[str] = Field(..., description="Accessible model IDs")
+    quota_tier: Optional[str] = Field(None, alias="quotaTier", description="Assigned quota tier")
+    resolved_at: str = Field(..., alias="resolvedAt", description="ISO timestamp of resolution")

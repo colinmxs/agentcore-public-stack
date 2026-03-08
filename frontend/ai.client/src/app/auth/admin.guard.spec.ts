@@ -13,7 +13,8 @@ describe('adminGuard', () => {
     refreshAccessToken: ReturnType<typeof vi.fn>;
   };
   let userService: {
-    hasAnyRole: ReturnType<typeof vi.fn>;
+    isAdmin: ReturnType<typeof vi.fn>;
+    ensurePermissionsLoaded: ReturnType<typeof vi.fn>;
     refreshUser: ReturnType<typeof vi.fn>;
     getUser: ReturnType<typeof vi.fn>;
   };
@@ -30,7 +31,8 @@ describe('adminGuard', () => {
     };
 
     userService = {
-      hasAnyRole: vi.fn(),
+      isAdmin: vi.fn(),
+      ensurePermissionsLoaded: vi.fn().mockResolvedValue(undefined),
       refreshUser: vi.fn(),
       getUser: vi.fn().mockReturnValue({ roles: [] }),
     };
@@ -56,38 +58,31 @@ describe('adminGuard', () => {
 
   /**
    * Validates: Requirements 13.6
-   * Authenticated user with admin role returns true
+   * Authenticated user with system_admin AppRole returns true
    */
-  it('should return true when user is authenticated and has Admin role', async () => {
+  it('should return true when user is authenticated and has system_admin AppRole', async () => {
     authService.isAuthenticated.mockReturnValue(true);
-    userService.hasAnyRole.mockReturnValue(true);
+    userService.isAdmin.mockReturnValue(true);
 
     const result = await TestBed.runInInjectionContext(() => adminGuard(route, state));
 
     expect(result).toBe(true);
+    expect(userService.ensurePermissionsLoaded).toHaveBeenCalled();
     expect(router.navigate).not.toHaveBeenCalled();
-  });
-
-  it('should return true when user is authenticated and has SuperAdmin role', async () => {
-    authService.isAuthenticated.mockReturnValue(true);
-    userService.hasAnyRole.mockReturnValue(true);
-
-    const result = await TestBed.runInInjectionContext(() => adminGuard(route, state));
-
-    expect(result).toBe(true);
   });
 
   /**
    * Validates: Requirements 13.7
-   * Authenticated user without admin roles redirects to /
+   * Authenticated user without system_admin AppRole redirects to /
    */
-  it('should redirect to / when user is authenticated but lacks admin roles', async () => {
+  it('should redirect to / when user is authenticated but lacks system_admin AppRole', async () => {
     authService.isAuthenticated.mockReturnValue(true);
-    userService.hasAnyRole.mockReturnValue(false);
+    userService.isAdmin.mockReturnValue(false);
 
     const result = await TestBed.runInInjectionContext(() => adminGuard(route, state));
 
     expect(result).toBe(false);
+    expect(userService.ensurePermissionsLoaded).toHaveBeenCalled();
     expect(router.navigate).toHaveBeenCalledWith(['/']);
   });
 
@@ -127,32 +122,33 @@ describe('adminGuard', () => {
 
   /**
    * Validates: Requirements 13.6
-   * Expired token + successful refresh + admin role returns true
+   * Expired token + successful refresh + system_admin AppRole returns true
    */
-  it('should return true when token refresh succeeds and user has admin role', async () => {
+  it('should return true when token refresh succeeds and user has system_admin AppRole', async () => {
     authService.isAuthenticated.mockReturnValue(false);
     authService.getAccessToken.mockReturnValue('expired-token');
     authService.isTokenExpired.mockReturnValue(true);
     authService.refreshAccessToken.mockResolvedValue({});
-    userService.hasAnyRole.mockReturnValue(true);
+    userService.isAdmin.mockReturnValue(true);
 
     const result = await TestBed.runInInjectionContext(() => adminGuard(route, state));
 
     expect(result).toBe(true);
     expect(authService.refreshAccessToken).toHaveBeenCalled();
     expect(userService.refreshUser).toHaveBeenCalled();
+    expect(userService.ensurePermissionsLoaded).toHaveBeenCalled();
   });
 
   /**
    * Validates: Requirements 13.7
-   * Expired token + successful refresh + no admin role redirects to /
+   * Expired token + successful refresh + no system_admin AppRole redirects to /
    */
-  it('should redirect to / when token refresh succeeds but user lacks admin role', async () => {
+  it('should redirect to / when token refresh succeeds but user lacks system_admin AppRole', async () => {
     authService.isAuthenticated.mockReturnValue(false);
     authService.getAccessToken.mockReturnValue('expired-token');
     authService.isTokenExpired.mockReturnValue(true);
     authService.refreshAccessToken.mockResolvedValue({});
-    userService.hasAnyRole.mockReturnValue(false);
+    userService.isAdmin.mockReturnValue(false);
 
     const result = await TestBed.runInInjectionContext(() => adminGuard(route, state));
 

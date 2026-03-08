@@ -6,9 +6,10 @@ import logging
 
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
+from apis.shared.rbac.service import get_app_role_service
 from apis.shared.users.repository import UserRepository
 from apis.shared.users.models import UserProfile, UserListItem, UserStatus
-from .models import UserSearchResult, UserSearchResponse
+from .models import UserSearchResult, UserSearchResponse, UserPermissionsResponse
 
 logger = logging.getLogger(__name__)
 
@@ -18,6 +19,35 @@ router = APIRouter(prefix="/users", tags=["users"])
 def get_user_repository() -> UserRepository:
     """Get user repository instance."""
     return UserRepository()
+
+
+@router.get("/me/permissions", response_model=UserPermissionsResponse)
+async def get_my_permissions(
+    current_user: User = Depends(get_current_user),
+):
+    """
+    Get the current user's effective permissions resolved from AppRoles.
+
+    Any authenticated user can query their own permissions. Resolves JWT roles
+    to AppRoles via the RBAC system and returns merged effective permissions.
+    """
+    logger.info(f"GET /users/me/permissions - User: {current_user.user_id}")
+    try:
+        service = get_app_role_service()
+        permissions = await service.resolve_user_permissions(current_user)
+        return UserPermissionsResponse(
+            app_roles=permissions.app_roles,
+            tools=permissions.tools,
+            models=permissions.models,
+            quota_tier=permissions.quota_tier,
+            resolved_at=permissions.resolved_at,
+        )
+    except Exception as e:
+        logger.error(f"Failed to resolve permissions for {current_user.user_id}: {e}", exc_info=True)
+        raise HTTPException(
+            status_code=500,
+            detail="Failed to resolve user permissions"
+        )
 
 
 @router.get("/search", response_model=UserSearchResponse)
