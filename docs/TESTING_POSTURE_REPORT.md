@@ -1,14 +1,14 @@
 # Testing Posture Report — AgentCore Public Stack
 
 **Date**: March 6, 2026
-**Last Updated**: March 8, 2026 (evening)
+**Last Updated**: March 9, 2026 (early morning)
 **Scope**: Full monorepo inventory (backend, frontend, infrastructure, scripts, CI/CD)
 
 ---
 
 ## Executive Summary
 
-Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~55-65%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. Remaining gaps: Lambda functions have no tests, and there are still zero E2E or performance tests.
+Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~55-65%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. **Lambda function coverage has gone from zero to 141 tests across 14 test files**, covering both runtime-provisioner and runtime-updater — the critical functions that provision and update all AgentCore runtimes. Remaining gaps: cost tracking has no unit tests, and there are still zero E2E or performance tests.
 
 ---
 
@@ -21,7 +21,7 @@ Since the initial report on March 6, significant progress has been made. Backend
 | Source modules (app_api) | **15 directories**, ~40+ source files |
 | Source modules (agents) | **8 directories**, ~30+ source files |
 | Source modules (shared) | **11 directories**, ~30+ source files |
-| Lambda functions | **2 functions**, 0 tests |
+| Lambda functions | **2 functions**, 141 tests across 14 files |
 | Estimated coverage | **~55-65%** (up from ~40-50%) |
 
 ### What's tested
@@ -41,8 +41,10 @@ Since the initial report on March 6, significant progress has been made. Backend
 - ✅ `agents/main_agent/property/` — **NEW**: Property-based agent core tests (~665 lines)
 - ✅ `apis/shared/` — **NEW**: Comprehensive shared backend services test suite — **395 tests, 70% coverage** across all 8 modules. Uses moto for DynamoDB (9 tables with GSIs), KMS, S3, Secrets Manager. Covers: users (repository + sync), auth_providers (repository + service), RBAC (repository + cache + service + admin_service + seeder), OAuth (provider_repo + token_repo + encryption + token_cache + service), files (repository + resolver), managed_models, sessions (metadata + messages), assistants (service + RAG), quota (models + builders), state_store. 17 modules at 85%+, 8 at 70-84%. (~3,696 lines)
 
+- ✅ `lambda-functions/runtime-provisioner/tests/` — **NEW**: Comprehensive test suite for the runtime-provisioner Lambda — **76 tests** across 6 files. Uses moto for DynamoDB/SSM + unittest.mock for Bedrock AgentCore Control (unsupported by moto). Covers: handler routing (INSERT/MODIFY/REMOVE dispatch, multi-record batches, error re-raise), full INSERT flow (runtime creation, JWT authorizer config, 30+ env vars from SSM, DynamoDB status updates, SSM ARN storage, URL-encoded endpoint construction), MODIFY flow (JWT field change detection for issuerUrl/clientId/jwksUri, no-op when unchanged, config preservation during update), REMOVE flow (runtime deletion, SSM cleanup, ResourceNotFoundException grace), all helper functions (DynamoDB deserialization for S/N/BOOL/NULL/L/M types, URL normalization, validation, discovery URL construction), runtime name generation (hyphen→underscore, 48-char truncation, `r_` prefix fallback), SSM CRUD (required/optional params, batch fetch, error handling), DynamoDB update helpers (runtime info, status, error truncation to 1000 chars). (~1,200 lines)
+- ✅ `lambda-functions/runtime-updater/tests/` — **NEW**: Comprehensive test suite for the runtime-updater Lambda — **65 tests** across 7 files. Uses moto for DynamoDB/SSM/SNS + unittest.mock for Bedrock AgentCore Control. Covers: full handler flow (happy path, invalid events, no-providers, critical failure SNS alerts, mixed success/failure counts), EventBridge event parsing (SSM parameter name matching, missing/empty detail handling, SSM fetch), parallel update execution (ThreadPoolExecutor with max 5 workers, result collection, exception capture, batch processing of 10+ providers), retry logic with exponential backoff (ThrottlingException/ServiceUnavailableException retries, ResourceNotFoundException/ValidationException fail-fast, 2^n backoff timing verification, DynamoDB status transitions UPDATING→READY/UPDATE_FAILED), DynamoDB provider discovery (scan with filter, FAILED status exclusion, pagination, null runtime_id filtering), SNS notifications (update summary with success/failure counts, failure details, critical failure alerts with timestamps, publish failure handling), all helper functions (deserialization, status updates, error truncation, key format validation). (~1,100 lines)
+
 ### What's NOT tested (remaining gaps)
-- **Lambda functions**: runtime-provisioner, runtime-updater — zero tests
 - **Cost tracking**: calculator, aggregator, pricing_config — zero tests (route-level tests exist)
 - **DynamoDB storage**: dynamodb_storage (app_api layer) — zero tests
 
@@ -174,7 +176,7 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 | Frontend Components | 🟡 Medium | **PARTIALLY ADDRESSED** | Auth module fully covered, sidenav/topnav/model-settings added; admin pages, most feature pages, and most services still untested |
 | Infrastructure Stacks | ✅ Resolved → 🟢 Low | **ADDRESSED** | 249 tests across 10 suites. All 6 stacks have assertion-level tests. Critical circular dependency prevention via static SSM dependency graph analysis. Cross-cutting security and best-practice validation. |
 | Cost Tracking | 🟡 Medium | **UNCHANGED** | Financial data, zero unit tests (route-level tests exist via test_costs.py) |
-| Lambda Functions | 🟡 Medium | **UNCHANGED** | Small scope but zero tests |
+| Lambda Functions | ✅ Resolved → 🟢 Low | **ADDRESSED** | 141 tests across 14 files. Both runtime-provisioner (76 tests) and runtime-updater (65 tests) comprehensively covered. Full handler flows, error handling, retry logic, parallel execution, DynamoDB/SSM/SNS interactions, edge cases. Uses moto + unittest.mock. |
 | Shared Backend Services | ✅ Resolved → 🟢 Low | **ADDRESSED** | 395 tests, 70% coverage across all 8 modules. 17 modules at 85%+. Uses moto for DynamoDB, KMS, S3, Secrets Manager. |
 | Quota System | 🟢 Low | **UNCHANGED** | Well-tested (checker + resolver) |
 | Ingestion Pipeline | 🟢 Low | **UNCHANGED** | CSV chunker + token validation covered |
@@ -196,9 +198,9 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 
 ### Remaining (Priority Order)
 1. **Cost tracking unit tests** — calculator, aggregator, pricing_config. Route-level tests exist but no unit tests on the business logic.
-4. **Lambda function tests** — runtime-provisioner, runtime-updater. Small scope but completely untested.
-6. ~~**CDK stack assertion tests**~~ — Done. 249 tests across 10 suites covering all 6 stacks. Includes static dependency graph analysis that prevents circular SSM dependencies, per-stack resource assertions, and cross-cutting security/best-practice validation.
-6. **Frontend service tests** — api.service, sse.service, error.service, file-upload.service. The data backbone.
+2. ~~**Lambda function tests**~~ — Done. 141 tests across 14 files covering both runtime-provisioner and runtime-updater.
+3. ~~**CDK stack assertion tests**~~ — Done. 249 tests across 10 suites covering all 6 stacks. Includes static dependency graph analysis that prevents circular SSM dependencies, per-stack resource assertions, and cross-cutting security/best-practice validation.
+4. **Frontend service tests** — api.service, sse.service, error.service, file-upload.service. The data backbone.
 7. **Frontend page tests** — Admin pages, feature pages. Large surface area but lower risk than backend gaps.
 8. **Integration tests** — API → Agent → Tool round-trips with mocked AWS services.
 9. **E2E tests** — Playwright or Cypress for critical user flows (login → chat → response).
