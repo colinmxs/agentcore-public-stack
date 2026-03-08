@@ -2,6 +2,10 @@
 
 Deploy a production-ready multi-agent AI platform to your AWS account in about 45 minutes. This guide walks you through every step.
 
+> **TL;DR — Ready to begin?**
+>
+> ### 👉 [Start here — Step 1: Prerequisites](./docs/deploy/step-01-prerequisites.md)
+
 ## What You'll Deploy
 
 | Component | Description |
