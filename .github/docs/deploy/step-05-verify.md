@@ -1,9 +1,9 @@
 # Step 5 of 5 — Verify Deployment
 
-✅ Step 1: Prerequisites
-✅ Step 2: AWS Setup
-✅ Step 3: Configure GitHub
-✅ Step 4: Deploy Workflows
+✅ Step 1: Prerequisites<br>
+✅ Step 2: AWS Setup<br>
+✅ Step 3: Configure GitHub<br>
+✅ Step 4: Deploy Workflows<br>
 ➡️ **Step 5: Verify Deployment** ← You are here
 
 ⏱️ ~5 minutes · 🟢 Easy
@@ -100,4 +100,4 @@ Your AgentCore Public Stack is deployed and running. Here's what you have:
 
 ---
 
-⬅️ [Previous: Deploy Workflows](./step-04-deploy.md) &nbsp;&nbsp;&nbsp; 🔧 [Troubleshooting](./troubleshooting.md)
+### 🔧 [Troubleshooting](./troubleshooting.md)

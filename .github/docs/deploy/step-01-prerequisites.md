@@ -1,9 +1,9 @@
 # Step 1 of 5 — Prerequisites
 
-➡️ **Step 1: Prerequisites** ← You are here
-⬜ Step 2: AWS Setup
-⬜ Step 3: Configure GitHub
-⬜ Step 4: Deploy Workflows
+➡️ **Step 1: Prerequisites** ← You are here<br>
+⬜ Step 2: AWS Setup<br>
+⬜ Step 3: Configure GitHub<br>
+⬜ Step 4: Deploy Workflows<br>
 ⬜ Step 5: Verify Deployment
 
 ⏱️ ~5 minutes · 🟢 Easy
@@ -66,4 +66,4 @@ Once you have everything checked off above, move on to setting up your AWS resou
 
 ---
 
-⬅️ [Back to Overview](../../README-ACTIONS.md) &nbsp;&nbsp;&nbsp; ➡️ [Next: AWS Setup](./step-02-aws-setup.md)
+### ➡️ [Next: Step 2 — AWS Setup](./step-02-aws-setup.md)

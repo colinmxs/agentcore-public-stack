@@ -1,9 +1,9 @@
 # Step 4 of 5 — Deploy Workflows
 
-✅ Step 1: Prerequisites
-✅ Step 2: AWS Setup
-✅ Step 3: Configure GitHub
-➡️ **Step 4: Deploy Workflows** ← You are here
+✅ Step 1: Prerequisites<br>
+✅ Step 2: AWS Setup<br>
+✅ Step 3: Configure GitHub<br>
+➡️ **Step 4: Deploy Workflows** ← You are here<br>
 ⬜ Step 5: Verify Deployment
 
 ⏱️ ~20-30 minutes · 🟢 Easy (just clicking buttons) · Requires: Steps 1-3 complete
@@ -152,4 +152,4 @@ You can re-run this workflow later to update seed data.
 
 ---
 
-⬅️ [Previous: Configure GitHub](./step-03-github-config.md) &nbsp;&nbsp;&nbsp; ➡️ [Next: Verify Deployment](./step-05-verify.md)
+### ➡️ [Next: Step 5 — Verify Deployment](./step-05-verify.md)

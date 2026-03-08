@@ -1,9 +1,9 @@
 # Step 2 of 5 — AWS Setup
 
-✅ Step 1: Prerequisites
-➡️ **Step 2: AWS Setup** ← You are here
-⬜ Step 3: Configure GitHub
-⬜ Step 4: Deploy Workflows
+✅ Step 1: Prerequisites<br>
+➡️ **Step 2: AWS Setup** ← You are here<br>
+⬜ Step 3: Configure GitHub<br>
+⬜ Step 4: Deploy Workflows<br>
 ⬜ Step 5: Verify Deployment
 
 ⏱️ ~15 minutes · 🟡 Moderate · Requires: AWS Console access
@@ -161,4 +161,4 @@ Before moving to Step 3, confirm you have these values recorded:
 
 ---
 
-⬅️ [Previous: Prerequisites](./step-01-prerequisites.md) &nbsp;&nbsp;&nbsp; ➡️ [Next: Configure GitHub](./step-03-github-config.md)
+### ➡️ [Next: Step 3 — Configure GitHub](./step-03-github-config.md)
