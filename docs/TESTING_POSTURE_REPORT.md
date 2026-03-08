@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~45-55%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, and the core session manager. Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. Remaining gaps: shared backend services (DynamoDB storage, cost tracking) are untested, Lambda functions have no tests, infrastructure stacks remain at placeholder-level coverage, and there are still zero E2E or performance tests.
+Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~55-65%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. Remaining gaps: Lambda functions have no tests, infrastructure stacks remain at placeholder-level coverage, and there are still zero E2E or performance tests.
 
 ---
 
@@ -22,7 +22,7 @@ Since the initial report on March 6, significant progress has been made. Backend
 | Source modules (agents) | **8 directories**, ~30+ source files |
 | Source modules (shared) | **11 directories**, ~30+ source files |
 | Lambda functions | **2 functions**, 0 tests |
-| Estimated coverage | **~40-50%** (up from ~5%) |
+| Estimated coverage | **~55-65%** (up from ~40-50%) |
 
 ### What's tested
 - `agents/main_agent/quota/` — QuotaChecker, QuotaResolver (existing)
@@ -39,12 +39,12 @@ Since the initial report on March 6, significant progress has been made. Backend
 - ✅ `agents/main_agent/integrations/` — **NEW**: external_mcp_client, gateway_auth, gateway_mcp_client, oauth_auth (~392 lines)
 - ✅ `agents/main_agent/utils/` — **NEW**: global_state, timezone (~105 lines)
 - ✅ `agents/main_agent/property/` — **NEW**: Property-based agent core tests (~665 lines)
+- ✅ `apis/shared/` — **NEW**: Comprehensive shared backend services test suite — **395 tests, 70% coverage** across all 8 modules. Uses moto for DynamoDB (9 tables with GSIs), KMS, S3, Secrets Manager. Covers: users (repository + sync), auth_providers (repository + service), RBAC (repository + cache + service + admin_service + seeder), OAuth (provider_repo + token_repo + encryption + token_cache + service), files (repository + resolver), managed_models, sessions (metadata + messages), assistants (service + RAG), quota (models + builders), state_store. 17 modules at 85%+, 8 at 70-84%. (~3,696 lines)
 
 ### What's NOT tested (remaining gaps)
-- **Shared services**: auth_providers, files, models, oauth, sessions, storage, users — zero tests
 - **Lambda functions**: runtime-provisioner, runtime-updater — zero tests
-- **Cost tracking**: calculator, aggregator, pricing_config — zero tests
-- **DynamoDB storage**: dynamodb_storage, metadata_storage — zero tests
+- **Cost tracking**: calculator, aggregator, pricing_config — zero tests (route-level tests exist)
+- **DynamoDB storage**: dynamodb_storage (app_api layer) — zero tests
 
 ### Config
 ```toml
@@ -166,7 +166,7 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 | Infrastructure Stacks | 🟡 Medium | **UNCHANGED** | Still placeholder-level; CDK synth catches some issues but no assertion-level tests |
 | Cost Tracking | 🟡 Medium | **UNCHANGED** | Financial data, zero unit tests (route-level tests exist via test_costs.py) |
 | Lambda Functions | 🟡 Medium | **UNCHANGED** | Small scope but zero tests |
-| Shared Backend Services | 🟡 Medium | **UNCHANGED** | DynamoDB storage, auth_providers, files, models, oauth, sessions, storage, users — zero tests |
+| Shared Backend Services | ✅ Resolved → 🟢 Low | **ADDRESSED** | 395 tests, 70% coverage across all 8 modules. 17 modules at 85%+. Uses moto for DynamoDB, KMS, S3, Secrets Manager. |
 | Quota System | 🟢 Low | **UNCHANGED** | Well-tested (checker + resolver) |
 | Ingestion Pipeline | 🟢 Low | **UNCHANGED** | CSV chunker + token validation covered |
 | Tool System | ✅ Resolved → 🟢 Low | **ADDRESSED** | tool_catalog, tool_filter, tool_registry all tested |
@@ -183,9 +183,10 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 3. ~~**Frontend auth service tests**~~ — Done. Full auth module coverage including guards, interceptors, and property-based tests.
 4. ~~**`turn_based_session_manager` tests**~~ — Done. 83 tests across 19 classes, 91% coverage. Covers initialization, truncation (all 5 content types), summary injection, DynamoDB persistence (moto), LTM retrieval, post-turn async updates, session interface, and Hypothesis property-based invariants.
 
+5. ~~**Shared backend services tests**~~ — Done. 395 tests across 22 files, 70% coverage. All 8 modules covered: users, auth_providers, RBAC (cache + service + admin), OAuth (repos + encryption + cache + service), files (repo + resolver), managed_models, sessions (metadata + messages), assistants (service + RAG), quota, state_store. 17 modules at 85%+.
+
 ### Remaining (Priority Order)
-1. **Shared backend services tests** — DynamoDB storage, auth_providers, files, models, sessions, users. These underpin the entire API layer.
-3. **Cost tracking unit tests** — calculator, aggregator, pricing_config. Route-level tests exist but no unit tests on the business logic.
+1. **Cost tracking unit tests** — calculator, aggregator, pricing_config. Route-level tests exist but no unit tests on the business logic.
 4. **Lambda function tests** — runtime-provisioner, runtime-updater. Small scope but completely untested.
 5. **CDK stack assertion tests** — Template.fromStack() assertions for each stack's critical resources.
 6. **Frontend service tests** — api.service, sse.service, error.service, file-upload.service. The data backbone.
