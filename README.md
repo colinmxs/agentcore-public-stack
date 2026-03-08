@@ -1,35 +1,125 @@
 # AgentCore Public Stack
 
-> 🚀 **Want to deploy this at your institution?** Fork the repo and follow the [GitHub Actions Quick Start](.github/README-ACTIONS.md) to get up and running.
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![Infrastructure](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/infrastructure.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/infrastructure.yml)
+[![App API](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/app-api.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/app-api.yml)
+[![Inference API](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/inference-api.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/inference-api.yml)
+[![Frontend](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/frontend.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/frontend.yml)
+[![Gateway](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/gateway.yml)
 
-This open-source repository is the working codebase behind [boisestate.ai](https://boisestate.ai) at Boise State University. It is a **production-ready, full-stack Generative AI application** built on AWS Bedrock AgentCore with a **consumption-based pricing model** (pay for what you use) rather than per-seat subscriptions.
+> **An open-source, production-ready Generative AI platform for institutions — built by Boise State University, designed for everyone.**
 
-By open-sourcing this platform, Boise State enables other institutions to adopt a cost-effective, privacy-respecting AI solution while retaining the flexibility to integrate their own tools and MCP servers to meet institutional needs.
+🚀 Want to deploy this at your institution? Fork the repo and follow the [**GitHub Actions Quick Start**](.github/README-ACTIONS.md) to get up and running.
 
-## Why Boise State Built an Internal AI Platform
+---
 
-| Challenge | Our Approach |
-|-----------|--------------|
-| **Vendor Lock-in** | Freedom to choose and swap best-fit models without long-term contracts or CapEx expenditure |
-| **Data Privacy** | Student and faculty data stays inside our controlled AWS account. Interactions with Bedrock models are never shared with model vendors |
-| **Cost Reality** | 30k subscriptions × $20/month = **$7.2M/year** — unsustainable at enterprise scale. Consumption-based pricing aligns cost with actual usage |
-| **Collaboration Gaps** | Unified platform bridges `boisestate.edu` and `u.boisestate.edu` identities, eliminating fragmented sharing in classroom use |
-| **Equitable Access** | Every student gets access to the same models — no "haves and have-nots" based on who can afford premium tiers |
-| **Campus Systems Integration** | Safely leverage institutional data via MCP servers (Canvas, Google Workspace, PeopleSoft, Library, etc.) |
-| **Risk/Reward** | Low risk, high reward — if it works, we've built lasting infrastructure; if not, we've learned and can pivot |
+## What Is This?
 
-## Overview
+AgentCore Public Stack is the working codebase behind [boisestate.ai](https://boisestate.ai), a full-stack AI assistant platform serving students, faculty, and staff at Boise State University. It combines **AWS Bedrock AgentCore** and **Strands Agents** into a turnkey system that any institution can fork, deploy, and make their own — without writing a single line of agent code.
 
-This reference architecture demonstrates building agentic workflows combining **Strands Agents** and **Amazon Bedrock AgentCore**. The system provides a full-stack chatbot application with tool execution, memory management, browser automation, and multi-protocol tool integration.
+The platform ships with a modern chat interface, a full admin dashboard, multi-model support, tool and MCP server management, quota enforcement, cost tracking, and role-based access control — all configurable through the UI.
 
-### Core Capabilities
+## Why Boise State Built This
 
-- **Admin Dashboard** — Real-time cost analytics, model management, MCP tool configuration, and RBAC
-- **Multi-model Support** — Add models from Bedrock (Claude, Llama, Mistral) or external providers
-- **Extensible Tools** — Connect institutional systems via MCP servers without code changes
-- **Role-Based Access** — Granular control over quotas, models, and tools by user role
-- **Cost Optimization** — Token optimization via prompt caching and consumption-based billing
-- **Multimodal** — Images, documents, code execution, and browser automation
+Most institutions face the same AI dilemma: vendor-hosted per-seat subscriptions don't scale, and building from scratch is too expensive.
+
+| The Problem | Our Answer |
+|-------------|------------|
+| **Per-seat pricing doesn't scale** | Consumption-based billing — pay only for tokens used, not seats purchased |
+| **Student data leaves your control** | All data stays inside your AWS account. Bedrock model interactions are never shared with vendors |
+| **Vendor lock-in limits flexibility** | Swap models freely — Claude, Llama, Mistral, GPT, Gemini — no contracts, no lock-in |
+| **Fragmented tool ecosystems** | One platform with MCP servers connecting Canvas, Google Workspace, PeopleSoft, and more |
+| **Inequitable access** | Every student gets the same models and tools — no premium tiers required |
+
+At 30,000 users, commercial subscriptions would cost upwards of **$7.2M per year**. This platform delivers the same (and more) capabilities at a fraction of the cost.
+
+---
+
+## Key Features
+
+### Model Flexibility
+
+Add, swap, or disable AI models without redeploying. The platform supports **any model available through AWS Bedrock** — Claude, Llama, Mistral, and more — as well as **external providers** like OpenAI and Google Gemini via API. Administrators configure models through the dashboard, set per-model pricing, and control which roles have access. When a better model launches, add it in minutes.
+
+### Cost-Effectiveness
+
+Every interaction is tracked at the token level. Automatic **prompt caching** reduces repeated input costs. **Turn-based message buffering** cuts memory API calls by 75%. Quota tiers let administrators set spending limits by role, department, or individual — with soft warnings before hard stops. Real-time cost analytics surface exactly where budget is going.
+
+### Security and Data Privacy
+
+Your data never leaves your AWS account. The platform uses **OIDC authentication** (Entra ID, Cognito, Google) with PKCE, **role-based access control** at every layer, and **SigV4-signed requests** for all MCP tool communication. There are no external data pipelines, no third-party analytics, and no model training on your interactions.
+
+### Independent MCP and Tool Deployment
+
+Connect institutional systems through **MCP (Model Context Protocol) servers** — no code changes, no redeployment. Register an MCP server URL in the admin dashboard and its tools are automatically discovered, assigned to roles, and made available to users. Deploy MCP servers on your own schedule, on your own infrastructure, completely independent of the core platform.
+
+**Example integrations:**
+- **Canvas LMS** — Course materials, grades, assignments
+- **Google Workspace** — Drive search, Docs, Calendar
+- **PeopleSoft** — Student records, registration
+- **Library Systems** — Research databases, catalog search
+- **Any custom API** — Wrap it in an MCP server and plug it in
+
+### Multimodal Capabilities
+
+Users can upload images (PNG, JPEG, GIF, WebP) and documents (PDF, CSV, DOCX) directly into conversations. The agent can generate charts and diagrams via Code Interpreter, automate browser tasks, and produce downloadable files like Excel spreadsheets and presentations.
+
+### Memory and Context
+
+A two-tier memory system combines **short-term session history** with **long-term user preferences**. The agent remembers coding style preferences, language choices, and learned facts across sessions — personalization without compromising privacy.
+
+---
+
+## Admin Dashboard
+
+The admin dashboard gives institutional administrators full control over the platform through a web interface — no code or CLI required.
+
+| Feature | Description |
+|---------|-------------|
+| **Cost Analytics** | Real-time dashboards showing token usage and costs by user, model, and time period. Identify spending trends, view top users, and export reports for budget planning. |
+| **Model Management** | Add, configure, enable, or disable AI models from any supported provider. Set per-model pricing, control access by role, and adjust availability instantly. |
+| **Tool Catalog** | Browse, enable, and configure all available tools — local, built-in, and MCP-sourced. Sync tools from registered MCP servers and control availability per role. |
+| **MCP Server Registration** | Register external MCP servers by URL. Tools are auto-discovered from the server manifest, assigned RBAC permissions, and made available to users — no redeployment needed. |
+| **OAuth Provider Management** | Configure third-party OAuth integrations (Google, Microsoft, GitHub, custom) so MCP tools can authenticate on behalf of users against external services. |
+| **Role Management** | Create application roles with granular permissions over models, tools, and quotas. Map roles to JWT claims from your identity provider for automatic assignment. |
+| **Auth Provider Configuration** | Configure OIDC authentication providers including issuer URLs, client credentials, claim mappings, and login page branding — all from the UI. |
+| **User Management** | Search and browse users, view individual cost breakdowns, quota status, and role assignments. Apply per-user overrides when needed. |
+| **Quota Tiers** | Define quota tiers with monthly and daily cost limits, soft warning thresholds, and hard stops. Assign tiers to roles, email domains, or individual users. |
+| **Quota Overrides** | Grant temporary exceptions — unlimited access for a research sprint, elevated limits for a class project — with automatic expiration dates. |
+| **Quota Inspector** | Debug quota resolution for any user. See which tier resolved, current usage against limits, and recent enforcement events (warnings, blocks, resets). |
+| **Quota Events** | Monitor all quota enforcement activity in real time. Filter by event type, export to CSV, and audit enforcement decisions. |
+
+---
+
+## Architecture
+
+```
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              User Interface                                │
+│                     Angular v21 + Tailwind CSS v4.1+                       │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │ SSE Streaming
+                                      v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                              App API (FastAPI)                              │
+│         Authentication · Session Management · Admin Controls · RBAC        │
+└─────────────────────────────────────┬───────────────────────────────────────┘
+                                      │
+                                      v
+┌─────────────────────────────────────────────────────────────────────────────┐
+│                         Inference API (Strands Agent)                       │
+│        Turn-based Session Manager · Dynamic Tool Filtering · Caching       │
+└───────┬─────────────────┬─────────────────┬─────────────────┬──────────────┘
+        │                 │                 │                 │
+        v                 v                 v                 v
+┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
+│  Local Tools  │ │ Built-in Tools│ │  MCP Tools    │ │ Runtime Tools │
+│  (Direct)     │ │ (AWS SDK)     │ │  (Gateway)    │ │ (A2A)         │
+│               │ │               │ │               │ │               │
+│ Custom Python │ │ Code Interp.  │ │ Configurable  │ │ Multi-agent   │
+│ tools         │ │ Browser       │ │ via Admin UI  │ │ collaboration │
+└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
+```
 
 ## Technology Stack
 
@@ -40,249 +130,37 @@ This reference architecture demonstrates building agentic workflows combining **
 | **Agent Framework** | Strands Agents SDK |
 | **Cloud Services** | AWS Bedrock AgentCore (Runtime, Memory, Gateway, Code Interpreter, Browser) |
 | **Infrastructure** | AWS CDK (TypeScript), ECS Fargate, CloudFront, DynamoDB |
-| **Authentication** | OIDC (Entra ID, Cognito, Google) with PKCE — [Setup Guide](backend/README.md#authentication-providers) |
-
-## Architecture Overview
-
-```
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              User Interface                                  │
-│                     Angular v21 + Tailwind CSS v4.1+                        │
-└─────────────────────────────────────┬───────────────────────────────────────┘
-                                      │ SSE Streaming
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                              App API (FastAPI)                               │
-│         Authentication · Session Management · Admin Controls · RBAC         │
-└─────────────────────────────────────┬───────────────────────────────────────┘
-                                      │
-                                      ▼
-┌─────────────────────────────────────────────────────────────────────────────┐
-│                         Inference API (Strands Agent)                        │
-│        Turn-based Session Manager · Dynamic Tool Filtering · Caching        │
-└───────┬─────────────────┬─────────────────┬─────────────────┬───────────────┘
-        │                 │                 │                 │
-        ▼                 ▼                 ▼                 ▼
-┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌───────────────┐
-│  Local Tools  │ │ Built-in Tools│ │  MCP Tools    │ │ Runtime Tools │
-│  (Direct)     │ │ (AWS SDK)     │ │  (Gateway)    │ │ (A2A) 🚧      │
-│               │ │               │ │               │ │               │
-│ Your custom   │ │ Code Interp.  │ │ Configurable  │ │ Multi-agent   │
-│ Python tools  │ │ Browser       │ │ via Admin UI  │ │ collaboration │
-└───────────────┘ └───────────────┘ └───────────────┘ └───────────────┘
-                                      │
-                                      ▼
-                          ┌───────────────────────┐
-                          │   AgentCore Memory    │
-                          │  Session History +    │
-                          │  User Preferences     │
-                          └───────────────────────┘
-```
-
-### System Components
-
-1. **Frontend (Angular v21)**
-   - Signal-based state management
-   - OIDC authentication with PKCE flow
-   - SSE streaming for real-time responses
-   - Dynamic tool selection via sidebar
-
-2. **App API (FastAPI - Port 8000)**
-   - Session and conversation management
-   - User authentication and authorization
-   - File upload handling
-   - Admin endpoints for configuration
-
-3. **Inference API (FastAPI - Port 8001)**
-   - Strands Agent orchestration with Bedrock models
-   - Turn-based session manager for optimized API calls
-   - Dynamic tool filtering based on user selection
-   - Prompt caching for token optimization
-
-4. **AgentCore Services**
-   - **Memory**: Persistent conversation storage with user preference retrieval
-   - **Gateway**: MCP tool endpoints with SigV4 authentication
-   - **Code Interpreter**: Python execution for charts and analysis
-
-## Key Features
-
-### Admin Dashboard
-
-A comprehensive admin interface enables institutional administrators to manage the platform without code changes:
-
-| Capability | Description |
-|------------|-------------|
-| **Real-time Cost Analytics** | Monitor token usage and costs per user, model, and time period. Track spending trends and identify optimization opportunities |
-| **Model Management** | Add, configure, and disable models from any provider — Bedrock models (Claude, Llama, Mistral), or external providers via API |
-| **MCP Tool Configuration** | Register and manage MCP servers through the UI. Connect institutional systems (Canvas, Google Workspace, PeopleSoft, etc.) without redeployment |
-| **Role-Based Access Control** | Create application roles with granular permissions for quotas, models, and tools. Assign roles to users or groups |
-| **Quota Management** | Set spending limits by role, department, or user. Configure soft warnings and hard limits |
-
-### Configurable MCP Tools
-
-MCP (Model Context Protocol) tools extend the agent's capabilities by connecting to external systems. Admins can add MCP servers via the dashboard — no code deployment required.
-
-**How it works:**
-
-1. **Admin registers MCP server** via Admin Dashboard (URL, auth, description)
-2. **Tools auto-discovered** from the MCP server's tool manifest
-3. **RBAC applied** — tools assigned to specific roles
-4. **Users see tools** based on their role permissions
-
-**Example institutional integrations:**
-- **Canvas LMS** — Access course materials, grades, assignments
-- **Google Workspace** — Search Drive, read Docs, manage Calendar
-- **PeopleSoft** — Student records, registration status
-- **Library Systems** — Research databases, catalog search
-- **Custom APIs** — Any system exposed via MCP
-
-### Multi-Protocol Tool Architecture
-
-Tools communicate via different protocols based on their deployment model:
-
-| Protocol | Description | Use Case |
-|----------|-------------|----------|
-| **Direct Call** | Python functions in `agents/main_agent/tools/` | Custom institutional logic |
-| **AWS SDK** | Built-in AgentCore services | Code Interpreter, Browser automation |
-| **MCP + SigV4** | Remote MCP servers via AgentCore Gateway | Campus systems, third-party APIs |
-| **A2A** | Agent-to-agent collaboration (WIP) | Multi-agent workflows |
-
-### Dynamic Tool Filtering
-
-Users can enable/disable specific tools via the UI sidebar. The agent dynamically filters tool definitions before each invocation, sending only selected tools to the model.
-
-**Benefits:**
-- **Reduced token usage** — fewer tool definitions sent to model
-- **Per-user customization** — users choose their workflow
-- **Role-based defaults** — admins set tool availability by role
-- **Real-time updates** — no redeployment needed
-
-### Memory Architecture and Long-Context Management
-
-The system implements a two-tier memory architecture combining short-term session history with long-term user preferences.
-
-**Memory Tiers:**
-
-| Tier | Scope | Storage | Retrieval |
-|------|-------|---------|-----------|
-| **Short-term** | Session conversation history | AgentCore Memory | Automatic via session manager |
-| **Long-term** | User preferences and facts | AgentCore Memory (namespaced) | Vector retrieval with relevance scoring |
-
-**Turn-based Session Manager:**
-
-Buffers messages within a turn to reduce AgentCore Memory API calls:
-
-```
-Without buffering:                  With buffering:
-User message     → API call 1       User → Assistant → Tool → Result
-Assistant reply  → API call 2                    ↓
-Tool use         → API call 3       Single merged API call
-Tool result      → API call 4
-─────────────────────────────       ─────────────────────────────
-Total: 4 API calls per turn         Total: 1 API call (75% reduction)
-```
-
-**Long-term Memory Configuration:**
-
-```python
-AgentCoreMemoryConfig(
-    memory_id=memory_id,
-    session_id=session_id,
-    actor_id=user_id,
-    retrieval_config={
-        # User preferences (coding style, language, etc.)
-        f"/preferences/{user_id}": RetrievalConfig(top_k=5, relevance_score=0.7),
-        # User-specific facts (learned information)
-        f"/facts/{user_id}": RetrievalConfig(top_k=10, relevance_score=0.3),
-    }
-)
-```
-
-**Implementation:** `backend/src/agents/main_agent/session/turn_based_session_manager.py`
-
-### Token Optimization via Prompt Caching
-
-Implements automatic prompt caching via Strands SDK to significantly reduce input token costs across repeated API calls.
-
-**Cache Strategy:**
-
-- Single cache point at end of last assistant message
-- Automatically injected before each model call
-- Covers system prompt, tools, and conversation history
-- Reduces input tokens for repeated content
-
-**Implementation:** `backend/src/agents/main_agent/core/model_config.py`
-
-```python
-from strands.models import BedrockModel, CacheConfig
-
-model = BedrockModel(
-    model_id="us.anthropic.claude-sonnet-4-5-20250929-v1:0",
-    cache_config=CacheConfig(strategy="auto")
-)
-```
-
-**How caching works across turns:**
-
-| Turn | Action | Token Impact |
-|------|--------|--------------|
-| Turn 1 | Cache creation | Full token count (cache created) |
-| Turn 2+ | Cache read | Reduced tokens (reusing cached system prompt + history) |
-
-The SDK automatically manages cache points, injecting them at the end of the last assistant message before each model call.
-
-### Multimodal Input/Output
-
-Native support for visual and document content:
-
-**Input:**
-- Images: PNG, JPEG, GIF, WebP
-- Documents: PDF, CSV, DOCX, and more
-
-**Output:**
-- Charts and diagrams from Code Interpreter
-- Screenshots from Browser automation
-- Generated documents (Excel, PowerPoint, Word)
-
-## Demos
-
-*Coming soon*
-
-<!--
-| Demo | Description |
-|------|-------------|
-| **Finance Assistant** | Stock analysis with real-time quotes, charts, and Excel reports |
-| **Academic Research** | Paper search via ArXiv and Wikipedia integration |
-| **Deep Research** | Multi-agent research with supervisor-worker pattern |
--->
+| **Authentication** | OIDC (Entra ID, Cognito, Google) with PKCE |
+| **CI/CD** | GitHub Actions with full CDK deployment automation |
 
 ## Deployment
 
-### Prerequisites
+The fastest path to production is the **GitHub Actions pipeline**, which automates the entire AWS deployment — infrastructure, backend services, frontend, and MCP gateway — through a series of workflow runs.
 
-- **AWS Account** with Bedrock access (Claude models)
-- **AWS CLI** configured with credentials
-- **Docker** installed and running
-- **Node.js** 18+ and **Python** 3.13+
-- **AgentCore** enabled in your AWS account region
+**[GitHub Actions Quick Start](.github/README-ACTIONS.md)** | **[Step-by-Step Deployment Guide](.github/docs/deploy/step-01-prerequisites.md)**
+
+### What Gets Deployed
+
+| Component | AWS Service | Purpose |
+|-----------|-------------|---------|
+| Networking | VPC, ALB, Security Groups | Isolated network with load balancing |
+| App API | ECS Fargate | Authentication, admin, session management |
+| Inference API | ECS Fargate | Agent orchestration with Bedrock |
+| Frontend | S3 + CloudFront | Angular SPA with global CDN |
+| MCP Gateway | Lambda + API Gateway | Serverless MCP tool endpoints |
+| Data | DynamoDB | Users, sessions, costs, quotas, roles |
 
 ### Local Development
 
-*Detailed instructions coming soon.*
+```bash
+# Full setup (one-time)
+./setup.sh
 
-**Component-specific setup:**
+# Start all services
+./start.sh
+```
 
-| Component | Guide |
-|-----------|-------|
-| Backend (APIs, Authentication) | [backend/README.md](backend/README.md) |
-| Frontend (Angular SPA) | `frontend/ai.client/` |
-| Infrastructure (CDK) | `infrastructure/` |
-
-> **First-time authentication setup?** See the [Authentication Providers guide](backend/README.md#authentication-providers) for bootstrapping your first OIDC provider.
-
-### Cloud Deployment
-
-*Detailed instructions coming soon.*
+See [backend/README.md](backend/README.md) for detailed backend setup, including authentication provider bootstrapping.
 
 ## Project Structure
 
@@ -290,25 +168,28 @@ Native support for visual and document content:
 agentcore-public-stack/
 ├── backend/
 │   └── src/
-│       ├── agents/main_agent/          # Core agent implementation
-│       │   ├── core/                   # Agent factory, model config, system prompt
-│       │   ├── session/                # Turn-based session management
-│       │   ├── streaming/              # SSE event processing
-│       │   └── tools/                  # Tool registry & local tools
+│       ├── agents/main_agent/       # Agent core: factory, tools, memory, streaming
 │       └── apis/
-│           ├── app_api/                # Main application API (port 8000)
-│           ├── inference_api/          # Bedrock inference (port 8001)
-│           └── shared/                 # Shared utilities
-├── frontend/ai.client/                 # Angular SPA
+│           ├── app_api/             # Application API (port 8000)
+│           ├── inference_api/       # Inference API (port 8001)
+│           └── shared/              # Shared utilities
+├── frontend/ai.client/              # Angular SPA
 │   └── src/app/
-│       ├── auth/                       # OIDC authentication
-│       ├── session/                    # Chat UI & services
-│       ├── admin/                      # Admin dashboard
-│       └── services/                   # State management
-└── infrastructure/                     # AWS CDK
-    └── lib/                            # Stack definitions
+│       ├── auth/                    # OIDC authentication
+│       ├── session/                 # Chat UI
+│       ├── admin/                   # Admin dashboard
+│       └── services/                # State management
+├── infrastructure/                  # AWS CDK stacks
+│   └── lib/
+└── .github/
+    ├── workflows/                   # CI/CD pipelines
+    └── docs/deploy/                 # Deployment guides
 ```
+
+## Contributing
+
+Contributions are welcome. Please open an issue to discuss proposed changes before submitting a pull request.
 
 ## License
 
-MIT License - see LICENSE file for details.
+MIT License — see [LICENSE](LICENSE) for details.
