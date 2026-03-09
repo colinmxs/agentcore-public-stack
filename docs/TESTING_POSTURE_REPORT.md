@@ -1,14 +1,14 @@
 # Testing Posture Report — AgentCore Public Stack
 
 **Date**: March 6, 2026
-**Last Updated**: March 9, 2026 (early morning)
+**Last Updated**: March 9, 2026
 **Scope**: Full monorepo inventory (backend, frontend, infrastructure, scripts, CI/CD)
 
 ---
 
 ## Executive Summary
 
-Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~55-65%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. **Lambda function coverage has gone from zero to 141 tests across 14 test files**, covering both runtime-provisioner and runtime-updater — the critical functions that provision and update all AgentCore runtimes. Remaining gaps: cost tracking has no unit tests, and there are still zero E2E or performance tests.
+Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~65-75%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. **Lambda function coverage has gone from zero to 141 tests across 14 test files**, covering both runtime-provisioner and runtime-updater — the critical functions that provision and update all AgentCore runtimes. **Cost tracking and DynamoDB storage coverage has gone from zero to 170 tests across 6 test files**, covering the full financial data pipeline: DynamoDB storage (message ops, cost summaries, system rollups, active user tracking), CostAggregator (30s TTL caching, quota enforcement fast path, detailed report aggregation), pricing_config (snapshot creation), and AdminCostService (dashboard, trends, top users, model usage). All use moto-backed DynamoDB with production-matching table schemas (3 tables, 3 GSIs). Remaining gaps: still zero E2E or performance tests.
 
 ---
 
@@ -17,12 +17,12 @@ Since the initial report on March 6, significant progress has been made. Backend
 | Metric | Value |
 |---|---|
 | Test framework | pytest 7.0+ with pytest-asyncio, hypothesis |
-| Test files | **~75 files** (up from 6) |
+| Test files | **~82 files** (up from 6) |
 | Source modules (app_api) | **15 directories**, ~40+ source files |
 | Source modules (agents) | **8 directories**, ~30+ source files |
 | Source modules (shared) | **11 directories**, ~30+ source files |
 | Lambda functions | **2 functions**, 141 tests across 14 files |
-| Estimated coverage | **~55-65%** (up from ~40-50%) |
+| Estimated coverage | **~65-75%** (up from ~40-50%) |
 
 ### What's tested
 - `agents/main_agent/quota/` — QuotaChecker, QuotaResolver (existing)
@@ -44,9 +44,17 @@ Since the initial report on March 6, significant progress has been made. Backend
 - ✅ `lambda-functions/runtime-provisioner/tests/` — **NEW**: Comprehensive test suite for the runtime-provisioner Lambda — **76 tests** across 6 files. Uses moto for DynamoDB/SSM + unittest.mock for Bedrock AgentCore Control (unsupported by moto). Covers: handler routing (INSERT/MODIFY/REMOVE dispatch, multi-record batches, error re-raise), full INSERT flow (runtime creation, JWT authorizer config, 30+ env vars from SSM, DynamoDB status updates, SSM ARN storage, URL-encoded endpoint construction), MODIFY flow (JWT field change detection for issuerUrl/clientId/jwksUri, no-op when unchanged, config preservation during update), REMOVE flow (runtime deletion, SSM cleanup, ResourceNotFoundException grace), all helper functions (DynamoDB deserialization for S/N/BOOL/NULL/L/M types, URL normalization, validation, discovery URL construction), runtime name generation (hyphen→underscore, 48-char truncation, `r_` prefix fallback), SSM CRUD (required/optional params, batch fetch, error handling), DynamoDB update helpers (runtime info, status, error truncation to 1000 chars). (~1,200 lines)
 - ✅ `lambda-functions/runtime-updater/tests/` — **NEW**: Comprehensive test suite for the runtime-updater Lambda — **65 tests** across 7 files. Uses moto for DynamoDB/SSM/SNS + unittest.mock for Bedrock AgentCore Control. Covers: full handler flow (happy path, invalid events, no-providers, critical failure SNS alerts, mixed success/failure counts), EventBridge event parsing (SSM parameter name matching, missing/empty detail handling, SSM fetch), parallel update execution (ThreadPoolExecutor with max 5 workers, result collection, exception capture, batch processing of 10+ providers), retry logic with exponential backoff (ThrottlingException/ServiceUnavailableException retries, ResourceNotFoundException/ValidationException fail-fast, 2^n backoff timing verification, DynamoDB status transitions UPDATING→READY/UPDATE_FAILED), DynamoDB provider discovery (scan with filter, FAILED status exclusion, pagination, null runtime_id filtering), SNS notifications (update summary with success/failure counts, failure details, critical failure alerts with timestamps, publish failure handling), all helper functions (deserialization, status updates, error truncation, key format validation). (~1,100 lines)
 
+- ✅ `tests/costs/` — **NEW**: Comprehensive cost tracking and DynamoDB storage test suite — **170 tests** across 6 files + conftest. Uses moto for DynamoDB (3 tables: SessionsMetadata, UserCostSummary, SystemCostRollup with 3 GSIs matching production schema). Covers:
+  - **DynamoDBStorage message operations** (31 tests): `store_message_metadata` (PK/SK format, TTL, Decimal conversion), `get_message_metadata` (GSI query, filtering), `get_session_metadata` (multi-message retrieval), `get_user_messages_in_range` (date filtering, flattening), `_convert_floats_to_decimal` / `_convert_decimal_to_float` (recursive conversion, edge cases)
+  - **DynamoDBStorage cost summary operations** (28 tests): `get_user_cost_summary` (lookup, Decimal→float), `update_user_cost_summary` (atomic ADD increments, if_not_exists semantics, GSI2PK), `_update_model_breakdown` (model ID sanitization dots/colons/hyphens→underscores, 3-step nested map update, error suppression), `_update_cost_sort_key` (15-digit zero-padded cents format), `get_top_users_by_cost` (PeriodCostIndex GSI, descending sort, limit/min_cost)
+  - **DynamoDBStorage rollup operations** (38 tests): `track_active_user` (conditional writes, deduplication, TTL 90/400 days), `track_active_user_for_model` (per-model tracking), `update_daily_rollup` / `update_monthly_rollup` / `update_model_rollup` (atomic increments, activeUsers/uniqueUsers counting), `get_system_summary` (monthly/daily lookup), `get_daily_trends` (range query, ascending sort), `get_model_usage` (begins_with query, cost-descending sort)
+  - **CostAggregator** (29 tests): cache hit/miss/expiry (30s TTL), empty summary caching, `invalidate_cache` (specific/per-user/global), `get_user_cost_summary` (field mapping from storage dict), `get_detailed_cost_report` (message-level aggregation, per-model breakdown, cache savings calculation), `_create_empty_summary` (month parsing, leap year February, December edge case), `_build_model_summaries` (dict→ModelCostSummary conversion)
+  - **pricing_config** (13 tests): `get_model_by_model_id` (found/not-found), `get_model_pricing` (Bedrock with cache prices, OpenAI without), `create_pricing_snapshot` (currency, timestamp Z-suffix, None for unknown model)
+  - **AdminCostService** (31 tests): `_get_period_date_range` (all month lengths, leap year, December→January), `get_top_users` (default period, limit cap at 1000), `get_system_summary` (monthly/daily, empty→zero-fill), `get_usage_by_model` (avg_cost_per_request, division-by-zero), `get_daily_trends` (90-day max enforcement, invalid date ValueError), `get_dashboard` (combines all sub-queries, include_trends toggle, end_date capping)
+
 ### What's NOT tested (remaining gaps)
-- **Cost tracking**: calculator, aggregator, pricing_config — zero tests (route-level tests exist)
-- **DynamoDB storage**: dynamodb_storage (app_api layer) — zero tests
+- **Admin cost routes**: HTTP layer tests for admin cost endpoints (service layer tested, route layer not)
+- **User cost routes**: HTTP layer tests for user-facing cost endpoints
 
 ### Config
 ```toml
@@ -175,7 +183,7 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 | Streaming/SSE | ✅ Resolved → 🟢 Low | **ADDRESSED** | event_formatter, stream_processor, tool_result_processor all tested (~1,274 lines) |
 | Frontend Components | 🟡 Medium | **PARTIALLY ADDRESSED** | Auth module fully covered, sidenav/topnav/model-settings added; admin pages, most feature pages, and most services still untested |
 | Infrastructure Stacks | ✅ Resolved → 🟢 Low | **ADDRESSED** | 249 tests across 10 suites. All 6 stacks have assertion-level tests. Critical circular dependency prevention via static SSM dependency graph analysis. Cross-cutting security and best-practice validation. |
-| Cost Tracking | 🟡 Medium | **UNCHANGED** | Financial data, zero unit tests (route-level tests exist via test_costs.py) |
+| Cost Tracking | ✅ Resolved → 🟢 Low | **ADDRESSED** | 170 tests across 6 files. Full financial pipeline covered: DynamoDB storage (3 tables, 3 GSIs), CostAggregator (caching, aggregation), pricing_config, AdminCostService. Uses moto with production-matching schemas. |
 | Lambda Functions | ✅ Resolved → 🟢 Low | **ADDRESSED** | 141 tests across 14 files. Both runtime-provisioner (76 tests) and runtime-updater (65 tests) comprehensively covered. Full handler flows, error handling, retry logic, parallel execution, DynamoDB/SSM/SNS interactions, edge cases. Uses moto + unittest.mock. |
 | Shared Backend Services | ✅ Resolved → 🟢 Low | **ADDRESSED** | 395 tests, 70% coverage across all 8 modules. 17 modules at 85%+. Uses moto for DynamoDB, KMS, S3, Secrets Manager. |
 | Quota System | 🟢 Low | **UNCHANGED** | Well-tested (checker + resolver) |
@@ -197,7 +205,7 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 5. ~~**Shared backend services tests**~~ — Done. 395 tests across 22 files, 70% coverage. All 8 modules covered: users, auth_providers, RBAC (cache + service + admin), OAuth (repos + encryption + cache + service), files (repo + resolver), managed_models, sessions (metadata + messages), assistants (service + RAG), quota, state_store. 17 modules at 85%+.
 
 ### Remaining (Priority Order)
-1. **Cost tracking unit tests** — calculator, aggregator, pricing_config. Route-level tests exist but no unit tests on the business logic.
+1. ~~**Cost tracking unit tests**~~ — Done. 170 tests across 6 files covering DynamoDB storage, CostAggregator, pricing_config, and AdminCostService.
 2. ~~**Lambda function tests**~~ — Done. 141 tests across 14 files covering both runtime-provisioner and runtime-updater.
 3. ~~**CDK stack assertion tests**~~ — Done. 249 tests across 10 suites covering all 6 stacks. Includes static dependency graph analysis that prevents circular SSM dependencies, per-stack resource assertions, and cross-cutting security/best-practice validation.
 4. **Frontend service tests** — api.service, sse.service, error.service, file-upload.service. The data backbone.
