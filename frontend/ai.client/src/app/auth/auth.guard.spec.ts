@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { Router, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/router';
 import { authGuard } from './auth.guard';
 import { AuthService } from './auth.service';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('authGuard', () => {
   let authService: {
@@ -16,6 +16,7 @@ describe('authGuard', () => {
   let state: RouterStateSnapshot;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     authService = {
       isAuthenticated: vi.fn(),
       getAccessToken: vi.fn(),
@@ -36,6 +37,10 @@ describe('authGuard', () => {
         { provide: Router, useValue: router },
       ],
     });
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   /**

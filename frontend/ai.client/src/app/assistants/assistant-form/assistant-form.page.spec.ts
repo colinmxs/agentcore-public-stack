@@ -1,5 +1,5 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { provideRouter } from '@angular/router';
 import { ReactiveFormsModule } from '@angular/forms';
 import { signal } from '@angular/core';
@@ -39,6 +39,7 @@ describe('AssistantFormPage', () => {
   };
 
   beforeEach(async () => {
+    TestBed.resetTestingModule();
     vi.clearAllMocks();
 
     await TestBed.configureTestingModule({
@@ -62,6 +63,10 @@ describe('AssistantFormPage', () => {
     fixture = TestBed.createComponent(AssistantFormPage);
     component = fixture.componentInstance;
     component.ngOnInit();
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   describe('live form signal sync', () => {

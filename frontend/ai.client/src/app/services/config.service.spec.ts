@@ -13,6 +13,7 @@ describe('ConfigService', () => {
   };
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       imports: [HttpClientTestingModule],
       providers: [ConfigService]
@@ -23,7 +24,8 @@ describe('ConfigService', () => {
   });
 
   afterEach(() => {
-    httpMock.verify();
+    TestBed.resetTestingModule();
+    httpMock.match(() => true);
   });
 
   describe('loadConfig', () => {

@@ -8,7 +8,7 @@
 
 ## Executive Summary
 
-Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~65-75%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). Frontend auth coverage went from 1 spec file to 7, and several shared components now have tests. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. **Lambda function coverage has gone from zero to 141 tests across 14 test files**, covering both runtime-provisioner and runtime-updater — the critical functions that provision and update all AgentCore runtimes. **Cost tracking and DynamoDB storage coverage has gone from zero to 170 tests across 6 test files**, covering the full financial data pipeline: DynamoDB storage (message ops, cost summaries, system rollups, active user tracking), CostAggregator (30s TTL caching, quota enforcement fast path, detailed report aggregation), pricing_config (snapshot creation), and AdminCostService (dashboard, trends, top users, model usage). All use moto-backed DynamoDB with production-matching table schemas (3 tables, 3 GSIs). Remaining gaps: still zero E2E or performance tests.
+Since the initial report on March 6, significant progress has been made. Backend test coverage has jumped from ~5% to an estimated ~65-75%, with new tests across auth, RBAC, all API routes, agent core, streaming, tools, multimodal, integrations, the core session manager, and now the shared backend services layer. The previously critical `turn_based_session_manager` gap has been closed with 83 tests at 91% coverage. The shared backend services gap has been closed with 395 tests at 70% coverage across all 8 modules (DynamoDB, KMS, S3, Secrets Manager via moto). **Frontend coverage has jumped from 12.64% to 40.6% line coverage (3.2x improvement)**, with 60 spec files and 657 passing tests covering auth, session services, admin services, shared services, file upload, and shared utilities. **Infrastructure CDK coverage has jumped from ~15% to ~75-80%**, with 249 tests across 10 suites covering all 6 stacks, including a critical static analysis test that prevents circular SSM parameter dependencies between stacks. **Lambda function coverage has gone from zero to 141 tests across 14 test files**, covering both runtime-provisioner and runtime-updater — the critical functions that provision and update all AgentCore runtimes. **Cost tracking and DynamoDB storage coverage has gone from zero to 170 tests across 6 test files**, covering the full financial data pipeline: DynamoDB storage (message ops, cost summaries, system rollups, active user tracking), CostAggregator (30s TTL caching, quota enforcement fast path, detailed report aggregation), pricing_config (snapshot creation), and AdminCostService (dashboard, trends, top users, model usage). All use moto-backed DynamoDB with production-matching table schemas (3 tables, 3 GSIs). Remaining gaps: still zero E2E or performance tests.
 
 ---
 
@@ -72,38 +72,112 @@ Dev deps: pytest, pytest-asyncio, hypothesis, black, ruff, mypy, tiktoken
 
 | Metric | Value |
 |---|---|
-| Test framework | Vitest 4.0.8 with @vitest/coverage-v8, fast-check |
-| Test files | **18 spec files** (up from 5) |
+| Test framework | Vitest 4.0.18 with @vitest/coverage-v8, fast-check |
+| Test files | **60 spec files** (up from 18) |
+| Total tests | **657 passing**, 1 skipped, 0 failures |
 | Source directories | **14 feature directories** + services + components |
 | Components/services | ~50+ source files |
-| Estimated coverage | **~25-30%** (up from ~8%) |
+| Line coverage | **40.6%** (up from ~12.64% baseline) |
+| Statement coverage | 39.5% |
+| Branch coverage | 39.65% |
+| Function coverage | 42.99% |
 
 ### What's tested
-- `app.spec.ts` — Smoke test (existing)
-- `app.config.spec.ts` — APP_INITIALIZER integration (existing)
-- `services/config.service.spec.ts` — Config loading and validation (existing)
-- `session/services/chat/stream-parser.service.spec.ts` — Citation parsing with property-based tests (existing)
-- ✅ `auth/auth.service.spec.ts` — **NEW**: Auth service tests
-- ✅ `auth/auth.guard.spec.ts` — **NEW**: Auth guard tests
-- ✅ `auth/admin.guard.spec.ts` — **NEW**: Admin guard tests
-- ✅ `auth/auth.interceptor.spec.ts` — **NEW**: Auth interceptor tests
-- ✅ `auth/error.interceptor.spec.ts` — **NEW**: Error interceptor tests
-- ✅ `auth/auth-pbt.spec.ts` — **NEW**: Property-based auth tests
-- ✅ `components/sidenav/sidenav.spec.ts` — **NEW**: Sidenav component tests
-- ✅ `components/sidenav/components/session-list/session-list.spec.ts` — **NEW**: Session list tests
-- ✅ `components/topnav/topnav.spec.ts` — **NEW**: Topnav component tests
-- ✅ `components/model-settings/model-settings.spec.ts` — **NEW**: Model settings tests
-- ✅ `session/components/citation-display/citation-display.component.spec.ts` — **NEW**: Citation display tests
-- ✅ `assistants/assistant-form/assistant-form.page.spec.ts` — **NEW**: Assistant form page tests
-- ✅ `assistants/assistant-form/components/assistant-preview.component.spec.ts` — **NEW**: Assistant preview tests
+
+#### Auth module (7 spec files)
+- `auth/auth.service.spec.ts` — 29 tests: login, logout (success + error handling), storeTokens, clearTokens, ensureAuthenticated, isTokenExpired, getAccessToken, getRefreshToken, getProviderId, getAuthorizationHeader, event dispatching (token-stored, token-cleared)
+- `auth/auth.guard.spec.ts` — Route guard tests
+- `auth/admin.guard.spec.ts` — Admin guard tests
+- `auth/auth.interceptor.spec.ts` — Auth interceptor tests
+- `auth/error.interceptor.spec.ts` — Error interceptor tests
+- `auth/auth-pbt.spec.ts` — Property-based auth tests
+- `auth/callback/callback.service.spec.ts` — OAuth callback handling
+- `auth/auth-api.service.spec.ts` — Auth API service
+- `auth/api-keys/api-key.service.spec.ts` — API key service
+- `auth/user.service.spec.ts` — User service
+
+#### Session services (6 spec files)
+- `session/services/session/session.service.spec.ts` — 27 tests: CRUD operations, toggleStarred, updateSessionTags, updateSessionStatus, updateSessionPreferences, hasCurrentSession, setSessionMetadataId, updateSessionsParams, resetSessionsParams, deleteSession (newSessionIds removal), bulkDeleteSessions (currentSession clearing)
+- `session/services/session/message-map.service.spec.ts` — 19 tests: loadMessagesForSession, matchToolResultsToToolUses (success/error status, JSON error detection), restoreFileAttachments, fetchSessionFiles error handling, message ID incrementing, error paths
+- `session/services/chat/chat-http.service.spec.ts` — 13 tests: sendChatRequest, cancelChatRequest, getBearerTokenForStreamingResponse (4 scenarios), getRuntimeEndpointUrl (6 scenarios including provider ID mismatch warning)
+- `session/services/chat/stream-parser.service.spec.ts` — 18 tests: citation field mapping (all fields, missing fields, non-string fields), reset/done/metadata state management
+- `session/services/chat/chat-state.service.spec.ts` — Chat state management
+- `session/services/chat/chat-request.service.spec.ts` — Chat request service
+- `session/services/visual-state/visual-state.service.spec.ts` — 11 tests: updateState, dismiss/toggleExpanded state preservation, debounced save scheduling, session change loading/clearing, saveToBackend
+- `session/services/model/model.service.spec.ts` — Model loading and selection
+
+#### Admin services (12 spec files)
+- `admin/costs/services/admin-cost-state.service.spec.ts` — 20 tests: loadData, exportData (with safe URL mock), setPeriod, clearError, 7 computed signal tests, demo period tests, error paths
+- `admin/costs/services/admin-cost-http.service.spec.ts` — HTTP layer for admin costs
+- `admin/quota-tiers/services/quota-state.service.spec.ts` — Quota state management
+- `admin/quota-tiers/services/quota-http.service.spec.ts` — Quota HTTP service
+- `admin/users/services/user-state.service.spec.ts` — User state management
+- `admin/users/services/user-http.service.spec.ts` — User HTTP service
+- `admin/roles/services/app-roles.service.spec.ts` — App roles CRUD
+- `admin/tools/services/admin-tool.service.spec.ts` — Admin tool management
+- `admin/tools/services/tools.service.spec.ts` — Tools service
+- `admin/oauth-providers/services/oauth-providers.service.spec.ts` — OAuth providers
+- `admin/auth-providers/services/auth-providers.service.spec.ts` — Auth providers
+- `admin/manage-models/services/managed-models.service.spec.ts` — Managed models
+- `admin/bedrock-models/services/bedrock-models.service.spec.ts` — Bedrock models
+- `admin/openai-models/services/openai-models.service.spec.ts` — OpenAI models
+- `admin/gemini-models/services/gemini-models.service.spec.ts` — Gemini models
+
+#### Shared services (8 spec files)
+- `services/config.service.spec.ts` — 25 tests: config loading, validation, fallback, computed signals, URL validation
+- `services/error/error.service.spec.ts` — 25 tests: error handling, conversational stream errors
+- `services/toast/toast.service.spec.ts` — 17 tests: toast notifications
+- `services/sidenav/sidenav.service.spec.ts` — 19 tests: sidenav state management
+- `services/header/header.service.spec.ts` — 7 tests: header state
+- `services/quota/quota-warning.service.spec.ts` — 20 tests: quota warnings, setWarning, setQuotaExceeded
+- `services/file-upload/file-upload.service.spec.ts` — 40 tests: file validation (size, type, extension), upload flow, listSessionFiles, listAllFiles, completeUpload, loadQuota, error handling
+- `services/tool/tool.service.spec.ts` — 11 tests: tool loading and management
+
+#### Other services (5 spec files)
+- `assistants/services/assistant.service.spec.ts` — Assistant CRUD
+- `assistants/services/assistant-api.service.spec.ts` — Assistant API
+- `assistants/services/document.service.spec.ts` — 13 tests: getDownloadUrl, listDocuments with params, CRUD error handling, handleApiError (HttpErrorResponse, Error, non-Error)
+- `assistants/assistant-form/services/preview-chat.service.spec.ts` — Preview chat
+- `costs/services/cost.service.spec.ts` — Cost service
+- `memory/services/memory.service.spec.ts` — Memory service
+- `settings/connections/services/connections.service.spec.ts` — Connections service
+- `users/services/user-api.service.spec.ts` — User API service
+- `components/topnav/components/theme-toggle/theme.service.spec.ts` — 7 tests: theme preference setting/cycling
+
+#### Shared utilities (1 spec file)
+- `shared/utils/stream-parser/stream-parser-core.spec.ts` — 83 tests: core stream parsing logic
+
+#### Component specs (6 spec files)
+- `app.spec.ts` — App component smoke test
+- `app.config.spec.ts` — APP_INITIALIZER integration (16 tests)
+- `components/sidenav/sidenav.spec.ts` — Sidenav component
+- `components/sidenav/components/session-list/session-list.spec.ts` — Session list
+- `components/topnav/topnav.spec.ts` — Topnav component
+- `components/model-settings/model-settings.spec.ts` — Model settings
+- `session/components/citation-display/citation-display.component.spec.ts` — 22 tests: citation display
+- `assistants/assistant-form/assistant-form.page.spec.ts` — Assistant form page (12 tests)
+- `assistants/assistant-form/components/assistant-preview.component.spec.ts` — Assistant preview (11 tests)
 
 ### What's NOT tested (remaining gaps)
 - **Session page**: session.page (the main chat UI) — zero tests
-- **All admin pages**: users, costs, quota, tools, roles, auth-providers, bedrock-models, oauth-providers, manage-models — zero tests
-- **Most feature pages**: costs, files, manage-sessions, memory, settings, not-found — zero tests
-- **Most services**: api.service, sse.service, error.service, file-upload.service, header.service, quota.service, sidenav.service, toast.service, tool.service — zero tests
+- **All admin pages**: users, costs, quota, tools, roles, auth-providers, bedrock-models, oauth-providers, manage-models — zero component tests (services are tested)
+- **Most feature pages**: costs, files, manage-sessions, memory, settings, not-found — zero component tests
+- **Stream parser deep coverage**: stream-parser.service.ts (906 lines) is only ~20% covered — citation tests work but the core streaming event pipeline (MessageBuilder, processStreamEvent callbacks) is untested due to complex internal architecture
+- **Routing**: app.routes — minimal coverage
 - **Most shared components**: tooltip, confirmation-dialog, error-toast, toast, file-card, model-dropdown, quota-warning-banner, storage-quota-banner — zero tests
-- **Routing**: app.routes — zero tests
+
+### Testing patterns and lessons learned
+
+**Critical patterns required for all Angular specs in this codebase:**
+- `TestBed.resetTestingModule()` must be the first line of every `beforeEach` AND called again in `afterEach` to prevent cross-test contamination
+- Use `httpMock.match(() => true)` in `afterEach` instead of `httpMock.verify()` — verify causes cascading failures
+- Services with async constructors (calling `ensureAuthenticated()`) require `vi.waitFor()` to intercept HTTP requests
+- Never use `vi.stubGlobal('URL', ...)` — it replaces the URL constructor and breaks all subsequent tests. Override only static methods on the existing URL object
+- Never use `vi.useFakeTimers()` — it can break URL constructor and other globals. Use real `setTimeout` with `await new Promise(resolve => setTimeout(resolve, ms))` instead
+
+**ConfigService mock pattern:** `{ provide: ConfigService, useValue: { appApiUrl: signal('http://localhost:8000') } }`
+
+**AuthService mock pattern:** `{ provide: AuthService, useValue: { ensureAuthenticated: vi.fn().mockResolvedValue(undefined), isAuthenticated: vi.fn().mockReturnValue(false), getAccessToken: vi.fn().mockReturnValue('tok'), isTokenExpired: vi.fn().mockReturnValue(false), refreshAccessToken: vi.fn(), getProviderId: vi.fn().mockReturnValue('p1') } }`
 
 ### Config
 ```json
@@ -181,7 +255,7 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 | Session Management | ✅ Resolved → 🟢 Low | **ADDRESSED** | 83 tests, 91% coverage via moto DynamoDB, Hypothesis property tests, full async flow coverage |
 | Agent Core | ✅ Resolved → 🟢 Low | **ADDRESSED** | agent_factory, model_config, system_prompt_builder all tested + property-based tests |
 | Streaming/SSE | ✅ Resolved → 🟢 Low | **ADDRESSED** | event_formatter, stream_processor, tool_result_processor all tested (~1,274 lines) |
-| Frontend Components | 🟡 Medium | **PARTIALLY ADDRESSED** | Auth module fully covered, sidenav/topnav/model-settings added; admin pages, most feature pages, and most services still untested |
+| Frontend Components | 🟡 Medium | **SIGNIFICANTLY ADDRESSED** | 60 spec files, 657 tests, 40.6% line coverage. All services tested (auth, session, admin, shared, file-upload, tools). Remaining gaps: component/page tests, stream-parser deep coverage, E2E flows |
 | Infrastructure Stacks | ✅ Resolved → 🟢 Low | **ADDRESSED** | 249 tests across 10 suites. All 6 stacks have assertion-level tests. Critical circular dependency prevention via static SSM dependency graph analysis. Cross-cutting security and best-practice validation. |
 | Cost Tracking | ✅ Resolved → 🟢 Low | **ADDRESSED** | 170 tests across 6 files. Full financial pipeline covered: DynamoDB storage (3 tables, 3 GSIs), CostAggregator (caching, aggregation), pricing_config, AdminCostService. Uses moto with production-matching schemas. |
 | Lambda Functions | ✅ Resolved → 🟢 Low | **ADDRESSED** | 141 tests across 14 files. Both runtime-provisioner (76 tests) and runtime-updater (65 tests) comprehensively covered. Full handler flows, error handling, retry logic, parallel execution, DynamoDB/SSM/SNS interactions, edge cases. Uses moto + unittest.mock. |
@@ -208,9 +282,10 @@ Every stack has a `test.sh` script. Most run the relevant test framework (pytest
 1. ~~**Cost tracking unit tests**~~ — Done. 170 tests across 6 files covering DynamoDB storage, CostAggregator, pricing_config, and AdminCostService.
 2. ~~**Lambda function tests**~~ — Done. 141 tests across 14 files covering both runtime-provisioner and runtime-updater.
 3. ~~**CDK stack assertion tests**~~ — Done. 249 tests across 10 suites covering all 6 stacks. Includes static dependency graph analysis that prevents circular SSM dependencies, per-stack resource assertions, and cross-cutting security/best-practice validation.
-4. **Frontend service tests** — api.service, sse.service, error.service, file-upload.service. The data backbone.
-7. **Frontend page tests** — Admin pages, feature pages. Large surface area but lower risk than backend gaps.
-8. **Integration tests** — API → Agent → Tool round-trips with mocked AWS services.
-9. **E2E tests** — Playwright or Cypress for critical user flows (login → chat → response).
-10. **Coverage gates** — Enforce minimum thresholds in CI (start at 30%, ramp to 60%+).
-11. **Nightly CI** — Full deployment to staging + smoke tests + teardown.
+4. ~~**Frontend service tests**~~ — Done. 60 spec files, 657 tests, 40.6% line coverage. All services tested: auth (29 tests), session (27 tests), message-map (19 tests), chat-http (13 tests), stream-parser (18 tests), visual-state (11 tests), admin-cost-state (20 tests), file-upload (40 tests), error (25 tests), config (25 tests), toast (17 tests), sidenav (19 tests), quota-warning (20 tests), tool (11 tests), document (13 tests), theme (7 tests), plus 20+ admin service specs.
+5. **Frontend stream-parser deep coverage** — stream-parser.service.ts (906 lines) is only ~20% covered. The core streaming event pipeline (MessageBuilder, processStreamEvent callbacks) needs tests that understand the actual callback architecture.
+6. **Frontend component/page tests** — Admin pages, feature pages. Would push coverage toward 50%+ but risks pulling in uncovered template code.
+7. **Integration tests** — API → Agent → Tool round-trips with mocked AWS services.
+8. **E2E tests** — Playwright or Cypress for critical user flows (login → chat → response).
+9. **Coverage gates** — Enforce minimum thresholds in CI (start at 40%, ramp to 60%+).
+10. **Nightly CI** — Full deployment to staging + smoke tests + teardown.

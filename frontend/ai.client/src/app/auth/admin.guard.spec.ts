@@ -3,7 +3,7 @@ import { Router, ActivatedRouteSnapshot, RouterStateSnapshot } from '@angular/ro
 import { adminGuard } from './admin.guard';
 import { AuthService } from './auth.service';
 import { UserService } from './user.service';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('adminGuard', () => {
   let authService: {
@@ -23,6 +23,7 @@ describe('adminGuard', () => {
   let state: RouterStateSnapshot;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     authService = {
       isAuthenticated: vi.fn(),
       getAccessToken: vi.fn(),
@@ -54,6 +55,10 @@ describe('adminGuard', () => {
         { provide: Router, useValue: router },
       ],
     });
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   /**

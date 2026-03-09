@@ -1,5 +1,5 @@
 import { TestBed, ComponentFixture } from '@angular/core/testing';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { signal } from '@angular/core';
 import { AssistantPreviewComponent } from './assistant-preview.component';
 import { PreviewChatService } from '../services/preview-chat.service';
@@ -21,6 +21,7 @@ describe('AssistantPreviewComponent', () => {
   };
 
   beforeEach(async () => {
+    TestBed.resetTestingModule();
     mockPreviewChatService = {
       sendMessage: vi.fn().mockResolvedValue(undefined),
       cancelRequest: vi.fn(),
@@ -47,6 +48,10 @@ describe('AssistantPreviewComponent', () => {
 
     fixture = TestBed.createComponent(AssistantPreviewComponent);
     component = fixture.componentInstance;
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   describe('passing live instructions to sendMessage', () => {

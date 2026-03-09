@@ -1,0 +1,567 @@
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+import {
+  validateMessageStartEvent,
+  validateContentBlockStartEvent,
+  validateContentBlockDeltaEvent,
+  validateContentBlockStopEvent,
+  validateMessageStopEvent,
+  validateToolUseEvent,
+  validateToolResultEvent,
+  validateQuotaWarningEvent,
+  validateQuotaExceededEvent,
+  validateConversationalStreamError,
+  validateCitation,
+  processStreamEvent,
+  createStreamLineParser,
+  inferContentBlockType,
+  parseToolResultContent,
+  StreamParserCallbacks
+} from './stream-parser-core';
+
+describe('stream-parser-core', () => {
+  describe('validateMessageStartEvent', () => {
+    it('should return true for valid user message', () => {
+      expect(validateMessageStartEvent({ role: 'user' })).toBe(true);
+    });
+
+    it('should return true for valid assistant message', () => {
+      expect(validateMessageStartEvent({ role: 'assistant' })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateMessageStartEvent(null)).toBe(false);
+      expect(validateMessageStartEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for non-object', () => {
+      expect(validateMessageStartEvent('string')).toBe(false);
+      expect(validateMessageStartEvent(123)).toBe(false);
+    });
+
+    it('should return false for invalid role', () => {
+      expect(validateMessageStartEvent({ role: 'invalid' })).toBe(false);
+      expect(validateMessageStartEvent({})).toBe(false);
+    });
+  });
+
+  describe('validateContentBlockStartEvent', () => {
+    it('should return true for valid event with contentBlockIndex', () => {
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 0 })).toBe(true);
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 1 })).toBe(true);
+    });
+
+    it('should return true for valid event with type', () => {
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 0, type: 'text' })).toBe(true);
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 0, type: 'tool_use' })).toBe(true);
+    });
+
+    it('should return true for tool_use with toolUse', () => {
+      expect(validateContentBlockStartEvent({
+        contentBlockIndex: 0,
+        type: 'tool_use',
+        toolUse: { toolUseId: 'id', name: 'tool' }
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateContentBlockStartEvent(null)).toBe(false);
+      expect(validateContentBlockStartEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing contentBlockIndex', () => {
+      expect(validateContentBlockStartEvent({})).toBe(false);
+      expect(validateContentBlockStartEvent({ type: 'text' })).toBe(false);
+    });
+
+    it('should return false for invalid contentBlockIndex', () => {
+      expect(validateContentBlockStartEvent({ contentBlockIndex: -1 })).toBe(false);
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 1.5 })).toBe(false);
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 'string' })).toBe(false);
+    });
+
+    it('should return false for invalid type', () => {
+      expect(validateContentBlockStartEvent({ contentBlockIndex: 0, type: 'invalid' })).toBe(false);
+    });
+
+    it('should return false for tool_use without valid toolUse', () => {
+      expect(validateContentBlockStartEvent({
+        contentBlockIndex: 0,
+        type: 'tool_use',
+        toolUse: { name: 'tool' }
+      })).toBe(false);
+    });
+  });
+
+  describe('validateContentBlockDeltaEvent', () => {
+    it('should return true for valid text delta', () => {
+      expect(validateContentBlockDeltaEvent({ contentBlockIndex: 0, text: 'hello' })).toBe(true);
+    });
+
+    it('should return true for valid tool_use delta', () => {
+      expect(validateContentBlockDeltaEvent({ contentBlockIndex: 0, input: '{}' })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateContentBlockDeltaEvent(null)).toBe(false);
+      expect(validateContentBlockDeltaEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing contentBlockIndex', () => {
+      expect(validateContentBlockDeltaEvent({ text: 'hello' })).toBe(false);
+    });
+
+    it('should return false for invalid contentBlockIndex', () => {
+      expect(validateContentBlockDeltaEvent({ contentBlockIndex: -1, text: 'hello' })).toBe(false);
+    });
+
+    it('should return false for missing text and input', () => {
+      expect(validateContentBlockDeltaEvent({ contentBlockIndex: 0 })).toBe(false);
+    });
+
+    it('should return false for invalid type', () => {
+      expect(validateContentBlockDeltaEvent({ contentBlockIndex: 0, type: 'invalid', text: 'hello' })).toBe(false);
+    });
+  });
+
+  describe('validateContentBlockStopEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateContentBlockStopEvent({ contentBlockIndex: 0 })).toBe(true);
+      expect(validateContentBlockStopEvent({ contentBlockIndex: 5 })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateContentBlockStopEvent(null)).toBe(false);
+      expect(validateContentBlockStopEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing contentBlockIndex', () => {
+      expect(validateContentBlockStopEvent({})).toBe(false);
+    });
+
+    it('should return false for invalid contentBlockIndex', () => {
+      expect(validateContentBlockStopEvent({ contentBlockIndex: -1 })).toBe(false);
+      expect(validateContentBlockStopEvent({ contentBlockIndex: 1.5 })).toBe(false);
+    });
+  });
+
+  describe('validateMessageStopEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateMessageStopEvent({ stopReason: 'end_turn' })).toBe(true);
+      expect(validateMessageStopEvent({ stopReason: 'max_tokens' })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateMessageStopEvent(null)).toBe(false);
+      expect(validateMessageStopEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing stopReason', () => {
+      expect(validateMessageStopEvent({})).toBe(false);
+    });
+
+    it('should return false for empty stopReason', () => {
+      expect(validateMessageStopEvent({ stopReason: '' })).toBe(false);
+    });
+
+    it('should return false for non-string stopReason', () => {
+      expect(validateMessageStopEvent({ stopReason: 123 })).toBe(false);
+    });
+  });
+
+  describe('validateToolUseEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateToolUseEvent({
+        tool_use: { name: 'search', tool_use_id: 'id123' }
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateToolUseEvent(null)).toBe(false);
+      expect(validateToolUseEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing tool_use', () => {
+      expect(validateToolUseEvent({})).toBe(false);
+    });
+
+    it('should return false for invalid tool_use', () => {
+      expect(validateToolUseEvent({ tool_use: 'string' })).toBe(false);
+    });
+
+    it('should return false for missing name or tool_use_id', () => {
+      expect(validateToolUseEvent({ tool_use: { name: 'search' } })).toBe(false);
+      expect(validateToolUseEvent({ tool_use: { tool_use_id: 'id' } })).toBe(false);
+    });
+
+    it('should return false for empty name or tool_use_id', () => {
+      expect(validateToolUseEvent({ tool_use: { name: '', tool_use_id: 'id' } })).toBe(false);
+      expect(validateToolUseEvent({ tool_use: { name: 'search', tool_use_id: '' } })).toBe(false);
+    });
+  });
+
+  describe('validateToolResultEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateToolResultEvent({
+        tool_result: { toolUseId: 'id123' }
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateToolResultEvent(null)).toBe(false);
+      expect(validateToolResultEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for missing tool_result', () => {
+      expect(validateToolResultEvent({})).toBe(false);
+    });
+
+    it('should return false for invalid tool_result', () => {
+      expect(validateToolResultEvent({ tool_result: 'string' })).toBe(false);
+    });
+
+    it('should return false for missing toolUseId', () => {
+      expect(validateToolResultEvent({ tool_result: {} })).toBe(false);
+    });
+
+    it('should return false for empty toolUseId', () => {
+      expect(validateToolResultEvent({ tool_result: { toolUseId: '' } })).toBe(false);
+    });
+  });
+
+  describe('validateQuotaWarningEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateQuotaWarningEvent({
+        type: 'quota_warning',
+        currentUsage: 8,
+        quotaLimit: 10,
+        percentageUsed: 80
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateQuotaWarningEvent(null)).toBe(false);
+      expect(validateQuotaWarningEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for wrong type', () => {
+      expect(validateQuotaWarningEvent({
+        type: 'wrong',
+        currentUsage: 8,
+        quotaLimit: 10,
+        percentageUsed: 80
+      })).toBe(false);
+    });
+
+    it('should return false for missing required fields', () => {
+      expect(validateQuotaWarningEvent({ type: 'quota_warning' })).toBe(false);
+      expect(validateQuotaWarningEvent({
+        type: 'quota_warning',
+        currentUsage: 8
+      })).toBe(false);
+    });
+
+    it('should return false for non-number fields', () => {
+      expect(validateQuotaWarningEvent({
+        type: 'quota_warning',
+        currentUsage: 'string',
+        quotaLimit: 10,
+        percentageUsed: 80
+      })).toBe(false);
+    });
+  });
+
+  describe('validateQuotaExceededEvent', () => {
+    it('should return true for valid event', () => {
+      expect(validateQuotaExceededEvent({
+        type: 'quota_exceeded',
+        currentUsage: 12,
+        quotaLimit: 10,
+        percentageUsed: 120
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateQuotaExceededEvent(null)).toBe(false);
+      expect(validateQuotaExceededEvent(undefined)).toBe(false);
+    });
+
+    it('should return false for wrong type', () => {
+      expect(validateQuotaExceededEvent({
+        type: 'wrong',
+        currentUsage: 12,
+        quotaLimit: 10,
+        percentageUsed: 120
+      })).toBe(false);
+    });
+
+    it('should return false for missing required fields', () => {
+      expect(validateQuotaExceededEvent({ type: 'quota_exceeded' })).toBe(false);
+    });
+  });
+
+  describe('validateConversationalStreamError', () => {
+    it('should return true for valid event', () => {
+      expect(validateConversationalStreamError({
+        type: 'stream_error',
+        code: 'ERROR_CODE',
+        message: 'Error message',
+        recoverable: true
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateConversationalStreamError(null)).toBe(false);
+      expect(validateConversationalStreamError(undefined)).toBe(false);
+    });
+
+    it('should return false for wrong type', () => {
+      expect(validateConversationalStreamError({
+        type: 'wrong',
+        code: 'ERROR_CODE',
+        message: 'Error message',
+        recoverable: true
+      })).toBe(false);
+    });
+
+    it('should return false for missing required fields', () => {
+      expect(validateConversationalStreamError({ type: 'stream_error' })).toBe(false);
+    });
+
+    it('should return false for non-boolean recoverable', () => {
+      expect(validateConversationalStreamError({
+        type: 'stream_error',
+        code: 'ERROR_CODE',
+        message: 'Error message',
+        recoverable: 'true'
+      })).toBe(false);
+    });
+  });
+
+  describe('validateCitation', () => {
+    it('should return true for valid citation', () => {
+      expect(validateCitation({
+        assistantId: 'assistant1',
+        documentId: 'doc1',
+        fileName: 'file.txt',
+        text: 'citation text'
+      })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateCitation(null)).toBe(false);
+      expect(validateCitation(undefined)).toBe(false);
+    });
+
+    it('should return false for missing required fields', () => {
+      expect(validateCitation({ assistantId: 'assistant1' })).toBe(false);
+      expect(validateCitation({
+        assistantId: 'assistant1',
+        documentId: 'doc1'
+      })).toBe(false);
+    });
+
+    it('should return false for non-string fields', () => {
+      expect(validateCitation({
+        assistantId: 123,
+        documentId: 'doc1',
+        fileName: 'file.txt',
+        text: 'citation text'
+      })).toBe(false);
+    });
+  });
+
+  describe('processStreamEvent', () => {
+    let callbacks: StreamParserCallbacks;
+
+    beforeEach(() => {
+      callbacks = {
+        onMessageStart: vi.fn(),
+        onContentBlockStart: vi.fn(),
+        onContentBlockDelta: vi.fn(),
+        onContentBlockStop: vi.fn(),
+        onMessageStop: vi.fn(),
+        onToolUse: vi.fn(),
+        onToolResult: vi.fn(),
+        onQuotaWarning: vi.fn(),
+        onQuotaExceeded: vi.fn(),
+        onStreamError: vi.fn(),
+        onCitation: vi.fn(),
+        onParseError: vi.fn(),
+        onDone: vi.fn(),
+        onError: vi.fn(),
+        onMetadata: vi.fn(),
+        onReasoning: vi.fn(),
+        onToolProgress: vi.fn()
+      };
+    });
+
+    it('should call onMessageStart for valid message_start', () => {
+      const data = { role: 'user' };
+      processStreamEvent('message_start', data, callbacks);
+      expect(callbacks.onMessageStart).toHaveBeenCalledWith(data);
+    });
+
+    it('should call onParseError for invalid message_start', () => {
+      processStreamEvent('message_start', { role: 'invalid' }, callbacks);
+      expect(callbacks.onParseError).toHaveBeenCalledWith('message_start: invalid data structure');
+    });
+
+    it('should call onContentBlockDelta for valid content_block_delta', () => {
+      const data = { contentBlockIndex: 0, text: 'hello' };
+      processStreamEvent('content_block_delta', data, callbacks);
+      expect(callbacks.onContentBlockDelta).toHaveBeenCalledWith(data);
+    });
+
+    it('should call onToolUse and onToolProgress for valid tool_use', () => {
+      const data = { tool_use: { name: 'search', tool_use_id: 'id123' } };
+      processStreamEvent('tool_use', data, callbacks);
+      expect(callbacks.onToolUse).toHaveBeenCalledWith(data);
+      expect(callbacks.onToolProgress).toHaveBeenCalledWith({
+        visible: true,
+        toolName: 'search',
+        toolUseId: 'id123'
+      });
+    });
+
+    it('should call onDone and hide tool progress for done event', () => {
+      processStreamEvent('done', null, callbacks);
+      expect(callbacks.onDone).toHaveBeenCalled();
+      expect(callbacks.onToolProgress).toHaveBeenCalledWith({ visible: false });
+    });
+
+    it('should call onParseError for invalid event type', () => {
+      processStreamEvent('', {}, callbacks);
+      expect(callbacks.onParseError).toHaveBeenCalledWith('Invalid event type: must be a non-empty string');
+    });
+
+    it('should ignore unknown event types', () => {
+      processStreamEvent('unknown_event', {}, callbacks);
+      expect(callbacks.onParseError).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('createStreamLineParser', () => {
+    let callbacks: StreamParserCallbacks;
+    let parser: ReturnType<typeof createStreamLineParser>;
+
+    beforeEach(() => {
+      callbacks = {
+        onMessageStart: vi.fn(),
+        onParseError: vi.fn()
+      };
+      parser = createStreamLineParser(callbacks);
+    });
+
+    it('should parse event and data lines', () => {
+      parser.parseLine('event: message_start');
+      parser.parseLine('data: {"role": "user"}');
+      expect(callbacks.onMessageStart).toHaveBeenCalledWith({ role: 'user' });
+    });
+
+    it('should skip comments and handle empty lines', () => {
+      parser.parseLine(': comment');
+      // Empty string triggers onParseError because !'' is true
+      expect(callbacks.onMessageStart).not.toHaveBeenCalled();
+    });
+
+    it('should call onParseError for data without event', () => {
+      parser.parseLine('data: {"role": "user"}');
+      expect(callbacks.onParseError).toHaveBeenCalledWith('parseLine: received data without preceding event type');
+    });
+
+    it('should call onParseError for invalid JSON', () => {
+      parser.parseLine('event: message_start');
+      parser.parseLine('data: invalid json');
+      expect(callbacks.onParseError).toHaveBeenCalledWith(expect.stringContaining('Failed to parse SSE data'));
+    });
+
+    it('should reset state', () => {
+      parser.parseLine('event: message_start');
+      parser.reset();
+      parser.parseLine('data: {"role": "user"}');
+      expect(callbacks.onParseError).toHaveBeenCalledWith('parseLine: received data without preceding event type');
+    });
+
+    it('should call onParseError for empty event type', () => {
+      parser.parseLine('event: ');
+      expect(callbacks.onParseError).toHaveBeenCalledWith('parseLine: event type cannot be empty');
+    });
+
+    it('should skip empty data', () => {
+      parser.parseLine('event: message_start');
+      parser.parseLine('data: {}');
+      parser.parseLine('data: ');
+      expect(callbacks.onMessageStart).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('inferContentBlockType', () => {
+    it('should return tool_use for type tool_use', () => {
+      expect(inferContentBlockType({ contentBlockIndex: 0, type: 'tool_use' })).toBe('tool_use');
+    });
+
+    it('should return tool_use for input field', () => {
+      expect(inferContentBlockType({ contentBlockIndex: 0, input: '{}' })).toBe('tool_use');
+    });
+
+    it('should return text by default', () => {
+      expect(inferContentBlockType({ contentBlockIndex: 0, text: 'hello' })).toBe('text');
+      expect(inferContentBlockType({ contentBlockIndex: 0 })).toBe('text');
+    });
+  });
+
+  describe('parseToolResultContent', () => {
+    it('should parse text content', () => {
+      const result = parseToolResultContent([{ text: 'hello world' }]);
+      expect(result).toEqual([{ text: 'hello world' }]);
+    });
+
+    it('should parse JSON content from text', () => {
+      const result = parseToolResultContent([{ text: '{"key": "value"}' }]);
+      expect(result).toEqual([{ json: { key: 'value' } }]);
+    });
+
+    it('should parse image content with source.data', () => {
+      const result = parseToolResultContent([{
+        image: {
+          format: 'png',
+          source: { data: 'base64data' }
+        }
+      }]);
+      expect(result).toEqual([{
+        image: { format: 'png', data: 'base64data' }
+      }]);
+    });
+
+    it('should parse image content with direct data', () => {
+      const result = parseToolResultContent([{
+        image: {
+          format: 'jpeg',
+          data: 'base64data'
+        }
+      }]);
+      expect(result).toEqual([{
+        image: { format: 'jpeg', data: 'base64data' }
+      }]);
+    });
+
+    it('should parse direct JSON content', () => {
+      const result = parseToolResultContent([{ json: { key: 'value' } }]);
+      expect(result).toEqual([{ json: { key: 'value' } }]);
+    });
+
+    it('should skip invalid items', () => {
+      const result = parseToolResultContent([null, 'string', {}]);
+      expect(result).toEqual([]);
+    });
+
+    it('should default image format to png', () => {
+      const result = parseToolResultContent([{
+        image: { source: { data: 'base64data' } }
+      }]);
+      expect(result).toEqual([{
+        image: { format: 'png', data: 'base64data' }
+      }]);
+    });
+  });
+});

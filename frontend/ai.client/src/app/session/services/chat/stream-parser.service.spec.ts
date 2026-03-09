@@ -1,6 +1,6 @@
 // stream-parser.service.spec.ts
 import { TestBed } from '@angular/core/testing';
-import { describe, it, expect, beforeEach } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach } from 'vitest';
 import fc from 'fast-check';
 import { StreamParserService } from './stream-parser.service';
 import { ChatStateService } from './chat-state.service';
@@ -11,6 +11,7 @@ describe('StreamParserService - Citation Handling', () => {
   let service: StreamParserService;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     TestBed.configureTestingModule({
       providers: [
         StreamParserService,
@@ -21,6 +22,10 @@ describe('StreamParserService - Citation Handling', () => {
     });
     service = TestBed.inject(StreamParserService);
     service.reset();
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   // =========================================================================

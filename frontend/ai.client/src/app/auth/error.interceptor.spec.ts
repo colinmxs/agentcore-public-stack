@@ -3,7 +3,7 @@ import { HttpRequest, HttpResponse, HttpErrorResponse, HttpHandlerFn } from '@an
 import { errorInterceptor } from './error.interceptor';
 import { ErrorService } from '../services/error/error.service';
 import { of, throwError } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('errorInterceptor', () => {
   let errorService: {
@@ -11,6 +11,7 @@ describe('errorInterceptor', () => {
   };
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     errorService = {
       handleHttpError: vi.fn(),
     };
@@ -20,6 +21,10 @@ describe('errorInterceptor', () => {
         { provide: ErrorService, useValue: errorService },
       ],
     });
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   /**

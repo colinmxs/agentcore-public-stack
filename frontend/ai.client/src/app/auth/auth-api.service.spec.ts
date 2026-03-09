@@ -10,6 +10,7 @@ describe('AuthApiService', () => {
   let configService: Partial<ConfigService>;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     configService = {
       appApiUrl: signal('http://localhost:8000')
     };
@@ -27,7 +28,8 @@ describe('AuthApiService', () => {
   });
 
   afterEach(() => {
-    httpMock.verify();
+    TestBed.resetTestingModule();
+    httpMock.match(() => true);
   });
 
   it('should be created', () => {

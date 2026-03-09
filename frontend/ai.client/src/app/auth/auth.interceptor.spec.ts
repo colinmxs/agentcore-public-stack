@@ -3,7 +3,7 @@ import { HttpRequest, HttpResponse, HttpErrorResponse, HttpHandlerFn } from '@an
 import { authInterceptor } from './auth.interceptor';
 import { AuthService } from './auth.service';
 import { of, throwError } from 'rxjs';
-import { describe, it, expect, beforeEach, vi } from 'vitest';
+import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 
 describe('authInterceptor', () => {
   let authService: {
@@ -16,6 +16,7 @@ describe('authInterceptor', () => {
   let next: HttpHandlerFn;
 
   beforeEach(() => {
+    TestBed.resetTestingModule();
     authService = {
       getAccessToken: vi.fn(),
       isTokenExpired: vi.fn(),
@@ -32,6 +33,10 @@ describe('authInterceptor', () => {
         { provide: AuthService, useValue: authService },
       ],
     });
+  });
+
+  afterEach(() => {
+    TestBed.resetTestingModule();
   });
 
   /**

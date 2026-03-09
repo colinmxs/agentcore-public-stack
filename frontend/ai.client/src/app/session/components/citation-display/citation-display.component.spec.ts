@@ -111,10 +111,12 @@ describe('CitationDisplayComponent', () => {
 
   describe('Hover Interaction Logic', () => {
     beforeEach(() => {
+    TestBed.resetTestingModule();
       vi.useFakeTimers();
     });
 
     afterEach(() => {
+    TestBed.resetTestingModule();
       vi.restoreAllMocks();
     });
 

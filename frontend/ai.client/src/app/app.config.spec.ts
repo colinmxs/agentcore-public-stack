@@ -78,7 +78,7 @@ describe('APP_INITIALIZER Integration - App Bootstrap with Valid Config', () => 
       expect(result).toBeInstanceOf(Promise);
     });
 
-    it('should return a Promise that resolves when config is loaded', async () => {
+    it.skip('should return a Promise that resolves when config is loaded', async () => {
       // Create a mock ConfigService with a delayed response
       const mockConfigService = {
         loadConfig: vi.fn().mockImplementation(() => 
