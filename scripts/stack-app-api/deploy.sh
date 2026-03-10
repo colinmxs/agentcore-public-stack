@@ -130,13 +130,21 @@ main() {
     log_info "Image URI: ${ECR_URI}:${IMAGE_TAG}"
     
     # Get ECS cluster and service names from outputs
+    log_info "Checking for CDK outputs file at: ${PROJECT_ROOT}/cdk-outputs-app-api.json"
     if [ -f "${PROJECT_ROOT}/cdk-outputs-app-api.json" ]; then
+        log_info "CDK outputs file found, parsing ECS service details..."
         CLUSTER_NAME=$(jq -r ".AppApiStack.EcsClusterName // empty" "${PROJECT_ROOT}/cdk-outputs-app-api.json")
         SERVICE_NAME=$(jq -r ".AppApiStack.EcsServiceName // empty" "${PROJECT_ROOT}/cdk-outputs-app-api.json")
         
+        log_info "Parsed cluster: ${CLUSTER_NAME}, service: ${SERVICE_NAME}"
+        
         if [ -n "${CLUSTER_NAME}" ] && [ -n "${SERVICE_NAME}" ]; then
             update_ecs_service "${CLUSTER_NAME}" "${SERVICE_NAME}"
+        else
+            log_info "Cluster or service name is empty, skipping ECS update"
         fi
+    else
+        log_info "CDK outputs file not found, skipping ECS service update"
     fi
     
     log_success "App API deployment completed successfully!"
