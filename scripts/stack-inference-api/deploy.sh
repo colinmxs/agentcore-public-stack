@@ -131,6 +131,24 @@ main() {
     log_info "Using pre-built image with version tag: ${IMAGE_TAG}"
     log_info "Image URI: ${ECR_URI}:${IMAGE_TAG}"
     
+    # Update SSM parameter to trigger runtime-updater Lambda
+    # This will automatically update all AgentCore Runtimes with the new image
+    log_info "Updating SSM parameter to trigger runtime updates..."
+    aws ssm put-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/inference-api/image-tag" \
+        --value "${IMAGE_TAG}" \
+        --type "String" \
+        --overwrite \
+        --region "${CDK_AWS_REGION}" \
+        > /dev/null 2>&1
+    
+    if [ $? -eq 0 ]; then
+        log_success "SSM parameter updated - runtime-updater Lambda will update all runtimes"
+    else
+        log_error "Failed to update SSM parameter - runtimes may not update automatically"
+        # Don't fail the deployment, just warn
+    fi
+    
     # Get AgentCore Runtime URL from outputs
     if [ -f "${PROJECT_ROOT}/cdk-outputs-inference-api.json" ]; then
         RUNTIME_URL=$(jq -r ".InferenceApiStack.InferenceApiRuntimeUrl // empty" "${PROJECT_ROOT}/cdk-outputs-inference-api.json")
