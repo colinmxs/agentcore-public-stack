@@ -133,6 +133,9 @@ main() {
     log_info "Checking for CDK outputs file at: ${PROJECT_ROOT}/cdk-outputs-app-api.json"
     if [ -f "${PROJECT_ROOT}/cdk-outputs-app-api.json" ]; then
         log_info "CDK outputs file found, parsing ECS service details..."
+        log_info "File contents:"
+        cat "${PROJECT_ROOT}/cdk-outputs-app-api.json"
+        
         CLUSTER_NAME=$(jq -r ".AppApiStack.EcsClusterName // empty" "${PROJECT_ROOT}/cdk-outputs-app-api.json")
         SERVICE_NAME=$(jq -r ".AppApiStack.EcsServiceName // empty" "${PROJECT_ROOT}/cdk-outputs-app-api.json")
         
