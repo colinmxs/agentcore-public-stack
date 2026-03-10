@@ -272,4 +272,37 @@ describe('InferenceApiStack', () => {
       }
     });
   });
+
+  // ============================================================
+  // SSM Parameters (Required for Deploy Script)
+  // ============================================================
+
+  describe('SSM Parameters for Runtime Updates', () => {
+    test('creates image-tag parameter for runtime-updater trigger', () => {
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: `/${config.projectPrefix}/inference-api/image-tag`,
+        Type: 'String',
+        Description: Match.stringLikeRegexp('.*image tag.*'),
+      });
+    });
+
+    test('runtime-updater Lambda has permission to read image-tag parameter', () => {
+      // The runtime-updater needs to read this parameter when triggered
+      template.hasResourceProperties('AWS::IAM::Policy', {
+        PolicyDocument: Match.objectLike({
+          Statement: Match.arrayWith([
+            Match.objectLike({
+              Action: Match.arrayWith(['ssm:GetParameter']),
+              Effect: 'Allow',
+              Resource: Match.arrayWith([
+                Match.objectLike({
+                  'Fn::Sub': Match.stringLikeRegexp('.*inference-api/image-tag.*'),
+                }),
+              ]),
+            }),
+          ]),
+        }),
+      });
+    });
+  });
 });

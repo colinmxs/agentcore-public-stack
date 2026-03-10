@@ -524,4 +524,28 @@ describe('AppApiStack', () => {
       });
     });
   });
+
+  // ============================================================
+  // CloudFormation Outputs (Required for Deploy Script)
+  // ============================================================
+
+  describe('CloudFormation Outputs', () => {
+    test('exports EcsClusterName for deploy script', () => {
+      template.hasOutput('EcsClusterName', {
+        Description: 'ECS Cluster Name',
+        Export: {
+          Name: `${config.projectPrefix}-AppEcsClusterName`,
+        },
+      });
+    });
+
+    test('exports EcsServiceName for deploy script', () => {
+      template.hasOutput('EcsServiceName', {
+        Description: 'ECS Service Name',
+        Export: {
+          Name: `${config.projectPrefix}-AppEcsServiceName`,
+        },
+      });
+    });
+  });
 });
