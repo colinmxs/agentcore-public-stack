@@ -1455,6 +1455,12 @@ export class AppApiStack extends cdk.Stack {
     // ============================================================
     // CloudFormation Outputs
     // ============================================================
+    new cdk.CfnOutput(this, "EcsClusterName", {
+      value: ecsClusterName,
+      description: "ECS Cluster Name",
+      exportName: `${config.projectPrefix}-AppEcsClusterName`,
+    });
+
     new cdk.CfnOutput(this, "EcsServiceName", {
       value: this.ecsService.serviceName,
       description: "ECS Service Name",
