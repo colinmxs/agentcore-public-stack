@@ -744,6 +744,8 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name",
             f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name",
             f"/{PROJECT_PREFIX}/admin/managed-models-table-name",
+            # File upload
+            f"/{PROJECT_PREFIX}/file-upload/table-name",
             # Auth provider secrets
             f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn",
             # OAuth configuration
@@ -794,6 +796,7 @@ def get_runtime_environment_variables(provider_id: str, shared_resources: Dict[s
             'DYNAMODB_COST_SUMMARY_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name"],
             'DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME': params[f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name"],
             'DYNAMODB_MANAGED_MODELS_TABLE_NAME': params[f"/{PROJECT_PREFIX}/admin/managed-models-table-name"],
+            'DYNAMODB_USER_FILES_TABLE_NAME': params[f"/{PROJECT_PREFIX}/file-upload/table-name"],
             
             # Auth providers
             'DYNAMODB_AUTH_PROVIDERS_TABLE_NAME': AUTH_PROVIDERS_TABLE,
