@@ -355,6 +355,45 @@ export class InferenceApiStack extends cdk.Stack {
     // Documents are only accessed during ingestion (Lambda function)
     // Inference API only queries the vector store, not the raw documents
 
+    // DynamoDB User Files Table permissions (imported from App API Stack)
+    const userFilesTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/file-upload/table-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'UserFilesTableAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'dynamodb:GetItem',
+        'dynamodb:Query',
+        // Note: Inference API only reads file metadata - App API handles uploads
+      ],
+      resources: [
+        userFilesTableArn,
+        `${userFilesTableArn}/index/*`, // GSI permissions
+      ],
+    }));
+
+    // S3 User Files Bucket permissions (imported from App API Stack)
+    const userFilesBucketArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/file-upload/bucket-arn`
+    );
+    
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'UserFilesBucketAccess',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        's3:GetObject',
+        's3:GetObjectVersion',
+        // Note: Inference API only reads uploaded files - App API handles uploads
+      ],
+      resources: [
+        `${userFilesBucketArn}/*`,
+      ],
+    }));
+
     // S3 Vectors permissions for RAG (READ-ONLY for queries)
     const assistantsVectorBucketName = ssm.StringParameter.valueForStringParameter(
       this,
