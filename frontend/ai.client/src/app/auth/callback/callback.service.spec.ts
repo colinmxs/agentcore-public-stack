@@ -24,7 +24,8 @@ describe('CallbackService', () => {
     };
 
     mockUserService = {
-      refreshUser: vi.fn()
+      refreshUser: vi.fn(),
+      ensurePermissionsLoaded: vi.fn().mockResolvedValue(undefined)
     };
 
     mockSessionService = {

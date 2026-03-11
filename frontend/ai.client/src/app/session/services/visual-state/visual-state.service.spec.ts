@@ -82,10 +82,16 @@ describe('VisualStateService', () => {
   });
 
   it('updateState should schedule save', async () => {
-    service.dismiss('tool-1');
-    // Wait for debounce (500ms) + buffer
-    await new Promise(resolve => setTimeout(resolve, 600));
-    expect(mockSessionService.updateSessionMetadata).toHaveBeenCalled();
+    vi.useFakeTimers();
+    try {
+      service.dismiss('tool-1');
+      vi.advanceTimersByTime(600);
+      await vi.waitFor(() => {
+        expect(mockSessionService.updateSessionMetadata).toHaveBeenCalled();
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 
   it('session change should load visual state from preferences', async () => {
@@ -119,12 +125,18 @@ describe('VisualStateService', () => {
   });
 
   it('saveToBackend should call updateSessionMetadata with visualState', async () => {
-    service.dismiss('tool-1');
-    // Wait for debounce (500ms) + some buffer
-    await new Promise(resolve => setTimeout(resolve, 600));
-    expect(mockSessionService.updateSessionMetadata).toHaveBeenCalledWith(
-      'session-1',
-      { visualState: expect.any(Object) }
-    );
+    vi.useFakeTimers();
+    try {
+      service.dismiss('tool-1');
+      vi.advanceTimersByTime(600);
+      await vi.waitFor(() => {
+        expect(mockSessionService.updateSessionMetadata).toHaveBeenCalledWith(
+          'session-1',
+          { visualState: expect.any(Object) }
+        );
+      });
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });
