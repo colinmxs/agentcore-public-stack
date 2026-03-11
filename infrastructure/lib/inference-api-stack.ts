@@ -779,6 +779,65 @@ export class InferenceApiStack extends cdk.Stack {
     //   aws xray update-transaction-search-config --indexing-percentage <5|100>
 
     // ============================================================
+    // Observability: Vended Log Deliveries for AgentCore Resources
+    // ============================================================
+    // Uses CloudWatch Logs vended logs API (CfnDeliverySource/Destination/Delivery)
+    // to configure APPLICATION_LOGS and TRACES for CDK-managed resources.
+    // Runtime log deliveries are configured in the runtime-provisioner Lambda
+    // since runtimes are created dynamically per auth provider.
+
+    // --- Memory: APPLICATION_LOGS ---
+    const memoryLogsLogGroup = new logs.LogGroup(this, 'MemoryLogsLogGroup', {
+      logGroupName: `/aws/vendedlogs/bedrock-agentcore/memory/${config.projectPrefix}`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const memoryLogsSource = new logs.CfnDeliverySource(this, 'MemoryLogsSource', {
+      name: `${config.projectPrefix}-memory-logs`,
+      logType: 'APPLICATION_LOGS',
+      resourceArn: this.memory.attrMemoryArn,
+    });
+    memoryLogsSource.node.addDependency(this.memory);
+
+    const memoryLogsDestination = new logs.CfnDeliveryDestination(this, 'MemoryLogsDestination', {
+      name: `${config.projectPrefix}-memory-logs-dest`,
+      deliveryDestinationType: 'CWL',
+      destinationResourceArn: memoryLogsLogGroup.logGroupArn,
+    });
+
+    const memoryLogsDelivery = new logs.CfnDelivery(this, 'MemoryLogsDelivery', {
+      deliverySourceName: memoryLogsSource.name,
+      deliveryDestinationArn: memoryLogsDestination.attrArn,
+    });
+    memoryLogsDelivery.node.addDependency(memoryLogsSource);
+    memoryLogsDelivery.node.addDependency(memoryLogsDestination);
+
+    // --- Memory: TRACES ---
+    const memoryTracesSource = new logs.CfnDeliverySource(this, 'MemoryTracesSource', {
+      name: `${config.projectPrefix}-memory-traces`,
+      logType: 'TRACES',
+      resourceArn: this.memory.attrMemoryArn,
+    });
+    memoryTracesSource.node.addDependency(this.memory);
+
+    const memoryTracesDestination = new logs.CfnDeliveryDestination(this, 'MemoryTracesDestination', {
+      name: `${config.projectPrefix}-memory-traces-dest`,
+      deliveryDestinationType: 'XRAY',
+    });
+
+    const memoryTracesDelivery = new logs.CfnDelivery(this, 'MemoryTracesDelivery', {
+      deliverySourceName: memoryTracesSource.name,
+      deliveryDestinationArn: memoryTracesDestination.attrArn,
+    });
+    memoryTracesDelivery.node.addDependency(memoryTracesSource);
+    memoryTracesDelivery.node.addDependency(memoryTracesDestination);
+
+    // NOTE: Code Interpreter and Browser do NOT need vended log delivery right now.
+    // Valid resource types are: code-interpreter, memory, workload-identity,
+    // code-interpreter-custom, runtime, gateway.
+
+    // ============================================================
     // Observability: X-Ray Sampling Rule for AgentCore
     // ============================================================
 

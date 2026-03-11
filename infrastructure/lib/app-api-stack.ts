@@ -1187,6 +1187,32 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // Grant CloudWatch Logs delivery permissions for runtime observability
+    // The Lambda sets up vended log deliveries (APPLICATION_LOGS + TRACES) after creating runtimes
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "CloudWatchLogsDeliveryManagement",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "logs:PutDeliverySource",
+          "logs:PutDeliveryDestination",
+          "logs:CreateDelivery",
+          "logs:DeleteDeliverySource",
+          "logs:DeleteDeliveryDestination",
+          "logs:DeleteDelivery",
+          "logs:GetDelivery",
+          "logs:GetDeliverySource",
+          "logs:GetDeliveryDestination",
+          "logs:DescribeDeliveries",
+          "logs:DescribeDeliverySources",
+          "logs:DescribeDeliveryDestinations",
+          "logs:CreateLogGroup",
+          "logs:DescribeLogGroups",
+        ],
+        resources: ["*"],
+      })
+    );
+
     // Grant IAM PassRole permission for runtime execution role
     const runtimeExecutionRoleArn = ssm.StringParameter.valueForStringParameter(
       this,

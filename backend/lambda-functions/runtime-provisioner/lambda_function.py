@@ -191,6 +191,15 @@ def handle_remove(record: Dict[str, Any]) -> None:
             logger.warning(f"No runtime ID found for {provider_id}, nothing to delete")
             return
         
+        # Reconstruct runtime name for observability cleanup
+        safe_prefix = PROJECT_PREFIX.replace('-', '_')
+        safe_provider_id = provider_id.replace('-', '_')
+        base_name = f"{safe_prefix}_runtime_{safe_provider_id}"
+        runtime_name = base_name[:48] if len(base_name) <= 48 else f"r_{safe_provider_id}"[:48]
+        
+        # Clean up observability (log deliveries) before deleting runtime
+        cleanup_runtime_observability(runtime_name)
+        
         # Delete runtime
         delete_runtime(runtime_id)
         
@@ -299,6 +308,10 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     logger.info(f"Runtime created: {runtime_arn}")
     logger.info(f"Endpoint URL: {endpoint_url}")
     
+    # Configure observability (log deliveries + tracing) for the new runtime
+    workload_identity_arn = response.get('workloadIdentityDetails', {}).get('workloadIdentityArn')
+    configure_runtime_observability(runtime_arn, runtime_name, workload_identity_arn)
+    
     return {
         'runtime_arn': runtime_arn,
         'runtime_id': runtime_id,
@@ -368,6 +381,229 @@ def delete_runtime(runtime_id: str) -> None:
             logger.warning(f"Runtime {runtime_id} not found, already deleted")
         else:
             raise
+
+
+# =============================================================================
+# Observability: Vended Log Deliveries for Runtime
+# =============================================================================
+
+logs_client = boto3.client('logs')
+
+
+def configure_runtime_observability(runtime_arn: str, runtime_name: str, workload_identity_arn: Optional[str] = None) -> None:
+    """
+    Configure vended log deliveries and tracing for a newly created runtime.
+    
+    Sets up:
+    - Runtime: APPLICATION_LOGS delivery → CloudWatch Logs
+    - Runtime: TRACES delivery → X-Ray
+    - WorkloadIdentity: APPLICATION_LOGS delivery → CloudWatch Logs (if ARN available)
+    
+    Uses the CloudWatch Logs vended logs API (PutDeliverySource, PutDeliveryDestination,
+    CreateDelivery) as documented at:
+    https://docs.aws.amazon.com/bedrock-agentcore/latest/devguide/observability-configure.html
+    
+    Args:
+        runtime_arn: ARN of the newly created runtime
+        runtime_name: Name of the runtime (used for naming delivery resources)
+        workload_identity_arn: ARN of the auto-created WorkloadIdentity (from create_agent_runtime response)
+    """
+    try:
+        # Truncate runtime_name to keep delivery resource names under limits
+        short_name = runtime_name[:40]
+        
+        # --- Runtime: APPLICATION_LOGS delivery ---
+        _setup_application_logs_delivery(runtime_arn, short_name)
+        
+        # --- Runtime: TRACES delivery ---
+        _setup_traces_delivery(runtime_arn, short_name)
+        
+        # --- WorkloadIdentity: APPLICATION_LOGS delivery ---
+        if workload_identity_arn:
+            _setup_identity_logs_delivery(workload_identity_arn, short_name)
+        else:
+            logger.warning("No workloadIdentityArn in create_agent_runtime response, skipping identity log delivery")
+        
+        logger.info(f"✅ Observability configured for runtime {runtime_name}")
+        
+    except Exception as e:
+        # Don't fail runtime creation if observability setup fails
+        logger.warning(f"⚠️ Failed to configure observability for runtime {runtime_name}: {e}")
+        logger.warning("Runtime was created successfully but log deliveries may need manual setup")
+
+
+def _setup_application_logs_delivery(runtime_arn: str, short_name: str) -> None:
+    """Set up APPLICATION_LOGS delivery from runtime to CloudWatch Logs."""
+    try:
+        log_group_name = f"/aws/vendedlogs/bedrock-agentcore/runtime/{short_name}"
+        
+        # Create log group (ignore if exists)
+        try:
+            logs_client.create_log_group(logGroupName=log_group_name)
+            logger.info(f"Created log group: {log_group_name}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceAlreadyExistsException':
+                logger.info(f"Log group already exists: {log_group_name}")
+            else:
+                raise
+        
+        log_group_arn = f"arn:aws:logs:{AWS_REGION}:{boto3.client('sts').get_caller_identity()['Account']}:log-group:{log_group_name}"
+        
+        # Create delivery source
+        source_name = f"{short_name}-app-logs"
+        logs_client.put_delivery_source(
+            name=source_name,
+            logType="APPLICATION_LOGS",
+            resourceArn=runtime_arn
+        )
+        logger.info(f"Created delivery source: {source_name}")
+        
+        # Create delivery destination
+        dest_name = f"{short_name}-app-logs-dest"
+        dest_response = logs_client.put_delivery_destination(
+            name=dest_name,
+            deliveryDestinationType='CWL',
+            deliveryDestinationConfiguration={
+                'destinationResourceArn': log_group_arn,
+            }
+        )
+        logger.info(f"Created delivery destination: {dest_name}")
+        
+        # Create delivery (connect source to destination)
+        logs_client.create_delivery(
+            deliverySourceName=source_name,
+            deliveryDestinationArn=dest_response['deliveryDestination']['arn']
+        )
+        logger.info(f"Created APPLICATION_LOGS delivery for runtime {short_name}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to set up APPLICATION_LOGS delivery: {e}")
+
+
+def _setup_traces_delivery(runtime_arn: str, short_name: str) -> None:
+    """Set up TRACES delivery from runtime to X-Ray."""
+    try:
+        # Create delivery source for traces
+        source_name = f"{short_name}-traces"
+        logs_client.put_delivery_source(
+            name=source_name,
+            logType="TRACES",
+            resourceArn=runtime_arn
+        )
+        logger.info(f"Created traces delivery source: {source_name}")
+        
+        # Create delivery destination (X-Ray - no resource ARN needed)
+        dest_name = f"{short_name}-traces-dest"
+        dest_response = logs_client.put_delivery_destination(
+            name=dest_name,
+            deliveryDestinationType='XRAY'
+        )
+        logger.info(f"Created traces delivery destination: {dest_name}")
+        
+        # Create delivery (connect source to destination)
+        logs_client.create_delivery(
+            deliverySourceName=source_name,
+            deliveryDestinationArn=dest_response['deliveryDestination']['arn']
+        )
+        logger.info(f"Created TRACES delivery for runtime {short_name}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to set up TRACES delivery: {e}")
+
+
+def _setup_identity_logs_delivery(identity_arn: str, short_name: str) -> None:
+    """Set up APPLICATION_LOGS delivery from WorkloadIdentity to CloudWatch Logs."""
+    try:
+        log_group_name = f"/aws/vendedlogs/bedrock-agentcore/identity/{short_name}"
+        
+        # Create log group (ignore if exists)
+        try:
+            logs_client.create_log_group(logGroupName=log_group_name)
+            logger.info(f"Created identity log group: {log_group_name}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceAlreadyExistsException':
+                logger.info(f"Identity log group already exists: {log_group_name}")
+            else:
+                raise
+        
+        log_group_arn = f"arn:aws:logs:{AWS_REGION}:{boto3.client('sts').get_caller_identity()['Account']}:log-group:{log_group_name}"
+        
+        # Create delivery source
+        source_name = f"{short_name}-identity-logs"
+        logs_client.put_delivery_source(
+            name=source_name,
+            logType="APPLICATION_LOGS",
+            resourceArn=identity_arn
+        )
+        logger.info(f"Created identity delivery source: {source_name}")
+        
+        # Create delivery destination
+        dest_name = f"{short_name}-identity-logs-dest"
+        dest_response = logs_client.put_delivery_destination(
+            name=dest_name,
+            deliveryDestinationType='CWL',
+            deliveryDestinationConfiguration={
+                'destinationResourceArn': log_group_arn,
+            }
+        )
+        logger.info(f"Created identity delivery destination: {dest_name}")
+        
+        # Create delivery (connect source to destination)
+        logs_client.create_delivery(
+            deliverySourceName=source_name,
+            deliveryDestinationArn=dest_response['deliveryDestination']['arn']
+        )
+        logger.info(f"Created APPLICATION_LOGS delivery for identity {short_name}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to set up identity APPLICATION_LOGS delivery: {e}")
+
+
+def cleanup_runtime_observability(runtime_name: str) -> None:
+    """
+    Clean up vended log delivery resources when a runtime is deleted.
+    
+    Args:
+        runtime_name: Name of the runtime being deleted
+    """
+    short_name = runtime_name[:40]
+    
+    delivery_names = [
+        (f"{short_name}-app-logs", f"{short_name}-app-logs-dest"),
+        (f"{short_name}-traces", f"{short_name}-traces-dest"),
+        (f"{short_name}-identity-logs", f"{short_name}-identity-logs-dest"),
+    ]
+    
+    for source_name, dest_name in delivery_names:
+        try:
+            # List and delete deliveries for this source
+            try:
+                deliveries = logs_client.describe_deliveries()
+                for delivery in deliveries.get('deliveries', []):
+                    if delivery.get('deliverySourceName') == source_name:
+                        logs_client.delete_delivery(id=delivery['id'])
+                        logger.info(f"Deleted delivery: {delivery['id']}")
+            except Exception as e:
+                logger.warning(f"Failed to delete deliveries for {source_name}: {e}")
+            
+            # Delete source
+            try:
+                logs_client.delete_delivery_source(name=source_name)
+                logger.info(f"Deleted delivery source: {source_name}")
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete delivery source {source_name}: {e}")
+            
+            # Delete destination
+            try:
+                logs_client.delete_delivery_destination(name=dest_name)
+                logger.info(f"Deleted delivery destination: {dest_name}")
+            except ClientError as e:
+                if e.response['Error']['Code'] != 'ResourceNotFoundException':
+                    logger.warning(f"Failed to delete delivery destination {dest_name}: {e}")
+                    
+        except Exception as e:
+            logger.warning(f"Failed to clean up observability for {source_name}: {e}")
 
 
 # =============================================================================
