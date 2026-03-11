@@ -1,5 +1,5 @@
 import { inject, Injectable, computed, signal } from '@angular/core';
-import { HttpClient } from '@angular/common/http';
+import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { firstValueFrom } from 'rxjs';
 import { ConfigService } from '../services/config.service';
 
@@ -139,8 +139,12 @@ export class AuthService {
 
       return response;
     } catch (error) {
-      // Clear tokens on refresh failure
-      this.clearTokens();
+      // Only clear tokens on explicit 401 (invalid refresh token).
+      // Transient errors (network failures, 5xx, HTML parse errors) should
+      // not destroy a potentially valid session.
+      if (error instanceof HttpErrorResponse && error.status === 401) {
+        this.clearTokens();
+      }
       throw error;
     }
   }

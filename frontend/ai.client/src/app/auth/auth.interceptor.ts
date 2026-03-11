@@ -2,6 +2,7 @@ import { HttpInterceptorFn, HttpErrorResponse } from '@angular/common/http';
 import { inject } from '@angular/core';
 import { from, catchError, switchMap, throwError } from 'rxjs';
 import { AuthService } from './auth.service';
+import { ConfigService } from '../services/config.service';
 
 /**
  * HTTP interceptor that automatically adds the Authorization header to outgoing requests
@@ -9,9 +10,10 @@ import { AuthService } from './auth.service';
  */
 export const authInterceptor: HttpInterceptorFn = (req, next) => {
   const authService = inject(AuthService);
+  const configService = inject(ConfigService);
 
-  // Skip adding token for auth endpoints (login, token exchange, refresh)
-  const authEndpoints = ['/auth/login', '/auth/token', '/auth/refresh', '/auth/providers'];
+  // Skip adding token for auth endpoints (login, token exchange, refresh) and config bootstrap
+  const authEndpoints = ['/auth/login', '/auth/token', '/auth/refresh', '/auth/providers', '/config.json'];
   const isAuthEndpoint = authEndpoints.some(endpoint => req.url.includes(endpoint));
 
   // If it's an auth endpoint, proceed without modification
@@ -42,6 +44,12 @@ export const authInterceptor: HttpInterceptorFn = (req, next) => {
 
   // Check if token needs refresh before making the request
   if (authService.isTokenExpired()) {
+    // Don't attempt refresh if config isn't loaded yet (empty base URL would
+    // produce a relative path that CloudFront resolves to index.html)
+    if (!configService.appApiUrl()) {
+      return next(req);
+    }
+
     // Token expired, try to refresh it
     return from(authService.refreshAccessToken()).pipe(
       switchMap(() => {
