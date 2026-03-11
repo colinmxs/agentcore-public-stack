@@ -109,13 +109,14 @@ class GenericOIDCJWTValidator:
             try:
                 unverified = jwt.decode(token, options={"verify_signature": False})
                 token_header = jwt.get_unverified_header(token)
-                logger.debug(
-                    f"Validating token for provider {provider.provider_id}: "
+                logger.warning(
+                    f"[DEBUG] Validating token for provider {provider.provider_id}: "
                     f"iss={unverified.get('iss')}, aud={unverified.get('aud')}, "
-                    f"alg={token_header.get('alg')}, kid={token_header.get('kid')}"
+                    f"alg={token_header.get('alg')}, kid={token_header.get('kid')}, "
+                    f"ver={unverified.get('ver')}"
                 )
-            except Exception:
-                pass
+            except Exception as e:
+                logger.warning(f"[DEBUG] Could not decode token for inspection: {e}")
 
             # Get signing key from provider's JWKS
             jwks_client = self._get_jwks_client(provider)

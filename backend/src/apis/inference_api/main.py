@@ -14,10 +14,11 @@ from dotenv import load_dotenv
 import os
 
 # Load .env file from backend/src directory (parent of apis/)
-# load_dotenv defaults to override=False, so container-injected env vars take precedence in production.
+# override=True so .env values win over shell env vars during local development.
+# In production (containers), there is no .env file, so container-injected env vars are used directly.
 env_path = Path(__file__).parent.parent.parent / '.env'
 if env_path.exists():
-    load_dotenv(dotenv_path=env_path)
+    load_dotenv(dotenv_path=env_path, override=True)
     print(f"Loaded environment variables from: {env_path}")
 else:
     print(f"Warning: .env file not found at {env_path}")

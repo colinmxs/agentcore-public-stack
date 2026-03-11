@@ -47,10 +47,12 @@ async def generate_upload_url_endpoint(
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Assistant not found: {assistant_id}")
 
         # 2. Generate document_id and S3 key
-        from apis.app_api.documents.services.storage_service import _get_s3_key
+        from apis.app_api.documents.services.storage_service import _get_s3_key, _sanitize_filename
 
         document_id = _generate_document_id()
-        s3_key = _get_s3_key(assistant_id, document_id, request.filename)
+        # Sanitize filename so the s3_key stored in DynamoDB matches the actual S3 object
+        sanitized_filename = _sanitize_filename(request.filename)
+        s3_key = _get_s3_key(assistant_id, document_id, sanitized_filename)
 
         # 3. Create document record in DynamoDB (status='uploading')
         _ = await create_document(

@@ -19,6 +19,17 @@ def _get_documents_bucket() -> str:
     return bucket
 
 
+def _sanitize_filename(filename: str) -> str:
+    """Sanitize filename for S3 key usage.
+    
+    Lowercases and replaces disallowed characters with underscores.
+    Must be used consistently wherever s3_key is generated.
+    """
+    filename = filename.lower()
+    filename = re.sub(r"[^a-zA-Z0-9_.\-\(\)]", "_", filename)
+    return filename
+
+
 def _get_s3_key(assistant_id: str, document_id: str, filename: str) -> str:
     """
     Generate S3 key for document storage
@@ -69,9 +80,8 @@ async def generate_upload_url(assistant_id: str, document_id: str, filename: str
 
     bucket = _get_documents_bucket()
 
-    # Sanitize filename as file keys s3 doesnt allow certain characters, and we want to avoid path traversal attacks
-    filename = filename.lower()
-    filename = re.sub(r"[^a-zA-Z0-9_.\-\(\)]", "_", filename)
+    # Sanitize filename using shared helper
+    filename = _sanitize_filename(filename)
 
     s3_key = _get_s3_key(assistant_id, document_id, filename)
 

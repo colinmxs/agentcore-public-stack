@@ -14,7 +14,7 @@ import os
 
 # Load .env file from backend/src directory (parent of apis/)
 env_path = Path(__file__).parent.parent.parent / '.env'
-load_dotenv(dotenv_path=env_path)
+load_dotenv(dotenv_path=env_path, override=True)
 
 from fastapi import FastAPI
 from fastapi.staticfiles import StaticFiles
