@@ -400,4 +400,43 @@ describe('AuthService', () => {
       expect(window.dispatchEvent).toHaveBeenCalled();
     });
   });
+
+  /**
+   * Validates: Issue #24 fix
+   * refreshAccessToken only clears tokens on 401, not transient errors
+   */
+  describe('refreshAccessToken selective token clearing', () => {
+    beforeEach(() => {
+      store['access_token'] = 'expired-token';
+      store['refresh_token'] = 'my-refresh-token';
+      store['auth_provider_id'] = 'entra-id';
+      localStorageMock.removeItem.mockClear();
+    });
+
+    it('should clear tokens when refresh fails with 401', async () => {
+      const refreshPromise = service.refreshAccessToken();
+
+      const req = httpMock.expectOne(
+        (r) => r.url.includes('/auth/refresh') && r.method === 'POST'
+      );
+      req.flush('Unauthorized', { status: 401, statusText: 'Unauthorized' });
+
+      await expect(refreshPromise).rejects.toThrow();
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('access_token');
+      expect(localStorageMock.removeItem).toHaveBeenCalledWith('refresh_token');
+    });
+
+    it('should NOT clear tokens when refresh fails with a non-401 error', async () => {
+      const refreshPromise = service.refreshAccessToken();
+
+      const req = httpMock.expectOne(
+        (r) => r.url.includes('/auth/refresh') && r.method === 'POST'
+      );
+      req.flush('Internal Server Error', { status: 500, statusText: 'Internal Server Error' });
+
+      await expect(refreshPromise).rejects.toThrow();
+      expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('access_token');
+      expect(localStorageMock.removeItem).not.toHaveBeenCalledWith('refresh_token');
+    });
+  });
 });
