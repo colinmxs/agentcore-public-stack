@@ -472,6 +472,29 @@ export function getResourceName(config: AppConfig, ...parts: string[]): string {
   const allParts = [config.projectPrefix, ...parts];
   return allParts.join('-');
 }
+/**
+ * Generate a standardized resource name, truncated to a maximum length.
+ * Truncates the prefix (left side) to fit within the limit while keeping
+ * the suffix parts intact, since they carry the semantic meaning.
+ *
+ * @param maxLength Maximum allowed character length for the name
+ */
+export function getTruncatedResourceName(config: AppConfig, maxLength: number, ...parts: string[]): string {
+  const fullName = getResourceName(config, ...parts);
+  if (fullName.length <= maxLength) {
+    return fullName;
+  }
+  // Keep suffix intact, truncate the prefix
+  const suffix = parts.join('-');
+  const available = maxLength - suffix.length - 1; // -1 for the joining hyphen
+  if (available < 1) {
+    // Suffix alone exceeds limit — just hard-truncate
+    return fullName.slice(0, maxLength);
+  }
+  const truncatedPrefix = config.projectPrefix.slice(0, available);
+  return `${truncatedPrefix}-${suffix}`;
+}
+
 
 /**
  * Get the removal policy based on retention configuration

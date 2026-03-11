@@ -7,7 +7,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as xray from 'aws-cdk-lib/aws-xray';
 import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags } from './config';
 
 export interface InferenceApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -787,7 +787,7 @@ export class InferenceApiStack extends cdk.Stack {
 
     new xray.CfnSamplingRule(this, 'AgentCoreSamplingRule', {
       samplingRule: {
-        ruleName: getResourceName(config, 'agentcore-sampling'),
+        ruleName: getTruncatedResourceName(config, 32, 'ac-sampling'),
         priority: 100,
         fixedRate: config.production ? 0.05 : 1.0,
         reservoirSize: config.production ? 5 : 50,
@@ -806,7 +806,7 @@ export class InferenceApiStack extends cdk.Stack {
     // ============================================================
 
     new xray.CfnGroup(this, 'AgentCoreXRayGroup', {
-      groupName: getResourceName(config, 'agentcore-traces'),
+      groupName: getTruncatedResourceName(config, 32, 'ac-traces'),
       filterExpression: 'annotation.gen_ai_system = "strands-agents" OR service(id(name: "bedrock-agentcore", type: "AWS::BedrockAgentCore"))',
       insightsConfiguration: {
         insightsEnabled: true,

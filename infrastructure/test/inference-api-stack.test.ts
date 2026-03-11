@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import { Template, Match } from 'aws-cdk-lib/assertions';
 import { InferenceApiStack } from '../lib/inference-api-stack';
+import { getTruncatedResourceName } from '../lib/config';
 import { createMockConfig, createMockApp, mockEnv } from './helpers/mock-config';
 
 describe('InferenceApiStack', () => {
@@ -303,6 +304,83 @@ describe('InferenceApiStack', () => {
           ]),
         }),
       });
+    });
+  });
+
+  // ============================================================
+  // X-Ray Resource Name Length Limits
+  // ============================================================
+
+  describe('X-Ray resource name length limits', () => {
+    test('sampling rule name is at most 32 characters', () => {
+      const rules = template.findResources('AWS::XRay::SamplingRule');
+      for (const [, resource] of Object.entries(rules)) {
+        const ruleName = (resource as any).Properties?.SamplingRule?.RuleName;
+        if (ruleName && typeof ruleName === 'string') {
+          expect(ruleName.length).toBeLessThanOrEqual(32);
+        }
+      }
+    });
+
+    test('X-Ray group name is at most 32 characters', () => {
+      const groups = template.findResources('AWS::XRay::Group');
+      for (const [, resource] of Object.entries(groups)) {
+        const groupName = (resource as any).Properties?.GroupName;
+        if (groupName && typeof groupName === 'string') {
+          expect(groupName.length).toBeLessThanOrEqual(32);
+        }
+      }
+    });
+
+    test('names stay within limits with a long project prefix', () => {
+      const longConfig = createMockConfig({ projectPrefix: 'dev-boisestateai-v2' });
+      const app = createMockApp(longConfig, ['InferenceApiStack']);
+      const stack = new InferenceApiStack(app, 'LongPrefixStack', {
+        config: longConfig,
+        env: mockEnv(longConfig),
+      });
+      const tmpl = Template.fromStack(stack);
+
+      const rules = tmpl.findResources('AWS::XRay::SamplingRule');
+      for (const [, resource] of Object.entries(rules)) {
+        const ruleName = (resource as any).Properties?.SamplingRule?.RuleName;
+        if (ruleName && typeof ruleName === 'string') {
+          expect(ruleName.length).toBeLessThanOrEqual(32);
+        }
+      }
+
+      const groups = tmpl.findResources('AWS::XRay::Group');
+      for (const [, resource] of Object.entries(groups)) {
+        const groupName = (resource as any).Properties?.GroupName;
+        if (groupName && typeof groupName === 'string') {
+          expect(groupName.length).toBeLessThanOrEqual(32);
+        }
+      }
+    });
+  });
+
+  // ============================================================
+  // getTruncatedResourceName unit tests
+  // ============================================================
+
+  describe('getTruncatedResourceName', () => {
+    test('returns full name when within limit', () => {
+      const cfg = createMockConfig({ projectPrefix: 'short' });
+      expect(getTruncatedResourceName(cfg, 32, 'ac-sampling')).toBe('short-ac-sampling');
+    });
+
+    test('truncates prefix when name exceeds limit', () => {
+      const cfg = createMockConfig({ projectPrefix: 'dev-boisestateai-v2' });
+      const name = getTruncatedResourceName(cfg, 32, 'ac-sampling');
+      expect(name.length).toBeLessThanOrEqual(32);
+      expect(name).toMatch(/-ac-sampling$/);
+    });
+
+    test('preserves suffix parts intact', () => {
+      const cfg = createMockConfig({ projectPrefix: 'a-very-long-project-prefix-name' });
+      const name = getTruncatedResourceName(cfg, 32, 'ac-traces');
+      expect(name.length).toBeLessThanOrEqual(32);
+      expect(name.endsWith('-ac-traces')).toBe(true);
     });
   });
 });
