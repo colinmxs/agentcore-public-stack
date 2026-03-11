@@ -1215,6 +1215,22 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // Grant X-Ray resource policy permissions for TRACES delivery destinations
+    // Required so the Lambda can create X-Ray delivery destinations and auto-create
+    // the X-Ray resource policy that allows delivery.logs.amazonaws.com to write traces
+    runtimeProvisionerFunction.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: "XRayResourcePolicyManagement",
+        effect: iam.Effect.ALLOW,
+        actions: [
+          "xray:PutResourcePolicy",
+          "xray:ListResourcePolicies",
+          "xray:GetTraceSegmentDestination",
+        ],
+        resources: ["*"],
+      })
+    );
+
     // Grant IAM PassRole permission for runtime execution role
     const runtimeExecutionRoleArn = ssm.StringParameter.valueForStringParameter(
       this,
