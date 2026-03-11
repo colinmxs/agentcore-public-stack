@@ -779,6 +779,115 @@ export class InferenceApiStack extends cdk.Stack {
     //   aws xray update-transaction-search-config --indexing-percentage <5|100>
 
     // ============================================================
+    // Observability: Vended Log Deliveries for AgentCore Resources
+    // ============================================================
+    // Uses CloudWatch Logs vended logs API (CfnDeliverySource/Destination/Delivery)
+    // to configure APPLICATION_LOGS and TRACES for CDK-managed resources.
+    // Runtime log deliveries are configured in the runtime-provisioner Lambda
+    // since runtimes are created dynamically per auth provider.
+
+    // --- Memory: APPLICATION_LOGS ---
+    const memoryLogsLogGroup = new logs.LogGroup(this, 'MemoryLogsLogGroup', {
+      logGroupName: `/aws/vendedlogs/bedrock-agentcore/memory/${config.projectPrefix}`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const memoryLogsSource = new logs.CfnDeliverySource(this, 'MemoryLogsSource', {
+      name: `${config.projectPrefix}-memory-logs`,
+      logType: 'APPLICATION_LOGS',
+      resourceArn: this.memory.attrMemoryArn,
+    });
+    memoryLogsSource.node.addDependency(this.memory);
+
+    const memoryLogsDestination = new logs.CfnDeliveryDestination(this, 'MemoryLogsDestination', {
+      name: `${config.projectPrefix}-memory-logs-dest`,
+      deliveryDestinationType: 'CWL',
+      destinationResourceArn: memoryLogsLogGroup.logGroupArn,
+    });
+
+    const memoryLogsDelivery = new logs.CfnDelivery(this, 'MemoryLogsDelivery', {
+      deliverySourceName: memoryLogsSource.name,
+      deliveryDestinationArn: memoryLogsDestination.attrArn,
+    });
+    memoryLogsDelivery.node.addDependency(memoryLogsSource);
+    memoryLogsDelivery.node.addDependency(memoryLogsDestination);
+
+    // --- Memory: TRACES ---
+    const memoryTracesSource = new logs.CfnDeliverySource(this, 'MemoryTracesSource', {
+      name: `${config.projectPrefix}-memory-traces`,
+      logType: 'TRACES',
+      resourceArn: this.memory.attrMemoryArn,
+    });
+    memoryTracesSource.node.addDependency(this.memory);
+
+    const memoryTracesDestination = new logs.CfnDeliveryDestination(this, 'MemoryTracesDestination', {
+      name: `${config.projectPrefix}-memory-traces-dest`,
+      deliveryDestinationType: 'XRAY',
+    });
+
+    const memoryTracesDelivery = new logs.CfnDelivery(this, 'MemoryTracesDelivery', {
+      deliverySourceName: memoryTracesSource.name,
+      deliveryDestinationArn: memoryTracesDestination.attrArn,
+    });
+    memoryTracesDelivery.node.addDependency(memoryTracesSource);
+    memoryTracesDelivery.node.addDependency(memoryTracesDestination);
+
+    // --- Code Interpreter: APPLICATION_LOGS ---
+    const codeIntLogsLogGroup = new logs.LogGroup(this, 'CodeInterpreterLogsLogGroup', {
+      logGroupName: `/aws/vendedlogs/bedrock-agentcore/code-interpreter/${config.projectPrefix}`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const codeIntLogsSource = new logs.CfnDeliverySource(this, 'CodeInterpreterLogsSource', {
+      name: `${config.projectPrefix}-codeint-logs`,
+      logType: 'APPLICATION_LOGS',
+      resourceArn: this.codeInterpreter.attrCodeInterpreterArn,
+    });
+    codeIntLogsSource.node.addDependency(this.codeInterpreter);
+
+    const codeIntLogsDestination = new logs.CfnDeliveryDestination(this, 'CodeInterpreterLogsDestination', {
+      name: `${config.projectPrefix}-codeint-logs-dest`,
+      deliveryDestinationType: 'CWL',
+      destinationResourceArn: codeIntLogsLogGroup.logGroupArn,
+    });
+
+    const codeIntLogsDelivery = new logs.CfnDelivery(this, 'CodeInterpreterLogsDelivery', {
+      deliverySourceName: codeIntLogsSource.name,
+      deliveryDestinationArn: codeIntLogsDestination.attrArn,
+    });
+    codeIntLogsDelivery.node.addDependency(codeIntLogsSource);
+    codeIntLogsDelivery.node.addDependency(codeIntLogsDestination);
+
+    // --- Browser: APPLICATION_LOGS ---
+    const browserLogsLogGroup = new logs.LogGroup(this, 'BrowserLogsLogGroup', {
+      logGroupName: `/aws/vendedlogs/bedrock-agentcore/browser/${config.projectPrefix}`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    const browserLogsSource = new logs.CfnDeliverySource(this, 'BrowserLogsSource', {
+      name: `${config.projectPrefix}-browser-logs`,
+      logType: 'APPLICATION_LOGS',
+      resourceArn: this.browser.attrBrowserArn,
+    });
+    browserLogsSource.node.addDependency(this.browser);
+
+    const browserLogsDestination = new logs.CfnDeliveryDestination(this, 'BrowserLogsDestination', {
+      name: `${config.projectPrefix}-browser-logs-dest`,
+      deliveryDestinationType: 'CWL',
+      destinationResourceArn: browserLogsLogGroup.logGroupArn,
+    });
+
+    const browserLogsDelivery = new logs.CfnDelivery(this, 'BrowserLogsDelivery', {
+      deliverySourceName: browserLogsSource.name,
+      deliveryDestinationArn: browserLogsDestination.attrArn,
+    });
+    browserLogsDelivery.node.addDependency(browserLogsSource);
+    browserLogsDelivery.node.addDependency(browserLogsDestination);
+
+    // ============================================================
     // Observability: X-Ray Sampling Rule for AgentCore
     // ============================================================
 
