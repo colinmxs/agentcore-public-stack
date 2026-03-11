@@ -69,7 +69,11 @@ main() {
         -v \
         --tb=short \
         --color=yes \
-        --disable-warnings
+        --disable-warnings \
+        --cov=src \
+        --cov-report=html \
+        --cov-report=json \
+        --cov-report=term
     
     log_success "App API tests completed successfully!"
 }

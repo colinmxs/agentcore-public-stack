@@ -1,0 +1,598 @@
+name: "Nightly Build & Test"
+
+on:
+  schedule:
+    # Run at 2 AM Mountain Time (9 AM UTC) every day
+    - cron: '0 9 * * *'
+  workflow_dispatch:
+    inputs:
+      skip_deployment:
+        description: 'Skip deployment and smoke tests'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+      skip_teardown:
+        description: 'Skip teardown (leave resources deployed)'
+        required: false
+        default: 'false'
+        type: choice
+        options:
+          - 'true'
+          - 'false'
+
+env:
+  CDK_REQUIRE_APPROVAL: never
+
+concurrency:
+  group: nightly-build
+  cancel-in-progress: false
+
+jobs:
+  install-backend:
+    name: Install Backend Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Cache Python packages
+        uses: actions/cache@v4
+        with:
+          path: ~/.local/lib/python3.*/site-packages
+          key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
+
+      - name: Install Python dependencies
+        run: |
+          python3 -m pip install --upgrade pip
+          python3 -m pip install -e "backend/.[agentcore,dev]"
+
+  install-frontend:
+    name: Install Frontend Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Install frontend dependencies
+        run: bash scripts/stack-frontend/install.sh
+
+      - name: Cache frontend node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+  install-infrastructure:
+    name: Install Infrastructure Dependencies
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Install CDK dependencies
+        run: bash scripts/stack-infrastructure/install.sh
+
+      - name: Cache infrastructure node_modules
+        uses: actions/cache/save@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+  test-backend:
+    name: Test Backend with Coverage
+    runs-on: ubuntu-latest
+    needs: install-backend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Restore Python packages cache
+        uses: actions/cache/restore@v4
+        with:
+          path: ~/.local/lib/python3.*/site-packages
+          key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
+
+      - name: Run backend tests with coverage
+        run: bash scripts/stack-app-api/test.sh
+
+      - name: Upload backend coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: backend-coverage
+          path: |
+            backend/coverage.json
+            backend/htmlcov/
+          retention-days: 30
+
+  test-frontend:
+    name: Test Frontend with Coverage
+    runs-on: ubuntu-latest
+    needs: install-frontend
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Run frontend tests with coverage
+        run: bash scripts/stack-frontend/test.sh
+
+      - name: Upload frontend coverage artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/ai.client/coverage/
+          retention-days: 30
+
+  deploy-infrastructure:
+    name: Deploy Infrastructure (Nightly)
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, install-infrastructure]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyInfrastructure
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy infrastructure stack
+        run: bash scripts/stack-infrastructure/deploy.sh
+
+  deploy-app-api:
+    name: Deploy App API (Nightly)
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_APP_API_ENABLED: true
+      CDK_APP_API_CPU: 512
+      CDK_APP_API_MEMORY: 1024
+      CDK_APP_API_DESIRED_COUNT: 1
+      CDK_APP_API_MAX_CAPACITY: 2
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyAppApi
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Build and deploy App API
+        run: bash scripts/stack-app-api/deploy.sh
+
+  deploy-inference-api:
+    name: Deploy Inference API (Nightly)
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_INFERENCE_API_ENABLED: true
+      CDK_INFERENCE_API_CPU: 1024
+      CDK_INFERENCE_API_MEMORY: 2048
+      CDK_INFERENCE_API_DESIRED_COUNT: 1
+      CDK_INFERENCE_API_MAX_CAPACITY: 2
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyInferenceApi
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Build and deploy Inference API
+        run: bash scripts/stack-inference-api/deploy.sh
+
+  deploy-rag-ingestion:
+    name: Deploy RAG Ingestion (Nightly)
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyRagIngestion
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy RAG Ingestion
+        run: bash scripts/stack-rag-ingestion/deploy.sh
+
+  deploy-frontend:
+    name: Deploy Frontend (Nightly)
+    runs-on: ubuntu-latest
+    needs: [deploy-infrastructure, install-frontend]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_FRONTEND_ENABLED: true
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore frontend node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyFrontend
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Build and deploy Frontend
+        run: bash scripts/stack-frontend/deploy.sh
+
+  deploy-gateway:
+    name: Deploy Gateway (Nightly)
+    runs-on: ubuntu-latest
+    needs: deploy-infrastructure
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_GATEWAY_ENABLED: true
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyGateway
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy Gateway
+        run: bash scripts/stack-gateway/deploy.sh
+
+  smoke-test:
+    name: Smoke Test Deployment
+    runs-on: ubuntu-latest
+    needs: [deploy-app-api, deploy-inference-api, deploy-rag-ingestion, deploy-frontend, deploy-gateway]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlySmokeTest
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Run smoke tests
+        run: bash scripts/nightly/smoke-test.sh
+
+  teardown:
+    name: Teardown Nightly Stack
+    runs-on: ubuntu-latest
+    needs: smoke-test
+    if: ${{ always() && github.event.inputs.skip_teardown != 'true' && github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyTeardown
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Teardown nightly stack
+        run: bash scripts/nightly/teardown.sh
+
+  teardown:
+    name: Teardown Nightly Stack
+    runs-on: ubuntu-latest
+    needs: smoke-test
+    if: ${{ always() && github.event.inputs.skip_teardown != 'true' && github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-agentcore
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v4
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-NightlyTeardown
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Teardown nightly stack
+        run: bash scripts/nightly/teardown.sh
+
+
+  analyze-coverage:
+    name: Analyze Coverage Changes
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend]
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download backend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: backend-coverage
+          path: backend/
+
+      - name: Download frontend coverage
+        uses: actions/download-artifact@v4
+        with:
+          name: frontend-coverage
+          path: frontend/ai.client/coverage/
+
+      - name: Run coverage comparison
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/nightly/compare-coverage.py
+
+      - name: Upload coverage comparison report
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-comparison
+          path: coverage-comparison.json
+          retention-days: 30
+
+
+  ai-coverage-analysis:
+    name: AI Coverage Gap Analysis
+    runs-on: ubuntu-latest
+    needs: analyze-coverage
+    permissions:
+      issues: write
+      contents: read
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+
+      - name: Download coverage comparison report
+        uses: actions/download-artifact@v4
+        with:
+          name: coverage-comparison
+          path: .
+
+      - name: Run AI coverage analysis
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GITHUB_REPOSITORY: ${{ github.repository }}
+        run: python3 scripts/nightly/ai-coverage-analysis.py
