@@ -427,6 +427,12 @@ def update_runtime(
     if 'authorizerConfiguration' in current_runtime:
         update_params['authorizerConfiguration'] = current_runtime['authorizerConfiguration']
     
+    # Preserve request header configuration if present
+    # CRITICAL: Without this, the Authorization header stops being forwarded
+    # to the container after update, causing 401s on every request
+    if 'requestHeaderConfiguration' in current_runtime:
+        update_params['requestHeaderConfiguration'] = current_runtime['requestHeaderConfiguration']
+    
     # Preserve environment variables if present
     if 'environmentVariables' in current_runtime:
         update_params['environmentVariables'] = current_runtime['environmentVariables']
