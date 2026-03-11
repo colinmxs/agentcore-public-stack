@@ -64,7 +64,7 @@ export CI=true
 # The CI=true environment variable triggers headless behavior
 # Filter out jsdom CSS parsing warnings that clutter logs
 # Use PIPESTATUS to preserve test exit code after grep filter
-./node_modules/.bin/ng test --no-watch --coverage --coverage.reporter=html --coverage.reporter=json --coverage.reporter=text 2>&1 | grep -v "Could not parse CSS stylesheet"
+./node_modules/.bin/ng test --no-watch --coverage 2>&1 | grep -v "Could not parse CSS stylesheet"
 TEST_EXIT_CODE=${PIPESTATUS[0]}
 
 if [ ${TEST_EXIT_CODE} -eq 0 ]; then
