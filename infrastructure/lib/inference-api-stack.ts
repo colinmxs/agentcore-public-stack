@@ -773,13 +773,10 @@ export class InferenceApiStack extends cdk.Stack {
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
-    // ============================================================
-    // Observability: X-Ray Transaction Search
-    // ============================================================
-
-    new xray.CfnTransactionSearchConfig(this, 'TransactionSearchConfig', {
-      indexingPercentage: config.production ? 5 : 100,
-    });
+    // NOTE: X-Ray TransactionSearchConfig is an account-level singleton.
+    // It cannot be created via CloudFormation if it already exists.
+    // Manage it via AWS CLI instead:
+    //   aws xray update-transaction-search-config --indexing-percentage <5|100>
 
     // ============================================================
     // Observability: X-Ray Sampling Rule for AgentCore
