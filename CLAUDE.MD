@@ -14,14 +14,6 @@ Production-ready multi-agent conversational AI system built with AWS Bedrock Age
 
 ## Build and Run Commands
 
-```bash
-# Full setup (one-time)
-./setup.sh
-
-# Start all services locally
-./start.sh
-```
-
 ### Backend
 
 ```bash
@@ -226,15 +218,21 @@ See `.cursor/rules/tailwind.mdc` for comprehensive guidelines. Key points:
 
 ### Backend (.env)
 
+Located at `backend/src/.env`:
+
 ```bash
-AWS_REGION=us-east-1
-AWS_ACCESS_KEY_ID=<your-key>
-AWS_SECRET_ACCESS_KEY=<your-secret>
+AWS_REGION=us-west-2
+AWS_PROFILE=<your-aws-profile>
 AGENTCORE_MEMORY_ID=<memory-id>
-AGENTCORE_RUNTIME_ID=<runtime-id>
+AGENTCORE_PROJECT_PREFIX=<project-prefix>
+DYNAMODB_AUTH_PROVIDERS_TABLE_NAME=<prefix>-auth-providers
+AUTH_PROVIDER_SECRETS_ARN=<secrets-manager-arn>
+# ... plus all DynamoDB table names, S3 buckets, etc.
 ```
 
 ### Frontend (environment.ts)
+
+Located at `frontend/ai.client/src/environments/`:
 
 ```typescript
 export const environment = {
@@ -244,6 +242,30 @@ export const environment = {
   enableAuthentication: true
 };
 ```
+
+## Local Development Gotchas
+
+### AWS_PROFILE override
+
+`load_dotenv` uses `override=True` so the `.env` file's `AWS_PROFILE` wins over your shell environment. This is intentional — without it, a shell-level `AWS_PROFILE` pointing to a different account causes `ResourceNotFoundException` errors on all DynamoDB tables because boto3 connects to the wrong AWS account.
+
+### Auth Provider Secrets
+
+OIDC client secrets (e.g., Entra ID) are stored in AWS Secrets Manager, NOT in `.env`. The secret at `AUTH_PROVIDER_SECRETS_ARN` must be a JSON object keyed by provider ID:
+
+```json
+{"entra-id": "<client-secret>", "other-provider": "<secret>"}
+```
+
+After a fresh stack deployment, the CDK-generated secret only contains a placeholder. You must manually add provider client secrets:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id <AUTH_PROVIDER_SECRETS_ARN> \
+  --secret-string '{"entra-id": "<your-entra-client-secret>"}'
+```
+
+The auth provider config itself (client ID, issuer URL, endpoints) lives in the `auth-providers` DynamoDB table and is managed via the admin API.
 
 ## Debugging
 

@@ -58,13 +58,7 @@
 
 ### Setup & Installation
 
-```bash
-# Full project setup (one-time)
-./setup.sh
-
-# Start all services locally
-./start.sh
-```
+There is no unified setup or start script. Each service is started individually (see below).
 
 ### Backend Development
 
@@ -186,14 +180,27 @@ npm run test:coverage       # With coverage
 Located at `backend/src/.env`:
 
 ```bash
-AWS_REGION=us-east-1
-AWS_PROFILE=default
-AWS_ACCESS_KEY_ID=<your-key>
-AWS_SECRET_ACCESS_KEY=<your-secret>
+AWS_REGION=us-west-2
+AWS_PROFILE=<your-aws-profile>
 AGENTCORE_MEMORY_ID=<memory-id>
-AGENTCORE_RUNTIME_ID=<runtime-id>
+AGENTCORE_PROJECT_PREFIX=<project-prefix>
+DYNAMODB_AUTH_PROVIDERS_TABLE_NAME=<prefix>-auth-providers
+AUTH_PROVIDER_SECRETS_ARN=<secrets-manager-arn>
+# ... plus all DynamoDB table names, S3 buckets, etc.
 TAVILY_API_KEY=<optional>
 NOVA_ACT_API_KEY=<optional>
+```
+
+**Important:** `load_dotenv` uses `override=True`, so `.env` values always win over shell environment variables. This prevents the common issue where a shell-level `AWS_PROFILE` pointing to a different AWS account causes `ResourceNotFoundException` on all DynamoDB tables.
+
+### Auth Provider Secrets (Secrets Manager)
+
+OIDC client secrets (e.g., Entra ID) are stored in AWS Secrets Manager at `AUTH_PROVIDER_SECRETS_ARN`, NOT in `.env`. After a fresh stack deployment, you must manually seed provider secrets:
+
+```bash
+aws secretsmanager put-secret-value \
+  --secret-id <AUTH_PROVIDER_SECRETS_ARN> \
+  --secret-string '{"entra-id": "<your-client-secret>"}'
 ```
 
 ### Frontend (environment.ts)

@@ -9,8 +9,6 @@ agentcore-public-stack/
 ├── infrastructure/             # AWS CDK infrastructure code
 ├── docs/                       # Documentation and specifications
 ├── scripts/                    # Deployment and build scripts
-├── setup.sh                    # One-time setup script
-├── start.sh                    # Local development startup
 └── deploy.sh                   # Cloud deployment script
 ```
 
