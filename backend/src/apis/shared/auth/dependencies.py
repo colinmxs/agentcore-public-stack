@@ -184,11 +184,11 @@ async def get_current_user_trusted(
         HTTPException:
             - 401 if token is missing or malformed
     """
-    logger.info("[get_current_user_trusted] === Trusted auth extraction started ===")
+    logger.debug("[get_current_user_trusted] Trusted auth extraction started")
 
     # Check if credentials are missing
     if credentials is None:
-        logger.error("[get_current_user_trusted] No credentials provided - returning 401")
+        logger.debug("[get_current_user_trusted] No credentials provided - returning 401")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
             detail="Authentication required. Please provide a valid Bearer token in the Authorization header.",
@@ -196,23 +196,19 @@ async def get_current_user_trusted(
         )
 
     token = credentials.credentials
-    logger.info(f"[get_current_user_trusted] Token received (length={len(token)}, prefix={token[:20]}...)")
 
     try:
         # Decode JWT without verification (network layer already validated it)
         payload = jwt.decode(token, options={"verify_signature": False})
-        logger.info(f"[get_current_user_trusted] JWT decoded successfully. Claims: {list(payload.keys())}")
-        logger.info(f"[get_current_user_trusted] Issuer (iss): {payload.get('iss')}, Subject (sub): {payload.get('sub')}")
+        logger.debug("[get_current_user_trusted] JWT decoded successfully")
 
         # Resolve provider for claim mappings
         generic_validator = _get_generic_validator()
-        logger.info(f"[get_current_user_trusted] Generic validator available: {generic_validator is not None}")
         if generic_validator:
             try:
                 provider = await generic_validator.resolve_provider_from_token(token)
-                logger.info(f"[get_current_user_trusted] Provider resolved: {provider.provider_id if provider else 'None'}")
+                logger.debug(f"[get_current_user_trusted] Provider resolved: {provider.provider_id if provider else 'None'}")
                 if provider:
-                    logger.info(f"[get_current_user_trusted] Provider claim mappings - user_id: '{provider.user_id_claim}', email: '{provider.email_claim}', name: '{provider.name_claim}', roles: '{provider.roles_claim}'")
                     # Use provider-specific claim extraction
                     # Fall back to common OIDC claims if primary claim is absent
                     email = (
@@ -225,7 +221,7 @@ async def get_current_user_trusted(
                     roles = payload.get(provider.roles_claim, [])
                     picture = payload.get(provider.picture_claim) if provider.picture_claim else None
 
-                    logger.info(f"[get_current_user_trusted] Extracted claims - user_id: {user_id}, email: {email}, name: {name}, roles: {roles}")
+                    logger.debug("[get_current_user_trusted] Claims extracted from token")
 
                     if not name and provider.first_name_claim and provider.last_name_claim:
                         first = payload.get(provider.first_name_claim, "")
@@ -236,7 +232,7 @@ async def get_current_user_trusted(
                         roles = [roles]
 
                     if not user_id:
-                        logger.error(f"[get_current_user_trusted] user_id claim '{provider.user_id_claim}' is missing/empty in token. Available claims: {list(payload.keys())} - returning 401")
+                        logger.error("[get_current_user_trusted] Required user_id claim is missing/empty in token - returning 401")
                         raise HTTPException(
                             status_code=status.HTTP_401_UNAUTHORIZED,
                             detail="Invalid user."
@@ -251,7 +247,7 @@ async def get_current_user_trusted(
                         raw_token=token,
                     )
 
-                    logger.info(f"[get_current_user_trusted] User created successfully via provider path: user_id={user.user_id}, email={user.email}")
+                    logger.debug("[get_current_user_trusted] User authenticated successfully via provider path")
 
                     sync_service = _get_user_sync_service()
                     if sync_service and sync_service.enabled:
@@ -259,7 +255,7 @@ async def get_current_user_trusted(
 
                     return user
                 else:
-                    logger.warning(f"[get_current_user_trusted] Provider resolved to None for issuer '{payload.get('iss')}' - falling through to generic extraction")
+                    logger.warning("[get_current_user_trusted] Provider resolved to None - falling through to generic extraction")
             except HTTPException:
                 raise
             except Exception as e:
@@ -281,10 +277,10 @@ async def get_current_user_trusted(
         roles = payload.get('roles', [])
         picture = payload.get('picture')
 
-        logger.info(f"[get_current_user_trusted] OIDC fallback claims - user_id(sub): {user_id}, email: {email}, name: {name}")
+        logger.debug("[get_current_user_trusted] Using OIDC fallback claim extraction")
 
         if not user_id:
-            logger.error(f"[get_current_user_trusted] Missing 'sub' claim in token. Available claims: {list(payload.keys())} - returning 401")
+            logger.error("[get_current_user_trusted] Missing 'sub' claim in token - returning 401")
             raise HTTPException(
                 status_code=status.HTTP_401_UNAUTHORIZED,
                 detail="Invalid user."
@@ -299,7 +295,7 @@ async def get_current_user_trusted(
             raw_token=token,
         )
 
-        logger.info(f"[get_current_user_trusted] User created successfully via OIDC fallback: user_id={user.user_id}, email={user.email}")
+        logger.debug("[get_current_user_trusted] User authenticated successfully via OIDC fallback")
 
         # Fire-and-forget sync to Users table
         sync_service = _get_user_sync_service()
