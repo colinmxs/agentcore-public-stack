@@ -2,6 +2,9 @@ import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
+import * as logs from 'aws-cdk-lib/aws-logs';
+import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
+import * as xray from 'aws-cdk-lib/aws-xray';
 import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
 import { AppConfig, getResourceName, applyStandardTags } from './config';
@@ -761,6 +764,186 @@ export class InferenceApiStack extends cdk.Stack {
     }));
 
     // ============================================================
+    // Observability: CloudWatch Log Group for Runtime
+    // ============================================================
+
+    const runtimeLogGroup = new logs.LogGroup(this, 'AgentCoreRuntimeLogGroup', {
+      logGroupName: `/aws/bedrock-agentcore/runtimes/${config.projectPrefix}`,
+      retention: logs.RetentionDays.ONE_MONTH,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
+    // ============================================================
+    // Observability: X-Ray Transaction Search
+    // ============================================================
+
+    new xray.CfnTransactionSearchConfig(this, 'TransactionSearchConfig', {
+      indexingPercentage: config.production ? 5 : 100,
+    });
+
+    // ============================================================
+    // Observability: X-Ray Sampling Rule for AgentCore
+    // ============================================================
+
+    new xray.CfnSamplingRule(this, 'AgentCoreSamplingRule', {
+      samplingRule: {
+        ruleName: getResourceName(config, 'agentcore-sampling'),
+        priority: 100,
+        fixedRate: config.production ? 0.05 : 1.0,
+        reservoirSize: config.production ? 5 : 50,
+        serviceName: '*',
+        serviceType: '*',
+        host: '*',
+        httpMethod: '*',
+        urlPath: '/invocations',
+        resourceArn: '*',
+        version: 1,
+      },
+    });
+
+    // ============================================================
+    // Observability: X-Ray Group for AgentCore Traces
+    // ============================================================
+
+    new xray.CfnGroup(this, 'AgentCoreXRayGroup', {
+      groupName: getResourceName(config, 'agentcore-traces'),
+      filterExpression: 'annotation.gen_ai_system = "strands-agents" OR service(id(name: "bedrock-agentcore", type: "AWS::BedrockAgentCore"))',
+      insightsConfiguration: {
+        insightsEnabled: true,
+        notificationsEnabled: config.production,
+      },
+    });
+
+    // ============================================================
+    // Observability: CloudWatch Dashboard
+    // ============================================================
+
+    const dashboard = new cloudwatch.Dashboard(this, 'AgentCoreObservabilityDashboard', {
+      dashboardName: getResourceName(config, 'agentcore-observability'),
+      defaultInterval: cdk.Duration.hours(3),
+    });
+
+    const agentCoreNamespace = 'bedrock-agentcore';
+
+    const invocationCountMetric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InvocationCount',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const invocationErrorMetric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InvocationErrors',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const latencyP50Metric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InvocationLatency',
+      statistic: 'p50',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const latencyP90Metric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InvocationLatency',
+      statistic: 'p90',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const latencyP99Metric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InvocationLatency',
+      statistic: 'p99',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const inputTokensMetric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'InputTokens',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+    });
+
+    const outputTokensMetric = new cloudwatch.Metric({
+      namespace: agentCoreNamespace,
+      metricName: 'OutputTokens',
+      statistic: 'Sum',
+      period: cdk.Duration.minutes(5),
+    });
+
+    dashboard.addWidgets(
+      new cloudwatch.TextWidget({
+        markdown: `# AgentCore Runtime Observability\n**Project:** ${config.projectPrefix} | **Region:** ${config.awsRegion}`,
+        width: 24,
+        height: 1,
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Invocation Count & Errors',
+        left: [invocationCountMetric],
+        right: [invocationErrorMetric],
+        width: 12,
+        height: 6,
+      }),
+      new cloudwatch.GraphWidget({
+        title: 'Invocation Latency (p50 / p90 / p99)',
+        left: [latencyP50Metric, latencyP90Metric, latencyP99Metric],
+        width: 12,
+        height: 6,
+      }),
+    );
+
+    dashboard.addWidgets(
+      new cloudwatch.GraphWidget({
+        title: 'Token Usage (Input / Output)',
+        left: [inputTokensMetric, outputTokensMetric],
+        width: 12,
+        height: 6,
+      }),
+      new cloudwatch.LogQueryWidget({
+        title: 'Recent Runtime Errors',
+        logGroupNames: [runtimeLogGroup.logGroupName],
+        queryLines: [
+          'fields @timestamp, @message',
+          'filter @message like /(?i)error|exception|traceback/',
+          'sort @timestamp desc',
+          'limit 20',
+        ],
+        width: 12,
+        height: 6,
+      }),
+    );
+
+    // ============================================================
+    // Observability: CloudWatch Alarms
+    // ============================================================
+
+    new cloudwatch.Alarm(this, 'AgentCoreHighErrorRateAlarm', {
+      alarmName: getResourceName(config, 'agentcore-high-error-rate'),
+      alarmDescription: 'AgentCore Runtime invocation error rate exceeded threshold',
+      metric: invocationErrorMetric,
+      threshold: config.production ? 10 : 50,
+      evaluationPeriods: 3,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    new cloudwatch.Alarm(this, 'AgentCoreHighLatencyAlarm', {
+      alarmName: getResourceName(config, 'agentcore-high-latency'),
+      alarmDescription: 'AgentCore Runtime p99 latency exceeded threshold',
+      metric: latencyP99Metric,
+      threshold: 30000, // 30 seconds
+      evaluationPeriods: 3,
+      comparisonOperator: cloudwatch.ComparisonOperator.GREATER_THAN_THRESHOLD,
+      treatMissingData: cloudwatch.TreatMissingData.NOT_BREACHING,
+    });
+
+    // ============================================================
     // SSM Parameters for Cross-Stack References
     // ============================================================
     
@@ -822,6 +1005,14 @@ export class InferenceApiStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
+    // Export observability log group name
+    new ssm.StringParameter(this, 'RuntimeLogGroupNameParameter', {
+      parameterName: `/${config.projectPrefix}/inference-api/runtime-log-group-name`,
+      stringValue: runtimeLogGroup.logGroupName,
+      description: 'CloudWatch Log Group name for AgentCore Runtime observability',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
     // ============================================================
     // CloudFormation Outputs
     // ============================================================
@@ -855,6 +1046,18 @@ export class InferenceApiStack extends cdk.Stack {
       value: ecrRepository.repositoryUri,
       description: 'Inference API ECR Repository URI',
       exportName: `${config.projectPrefix}-InferenceApiEcrRepositoryUri`,
+    });
+
+    new cdk.CfnOutput(this, 'ObservabilityDashboardName', {
+      value: dashboard.dashboardName,
+      description: 'CloudWatch Dashboard for AgentCore observability',
+      exportName: `${config.projectPrefix}-AgentCoreObservabilityDashboard`,
+    });
+
+    new cdk.CfnOutput(this, 'RuntimeLogGroupName', {
+      value: runtimeLogGroup.logGroupName,
+      description: 'CloudWatch Log Group for AgentCore Runtime',
+      exportName: `${config.projectPrefix}-AgentCoreRuntimeLogGroup`,
     });
    }
 }
