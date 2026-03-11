@@ -833,59 +833,9 @@ export class InferenceApiStack extends cdk.Stack {
     memoryTracesDelivery.node.addDependency(memoryTracesSource);
     memoryTracesDelivery.node.addDependency(memoryTracesDestination);
 
-    // --- Code Interpreter: APPLICATION_LOGS ---
-    const codeIntLogsLogGroup = new logs.LogGroup(this, 'CodeInterpreterLogsLogGroup', {
-      logGroupName: `/aws/vendedlogs/bedrock-agentcore/code-interpreter/${config.projectPrefix}`,
-      retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    const codeIntLogsSource = new logs.CfnDeliverySource(this, 'CodeInterpreterLogsSource', {
-      name: `${config.projectPrefix}-codeint-logs`,
-      logType: 'APPLICATION_LOGS',
-      resourceArn: this.codeInterpreter.attrCodeInterpreterArn,
-    });
-    codeIntLogsSource.node.addDependency(this.codeInterpreter);
-
-    const codeIntLogsDestination = new logs.CfnDeliveryDestination(this, 'CodeInterpreterLogsDestination', {
-      name: `${config.projectPrefix}-codeint-logs-dest`,
-      deliveryDestinationType: 'CWL',
-      destinationResourceArn: codeIntLogsLogGroup.logGroupArn,
-    });
-
-    const codeIntLogsDelivery = new logs.CfnDelivery(this, 'CodeInterpreterLogsDelivery', {
-      deliverySourceName: codeIntLogsSource.name,
-      deliveryDestinationArn: codeIntLogsDestination.attrArn,
-    });
-    codeIntLogsDelivery.node.addDependency(codeIntLogsSource);
-    codeIntLogsDelivery.node.addDependency(codeIntLogsDestination);
-
-    // --- Browser: APPLICATION_LOGS ---
-    const browserLogsLogGroup = new logs.LogGroup(this, 'BrowserLogsLogGroup', {
-      logGroupName: `/aws/vendedlogs/bedrock-agentcore/browser/${config.projectPrefix}`,
-      retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    const browserLogsSource = new logs.CfnDeliverySource(this, 'BrowserLogsSource', {
-      name: `${config.projectPrefix}-browser-logs`,
-      logType: 'APPLICATION_LOGS',
-      resourceArn: this.browser.attrBrowserArn,
-    });
-    browserLogsSource.node.addDependency(this.browser);
-
-    const browserLogsDestination = new logs.CfnDeliveryDestination(this, 'BrowserLogsDestination', {
-      name: `${config.projectPrefix}-browser-logs-dest`,
-      deliveryDestinationType: 'CWL',
-      destinationResourceArn: browserLogsLogGroup.logGroupArn,
-    });
-
-    const browserLogsDelivery = new logs.CfnDelivery(this, 'BrowserLogsDelivery', {
-      deliverySourceName: browserLogsSource.name,
-      deliveryDestinationArn: browserLogsDestination.attrArn,
-    });
-    browserLogsDelivery.node.addDependency(browserLogsSource);
-    browserLogsDelivery.node.addDependency(browserLogsDestination);
+    // NOTE: Code Interpreter and Browser do NOT need vended log delivery right now.
+    // Valid resource types are: code-interpreter, memory, workload-identity,
+    // code-interpreter-custom, runtime, gateway.
 
     // ============================================================
     // Observability: X-Ray Sampling Rule for AgentCore

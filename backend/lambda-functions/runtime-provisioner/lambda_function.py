@@ -309,7 +309,8 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     logger.info(f"Endpoint URL: {endpoint_url}")
     
     # Configure observability (log deliveries + tracing) for the new runtime
-    configure_runtime_observability(runtime_arn, runtime_name)
+    workload_identity_arn = response.get('workloadIdentityDetails', {}).get('workloadIdentityArn')
+    configure_runtime_observability(runtime_arn, runtime_name, workload_identity_arn)
     
     return {
         'runtime_arn': runtime_arn,
@@ -389,13 +390,14 @@ def delete_runtime(runtime_id: str) -> None:
 logs_client = boto3.client('logs')
 
 
-def configure_runtime_observability(runtime_arn: str, runtime_name: str) -> None:
+def configure_runtime_observability(runtime_arn: str, runtime_name: str, workload_identity_arn: Optional[str] = None) -> None:
     """
     Configure vended log deliveries and tracing for a newly created runtime.
     
     Sets up:
-    - APPLICATION_LOGS delivery → CloudWatch Logs
-    - TRACES delivery → X-Ray
+    - Runtime: APPLICATION_LOGS delivery → CloudWatch Logs
+    - Runtime: TRACES delivery → X-Ray
+    - WorkloadIdentity: APPLICATION_LOGS delivery → CloudWatch Logs (if ARN available)
     
     Uses the CloudWatch Logs vended logs API (PutDeliverySource, PutDeliveryDestination,
     CreateDelivery) as documented at:
@@ -404,16 +406,23 @@ def configure_runtime_observability(runtime_arn: str, runtime_name: str) -> None
     Args:
         runtime_arn: ARN of the newly created runtime
         runtime_name: Name of the runtime (used for naming delivery resources)
+        workload_identity_arn: ARN of the auto-created WorkloadIdentity (from create_agent_runtime response)
     """
     try:
         # Truncate runtime_name to keep delivery resource names under limits
         short_name = runtime_name[:40]
         
-        # --- APPLICATION_LOGS delivery ---
+        # --- Runtime: APPLICATION_LOGS delivery ---
         _setup_application_logs_delivery(runtime_arn, short_name)
         
-        # --- TRACES delivery ---
+        # --- Runtime: TRACES delivery ---
         _setup_traces_delivery(runtime_arn, short_name)
+        
+        # --- WorkloadIdentity: APPLICATION_LOGS delivery ---
+        if workload_identity_arn:
+            _setup_identity_logs_delivery(workload_identity_arn, short_name)
+        else:
+            logger.warning("No workloadIdentityArn in create_agent_runtime response, skipping identity log delivery")
         
         logger.info(f"✅ Observability configured for runtime {runtime_name}")
         
@@ -502,6 +511,54 @@ def _setup_traces_delivery(runtime_arn: str, short_name: str) -> None:
         logger.warning(f"Failed to set up TRACES delivery: {e}")
 
 
+def _setup_identity_logs_delivery(identity_arn: str, short_name: str) -> None:
+    """Set up APPLICATION_LOGS delivery from WorkloadIdentity to CloudWatch Logs."""
+    try:
+        log_group_name = f"/aws/vendedlogs/bedrock-agentcore/identity/{short_name}"
+        
+        # Create log group (ignore if exists)
+        try:
+            logs_client.create_log_group(logGroupName=log_group_name)
+            logger.info(f"Created identity log group: {log_group_name}")
+        except ClientError as e:
+            if e.response['Error']['Code'] == 'ResourceAlreadyExistsException':
+                logger.info(f"Identity log group already exists: {log_group_name}")
+            else:
+                raise
+        
+        log_group_arn = f"arn:aws:logs:{AWS_REGION}:{boto3.client('sts').get_caller_identity()['Account']}:log-group:{log_group_name}"
+        
+        # Create delivery source
+        source_name = f"{short_name}-identity-logs"
+        logs_client.put_delivery_source(
+            name=source_name,
+            logType="APPLICATION_LOGS",
+            resourceArn=identity_arn
+        )
+        logger.info(f"Created identity delivery source: {source_name}")
+        
+        # Create delivery destination
+        dest_name = f"{short_name}-identity-logs-dest"
+        dest_response = logs_client.put_delivery_destination(
+            name=dest_name,
+            deliveryDestinationType='CWL',
+            deliveryDestinationConfiguration={
+                'destinationResourceArn': log_group_arn,
+            }
+        )
+        logger.info(f"Created identity delivery destination: {dest_name}")
+        
+        # Create delivery (connect source to destination)
+        logs_client.create_delivery(
+            deliverySourceName=source_name,
+            deliveryDestinationArn=dest_response['deliveryDestination']['arn']
+        )
+        logger.info(f"Created APPLICATION_LOGS delivery for identity {short_name}")
+        
+    except Exception as e:
+        logger.warning(f"Failed to set up identity APPLICATION_LOGS delivery: {e}")
+
+
 def cleanup_runtime_observability(runtime_name: str) -> None:
     """
     Clean up vended log delivery resources when a runtime is deleted.
@@ -514,6 +571,7 @@ def cleanup_runtime_observability(runtime_name: str) -> None:
     delivery_names = [
         (f"{short_name}-app-logs", f"{short_name}-app-logs-dest"),
         (f"{short_name}-traces", f"{short_name}-traces-dest"),
+        (f"{short_name}-identity-logs", f"{short_name}-identity-logs-dest"),
     ]
     
     for source_name, dest_name in delivery_names:
