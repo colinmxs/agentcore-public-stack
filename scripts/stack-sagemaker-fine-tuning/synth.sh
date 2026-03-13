@@ -22,6 +22,15 @@ log_success() {
 }
 
 # ===========================================================
+# Check if stack is enabled
+# ===========================================================
+
+if [ "${CDK_FINE_TUNING_ENABLED}" != "true" ] && [ "${CDK_FINE_TUNING_ENABLED}" != "1" ]; then
+    log_info "SageMaker Fine-Tuning stack is disabled (CDK_FINE_TUNING_ENABLED=${CDK_FINE_TUNING_ENABLED:-<not set>}). Skipping synth."
+    exit 0
+fi
+
+# ===========================================================
 # Synthesize SageMaker Fine-Tuning Stack
 # ===========================================================
 

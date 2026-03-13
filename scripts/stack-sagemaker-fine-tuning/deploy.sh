@@ -27,6 +27,12 @@ log_success() {
 }
 
 main() {
+    # Check if stack is enabled
+    if [ "${CDK_FINE_TUNING_ENABLED}" != "true" ] && [ "${CDK_FINE_TUNING_ENABLED}" != "1" ]; then
+        log_info "SageMaker Fine-Tuning stack is disabled (CDK_FINE_TUNING_ENABLED=${CDK_FINE_TUNING_ENABLED:-<not set>}). Skipping deploy."
+        exit 0
+    fi
+
     log_info "Deploying SageMaker Fine-Tuning Stack..."
 
     # Configuration already loaded by sourcing load-env.sh
