@@ -401,11 +401,15 @@ def handler(event, context):
       }));
 
       // Create custom resource to trigger the update
+      const frontendUrl = config.domainName 
+        ? `https://${config.domainName}`
+        : `https://${this.distributionDomainName}`;
+      
       new cdk.CustomResource(this, 'UpdateRagCors', {
         serviceToken: updateCorsHandler.functionArn,
         properties: {
           BucketName: ragDocumentsBucketName,
-          FrontendUrl: config.domainName || `https://${this.distributionDomainName}`,
+          FrontendUrl: frontendUrl,
           // Force update on every deployment by including timestamp
           Timestamp: Date.now().toString(),
         },
