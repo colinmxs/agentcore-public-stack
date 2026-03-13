@@ -427,11 +427,22 @@ def update_runtime(
     if 'authorizerConfiguration' in current_runtime:
         update_params['authorizerConfiguration'] = current_runtime['authorizerConfiguration']
     
-    # Preserve request header configuration if present
-    # CRITICAL: Without this, the Authorization header stops being forwarded
-    # to the container after update, causing 401s on every request
+    # ALWAYS set requestHeaderConfiguration with Authorization in the allowlist.
+    # The previous approach of conditionally preserving the existing config was
+    # fragile — if the GetAgentRuntime response ever omitted the field (API quirk,
+    # race condition, eventual consistency), the Authorization header would silently
+    # stop being forwarded, causing 401s on every request.
+    # We now build the allowlist from scratch, merging in any existing custom headers.
+    existing_headers = set()
     if 'requestHeaderConfiguration' in current_runtime:
-        update_params['requestHeaderConfiguration'] = current_runtime['requestHeaderConfiguration']
+        existing_headers = set(
+            current_runtime['requestHeaderConfiguration'].get('requestHeaderAllowlist', [])
+        )
+    # Authorization MUST always be present — this is non-negotiable
+    existing_headers.add('Authorization')
+    update_params['requestHeaderConfiguration'] = {
+        'requestHeaderAllowlist': sorted(existing_headers)
+    }
     
     # Preserve environment variables if present
     if 'environmentVariables' in current_runtime:
