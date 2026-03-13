@@ -88,6 +88,7 @@ export class RagIngestionStack extends cdk.Stack {
     // Build CORS origins: auto-include domain + localhost + any explicit config
     const corsOrigins = new Set<string>();
     corsOrigins.add('http://localhost:4200');
+    corsOrigins.add('http://localhost:8000');
     
     // Use domainName if provided (custom domain)
     if (config.domainName) {
