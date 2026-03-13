@@ -188,7 +188,7 @@ The fastest path to production is the **GitHub Actions pipeline**, which automat
 <!-- IMAGE PLACEHOLDER: Screenshot of the GitHub Actions tab showing all deployment workflows with green checkmarks — Infrastructure, App API, Inference API, Frontend, Gateway, RAG Ingestion, and Bootstrap Data pipelines all passing. Dimensions: ~800x400px. -->
 <!-- Example: ![Deployment Pipelines](docs/images/github-actions.png) -->
 
-### 💻 Local Development
+<!-- ### 💻 Local Development
 
 ```bash
 # Full setup (one-time)
@@ -196,7 +196,7 @@ The fastest path to production is the **GitHub Actions pipeline**, which automat
 
 # Start all services
 ./start.sh
-```
+``` -->
 
 See [backend/README.md](backend/README.md) for detailed backend setup, including authentication provider bootstrapping.
 
