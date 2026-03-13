@@ -276,7 +276,7 @@ export class SageMakerFineTuningStack extends cdk.Stack {
     new ssm.StringParameter(this, 'DataBucketNameParameter', {
       parameterName: `/${config.projectPrefix}/fine-tuning/data-bucket-name`,
       stringValue: this.fineTuningDataBucket.bucketName,
-      description: 'Fine-tuning data S3 bucket name',
+      description: 'Fine-tuning data S3 Bucket name',
       tier: ssm.ParameterTier.STANDARD,
     });
 
