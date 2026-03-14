@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { ReactiveFormsModule, FormBuilder, Validators } from '@angular/forms';
+import { ReactiveFormsModule, FormBuilder, FormControl, Validators } from '@angular/forms';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroArrowLeft,
@@ -50,13 +50,21 @@ export class CreateTrainingJobPage implements OnInit {
   /** Submit error message. */
   readonly submitError = signal<string | null>(null);
 
+  /** Standalone form control for the train/test split slider (70–95%). */
+  readonly splitSlider = new FormControl(80, { nonNullable: true });
+
+  /** Tick labels for the slider. */
+  readonly splitTicks = [70, 75, 80, 85, 90, 95];
+
+  /** Display value derived from the slider. */
+  readonly splitPercent = signal(80);
+
   /** Reactive form for hyperparameters and runtime config. */
   readonly form = this.fb.group({
     epochs: ['3'],
     batchSize: ['4'],
     learningRate: ['2e-5'],
     weightDecay: ['0.01'],
-    splitRatio: ['0.8'],
     seed: ['42'],
     contextLength: ['512'],
     maxRuntimeHours: [24, [Validators.required, Validators.min(1), Validators.max(120)]],
@@ -64,6 +72,7 @@ export class CreateTrainingJobPage implements OnInit {
 
   ngOnInit(): void {
     this.state.loadAvailableModels();
+    this.splitSlider.valueChanges.subscribe((v) => this.splitPercent.set(v));
   }
 
   /** Handle file selection from the file input. */
@@ -124,10 +133,13 @@ export class CreateTrainingJobPage implements OnInit {
       batchSize: hp['per_device_train_batch_size'] ?? '4',
       learningRate: hp['learning_rate'] ?? '2e-5',
       weightDecay: hp['weight_decay'] ?? '0.01',
-      splitRatio: hp['split_ratio'] ?? '0.8',
       seed: hp['seed'] ?? '42',
       contextLength: hp['context_length'] ?? '512',
     });
+
+    // Sync slider from model defaults (e.g. "0.8" → 80)
+    const splitStr = hp['split_ratio'] ?? '0.8';
+    this.splitSlider.setValue(Math.round(parseFloat(splitStr) * 100));
   }
 
   /** Submit the training job. */
@@ -160,9 +172,11 @@ export class CreateTrainingJobPage implements OnInit {
       if (formValues.batchSize) hyperparameters['per_device_train_batch_size'] = formValues.batchSize;
       if (formValues.learningRate) hyperparameters['learning_rate'] = formValues.learningRate;
       if (formValues.weightDecay) hyperparameters['weight_decay'] = formValues.weightDecay;
-      if (formValues.splitRatio) hyperparameters['split_ratio'] = formValues.splitRatio;
       if (formValues.seed) hyperparameters['seed'] = formValues.seed;
       if (formValues.contextLength) hyperparameters['context_length'] = formValues.contextLength;
+
+      // Convert slider percentage (e.g. 80) to decimal string (e.g. "0.8")
+      hyperparameters['split_ratio'] = (this.splitSlider.value / 100).toString();
 
       const request: CreateJobRequest = {
         model_id: model.model_id,

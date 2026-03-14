@@ -288,7 +288,7 @@ def train(args):
         num_train_epochs=args.epochs,
         per_device_train_batch_size=args.per_device_train_batch_size,
         weight_decay=args.weight_decay,
-        eval_strategy="epoch",
+        evaluation_strategy="epoch",
         save_strategy="no",
         logging_dir="/opt/ml/output/tensorboard",
     )

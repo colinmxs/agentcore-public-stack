@@ -124,10 +124,10 @@ describe('CreateTrainingJobPage', () => {
     expect(values.batchSize).toBe('4');
     expect(values.learningRate).toBe('2e-5');
     expect(values.weightDecay).toBe('0.01');
-    expect(values.splitRatio).toBe('0.8');
     expect(values.seed).toBe('42');
     expect(values.contextLength).toBe('512');
     expect(values.maxRuntimeHours).toBe(24);
+    expect(component.splitSlider.value).toBe(80);
   });
 
   it('should select model and populate hyperparameter defaults', () => {
@@ -139,9 +139,9 @@ describe('CreateTrainingJobPage', () => {
     expect(values.batchSize).toBe('8');
     expect(values.learningRate).toBe('1e-4');
     expect(values.weightDecay).toBe('0.02');
-    expect(values.splitRatio).toBe('0.9');
     expect(values.seed).toBe('123');
     expect(values.contextLength).toBe('1024');
+    expect(component.splitSlider.value).toBe(90);
   });
 
   it('should handle file selection and upload', async () => {
