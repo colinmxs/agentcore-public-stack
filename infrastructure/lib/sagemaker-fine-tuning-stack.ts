@@ -207,6 +207,25 @@ export class SageMakerFineTuningStack extends cdk.Stack {
       })
     );
 
+    // Grant EC2 networking permissions required for VPC-based training jobs
+    this.sagemakerExecutionRole.addToPolicy(
+      new iam.PolicyStatement({
+        sid: 'VpcNetworkingForTraining',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ec2:DescribeSubnets',
+          'ec2:DescribeSecurityGroups',
+          'ec2:DescribeNetworkInterfaces',
+          'ec2:DescribeVpcs',
+          'ec2:DescribeDhcpOptions',
+          'ec2:CreateNetworkInterface',
+          'ec2:CreateNetworkInterfacePermission',
+          'ec2:DeleteNetworkInterface',
+        ],
+        resources: ['*'],
+      })
+    );
+
     // Grant CloudWatch Logs permissions for training job logs
     this.sagemakerExecutionRole.addToPolicy(
       new iam.PolicyStatement({
