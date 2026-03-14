@@ -74,6 +74,8 @@ function createMockState() {
     loadDashboard: vi.fn().mockResolvedValue(undefined),
     stopTrainingJob: vi.fn().mockResolvedValue(undefined),
     stopInferenceJob: vi.fn().mockResolvedValue(undefined),
+    getTrainingDownloadUrl: vi.fn().mockResolvedValue({ download_url: 'https://s3.example.com/artifact', expires_at: '2026-03-01T02:00:00Z' }),
+    getInferenceDownloadUrl: vi.fn().mockResolvedValue({ download_url: 'https://s3.example.com/results', expires_at: '2026-03-02T02:00:00Z' }),
     clearError: vi.fn(),
   };
 }
@@ -202,5 +204,138 @@ describe('FineTuningDashboardPage', () => {
     expect(component.canStopInference('COMPLETED')).toBe(false);
     expect(component.canStopInference('FAILED')).toBe(false);
     expect(component.canStopInference('STOPPED')).toBe(false);
+  });
+
+  // ── Elapsed timer ─────────────────────────────────────────────────
+
+  it('should initialize now signal with current timestamp', () => {
+    const before = Date.now();
+    const component = createComponent();
+    const after = Date.now();
+    expect(component.now()).toBeGreaterThanOrEqual(before);
+    expect(component.now()).toBeLessThanOrEqual(after);
+  });
+
+  it('should format duration correctly', () => {
+    const component = createComponent();
+    expect(component.formatDuration(0)).toBe('0s');
+    expect(component.formatDuration(45)).toBe('45s');
+    expect(component.formatDuration(90)).toBe('1m 30s');
+    expect(component.formatDuration(3661)).toBe('1h 1m 1s');
+  });
+
+  it('should return elapsed string for active training job', () => {
+    const component = createComponent();
+    const activeJob: JobResponse = {
+      ...mockTrainingJob,
+      status: 'TRAINING',
+      training_start_time: new Date(Date.now() - 120_000).toISOString(),
+    };
+    const elapsed = component.getElapsedTraining(activeJob);
+    expect(elapsed).toMatch(/\d+m \d+s|\d+s/);
+  });
+
+  it('should return empty string for completed training job', () => {
+    const component = createComponent();
+    const completedJob: JobResponse = { ...mockTrainingJob, status: 'COMPLETED' };
+    expect(component.getElapsedTraining(completedJob)).toBe('');
+  });
+
+  it('should return elapsed string for active inference job', () => {
+    const component = createComponent();
+    const activeJob: InferenceJobResponse = {
+      ...mockInferenceJob,
+      status: 'TRANSFORMING',
+      transform_start_time: new Date(Date.now() - 60_000).toISOString(),
+    };
+    const elapsed = component.getElapsedInference(activeJob);
+    expect(elapsed).toMatch(/\d+m \d+s|\d+s/);
+  });
+
+  it('should return empty string for completed inference job', () => {
+    const component = createComponent();
+    const completedJob: InferenceJobResponse = { ...mockInferenceJob, status: 'COMPLETED' };
+    expect(component.getElapsedInference(completedJob)).toBe('');
+  });
+
+  it('should use created_at as fallback when start time is null', () => {
+    const component = createComponent();
+    const activeJob: JobResponse = {
+      ...mockTrainingJob,
+      status: 'PENDING',
+      training_start_time: null,
+      created_at: new Date(Date.now() - 30_000).toISOString(),
+    };
+    const elapsed = component.getElapsedTraining(activeJob);
+    expect(elapsed).toMatch(/\d+s/);
+  });
+
+  // ── Download actions ──────────────────────────────────────────────
+
+  it('should download training artifact and open URL', async () => {
+    const component = createComponent();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    await component.downloadTrainingArtifact('tj-1');
+    expect(mockState.getTrainingDownloadUrl).toHaveBeenCalledWith('tj-1');
+    expect(openSpy).toHaveBeenCalledWith('https://s3.example.com/artifact', '_blank');
+    openSpy.mockRestore();
+  });
+
+  it('should set error on training download failure', async () => {
+    const component = createComponent();
+    mockState.getTrainingDownloadUrl.mockRejectedValueOnce(new Error('fail'));
+    await component.downloadTrainingArtifact('tj-1');
+    expect(mockState.error()).toBe('Failed to get download URL');
+  });
+
+  it('should download inference results and open URL', async () => {
+    const component = createComponent();
+    const openSpy = vi.spyOn(window, 'open').mockImplementation(() => null);
+    await component.downloadInferenceResults('ij-1');
+    expect(mockState.getInferenceDownloadUrl).toHaveBeenCalledWith('ij-1');
+    expect(openSpy).toHaveBeenCalledWith('https://s3.example.com/results', '_blank');
+    openSpy.mockRestore();
+  });
+
+  it('should set error on inference download failure', async () => {
+    const component = createComponent();
+    mockState.getInferenceDownloadUrl.mockRejectedValueOnce(new Error('fail'));
+    await component.downloadInferenceResults('ij-1');
+    expect(mockState.error()).toBe('Failed to get download URL');
+  });
+
+  // ── Polling ───────────────────────────────────────────────────────
+
+  it('should poll dashboard when active jobs exist', () => {
+    vi.useFakeTimers();
+    try {
+      // mockState has TRAINING and TRANSFORMING jobs by default
+      createComponent();
+      mockState.loadDashboard.mockClear();
+
+      vi.advanceTimersByTime(10_000);
+
+      expect(mockState.loadDashboard).toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
+  });
+
+  it('should stop polling when no active jobs remain', () => {
+    vi.useFakeTimers();
+    try {
+      // Set all jobs to terminal statuses
+      mockState.trainingJobs.set([{ ...mockTrainingJob, status: 'COMPLETED' }]);
+      mockState.inferenceJobs.set([{ ...mockInferenceJob, status: 'COMPLETED' }]);
+      createComponent();
+      mockState.loadDashboard.mockClear();
+
+      vi.advanceTimersByTime(10_000);
+      vi.advanceTimersByTime(10_000);
+
+      expect(mockState.loadDashboard).not.toHaveBeenCalled();
+    } finally {
+      vi.useRealTimers();
+    }
   });
 });

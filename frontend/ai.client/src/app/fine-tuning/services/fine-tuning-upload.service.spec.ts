@@ -42,13 +42,13 @@ describe('FineTuningUploadService', () => {
 
         this.send.mockImplementation(() => {
           if (triggerError) {
-            setTimeout(() => self.onerror?.(), 0);
+            queueMicrotask(() => self.onerror?.());
           } else {
-            setTimeout(() => {
+            queueMicrotask(() => {
               self.upload.onprogress?.({ lengthComputable: true, loaded: 50, total: 100 });
               self.upload.onprogress?.({ lengthComputable: true, loaded: 100, total: 100 });
               self.onload?.();
-            }, 0);
+            });
           }
         });
       }

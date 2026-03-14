@@ -341,6 +341,66 @@ describe('FineTuningStateService', () => {
     expect(result).toEqual(mockDownload);
   });
 
+  // ── sortByCreatedDesc (via loadDashboard) ────────────────────────
+
+  it('should sort training jobs by created_at descending', async () => {
+    const olderJob = { ...mockTrainingJob, job_id: 'j-old', created_at: '2026-02-01T00:00:00Z' };
+    const newerJob = { ...mockTrainingJob, job_id: 'j-new', created_at: '2026-03-10T00:00:00Z' };
+    httpMock['checkAccess'].mockReturnValue(of(mockAccess));
+    httpMock['listTrainingJobs'].mockReturnValue(of({ jobs: [olderJob, newerJob], total_count: 2 }));
+    httpMock['listInferenceJobs'].mockReturnValue(of({ jobs: [], total_count: 0 }));
+
+    await service.loadDashboard();
+
+    expect(service.trainingJobs()[0].job_id).toBe('j-new');
+    expect(service.trainingJobs()[1].job_id).toBe('j-old');
+  });
+
+  it('should sort inference jobs by created_at descending', async () => {
+    const olderJob = { ...mockInferenceJob, job_id: 'i-old', created_at: '2026-01-15T00:00:00Z' };
+    const newerJob = { ...mockInferenceJob, job_id: 'i-new', created_at: '2026-03-05T00:00:00Z' };
+    httpMock['checkAccess'].mockReturnValue(of(mockAccess));
+    httpMock['listTrainingJobs'].mockReturnValue(of({ jobs: [], total_count: 0 }));
+    httpMock['listInferenceJobs'].mockReturnValue(of({ jobs: [olderJob, newerJob], total_count: 2 }));
+
+    await service.loadDashboard();
+
+    expect(service.inferenceJobs()[0].job_id).toBe('i-new');
+    expect(service.inferenceJobs()[1].job_id).toBe('i-old');
+  });
+
+  // ── Stale data clearing ─────────────────────────────────────────
+
+  it('should clear stale training job data when loading a different job', async () => {
+    service.currentTrainingJob.set({ ...mockTrainingJob, job_id: 'j-old' });
+    service.currentLogs.set(['old log']);
+    httpMock['getTrainingJob'].mockReturnValue(of({ ...mockTrainingJob, job_id: 'j-new' }));
+
+    await service.loadTrainingJobDetail('j-new');
+
+    expect(service.currentTrainingJob()?.job_id).toBe('j-new');
+  });
+
+  it('should not clear training job data when reloading same job', async () => {
+    service.currentTrainingJob.set(mockTrainingJob);
+    service.currentLogs.set(['existing log']);
+    httpMock['getTrainingJob'].mockReturnValue(of(mockTrainingJob));
+
+    await service.loadTrainingJobDetail('j1');
+
+    expect(service.currentTrainingJob()?.job_id).toBe('j1');
+  });
+
+  it('should clear stale inference job data when loading a different job', async () => {
+    service.currentInferenceJob.set({ ...mockInferenceJob, job_id: 'i-old' });
+    service.currentLogs.set(['old log']);
+    httpMock['getInferenceJob'].mockReturnValue(of({ ...mockInferenceJob, job_id: 'i-new' }));
+
+    await service.loadInferenceJobDetail('i-new');
+
+    expect(service.currentInferenceJob()?.job_id).toBe('i-new');
+  });
+
   // ── clearError ────────────────────────────────────────────────────
 
   it('should clear error', () => {

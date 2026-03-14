@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, OnInit, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { ActivatedRoute, Router, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -6,10 +6,10 @@ import {
   heroArrowLeft,
   heroArrowPath,
   heroArrowDownTray,
-  heroStop,
   heroExclamationTriangle,
   heroXMark,
 } from '@ng-icons/heroicons/outline';
+import { heroStopSolid } from '@ng-icons/heroicons/solid';
 import { FineTuningStateService } from '../../services/fine-tuning-state.service';
 import { StatusBadgeComponent } from '../../components/status-badge.component';
 import { TooltipDirective } from '../../../components/tooltip/tooltip.directive';
@@ -22,7 +22,7 @@ import { TooltipDirective } from '../../../components/tooltip/tooltip.directive'
       heroArrowLeft,
       heroArrowPath,
       heroArrowDownTray,
-      heroStop,
+      heroStopSolid,
       heroExclamationTriangle,
       heroXMark,
     }),
@@ -34,6 +34,7 @@ import { TooltipDirective } from '../../../components/tooltip/tooltip.directive'
 export class InferenceJobDetailPage implements OnInit {
   private readonly route = inject(ActivatedRoute);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
   readonly state = inject(FineTuningStateService);
 
   /** Whether stop confirmation is showing. */
@@ -48,14 +49,59 @@ export class InferenceJobDetailPage implements OnInit {
   /** Download error message. */
   readonly downloadError = signal<string | null>(null);
 
+  /** Current timestamp, ticks every second for elapsed time display. */
+  readonly now = signal(Date.now());
+
+  /** Elapsed time string for active jobs. */
+  readonly elapsed = computed(() => {
+    const job = this.state.currentInferenceJob();
+    if (!job || !this.canStop(job.status)) return null;
+    const start = job.transform_start_time ?? job.created_at;
+    const ms = this.now() - new Date(start).getTime();
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    return this.formatDuration(totalSeconds);
+  });
+
   /** The job ID from the route. */
   private jobId = '';
+
+  /** Polling interval ID. */
+  private pollId: ReturnType<typeof setInterval> | null = null;
 
   ngOnInit(): void {
     this.jobId = this.route.snapshot.paramMap.get('jobId') ?? '';
     if (this.jobId) {
       this.state.loadInferenceJobDetail(this.jobId);
       this.loadLogs();
+      this.startTimer();
+      this.startPolling();
+    }
+  }
+
+  /** Start the 1-second timer for elapsed time. */
+  private startTimer(): void {
+    const timerId = setInterval(() => this.now.set(Date.now()), 1000);
+    this.destroyRef.onDestroy(() => clearInterval(timerId));
+  }
+
+  /** Start polling job detail + logs every 10s while job is active. */
+  private startPolling(): void {
+    this.pollId = setInterval(async () => {
+      const job = this.state.currentInferenceJob();
+      if (job && this.canStop(job.status)) {
+        await this.refreshJob();
+      } else {
+        this.stopPolling();
+      }
+    }, 10_000);
+    this.destroyRef.onDestroy(() => this.stopPolling());
+  }
+
+  /** Stop the polling interval. */
+  private stopPolling(): void {
+    if (this.pollId) {
+      clearInterval(this.pollId);
+      this.pollId = null;
     }
   }
 

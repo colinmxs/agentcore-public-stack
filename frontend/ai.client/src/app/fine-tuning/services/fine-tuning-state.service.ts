@@ -99,8 +99,8 @@ export class FineTuningStateService {
           firstValueFrom(this.http.listTrainingJobs()),
           firstValueFrom(this.http.listInferenceJobs()),
         ]);
-        this.trainingJobs.set(trainingResponse.jobs);
-        this.inferenceJobs.set(inferenceResponse.jobs);
+        this.trainingJobs.set(this.sortByCreatedDesc(trainingResponse.jobs));
+        this.inferenceJobs.set(this.sortByCreatedDesc(inferenceResponse.jobs));
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load dashboard data';
@@ -198,6 +198,11 @@ export class FineTuningStateService {
   async loadTrainingJobDetail(jobId: string): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    // Clear stale data from a previously viewed job to prevent flickering
+    if (this.currentTrainingJob()?.job_id !== jobId) {
+      this.currentTrainingJob.set(null);
+      this.currentLogs.set([]);
+    }
     try {
       const job = await firstValueFrom(this.http.getTrainingJob(jobId));
       this.currentTrainingJob.set(job);
@@ -229,6 +234,11 @@ export class FineTuningStateService {
   async loadInferenceJobDetail(jobId: string): Promise<void> {
     this.loading.set(true);
     this.error.set(null);
+    // Clear stale data from a previously viewed job to prevent flickering
+    if (this.currentInferenceJob()?.job_id !== jobId) {
+      this.currentInferenceJob.set(null);
+      this.currentLogs.set([]);
+    }
     try {
       const job = await firstValueFrom(this.http.getInferenceJob(jobId));
       this.currentInferenceJob.set(job);
@@ -259,5 +269,10 @@ export class FineTuningStateService {
   /** Clear the current error. */
   clearError(): void {
     this.error.set(null);
+  }
+
+  /** Sort jobs by created_at descending (newest first). */
+  private sortByCreatedDesc<T extends { created_at: string }>(jobs: T[]): T[] {
+    return [...jobs].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
   }
 }

@@ -1,4 +1,4 @@
-import { Component, ChangeDetectionStrategy, inject, OnInit, signal } from '@angular/core';
+import { Component, ChangeDetectionStrategy, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
@@ -7,13 +7,15 @@ import {
   heroArrowPath,
   heroExclamationTriangle,
   heroXMark,
-  heroStop,
   heroLockClosed,
+  heroArrowDownTray,
 } from '@ng-icons/heroicons/outline';
+import { heroStopSolid } from '@ng-icons/heroicons/solid';
 import { TooltipDirective } from '../../../components/tooltip/tooltip.directive';
 import { FineTuningStateService } from '../../services/fine-tuning-state.service';
 import { StatusBadgeComponent } from '../../components/status-badge.component';
 import { QuotaCardComponent } from '../../components/quota-card.component';
+import type { JobResponse, InferenceJobResponse } from '../../models/fine-tuning.models';
 
 @Component({
   selector: 'app-fine-tuning-dashboard',
@@ -24,8 +26,9 @@ import { QuotaCardComponent } from '../../components/quota-card.component';
       heroArrowPath,
       heroExclamationTriangle,
       heroXMark,
-      heroStop,
+      heroStopSolid,
       heroLockClosed,
+      heroArrowDownTray,
     }),
   ],
   templateUrl: './fine-tuning-dashboard.page.html',
@@ -35,6 +38,7 @@ import { QuotaCardComponent } from '../../components/quota-card.component';
 export class FineTuningDashboardPage implements OnInit {
   readonly state = inject(FineTuningStateService);
   private readonly router = inject(Router);
+  private readonly destroyRef = inject(DestroyRef);
 
   /** Job ID currently showing stop confirmation for training jobs. */
   readonly confirmingStopTraining = signal<string | null>(null);
@@ -42,8 +46,49 @@ export class FineTuningDashboardPage implements OnInit {
   /** Job ID currently showing stop confirmation for inference jobs. */
   readonly confirmingStopInference = signal<string | null>(null);
 
+  /** Current timestamp, ticks every second for elapsed time display. */
+  readonly now = signal(Date.now());
+
+  /** Polling interval ID. */
+  private pollId: ReturnType<typeof setInterval> | null = null;
+
   ngOnInit(): void {
     this.state.loadDashboard();
+    this.startTimer();
+    this.startPolling();
+  }
+
+  /** Start the 1-second timer for elapsed time display. */
+  private startTimer(): void {
+    const timerId = setInterval(() => this.now.set(Date.now()), 1000);
+    this.destroyRef.onDestroy(() => clearInterval(timerId));
+  }
+
+  /** Start polling dashboard data every 10s while any job is active. */
+  private startPolling(): void {
+    this.pollId = setInterval(async () => {
+      if (this.hasActiveJobs()) {
+        await this.state.loadDashboard();
+      } else {
+        this.stopPolling();
+      }
+    }, 10_000);
+    this.destroyRef.onDestroy(() => this.stopPolling());
+  }
+
+  /** Stop the polling interval. */
+  private stopPolling(): void {
+    if (this.pollId) {
+      clearInterval(this.pollId);
+      this.pollId = null;
+    }
+  }
+
+  /** Check if any training or inference job is currently active. */
+  private hasActiveJobs(): boolean {
+    const hasActiveTraining = this.state.trainingJobs().some(j => this.canStopTraining(j.status));
+    const hasActiveInference = this.state.inferenceJobs().some(j => this.canStopInference(j.status));
+    return hasActiveTraining || hasActiveInference;
   }
 
   navigateToNewTrainingJob(): void {
@@ -105,5 +150,55 @@ export class FineTuningDashboardPage implements OnInit {
   /** Check if an inference job can be stopped. */
   canStopInference(status: string): boolean {
     return status === 'PENDING' || status === 'TRANSFORMING';
+  }
+
+  /** Get elapsed time string for an active training job. */
+  getElapsedTraining(job: JobResponse): string {
+    if (!this.canStopTraining(job.status)) return '';
+    return this.getElapsed(job.training_start_time, job.created_at);
+  }
+
+  /** Get elapsed time string for an active inference job. */
+  getElapsedInference(job: InferenceJobResponse): string {
+    if (!this.canStopInference(job.status)) return '';
+    return this.getElapsed(job.transform_start_time, job.created_at);
+  }
+
+  /** Format seconds into a human-readable duration. */
+  formatDuration(seconds: number): string {
+    const hours = Math.floor(seconds / 3600);
+    const minutes = Math.floor((seconds % 3600) / 60);
+    const secs = seconds % 60;
+    if (hours > 0) return `${hours}h ${minutes}m ${secs}s`;
+    if (minutes > 0) return `${minutes}m ${secs}s`;
+    return `${secs}s`;
+  }
+
+  /** Calculate elapsed time from a start timestamp to now. */
+  private getElapsed(startTime: string | null, fallback: string): string {
+    const start = startTime ?? fallback;
+    const ms = this.now() - new Date(start).getTime();
+    const totalSeconds = Math.max(0, Math.floor(ms / 1000));
+    return this.formatDuration(totalSeconds);
+  }
+
+  /** Download the model artifact for a completed training job. */
+  async downloadTrainingArtifact(jobId: string): Promise<void> {
+    try {
+      const response = await this.state.getTrainingDownloadUrl(jobId);
+      window.open(response.download_url, '_blank');
+    } catch {
+      this.state.error.set('Failed to get download URL');
+    }
+  }
+
+  /** Download inference results for a completed inference job. */
+  async downloadInferenceResults(jobId: string): Promise<void> {
+    try {
+      const response = await this.state.getInferenceDownloadUrl(jobId);
+      window.open(response.download_url, '_blank');
+    } catch {
+      this.state.error.set('Failed to get download URL');
+    }
   }
 }

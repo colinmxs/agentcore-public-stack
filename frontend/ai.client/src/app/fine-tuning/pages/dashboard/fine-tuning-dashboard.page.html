@@ -124,7 +124,12 @@
                     {{ formatCost(job.estimated_cost_usd) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-500 dark:text-gray-400">
-                    {{ job.created_at | date:'short' }}
+                    <div>{{ job.created_at | date:'short' }}</div>
+                    @if (canStopTraining(job.status)) {
+                      <div class="mt-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                        {{ getElapsedTraining(job) }} elapsed
+                      </div>
+                    }
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-right">
                     @if (confirmingStopTraining() === job.job_id) {
@@ -151,7 +156,17 @@
                         appTooltipPosition="top"
                         [attr.aria-label]="'Stop training job ' + job.job_id"
                       >
-                        <ng-icon name="heroStop" class="size-4" />
+                        <ng-icon name="heroStopSolid" class="size-4" />
+                      </button>
+                    } @else if (job.status === 'COMPLETED') {
+                      <button
+                        (click)="downloadTrainingArtifact(job.job_id)"
+                        class="rounded-sm p-1.5 text-gray-400 hover:text-green-600 dark:text-gray-500 dark:hover:text-green-400"
+                        [appTooltip]="'Download Model'"
+                        appTooltipPosition="top"
+                        [attr.aria-label]="'Download model artifact for job ' + job.job_id"
+                      >
+                        <ng-icon name="heroArrowDownTray" class="size-4" />
                       </button>
                     }
                   </td>
@@ -219,7 +234,12 @@
                     {{ formatCost(job.estimated_cost_usd) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-500 dark:text-gray-400">
-                    {{ job.created_at | date:'short' }}
+                    <div>{{ job.created_at | date:'short' }}</div>
+                    @if (canStopInference(job.status)) {
+                      <div class="mt-0.5 text-xs font-medium text-blue-600 dark:text-blue-400">
+                        {{ getElapsedInference(job) }} elapsed
+                      </div>
+                    }
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-right">
                     @if (confirmingStopInference() === job.job_id) {
@@ -246,7 +266,17 @@
                         appTooltipPosition="top"
                         [attr.aria-label]="'Stop inference job ' + job.job_id"
                       >
-                        <ng-icon name="heroStop" class="size-4" />
+                        <ng-icon name="heroStopSolid" class="size-4" />
+                      </button>
+                    } @else if (job.status === 'COMPLETED') {
+                      <button
+                        (click)="downloadInferenceResults(job.job_id)"
+                        class="rounded-sm p-1.5 text-gray-400 hover:text-green-600 dark:text-gray-500 dark:hover:text-green-400"
+                        [appTooltip]="'Download Results'"
+                        appTooltipPosition="top"
+                        [attr.aria-label]="'Download results for job ' + job.job_id"
+                      >
+                        <ng-icon name="heroArrowDownTray" class="size-4" />
                       </button>
                     }
                   </td>
