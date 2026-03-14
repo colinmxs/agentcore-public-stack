@@ -50,8 +50,8 @@ SAMPLE_JOB = {
     "job_id": "abc123def456",
     "user_id": "user-001",
     "email": "user@example.com",
-    "model_id": "meta-llama-3-8b",
-    "model_name": "Meta Llama 3 8B",
+    "model_id": "distilgpt2",
+    "model_name": "DistilGPT-2",
     "status": "TRAINING",
     "dataset_s3_key": "datasets/user-001/abc/train.jsonl",
     "output_s3_prefix": "output/user-001/abc123def456",
@@ -85,9 +85,9 @@ class TestListModels:
         models = resp.json()
         assert len(models) >= 3
         model_ids = {m["model_id"] for m in models}
-        assert "meta-llama-3-8b" in model_ids
-        assert "mistral-7b-v0.3" in model_ids
-        assert "phi-3-mini-4k" in model_ids
+        assert "distilgpt2" in model_ids
+        assert "bert-base-uncased" in model_ids
+        assert "smollm2-135m-instruct" in model_ids
 
 
 class TestPresign:
@@ -148,14 +148,14 @@ class TestCreateJob:
         resp = client.post(
             "/fine-tuning/jobs",
             json={
-                "model_id": "meta-llama-3-8b",
+                "model_id": "distilgpt2",
                 "dataset_s3_key": "datasets/user-001/abc/train.jsonl",
             },
         )
 
         assert resp.status_code == 201
         body = resp.json()
-        assert body["model_id"] == "meta-llama-3-8b"
+        assert body["model_id"] == "distilgpt2"
 
     def test_returns_400_for_unknown_model(self, make_user):
         app = _create_app()
@@ -187,7 +187,7 @@ class TestCreateJob:
         resp = client.post(
             "/fine-tuning/jobs",
             json={
-                "model_id": "meta-llama-3-8b",
+                "model_id": "distilgpt2",
                 "dataset_s3_key": "datasets/user-001/abc/train.jsonl",
             },
         )
@@ -210,7 +210,7 @@ class TestCreateJob:
         resp = client.post(
             "/fine-tuning/jobs",
             json={
-                "model_id": "meta-llama-3-8b",
+                "model_id": "distilgpt2",
                 "dataset_s3_key": "datasets/user-001/abc/train.jsonl",
             },
         )

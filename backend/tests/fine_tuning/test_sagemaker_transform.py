@@ -79,7 +79,9 @@ class TestCreateTransformJob:
         assert vpc["SecurityGroupIds"] == ["sg-12345678"]
         assert vpc["Subnets"] == ["subnet-aaa", "subnet-bbb"]
 
-    def test_no_vpc_config_when_empty(self, mock_sagemaker, mock_logs):
+    def test_no_vpc_config_when_empty(self, mock_sagemaker, mock_logs, monkeypatch):
+        monkeypatch.delenv("SAGEMAKER_SECURITY_GROUP_ID", raising=False)
+        monkeypatch.delenv("SAGEMAKER_SUBNET_IDS", raising=False)
         service = SageMakerService(
             sagemaker_client=mock_sagemaker,
             logs_client=mock_logs,
