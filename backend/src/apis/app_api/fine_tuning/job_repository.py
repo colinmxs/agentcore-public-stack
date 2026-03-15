@@ -63,7 +63,7 @@ class FineTuningJobsRepository:
             "updated_at": item["updatedAt"],
             "error_message": item.get("error_message"),
             "max_runtime_seconds": int(item.get("max_runtime_seconds", 86400)),
-            "training_progress": float(item["training_progress"]) if item.get("training_progress") is not None else None,
+            "training_progress": round(float(item["training_progress"]) * 100, 1) if item.get("training_progress") is not None else None,
         }
         return result
 
@@ -206,7 +206,8 @@ class FineTuningJobsRepository:
         """Update job status and optional fields.
 
         Supported kwargs: training_start_time, training_end_time,
-        billable_seconds, estimated_cost_usd, error_message.
+        billable_seconds, estimated_cost_usd, error_message,
+        training_progress.
         """
         now = datetime.now(timezone.utc).isoformat()
 
@@ -220,6 +221,7 @@ class FineTuningJobsRepository:
             "billable_seconds": ("billable_seconds", lambda v: int(v)),
             "estimated_cost_usd": ("estimated_cost_usd", lambda v: Decimal(str(v))),
             "error_message": ("error_message", None),
+            "training_progress": ("training_progress", lambda v: Decimal(str(v))),
         }
 
         for kwarg_key, (attr_name, transform) in field_map.items():

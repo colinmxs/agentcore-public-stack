@@ -58,8 +58,19 @@ class DynamoDBProgressCallback(TrainerCallback):
                 import boto3
 
                 self._client = boto3.client("dynamodb", region_name=region)
+                logger.info(
+                    f"DynamoDB progress callback initialized: "
+                    f"table={table_name}, region={region}"
+                )
             except Exception as e:
                 logger.warning(f"Could not create DynamoDB client: {e}")
+        else:
+            logger.warning(
+                f"DynamoDB progress callback disabled — missing config: "
+                f"table_name={'set' if table_name else 'EMPTY'}, "
+                f"pk={'set' if pk else 'EMPTY'}, "
+                f"sk={'set' if sk else 'EMPTY'}"
+            )
 
     def _update_progress(self, progress):
         if not self._client:

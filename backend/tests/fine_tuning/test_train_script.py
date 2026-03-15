@@ -171,6 +171,27 @@ class TestDynamoDBProgressCallback:
         # Calling _update_progress should not raise
         cb._update_progress(0.5)
 
+    def test_logs_warning_when_params_empty(self, caplog):
+        """Should log a warning when DynamoDB params are missing."""
+        import logging
+
+        with caplog.at_level(logging.WARNING):
+            cb = DynamoDBProgressCallback("", "us-west-2", "", "")
+
+        assert any("disabled" in msg and "EMPTY" in msg for msg in caplog.messages)
+
+    def test_logs_info_when_initialized(self, caplog):
+        """Should log an info message when DynamoDB client is created."""
+        import logging
+
+        mock_client = MagicMock()
+        with patch("boto3.client", return_value=mock_client):
+            with caplog.at_level(logging.INFO):
+                cb = DynamoDBProgressCallback("my-table", "us-west-2", "PK#1", "SK#1")
+
+        assert cb._client is not None
+        assert any("initialized" in msg and "my-table" in msg for msg in caplog.messages)
+
     def test_throttles_step_updates(self):
         mock_client = MagicMock()
         cb = DynamoDBProgressCallback("table", "us-west-2", "PK", "SK")

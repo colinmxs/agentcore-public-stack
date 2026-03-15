@@ -1,13 +1,15 @@
 """Route tests for fine-tuning job endpoints."""
 
+import math
 import pytest
+from datetime import datetime, timezone, timedelta
 from unittest.mock import MagicMock, patch
 from fastapi import FastAPI, HTTPException
 from fastapi.testclient import TestClient
 
 from apis.shared.auth.models import User
 from apis.shared.auth.dependencies import get_current_user
-from apis.app_api.fine_tuning.routes import router
+from apis.app_api.fine_tuning.routes import router, _estimate_training_progress
 from apis.app_api.fine_tuning.dependencies import require_fine_tuning_access
 from apis.app_api.fine_tuning.job_repository import get_fine_tuning_jobs_repository
 from apis.app_api.fine_tuning.s3_service import get_fine_tuning_s3_service
@@ -443,3 +445,307 @@ class TestRequiresAccess:
         assert client.get("/fine-tuning/jobs/abc/logs").status_code == 403
         assert client.get("/fine-tuning/jobs/abc/download").status_code == 403
         assert client.delete("/fine-tuning/jobs/abc").status_code == 403
+
+
+# =========================================================================
+# _estimate_training_progress unit tests
+# =========================================================================
+
+
+class TestEstimateTrainingProgress:
+
+    def test_starting_phase_returns_2(self):
+        result = _estimate_training_progress({"secondary_status": "Starting"}, {})
+        assert result == 2.0
+
+    def test_launching_instances_returns_3(self):
+        result = _estimate_training_progress({"secondary_status": "LaunchingMLInstances"}, {})
+        assert result == 3.0
+
+    def test_preparing_stack_returns_5(self):
+        result = _estimate_training_progress({"secondary_status": "PreparingTrainingStack"}, {})
+        assert result == 5.0
+
+    def test_downloading_image_returns_6(self):
+        result = _estimate_training_progress({"secondary_status": "DownloadingTrainingImage"}, {})
+        assert result == 6.0
+
+    def test_downloading_data_returns_8(self):
+        result = _estimate_training_progress({"secondary_status": "Downloading"}, {})
+        assert result == 8.0
+
+    def test_uploading_returns_92(self):
+        result = _estimate_training_progress({"secondary_status": "Uploading"}, {})
+        assert result == 92.0
+
+    def test_training_phase_with_elapsed_time(self):
+        """Training phase uses a logarithmic curve based on elapsed time."""
+        start = (datetime.now(timezone.utc) - timedelta(minutes=30)).isoformat()
+        sm_status = {
+            "secondary_status": "Training",
+            "training_start_time": start,
+        }
+        result = _estimate_training_progress(sm_status, {})
+        # After 30 min: ~57%  (10 + 75 * (1 - e^(-1)))
+        expected = round(10.0 + 75.0 * (1.0 - math.exp(-1.0)), 1)
+        assert abs(result - expected) < 2.0  # Allow small timing drift
+
+    def test_training_phase_short_elapsed(self):
+        """Short elapsed time yields low progress."""
+        start = (datetime.now(timezone.utc) - timedelta(minutes=1)).isoformat()
+        sm_status = {
+            "secondary_status": "Training",
+            "training_start_time": start,
+        }
+        result = _estimate_training_progress(sm_status, {})
+        assert result >= 10.0
+        assert result < 20.0
+
+    def test_training_phase_long_elapsed(self):
+        """Long elapsed time caps at 85%."""
+        start = (datetime.now(timezone.utc) - timedelta(hours=5)).isoformat()
+        sm_status = {
+            "secondary_status": "Training",
+            "training_start_time": start,
+        }
+        result = _estimate_training_progress(sm_status, {})
+        assert result == 85.0
+
+    def test_training_phase_uses_job_start_time_fallback(self):
+        """Falls back to job's training_start_time when SageMaker status lacks it."""
+        start = (datetime.now(timezone.utc) - timedelta(minutes=15)).isoformat()
+        sm_status = {"secondary_status": "Training"}
+        job = {"training_start_time": start}
+        result = _estimate_training_progress(sm_status, job)
+        # After 15 min: ~40%
+        assert result > 30.0
+        assert result < 50.0
+
+    def test_training_phase_default_without_timing(self):
+        """Returns 15% for Training phase without any timing info."""
+        sm_status = {"secondary_status": "Training"}
+        result = _estimate_training_progress(sm_status, {})
+        assert result == 15.0
+
+    def test_unknown_secondary_status_returns_5(self):
+        """Returns 5% for unknown secondary status without timing info."""
+        sm_status = {"secondary_status": "SomeUnknownPhase"}
+        result = _estimate_training_progress(sm_status, {})
+        assert result == 5.0
+
+    def test_no_secondary_status_with_timing(self):
+        """Uses elapsed time curve when secondary_status is missing but timing exists."""
+        start = (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat()
+        sm_status = {"training_start_time": start}
+        result = _estimate_training_progress(sm_status, {})
+        assert result > 10.0
+        assert result < 40.0
+
+    def test_no_secondary_status_no_timing(self):
+        """Returns 5% as absolute fallback."""
+        result = _estimate_training_progress({}, {})
+        assert result == 5.0
+
+    def test_progress_never_exceeds_92(self):
+        """No phase estimate should exceed the Uploading phase (92%)."""
+        start = (datetime.now(timezone.utc) - timedelta(hours=100)).isoformat()
+        sm_status = {
+            "secondary_status": "Training",
+            "training_start_time": start,
+        }
+        result = _estimate_training_progress(sm_status, {})
+        assert result <= 92.0
+
+
+# =========================================================================
+# _sync_job_status behavior tests (via route integration)
+# =========================================================================
+
+
+class TestSyncJobStatusFallbackProgress:
+
+    def test_returns_fallback_progress_when_status_unchanged(self, make_user):
+        """When status is still TRAINING, response includes estimated progress."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        training_job = {
+            **SAMPLE_JOB,
+            "status": "TRAINING",
+            "training_progress": None,
+            "training_start_time": (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(),
+        }
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = training_job
+
+        mock_sm = MagicMock()
+        mock_sm.describe_training_job.return_value = {
+            "status": "InProgress",
+            "secondary_status": "Training",
+            "training_start_time": training_job["training_start_time"],
+        }
+
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{SAMPLE_JOB['job_id']}")
+
+        assert resp.status_code == 200
+        body = resp.json()
+        # Should have a non-null estimated progress
+        assert body["training_progress"] is not None
+        assert body["training_progress"] > 0.0
+        # update_job_status should NOT be called (fallback is in-memory only)
+        mock_jobs.update_job_status.assert_not_called()
+
+    def test_preserves_real_progress_from_callback(self, make_user):
+        """When training_progress already exists in DB, don't overwrite with estimate."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        training_job = {
+            **SAMPLE_JOB,
+            "status": "TRAINING",
+            "training_progress": 45.0,  # Real progress from callback
+            "training_start_time": (datetime.now(timezone.utc) - timedelta(minutes=10)).isoformat(),
+        }
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = training_job
+
+        mock_sm = MagicMock()
+        mock_sm.describe_training_job.return_value = {
+            "status": "InProgress",
+            "secondary_status": "Training",
+        }
+
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{SAMPLE_JOB['job_id']}")
+
+        assert resp.status_code == 200
+        # Real progress should be preserved unchanged
+        assert resp.json()["training_progress"] == 45.0
+
+    def test_persists_training_start_time_on_unchanged_status(self, make_user):
+        """When status unchanged but SageMaker has start time we lack, persist it."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        training_job = {
+            **SAMPLE_JOB,
+            "status": "TRAINING",
+            "training_progress": None,
+            "training_start_time": None,  # Not yet set
+        }
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = training_job
+        mock_jobs.update_job_status.return_value = {
+            **training_job,
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+
+        mock_sm = MagicMock()
+        mock_sm.describe_training_job.return_value = {
+            "status": "InProgress",
+            "secondary_status": "Training",
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{SAMPLE_JOB['job_id']}")
+
+        assert resp.status_code == 200
+        # Should have persisted training_start_time
+        mock_jobs.update_job_status.assert_called_once_with(
+            "user-001", SAMPLE_JOB["job_id"], "TRAINING",
+            training_start_time="2026-03-13T10:05:00+00:00",
+        )
+
+    def test_does_not_persist_start_time_when_already_set(self, make_user):
+        """When training_start_time already set, don't call update."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        training_job = {
+            **SAMPLE_JOB,
+            "status": "TRAINING",
+            "training_progress": None,
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = training_job
+
+        mock_sm = MagicMock()
+        mock_sm.describe_training_job.return_value = {
+            "status": "InProgress",
+            "secondary_status": "Training",
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{SAMPLE_JOB['job_id']}")
+
+        assert resp.status_code == 200
+        mock_jobs.update_job_status.assert_not_called()
+
+    def test_syncs_pending_job(self, make_user):
+        """PENDING jobs should also trigger SageMaker status sync."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        pending_job = {**SAMPLE_JOB, "status": "PENDING", "training_progress": None}
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = pending_job
+        mock_jobs.update_job_status.return_value = {
+            **pending_job,
+            "status": "TRAINING",
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+
+        mock_sm = MagicMock()
+        mock_sm.describe_training_job.return_value = {
+            "status": "InProgress",
+            "secondary_status": "Training",
+            "training_start_time": "2026-03-13T10:05:00+00:00",
+        }
+        mock_sm.calculate_cost.return_value = 0.0
+
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{pending_job['job_id']}")
+
+        assert resp.status_code == 200
+        # Should have called describe_training_job for PENDING status
+        mock_sm.describe_training_job.assert_called_once()
+        # Status changed PENDING → TRAINING, so update_job_status should be called
+        mock_jobs.update_job_status.assert_called_once()
+
+    def test_no_sync_for_completed_job(self, make_user):
+        """COMPLETED jobs should NOT trigger SageMaker sync."""
+        app = _create_app()
+        user = make_user(email="user@example.com")
+
+        completed_job = {**SAMPLE_JOB, "status": "COMPLETED"}
+        mock_jobs = MagicMock()
+        mock_jobs.get_job.return_value = completed_job
+
+        mock_sm = MagicMock()
+        mock_access = MagicMock()
+        _setup_deps(app, user, SAMPLE_GRANT, mock_jobs, sagemaker=mock_sm, access_repo=mock_access)
+
+        client = TestClient(app)
+        resp = client.get(f"/fine-tuning/jobs/{completed_job['job_id']}")
+
+        assert resp.status_code == 200
+        mock_sm.describe_training_job.assert_not_called()

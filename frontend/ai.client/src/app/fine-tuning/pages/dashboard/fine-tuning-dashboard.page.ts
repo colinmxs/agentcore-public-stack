@@ -1,6 +1,6 @@
 import { Component, ChangeDetectionStrategy, DestroyRef, inject, OnInit, signal } from '@angular/core';
 import { Router, RouterLink } from '@angular/router';
-import { DatePipe } from '@angular/common';
+import { DatePipe, DecimalPipe } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroPlus,
@@ -19,7 +19,7 @@ import type { JobResponse, InferenceJobResponse } from '../../models/fine-tuning
 
 @Component({
   selector: 'app-fine-tuning-dashboard',
-  imports: [RouterLink, DatePipe, NgIcon, TooltipDirective, StatusBadgeComponent, QuotaCardComponent],
+  imports: [RouterLink, DatePipe, DecimalPipe, NgIcon, TooltipDirective, StatusBadgeComponent, QuotaCardComponent],
   providers: [
     provideIcons({
       heroPlus,

@@ -1,9 +1,11 @@
 """User-facing routes for fine-tuning."""
 
+import math
 import os
 import uuid
 import logging
 from datetime import datetime, timezone, timedelta
+from typing import Optional
 
 from fastapi import APIRouter, Depends, HTTPException, status
 
@@ -240,7 +242,7 @@ async def get_job(
         raise HTTPException(status_code=404, detail="Job not found")
 
     # Sync status from SageMaker for active jobs
-    if job["status"] == "TRAINING" and job.get("sagemaker_job_name"):
+    if job["status"] in ("PENDING", "TRAINING") and job.get("sagemaker_job_name"):
         job = _sync_job_status(
             job, jobs_repo, sagemaker, access_repo
         )
@@ -324,6 +326,46 @@ async def stop_job(
 # Internal Helpers
 # =========================================================================
 
+def _estimate_training_progress(sm_status: dict, job: dict) -> Optional[float]:
+    """Estimate training progress from SageMaker secondary status and elapsed time.
+
+    Returns progress as a percentage (0-100) or None.
+    Used as a fallback when the in-container DynamoDB callback hasn't reported progress.
+    """
+    secondary = sm_status.get("secondary_status")
+
+    # Fixed progress for pre/post-training phases
+    phase_progress = {
+        "Starting": 2.0,
+        "LaunchingMLInstances": 3.0,
+        "PreparingTrainingStack": 5.0,
+        "DownloadingTrainingImage": 6.0,
+        "Downloading": 8.0,
+        "Uploading": 92.0,
+    }
+    if secondary in phase_progress:
+        return phase_progress[secondary]
+
+    # For "Training" phase, estimate from elapsed time using a logarithmic curve
+    # that moves quickly at first then slows down (feels natural to users).
+    # Approximate values: ~22% at 5m, ~40% at 15m, ~57% at 30m, ~75% at 1h, ~84% at 2h
+    start_time = sm_status.get("training_start_time") or job.get("training_start_time")
+    if start_time:
+        try:
+            start_dt = datetime.fromisoformat(start_time)
+            if start_dt.tzinfo is None:
+                start_dt = start_dt.replace(tzinfo=timezone.utc)
+            elapsed_minutes = max(0.0, (datetime.now(timezone.utc) - start_dt).total_seconds() / 60.0)
+            return round(min(85.0, 10.0 + 75.0 * (1.0 - math.exp(-elapsed_minutes / 30.0))), 1)
+        except Exception:
+            pass
+
+    # Default fallback when we have no timing info
+    if secondary == "Training":
+        return 15.0
+    return 5.0
+
+
 def _sync_job_status(
     job: dict,
     jobs_repo: FineTuningJobsRepository,
@@ -346,6 +388,24 @@ def _sync_job_status(
     new_status = status_map.get(sm_status["status"], job["status"])
 
     if new_status == job["status"]:
+        # For active training jobs, capture start time and estimate progress
+        if new_status == "TRAINING":
+            # Persist training_start_time from SageMaker if not already set
+            if sm_status.get("training_start_time") and not job.get("training_start_time"):
+                updated = jobs_repo.update_job_status(
+                    job["user_id"], job["job_id"], job["status"],
+                    training_start_time=sm_status["training_start_time"],
+                )
+                if updated:
+                    job = updated
+
+            # Provide fallback progress estimate when the in-container
+            # DynamoDB callback hasn't reported real progress
+            if job.get("training_progress") is None:
+                estimated = _estimate_training_progress(sm_status, job)
+                if estimated is not None:
+                    job["training_progress"] = estimated
+
         return job
 
     update_kwargs = {}
@@ -359,6 +419,8 @@ def _sync_job_status(
         update_kwargs["estimated_cost_usd"] = cost
     if sm_status.get("failure_reason"):
         update_kwargs["error_message"] = sm_status["failure_reason"]
+    if new_status == "COMPLETED":
+        update_kwargs["training_progress"] = 1.0
 
     updated = jobs_repo.update_job_status(
         job["user_id"], job["job_id"], new_status, **update_kwargs
