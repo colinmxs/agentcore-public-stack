@@ -61,6 +61,10 @@ def input_fn(request_body, content_type="text/plain"):
 
     Returns a list of non-empty text strings.
     """
+    # SageMaker HuggingFace DLC passes request_body as bytes, not str.
+    if isinstance(request_body, (bytes, bytearray)):
+        request_body = request_body.decode("utf-8")
+
     if content_type == "text/plain":
         lines = request_body.strip().split("\n")
         texts = [line.strip() for line in lines if line.strip()]

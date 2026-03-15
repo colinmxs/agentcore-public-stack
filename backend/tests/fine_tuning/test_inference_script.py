@@ -50,6 +50,30 @@ class TestInputFn:
         result = input_fn(body, "application/json")
         assert result == ["Hello", "World"]
 
+    def test_text_plain_bytes_input(self):
+        """SageMaker HuggingFace DLC passes request_body as bytes."""
+        body = b"Hello world\nFoo bar\nBaz qux\n"
+        result = input_fn(body, "text/plain")
+        assert result == ["Hello world", "Foo bar", "Baz qux"]
+
+    def test_json_bytes_input(self):
+        """JSON body delivered as bytes is decoded correctly."""
+        body = json.dumps(["Hello", "World"]).encode("utf-8")
+        result = input_fn(body, "application/json")
+        assert result == ["Hello", "World"]
+
+    def test_bytes_with_utf8_characters(self):
+        """Non-ASCII text encoded as UTF-8 bytes is handled correctly."""
+        body = "café latte\nnaïve résumé\n".encode("utf-8")
+        result = input_fn(body, "text/plain")
+        assert result == ["café latte", "naïve résumé"]
+
+    def test_bytearray_input(self):
+        """bytearray input is also decoded correctly."""
+        body = bytearray(b"Hello\nWorld\n")
+        result = input_fn(body, "text/plain")
+        assert result == ["Hello", "World"]
+
 
 class TestSanitizeLabel:
 
