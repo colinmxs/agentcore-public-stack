@@ -72,6 +72,31 @@ export class FineTuningStateService {
   /** Total number of inference jobs. */
   readonly inferenceJobCount = computed(() => this.inferenceJobs().length);
 
+  /** Training jobs currently in progress (PENDING or TRAINING). */
+  readonly activeTrainingJobs = computed(() =>
+    this.trainingJobs().filter(j => j.status === 'PENDING' || j.status === 'TRAINING'),
+  );
+
+  /** Inference jobs currently in progress (PENDING or TRANSFORMING). */
+  readonly activeInferenceJobs = computed(() =>
+    this.inferenceJobs().filter(j => j.status === 'PENDING' || j.status === 'TRANSFORMING'),
+  );
+
+  /** Training jobs that are no longer active. */
+  readonly completedTrainingJobs = computed(() =>
+    this.trainingJobs().filter(j => j.status !== 'PENDING' && j.status !== 'TRAINING'),
+  );
+
+  /** Inference jobs that are no longer active. */
+  readonly completedInferenceJobs = computed(() =>
+    this.inferenceJobs().filter(j => j.status !== 'PENDING' && j.status !== 'TRANSFORMING'),
+  );
+
+  /** Whether any job is currently in progress. */
+  readonly hasActiveJobs = computed(() =>
+    this.activeTrainingJobs().length > 0 || this.activeInferenceJobs().length > 0,
+  );
+
   // ── Actions ─────────────────────────────────────────────────────────
 
   /** Check the current user's fine-tuning access and quota. */
@@ -88,6 +113,10 @@ export class FineTuningStateService {
   /**
    * Load dashboard data: access check, then training + inference jobs.
    * Only loads jobs if the user has access.
+   *
+   * The list endpoints return cached DynamoDB data without syncing SageMaker.
+   * To get fresh status for active jobs, we follow up with individual get-by-id
+   * calls which trigger a SageMaker status sync on the backend.
    */
   async loadDashboard(): Promise<void> {
     this.loading.set(true);
@@ -99,8 +128,47 @@ export class FineTuningStateService {
           firstValueFrom(this.http.listTrainingJobs()),
           firstValueFrom(this.http.listInferenceJobs()),
         ]);
-        this.trainingJobs.set(this.sortByCreatedDesc(trainingResponse.jobs));
-        this.inferenceJobs.set(this.sortByCreatedDesc(inferenceResponse.jobs));
+
+        let trainingJobs = this.sortByCreatedDesc(trainingResponse.jobs);
+        let inferenceJobs = this.sortByCreatedDesc(inferenceResponse.jobs);
+
+        // Sync active jobs via get-by-id endpoints (triggers SageMaker status sync)
+        const activeTraining = trainingJobs.filter(
+          j => j.status === 'PENDING' || j.status === 'TRAINING',
+        );
+        const activeInference = inferenceJobs.filter(
+          j => j.status === 'PENDING' || j.status === 'TRANSFORMING',
+        );
+
+        if (activeTraining.length > 0 || activeInference.length > 0) {
+          const [syncedTraining, syncedInference] = await Promise.all([
+            Promise.all(
+              activeTraining.map(j =>
+                firstValueFrom(this.http.getTrainingJob(j.job_id)).catch(() => null),
+              ),
+            ),
+            Promise.all(
+              activeInference.map(j =>
+                firstValueFrom(this.http.getInferenceJob(j.job_id)).catch(() => null),
+              ),
+            ),
+          ]);
+
+          // Merge synced data back into the lists
+          for (const synced of syncedTraining) {
+            if (!synced) continue;
+            const idx = trainingJobs.findIndex(j => j.job_id === synced.job_id);
+            if (idx !== -1) trainingJobs = [...trainingJobs.slice(0, idx), synced, ...trainingJobs.slice(idx + 1)];
+          }
+          for (const synced of syncedInference) {
+            if (!synced) continue;
+            const idx = inferenceJobs.findIndex(j => j.job_id === synced.job_id);
+            if (idx !== -1) inferenceJobs = [...inferenceJobs.slice(0, idx), synced, ...inferenceJobs.slice(idx + 1)];
+          }
+        }
+
+        this.trainingJobs.set(trainingJobs);
+        this.inferenceJobs.set(inferenceJobs);
       }
     } catch (err: unknown) {
       const message = err instanceof Error ? err.message : 'Failed to load dashboard data';
