@@ -334,6 +334,26 @@ async def api_converse(
         f"messages={len(request.messages)} stream={request.stream}"
     )
 
+    # 1.5 Per-key rate limit (fail-open)
+    from apis.app_api.auth.api_keys.repository import get_api_key_repository
+
+    try:
+        repo = get_api_key_repository()
+        if not await repo.check_rate_limit(validated_key.key_id):
+            logger.warning(
+                f"Rate limit exceeded for key {validated_key.key_id} "
+                f"(user={validated_key.user_id})"
+            )
+            raise HTTPException(
+                status_code=429,
+                detail="Rate limit exceeded. Max 60 requests per minute.",
+                headers={"Retry-After": "60"},
+            )
+    except HTTPException:
+        raise
+    except Exception as exc:
+        logger.error(f"Rate limit check error: {exc}", exc_info=True)
+
     # 2. Basic validation
     if not request.messages:
         raise HTTPException(status_code=400, detail="messages array must not be empty")
@@ -385,9 +405,27 @@ async def api_converse(
 
     try:
         response = client.converse(**params)
-    except Exception as exc:
-        logger.error(f"Bedrock converse error: {exc}", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Model invocation failed: {exc}")
+    except client.exceptions.ThrottlingException:
+        logger.warning("Bedrock throttling on converse call", exc_info=True)
+        raise HTTPException(
+            status_code=429,
+            detail="Model is temporarily overloaded. Please retry shortly.",
+            headers={"Retry-After": "5"},
+        )
+    except client.exceptions.ClientError as exc:
+        error_code = exc.response["Error"]["Code"]
+        logger.error(f"Bedrock ClientError ({error_code}) on converse call", exc_info=True)
+        if error_code in ("ValidationException", "ModelErrorException"):
+            raise HTTPException(
+                status_code=400,
+                detail="Invalid request — check model ID, message format, and content policy.",
+            )
+        if error_code == "AccessDeniedException":
+            raise HTTPException(status_code=403, detail="Model access is not available.")
+        raise HTTPException(status_code=502, detail="Model invocation failed due to a service error.")
+    except Exception:
+        logger.error("Unexpected error during Bedrock converse call", exc_info=True)
+        raise HTTPException(status_code=502, detail="Model invocation failed due to an internal error.")
 
     # Parse response
     output = response.get("output", {})

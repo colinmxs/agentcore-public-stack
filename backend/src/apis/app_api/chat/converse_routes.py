@@ -107,6 +107,15 @@ async def api_converse_proxy(
     except httpx.ConnectError:
         logger.error(f"Cannot reach Inference API at {target_url}")
         raise HTTPException(status_code=502, detail="Inference API is unreachable")
+    except httpx.TimeoutException:
+        logger.error(f"Inference API request timed out: {target_url}")
+        raise HTTPException(
+            status_code=504,
+            detail="Inference API request timed out",
+        )
     except Exception as exc:
         logger.error(f"Proxy error: {exc}", exc_info=True)
-        raise HTTPException(status_code=502, detail=f"Proxy error: {exc}")
+        raise HTTPException(
+            status_code=502,
+            detail="An unexpected error occurred while proxying to the Inference API",
+        )

@@ -16,6 +16,7 @@ Attributes:
 import hashlib
 import logging
 import os
+import time
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 
@@ -117,6 +118,46 @@ class ApiKeyRepository:
         )
         items = resp.get("Items", [])
         return items[0] if items else None
+
+    # ------------------------------------------------------------------
+    # Rate limiting
+    # ------------------------------------------------------------------
+
+    async def check_rate_limit(
+        self,
+        key_id: str,
+        window_seconds: int = 60,
+        max_requests: int = 60,
+    ) -> bool:
+        """Sliding-window rate limit using atomic DynamoDB counters.
+
+        Stores a counter item per key per time window. TTL auto-cleans
+        expired windows. Fail-open: returns True on any error.
+
+        Returns True if the request is allowed, False if rate-limited.
+        """
+        now = int(time.time())
+        window_key = now // window_seconds
+
+        try:
+            resp = self.table.update_item(
+                Key={"PK": f"RATE#{key_id}", "SK": f"WIN#{window_key}"},
+                UpdateExpression=(
+                    "SET #cnt = if_not_exists(#cnt, :zero) + :one, #ttl = :ttl"
+                ),
+                ExpressionAttributeNames={"#cnt": "requestCount", "#ttl": "ttl"},
+                ExpressionAttributeValues={
+                    ":zero": 0,
+                    ":one": 1,
+                    ":ttl": now + (window_seconds * 2),
+                },
+                ReturnValues="UPDATED_NEW",
+            )
+            count = int(resp["Attributes"]["requestCount"])
+            return count <= max_requests
+        except ClientError as exc:
+            logger.warning(f"Rate limit check failed for key {key_id}: {exc}")
+            return True  # fail-open
 
 
 # ---------------------------------------------------------------------------

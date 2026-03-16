@@ -509,6 +509,7 @@ export class InfrastructureStack extends cdk.Stack {
       pointInTimeRecovery: true,
       removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: "ttl",
     });
 
     // KeyHashIndex - O(1) lookup by key hash for API key authentication
