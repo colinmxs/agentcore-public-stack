@@ -156,26 +156,8 @@ export class SageMakerFineTuningStack extends cdk.Stack {
       ],
       lifecycleRules: [
         {
-          id: 'transition-to-ia',
-          transitions: [
-            {
-              storageClass: s3.StorageClass.INFREQUENT_ACCESS,
-              transitionAfter: cdk.Duration.days(30),
-            },
-          ],
-        },
-        {
-          id: 'transition-to-glacier',
-          transitions: [
-            {
-              storageClass: s3.StorageClass.GLACIER_INSTANT_RETRIEVAL,
-              transitionAfter: cdk.Duration.days(90),
-            },
-          ],
-        },
-        {
           id: 'expire-objects',
-          expiration: cdk.Duration.days(365),
+          expiration: cdk.Duration.days(30),
         },
         {
           id: 'abort-incomplete-multipart',

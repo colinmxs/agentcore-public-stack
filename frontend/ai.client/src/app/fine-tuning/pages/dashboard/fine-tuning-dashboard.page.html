@@ -108,7 +108,7 @@
                 {{ job.model_name }}
               </a>
 
-              <span class="hidden text-sm/6 text-gray-500 sm:block dark:text-gray-400">{{ job.instance_type }}</span>
+              <span class="hidden text-sm/6 text-gray-500 sm:block dark:text-gray-400">{{ getRetentionLabel(job.created_at) }}</span>
 
               @if (job.training_progress != null) {
                 <div class="hidden items-center gap-2 sm:flex" role="progressbar" [attr.aria-valuenow]="job.training_progress" aria-valuemin="0" aria-valuemax="100">
@@ -170,7 +170,7 @@
                 {{ job.model_name }}
               </a>
 
-              <span class="hidden text-sm/6 text-gray-500 sm:block dark:text-gray-400">{{ job.instance_type }}</span>
+              <span class="hidden text-sm/6 text-gray-500 sm:block dark:text-gray-400">{{ getRetentionLabel(job.created_at) }}</span>
 
               <div class="ml-auto shrink-0 rounded-md bg-sky-100/80 px-3 py-1.5 text-center dark:bg-sky-900/30">
                 <div class="font-mono text-base/5 font-bold tracking-tight text-sky-700 dark:text-sky-300">{{ getElapsedInference(job) }}</div>
@@ -223,7 +223,7 @@
               <tr>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Model</th>
-                <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Instance</th>
+                <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Retention</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Cost</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Created</th>
                 <th scope="col" class="px-4 py-3 text-right text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
@@ -243,8 +243,8 @@
                       {{ job.model_name }}
                     </a>
                   </td>
-                  <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-600 dark:text-gray-400">
-                    {{ job.instance_type }}
+                  <td class="whitespace-nowrap px-4 py-3 text-sm/6" [class]="getRetentionDaysRemaining(job.created_at) <= 7 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-400'">
+                    {{ getRetentionLabel(job.created_at) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-600 dark:text-gray-400">
                     {{ formatCost(job.estimated_cost_usd) }}
@@ -333,7 +333,7 @@
               <tr>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Status</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Model</th>
-                <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Instance</th>
+                <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Retention</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Cost</th>
                 <th scope="col" class="px-4 py-3 text-left text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Created</th>
                 <th scope="col" class="px-4 py-3 text-right text-xs/4 font-medium uppercase tracking-wider text-gray-500 dark:text-gray-400">Actions</th>
@@ -353,8 +353,8 @@
                       {{ job.model_name }}
                     </a>
                   </td>
-                  <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-600 dark:text-gray-400">
-                    {{ job.instance_type }}
+                  <td class="whitespace-nowrap px-4 py-3 text-sm/6" [class]="getRetentionDaysRemaining(job.created_at) <= 7 ? 'text-amber-600 dark:text-amber-400' : 'text-gray-600 dark:text-gray-400'">
+                    {{ getRetentionLabel(job.created_at) }}
                   </td>
                   <td class="whitespace-nowrap px-4 py-3 text-sm/6 text-gray-600 dark:text-gray-400">
                     {{ formatCost(job.estimated_cost_usd) }}

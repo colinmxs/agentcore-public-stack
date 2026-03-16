@@ -201,4 +201,21 @@ export class FineTuningDashboardPage implements OnInit {
       this.state.error.set('Failed to get download URL');
     }
   }
+
+  /** S3 retention period in days (matches lifecycle rule on fine-tuning-data bucket). */
+  private readonly RETENTION_DAYS = 30;
+
+  /** Get days remaining before S3 artifacts expire for a job. */
+  getRetentionDaysRemaining(createdAt: string): number {
+    const created = new Date(createdAt).getTime();
+    const expiresAt = created + this.RETENTION_DAYS * 24 * 60 * 60 * 1000;
+    return Math.max(0, Math.ceil((expiresAt - Date.now()) / (24 * 60 * 60 * 1000)));
+  }
+
+  /** Format retention as a human-readable string. */
+  getRetentionLabel(createdAt: string): string {
+    const days = this.getRetentionDaysRemaining(createdAt);
+    if (days === 0) return 'Expired';
+    return `${days}d remaining`;
+  }
 }
