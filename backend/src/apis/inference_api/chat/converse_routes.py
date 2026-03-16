@@ -15,6 +15,7 @@ from datetime import datetime, timezone
 from typing import AsyncGenerator
 
 import boto3
+from botocore.exceptions import ClientError as BotoClientError
 from fastapi import APIRouter, Header, HTTPException, status
 from fastapi.responses import StreamingResponse
 
@@ -197,13 +198,15 @@ async def _stream_converse(request: ConverseRequest, user_id: str, key_id: str) 
 
     try:
         response = client.converse_stream(**params)
-    except client.exceptions.ClientError as exc:
-        yield _sse("error", {"error": str(exc)})
+    except BotoClientError as exc:
+        error_code = exc.response["Error"]["Code"]
+        logger.error(f"Bedrock converse_stream ClientError ({error_code})", exc_info=True)
+        yield _sse("error", {"error": "Model invocation failed due to a service error."})
         yield _sse("done", {})
         return
-    except Exception as exc:
-        logger.error(f"Bedrock converse_stream error: {exc}", exc_info=True)
-        yield _sse("error", {"error": str(exc)})
+    except Exception:
+        logger.error("Bedrock converse_stream error", exc_info=True)
+        yield _sse("error", {"error": "Model invocation failed due to an internal error."})
         yield _sse("done", {})
         return
 
@@ -335,11 +338,11 @@ async def api_converse(
     )
 
     # 1.5 Per-key rate limit (fail-open)
-    from apis.app_api.auth.api_keys.repository import get_api_key_repository
+    from apis.shared.rate_limit import get_rate_limiter
 
     try:
-        repo = get_api_key_repository()
-        if not await repo.check_rate_limit(validated_key.key_id):
+        limiter = get_rate_limiter()
+        if not await limiter.check_rate_limit(validated_key.key_id):
             logger.warning(
                 f"Rate limit exceeded for key {validated_key.key_id} "
                 f"(user={validated_key.user_id})"
@@ -405,15 +408,15 @@ async def api_converse(
 
     try:
         response = client.converse(**params)
-    except client.exceptions.ThrottlingException:
-        logger.warning("Bedrock throttling on converse call", exc_info=True)
-        raise HTTPException(
-            status_code=429,
-            detail="Model is temporarily overloaded. Please retry shortly.",
-            headers={"Retry-After": "5"},
-        )
-    except client.exceptions.ClientError as exc:
+    except BotoClientError as exc:
         error_code = exc.response["Error"]["Code"]
+        if error_code == "ThrottlingException":
+            logger.warning("Bedrock throttling on converse call", exc_info=True)
+            raise HTTPException(
+                status_code=429,
+                detail="Model is temporarily overloaded. Please retry shortly.",
+                headers={"Retry-After": "5"},
+            )
         logger.error(f"Bedrock ClientError ({error_code}) on converse call", exc_info=True)
         if error_code in ("ValidationException", "ModelErrorException"):
             raise HTTPException(

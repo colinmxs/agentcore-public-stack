@@ -1025,7 +1025,6 @@ export class AppApiStack extends cdk.Stack {
           'dynamodb:UpdateItem',
           'dynamodb:DeleteItem',
           'dynamodb:Query',
-          'dynamodb:Scan',
         ],
         resources: [apiKeysTableArn, `${apiKeysTableArn}/index/*`],
       })
