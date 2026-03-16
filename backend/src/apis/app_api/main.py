@@ -125,7 +125,7 @@ app.include_router(users_router)
 app.include_router(models_router)
 app.include_router(costs_router)
 app.include_router(chat_router)  # Application-specific chat endpoints
-app.include_router(converse_router)  # API-key authenticated converse endpoint
+app.include_router(converse_router)  # Proxies to Inference API for cost accounting
 app.include_router(memory_router)  # AgentCore Memory access endpoints
 app.include_router(tools_router)  # Tool discovery and permissions
 app.include_router(files_router)  # File upload via pre-signed URLs
