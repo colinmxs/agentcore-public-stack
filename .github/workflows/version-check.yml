@@ -37,6 +37,32 @@ jobs:
         run: |
           bash scripts/common/sync-version.sh --check
 
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Check package-lock.json files are in sync
+        id: lockfiles-synced
+        continue-on-error: true
+        run: |
+          FAILED=0
+
+          for dir in frontend/ai.client infrastructure; do
+            echo "Checking ${dir}/package-lock.json..."
+            npm install --package-lock-only --prefix "${dir}" 2>/dev/null
+            if ! git diff --exit-code "${dir}/package-lock.json" > /dev/null 2>&1; then
+              echo "::error::${dir}/package-lock.json is out of sync with ${dir}/package.json"
+              FAILED=1
+            else
+              echo "${dir}/package-lock.json is in sync."
+            fi
+          done
+
+          if [ "${FAILED}" -eq 1 ]; then
+            exit 1
+          fi
+
       - name: Evaluate results
         run: |
           FAILED=0
@@ -48,6 +74,11 @@ jobs:
 
           if [ "${{ steps.manifests-synced.outcome }}" = "failure" ]; then
             echo "::error::Package manifests are out of sync with VERSION. Run \`bash scripts/common/sync-version.sh\` and commit."
+            FAILED=1
+          fi
+
+          if [ "${{ steps.lockfiles-synced.outcome }}" = "failure" ]; then
+            echo "::error::package-lock.json files are out of sync. Run \`bash scripts/common/sync-version.sh\` and commit the updated lockfiles."
             FAILED=1
           fi
 
