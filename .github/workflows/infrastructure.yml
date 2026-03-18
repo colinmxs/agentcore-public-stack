@@ -244,7 +244,7 @@ jobs:
           key: infrastructure-build-${{ github.sha }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
@@ -331,7 +331,7 @@ jobs:
           key: infrastructure-build-${{ github.sha }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v6
+        uses: actions/download-artifact@v7
         with:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
