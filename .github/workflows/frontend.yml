@@ -46,6 +46,7 @@ on:
         default: 'false'
 
 env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Build and Deploy Configuration (non-sensitive, repository-level)
   BUILD_CONFIG: production
   CDK_REQUIRE_APPROVAL: never
@@ -62,7 +63,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run stack dependency tests
         run: |
@@ -73,7 +74,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies
         run: |
@@ -84,13 +85,13 @@ jobs:
           bash scripts/stack-frontend/install.sh
 
       - name: Save frontend node_modules cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: frontend/ai.client/node_modules
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
 
       - name: Save CDK node_modules cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -101,10 +102,10 @@ jobs:
     needs: [install, check-stack-dependencies]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore frontend node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: frontend/ai.client/node_modules
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
@@ -114,7 +115,7 @@ jobs:
           bash scripts/stack-frontend/build.sh
 
       - name: Upload Frontend build artifacts
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-build
           path: frontend/ai.client/dist/
@@ -128,7 +129,7 @@ jobs:
       app-version: ${{ steps.read-version.outputs.APP_VERSION }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Read VERSION file
         id: read-version
@@ -138,7 +139,7 @@ jobs:
           echo "App version: ${APP_VERSION}"
 
       - name: Restore CDK node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -154,10 +155,10 @@ jobs:
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore frontend node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: frontend/ai.client/node_modules
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
@@ -167,7 +168,7 @@ jobs:
           bash scripts/stack-frontend/test.sh
 
       - name: Upload Frontend test results
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-test-results
           path: frontend/ai.client/coverage/
@@ -207,10 +208,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore CDK node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -233,7 +234,7 @@ jobs:
           bash scripts/stack-frontend/synth.sh
 
       - name: Upload synthesized templates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-cdk-synth
           path: infrastructure/cdk.out/
@@ -265,16 +266,16 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore CDK node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frontend-cdk-synth
           path: infrastructure/cdk.out/
@@ -334,16 +335,16 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore CDK node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frontend-cdk-synth
           path: infrastructure/cdk.out/
@@ -366,7 +367,7 @@ jobs:
           bash scripts/stack-frontend/deploy-cdk.sh
       
       - name: Upload stack outputs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: frontend-cdk-outputs
           path: infrastructure/frontend-outputs.json
@@ -404,10 +405,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4      
+        uses: actions/checkout@v5      
       
       - name: Download Frontend build artifacts
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: frontend-build
           path: frontend/ai.client/dist/

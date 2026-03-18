@@ -52,6 +52,7 @@ on:
 env:
   # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -64,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Run stack dependency tests
         run: |
@@ -75,7 +76,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Install system dependencies
         run: |
@@ -86,13 +87,13 @@ jobs:
           bash scripts/stack-app-api/install.sh
 
       - name: Save Python packages cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: ~/.local/lib/python3.*/site-packages
           key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
 
       - name: Save node_modules cache
-        uses: actions/cache/save@v4
+        uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -113,7 +114,7 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Set image tag
         id: set-tag
@@ -123,10 +124,10 @@ jobs:
           echo "Building with tag: ${IMAGE_TAG}"
       
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Build and export Docker image
-        uses: docker/build-push-action@v6
+        uses: docker/build-push-action@v7
         with:
           context: .
           file: backend/Dockerfile.app-api
@@ -134,7 +135,7 @@ jobs:
           outputs: type=docker,dest=${{ runner.temp }}/app-api-image.tar
       
       - name: Upload Docker image artifact
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-api-docker-image
           path: ${{ runner.temp }}/app-api-image.tar
@@ -146,10 +147,10 @@ jobs:
     needs: [install, check-stack-dependencies]
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -173,10 +174,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: app-api-docker-image
           path: ${{ runner.temp }}
@@ -197,10 +198,10 @@ jobs:
     if: ${{ github.event.inputs.skip_tests != 'true' }}
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore Python packages cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: ~/.local/lib/python3.*/site-packages
           key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
@@ -246,10 +247,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
@@ -268,14 +269,14 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
 
       - name: Synthesize CloudFormation template
         run: |
           bash scripts/stack-app-api/synth.sh
 
       - name: Upload synthesized templates
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         with:
           name: app-api-cdk-synth
           path: infrastructure/cdk.out/
@@ -308,16 +309,16 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: app-api-cdk-synth
           path: infrastructure/cdk.out/
@@ -368,10 +369,10 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
       
       - name: Download Docker image artifact
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: app-api-docker-image
           path: ${{ runner.temp }}
@@ -437,16 +438,16 @@ jobs:
     
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Restore node_modules cache
-        uses: actions/cache/restore@v4
+        uses: actions/cache/restore@v5
         with:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v4
+        uses: actions/download-artifact@v5
         with:
           name: app-api-cdk-synth
           path: infrastructure/cdk.out/
@@ -465,7 +466,7 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+        uses: docker/setup-buildx-action@v4
           
       - name: Deploy infrastructure
         run: |
@@ -476,7 +477,7 @@ jobs:
           bash scripts/stack-app-api/tag-latest.sh
      
       - name: Upload stack outputs
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v5
         if: always()
         with:
           name: app-api-deployment-outputs
@@ -517,7 +518,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 

@@ -1,5 +1,8 @@
 name: "Version Check"
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 on:
   pull_request:
     branches:
@@ -12,7 +15,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
         with:
           fetch-depth: 0
 
@@ -38,7 +41,7 @@ jobs:
           bash scripts/common/sync-version.sh --check
 
       - name: Setup Node.js
-        uses: actions/setup-node@v4
+        uses: actions/setup-node@v5
         with:
           node-version: '22'
 

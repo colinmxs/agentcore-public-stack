@@ -20,6 +20,9 @@ on:
         required: true
         type: string
 
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+
 concurrency:
   group: bootstrap-data-seeding-${{ github.ref }}
   cancel-in-progress: false
@@ -59,7 +62,7 @@ jobs:
 
     steps:
       - name: Checkout code
-        uses: actions/checkout@v4
+        uses: actions/checkout@v5
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
