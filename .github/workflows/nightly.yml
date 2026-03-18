@@ -257,12 +257,27 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.app-api \
+            -t ${CDK_PROJECT_PREFIX}-app-api:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-app-api/push-to-ecr.sh
+
       - name: Build and deploy App API
         run: bash scripts/stack-app-api/deploy.sh
 
   deploy-inference-api:
     name: Deploy Inference API (Nightly)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: deploy-rag-ingestion
     if: ${{ github.event.inputs.skip_deployment != 'true' }}
     environment: development
@@ -304,12 +319,29 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.inference-api \
+            --platform linux/arm64 \
+            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
+            -t ${CDK_PROJECT_PREFIX}-inference-api:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-inference-api/push-to-ecr.sh
+
       - name: Build and deploy Inference API
         run: bash scripts/stack-inference-api/deploy.sh
 
   deploy-rag-ingestion:
     name: Deploy RAG Ingestion (Nightly)
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04-arm
     needs: deploy-infrastructure
     if: ${{ github.event.inputs.skip_deployment != 'true' }}
     environment: development
@@ -345,6 +377,23 @@ jobs:
 
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.rag-ingestion \
+            --platform linux/arm64 \
+            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
+            -t ${CDK_PROJECT_PREFIX}-rag-ingestion:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-rag-ingestion/push-to-ecr.sh
 
       - name: Deploy RAG Ingestion
         run: bash scripts/stack-rag-ingestion/deploy.sh
