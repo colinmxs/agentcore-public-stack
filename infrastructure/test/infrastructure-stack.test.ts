@@ -429,23 +429,23 @@ describe('InfrastructureStack', () => {
   });
 
   // ------------------------------------------------------------------
-  // OAuth client secrets are always RETAIN
+  // OAuth client secrets follow config-driven removal policy
   // ------------------------------------------------------------------
-  test('OAuth client secrets secret has RETAIN removal policy', () => {
+  test('OAuth client secrets secret has config-driven removal policy', () => {
     template.hasResource('AWS::SecretsManager::Secret', {
       Properties: Match.objectLike({
         Description: Match.stringLikeRegexp('OAuth provider client secrets'),
       }),
-      DeletionPolicy: 'Retain',
+      DeletionPolicy: 'Delete',
     });
   });
 
-  test('auth provider secrets secret has RETAIN removal policy', () => {
+  test('auth provider secrets secret has config-driven removal policy', () => {
     template.hasResource('AWS::SecretsManager::Secret', {
       Properties: Match.objectLike({
         Description: Match.stringLikeRegexp('OIDC authentication provider client secrets'),
       }),
-      DeletionPolicy: 'Retain',
+      DeletionPolicy: 'Delete',
     });
   });
 });

@@ -589,7 +589,7 @@ export class InfrastructureStack extends cdk.Stack {
     const oauthClientSecretsSecret = new secretsmanager.Secret(this, "OAuthClientSecretsSecret", {
       secretName: getResourceName(config, "oauth-client-secrets"),
       description: "OAuth provider client secrets (JSON: {provider_id: secret})",
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // Store OAuth resource names in SSM
@@ -1026,7 +1026,7 @@ export class InfrastructureStack extends cdk.Stack {
     const authProviderSecretsSecret = new secretsmanager.Secret(this, "AuthProviderSecretsSecret", {
       secretName: getResourceName(config, "auth-provider-secrets"),
       description: "OIDC authentication provider client secrets (JSON: {provider_id: secret})",
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
+      removalPolicy: getRemovalPolicy(config),
     });
 
     // Store auth provider secrets ARN in SSM

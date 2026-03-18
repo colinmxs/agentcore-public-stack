@@ -9,7 +9,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
 import { Construct } from 'constructs';
 import { CfnResource } from 'aws-cdk-lib';
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
 
 export interface RagIngestionStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -106,8 +106,8 @@ export class RagIngestionStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
+      removalPolicy: getRemovalPolicy(config),
+      autoDeleteObjects: getAutoDeleteObjects(config),
       cors: ragCorsOrigins.length > 0 ? [
         {
           allowedOrigins: ragCorsOrigins,

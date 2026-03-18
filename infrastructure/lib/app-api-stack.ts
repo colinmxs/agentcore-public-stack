@@ -18,7 +18,7 @@ import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
 import { CfnResource } from "aws-cdk-lib";
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from "./config";
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from "./config";
 
 export interface AppApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -199,8 +199,8 @@ export class AppApiStack extends cdk.Stack {
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
-      removalPolicy: cdk.RemovalPolicy.RETAIN,
-      autoDeleteObjects: false,
+      removalPolicy: getRemovalPolicy(config),
+      autoDeleteObjects: getAutoDeleteObjects(config),
       cors: [
         {
           allowedOrigins: assistantsCorsOrigins,
