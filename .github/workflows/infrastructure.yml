@@ -186,7 +186,7 @@ jobs:
           bash scripts/stack-infrastructure/synth.sh
 
       - name: Upload synthesized templates
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         with:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
@@ -244,7 +244,7 @@ jobs:
           key: infrastructure-build-${{ github.sha }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
@@ -331,7 +331,7 @@ jobs:
           key: infrastructure-build-${{ github.sha }}
 
       - name: Download synthesized templates
-        uses: actions/download-artifact@v5
+        uses: actions/download-artifact@v6
         with:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
@@ -354,7 +354,7 @@ jobs:
           bash scripts/stack-infrastructure/deploy.sh
 
       - name: Upload stack outputs
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v6
         if: always()
         with:
           name: infrastructure-outputs
