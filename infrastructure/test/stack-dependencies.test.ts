@@ -379,9 +379,9 @@ describe('Stack Dependency Order', () => {
 
   // ── Extraction Sanity Checks ────────────────────────────────────────
 
-  test('InfrastructureStack writes at least 40 SSM params', () => {
+  test('InfrastructureStack writes at least 44 SSM params', () => {
     const infraWrites = writes.get('InfrastructureStack')!;
-    expect(infraWrites.size).toBeGreaterThanOrEqual(40);
+    expect(infraWrites.size).toBeGreaterThanOrEqual(44);
   });
 
   test('InfrastructureStack reads zero SSM params from other stacks', () => {
@@ -405,6 +405,20 @@ describe('Stack Dependency Order', () => {
     const inferenceReads = reads.get('InferenceApiStack')!;
     expect(inferenceReads.has('rag/assistants-table-arn')).toBe(true);
     expect(inferenceReads.has('rag/vector-bucket-name')).toBe(true);
+  });
+
+  test('InferenceApiStack reads file-upload params from InfrastructureStack', () => {
+    const inferenceReads = reads.get('InferenceApiStack')!;
+    expect(inferenceReads.has('file-upload/table-arn')).toBe(true);
+    expect(inferenceReads.has('file-upload/bucket-arn')).toBe(true);
+  });
+
+  test('AppApiStack reads file-upload params from InfrastructureStack', () => {
+    const appReads = reads.get('AppApiStack')!;
+    expect(appReads.has('file-upload/bucket-name')).toBe(true);
+    expect(appReads.has('file-upload/bucket-arn')).toBe(true);
+    expect(appReads.has('file-upload/table-name')).toBe(true);
+    expect(appReads.has('file-upload/table-arn')).toBe(true);
   });
 
   test('GatewayStack reads zero SSM params', () => {
