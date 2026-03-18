@@ -411,9 +411,16 @@ jobs:
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_PRODUCTION: false
       CDK_FRONTEND_ENABLED: true
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_DOMAIN_NAME: ""
+      CDK_HOSTED_ZONE_DOMAIN: ""
+      CDK_FRONTEND_CERTIFICATE_ARN: ""
+      CDK_FRONTEND_BUCKET_NAME: ""
+      CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS: ""
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
