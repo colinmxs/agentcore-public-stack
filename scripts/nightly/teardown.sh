@@ -165,18 +165,28 @@ delete_cloudwatch_logs() {
     log_success "CloudWatch log group cleanup complete"
 }
 
-# Destroy CDK stacks
+# Destroy CDK stacks in reverse dependency order
 destroy_stacks() {
-    log_info "Destroying CDK stacks with prefix: ${CDK_PROJECT_PREFIX}"
-    
+    log_info "Destroying CDK stacks in reverse order..."
+
     cd "${PROJECT_ROOT}/infrastructure"
-    
-    # Destroy all stacks (order doesn't matter with --force)
-    npx cdk destroy --all --force || {
-        log_error "CDK destroy failed, but continuing..."
-        return 1
-    }
-    
+
+    local stacks=(
+        "FrontendStack"
+        "GatewayStack"
+        "AppApiStack"
+        "InferenceApiStack"
+        "RagIngestionStack"
+        "InfrastructureStack"
+    )
+
+    for stack in "${stacks[@]}"; do
+        log_info "Destroying ${stack}..."
+        npx cdk destroy "${stack}" --force 2>/dev/null && \
+            log_success "${stack} destroyed" || \
+            log_warn "${stack} not found or already destroyed, skipping"
+    done
+
     log_success "All CDK stacks destroyed"
 }
 
