@@ -615,15 +615,11 @@ _deploy_infrastructure() {
     return 0
   fi
 
-  local vpc_id alb_dns ecs_cluster
+  local vpc_id alb_dns alb_url ecs_cluster
   vpc_id="$(_safe_jq "${outputs_file}" "VpcId")"
   alb_dns="$(_safe_jq "${outputs_file}" "AlbDnsName")"
+  alb_url="$(_safe_jq "${outputs_file}" "AlbUrl")"
   ecs_cluster="$(_safe_jq "${outputs_file}" "EcsClusterName")"
-
-  # Count DynamoDB tables and S3 buckets by scanning output keys
-  local dynamodb_count s3_count
-  dynamodb_count="$(jq -r '.[] | keys[] | select(test("Table"))' "${outputs_file}" 2>/dev/null | wc -l | tr -d ' ')"
-  s3_count="$(jq -r '.[] | keys[] | select(test("Bucket"))' "${outputs_file}" 2>/dev/null | wc -l | tr -d ' ')"
 
   {
     echo "### 🏗️ Infrastructure Resources"
@@ -632,9 +628,10 @@ _deploy_infrastructure() {
     echo "|---|---|"
     echo "| **VPC ID** | \`${vpc_id}\` |"
     echo "| **ALB DNS** | \`${alb_dns}\` |"
+    if [ "${alb_url}" != "N/A" ]; then
+      echo "| **ALB URL** | \`${alb_url}\` |"
+    fi
     echo "| **ECS Cluster** | \`${ecs_cluster}\` |"
-    echo "| **DynamoDB Tables** | ${dynamodb_count} |"
-    echo "| **S3 Buckets** | ${s3_count} |"
     echo ""
   } >> "${GITHUB_STEP_SUMMARY}"
 }
