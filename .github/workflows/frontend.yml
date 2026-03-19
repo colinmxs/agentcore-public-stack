@@ -76,21 +76,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Restore frontend node_modules cache
+        id: cache-frontend
+        uses: actions/cache/restore@v5
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
+      - name: Restore CDK node_modules cache
+        id: cache-infrastructure
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-frontend.outputs.cache-hit != 'true' || steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/common/install-deps.sh
 
       - name: Install frontend dependencies
+        if: steps.cache-frontend.outputs.cache-hit != 'true' || steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/stack-frontend/install.sh
 
       - name: Save frontend node_modules cache
+        if: steps.cache-frontend.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: frontend/ai.client/node_modules
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
 
       - name: Save CDK node_modules cache
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules

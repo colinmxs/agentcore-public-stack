@@ -80,15 +80,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Restore node_modules cache
+        id: cache-gateway
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: gateway-node-${{ hashFiles('infrastructure/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-gateway.outputs.cache-hit != 'true'
         run: |
           bash scripts/common/install-deps.sh
 
       - name: Install gateway dependencies
+        if: steps.cache-gateway.outputs.cache-hit != 'true'
         run: |
           bash scripts/stack-gateway/install.sh
 
       - name: Save node_modules cache
+        if: steps.cache-gateway.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules

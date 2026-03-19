@@ -76,15 +76,25 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Restore node_modules cache
+        id: cache-infrastructure
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/common/install-deps.sh
 
       - name: Install CDK dependencies
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/stack-infrastructure/install.sh
 
       - name: Save node_modules cache
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules

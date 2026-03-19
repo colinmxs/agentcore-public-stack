@@ -70,16 +70,25 @@ jobs:
         with:
           python-version: '3.13'
 
-      - name: Cache Python packages
-        uses: actions/cache@v5
+      - name: Restore Python packages cache
+        id: cache-backend
+        uses: actions/cache/restore@v5
         with:
           path: ~/.local/lib/python3.*/site-packages
           key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
 
       - name: Install Python dependencies
+        if: steps.cache-backend.outputs.cache-hit != 'true'
         run: |
           python3 -m pip install --upgrade pip
           python3 -m pip install -e "backend/.[agentcore,dev]"
+
+      - name: Save Python packages cache
+        if: steps.cache-backend.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: ~/.local/lib/python3.*/site-packages
+          key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
 
   install-frontend:
     name: Install Frontend Dependencies
@@ -91,13 +100,23 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
+      - name: Restore frontend node_modules cache
+        id: cache-frontend
+        uses: actions/cache/restore@v5
+        with:
+          path: frontend/ai.client/node_modules
+          key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-frontend.outputs.cache-hit != 'true'
         run: bash scripts/common/install-deps.sh
 
       - name: Install frontend dependencies
+        if: steps.cache-frontend.outputs.cache-hit != 'true'
         run: bash scripts/stack-frontend/install.sh
 
-      - name: Cache frontend node_modules
+      - name: Save frontend node_modules cache
+        if: steps.cache-frontend.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: frontend/ai.client/node_modules
@@ -113,13 +132,23 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
+      - name: Restore infrastructure node_modules cache
+        id: cache-infrastructure
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: bash scripts/common/install-deps.sh
 
       - name: Install CDK dependencies
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: bash scripts/stack-infrastructure/install.sh
 
-      - name: Cache infrastructure node_modules
+      - name: Save infrastructure node_modules cache
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules

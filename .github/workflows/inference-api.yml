@@ -76,21 +76,39 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Restore Python packages cache
+        id: cache-python
+        uses: actions/cache/restore@v5
+        with:
+          path: ~/.local/lib/python3.*/site-packages
+          key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
+
+      - name: Restore node_modules cache
+        id: cache-infrastructure
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
       - name: Install system dependencies
+        if: steps.cache-python.outputs.cache-hit != 'true' || steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/common/install-deps.sh
 
       - name: Install inference-api dependencies
+        if: steps.cache-python.outputs.cache-hit != 'true' || steps.cache-infrastructure.outputs.cache-hit != 'true'
         run: |
           bash scripts/stack-inference-api/install.sh
 
       - name: Save Python packages cache
+        if: steps.cache-python.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: ~/.local/lib/python3.*/site-packages
           key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
 
       - name: Save node_modules cache
+        if: steps.cache-infrastructure.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: infrastructure/node_modules
