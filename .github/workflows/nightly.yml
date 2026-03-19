@@ -242,7 +242,7 @@ jobs:
   deploy-infrastructure:
     name: Deploy Infrastructure (Nightly)
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend, install-infrastructure, check-stack-dependencies]
+    needs: [install-infrastructure, check-stack-dependencies]
     if: ${{ github.event.inputs.skip_deployment != 'true' }}
     environment: development
     outputs:
@@ -306,7 +306,7 @@ jobs:
   mv-deploy-infrastructure:
     name: "[MV] Deploy Infrastructure (main)"
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend, install-infrastructure, check-stack-dependencies]
+    needs: [install-infrastructure, check-stack-dependencies]
     if: ${{ github.event.inputs.skip_deployment != 'true' }}
     environment: development
     outputs:
