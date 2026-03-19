@@ -317,7 +317,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
       CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
       CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
@@ -725,7 +725,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
@@ -797,7 +797,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_INFERENCE_API_ENABLED: true
       CDK_INFERENCE_API_CPU: 1024
       CDK_INFERENCE_API_MEMORY: 2048
@@ -874,7 +874,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_APP_API_ENABLED: true
       CDK_APP_API_CPU: 512
       CDK_APP_API_MEMORY: 1024
@@ -949,7 +949,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_PRODUCTION: false
       CDK_FRONTEND_ENABLED: true
       CDK_RETAIN_DATA_ON_DELETE: false
@@ -1015,7 +1015,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_GATEWAY_ENABLED: true
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
@@ -1073,7 +1073,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
@@ -1145,7 +1145,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_INFERENCE_API_ENABLED: true
       CDK_INFERENCE_API_CPU: 1024
       CDK_INFERENCE_API_MEMORY: 2048
@@ -1222,7 +1222,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_APP_API_ENABLED: true
       CDK_APP_API_CPU: 512
       CDK_APP_API_MEMORY: 1024
@@ -1297,7 +1297,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_PRODUCTION: false
       CDK_FRONTEND_ENABLED: true
       CDK_RETAIN_DATA_ON_DELETE: false
@@ -1363,7 +1363,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       CDK_GATEWAY_ENABLED: true
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
@@ -1419,7 +1419,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -1464,7 +1464,7 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PROJECT_PREFIX: nightly-mv
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
