@@ -51,6 +51,8 @@ env:
   BUILD_CONFIG: production
   CDK_REQUIRE_APPROVAL: never
   WAIT_FOR_INVALIDATION: false
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -456,7 +458,7 @@ jobs:
             STATUS="failure"
           fi
 
-          write_header "Frontend — CDK Deploy" "$STATUS" "FrontendStack"
+          write_workflow_header "Frontend — CDK Deploy" "$STATUS" "FrontendStack"
 
           if [ "$STATUS" = "success" ]; then
             write_deploy_summary "frontend"

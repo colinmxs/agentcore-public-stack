@@ -27,6 +27,8 @@ env:
   CDK_REQUIRE_APPROVAL: never
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   NIGHTLY_REF: develop
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 concurrency:
   group: nightly-build
@@ -301,7 +303,7 @@ jobs:
         run: |
           source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy Infrastructure" "$STATUS" "InfrastructureStack"
+          write_workflow_header "Nightly — Deploy Infrastructure" "$STATUS" "InfrastructureStack"
           write_deploy_summary "infrastructure"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
@@ -905,7 +907,7 @@ jobs:
             esac
           done
 
-          write_header "Nightly Build & Test" "$AGGREGATE"
+          write_workflow_header "Nightly Build & Test" "$AGGREGATE"
 
           # Helper to map GitHub Actions result to our status format
           map_status() {

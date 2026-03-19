@@ -9,7 +9,43 @@ set -euo pipefail
 SUMMARY_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 
 # ---------------------------------------------------------------------------
-# write_header — Standardized summary header for every workflow job
+# write_header — Compact per-job summary (default for most jobs)
+#
+# Shows only the job name, status, and stack. Use this for every job except
+# the first/main one in a workflow (which should use write_workflow_header).
+#
+# Params:
+#   $1  job_name    Display name of the job (e.g. "App API — Build")
+#   $2  status      One of: success, failure, partial
+#   $3  stack_name  (optional) CDK stack name (e.g. "AppApiStack")
+#
+# Appends markdown to $GITHUB_STEP_SUMMARY.
+# ---------------------------------------------------------------------------
+write_header() {
+  local job_name="${1:?write_header: job_name is required}"
+  local status="${2:?write_header: status is required}"
+  local stack_name="${3:-}"
+
+  local status_emoji
+  case "${status}" in
+    success) status_emoji="✅" ;;
+    failure) status_emoji="❌" ;;
+    partial) status_emoji="⚠️" ;;
+    *)       status_emoji="❓" ;;
+  esac
+
+  {
+    echo "## ${status_emoji} ${job_name}"
+    echo ""
+  } >> "${GITHUB_STEP_SUMMARY}"
+}
+
+# ---------------------------------------------------------------------------
+# write_workflow_header — Full summary header (use ONCE per workflow run)
+#
+# Shows comprehensive run context: environment, region, project prefix,
+# version, commit, branch, trigger, actor, and run link. Call this in the
+# first meaningful job of each workflow (e.g. the build or deploy job).
 #
 # Params:
 #   $1  workflow_name   Display name of the workflow (e.g. "App API")
@@ -23,9 +59,9 @@ SUMMARY_REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 # Reads VERSION file from repo root and first line of current commit message.
 # Appends markdown to $GITHUB_STEP_SUMMARY.
 # ---------------------------------------------------------------------------
-write_header() {
-  local workflow_name="${1:?write_header: workflow_name is required}"
-  local status="${2:?write_header: status is required}"
+write_workflow_header() {
+  local workflow_name="${1:?write_workflow_header: workflow_name is required}"
+  local status="${2:?write_workflow_header: status is required}"
   local stack_name="${3:-}"
 
   # --- Status emoji ---

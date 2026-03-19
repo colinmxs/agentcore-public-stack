@@ -43,6 +43,8 @@ env:
   # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -375,7 +377,7 @@ jobs:
             STATUS="failure"
           fi
 
-          write_header "Gateway — Deploy" "$STATUS" "GatewayStack"
+          write_workflow_header "Gateway — Deploy" "$STATUS" "GatewayStack"
 
           if [ "$STATUS" = "success" ]; then
             write_deploy_summary "gateway"

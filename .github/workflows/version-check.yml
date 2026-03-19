@@ -2,6 +2,8 @@ name: "Version Check"
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 on:
   pull_request:
@@ -118,5 +120,5 @@ jobs:
           OLD_VERSION="$(git show origin/main:VERSION 2>/dev/null | tr -d '[:space:]' || echo "unknown")"
           NEW_VERSION="$(tr -d '[:space:]' < VERSION || echo "unknown")"
 
-          write_header "Version Check" "${STATUS}"
+          write_workflow_header "Version Check" "${STATUS}"
           write_version_check_summary "${VB_STATUS}" "${MS_STATUS}" "${LF_STATUS}" "${OLD_VERSION}" "${NEW_VERSION}"

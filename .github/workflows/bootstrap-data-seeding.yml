@@ -22,6 +22,8 @@ on:
 
 env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 concurrency:
   group: bootstrap-data-seeding-${{ github.ref }}
@@ -92,7 +94,7 @@ jobs:
             STATUS="failure"
           fi
 
-          write_header "Bootstrap Data Seeding" "$STATUS" "BootstrapStack"
+          write_workflow_header "Bootstrap Data Seeding" "$STATUS" "BootstrapStack"
 
           if [ "$STATUS" = "success" ]; then
             write_deploy_summary "bootstrap"

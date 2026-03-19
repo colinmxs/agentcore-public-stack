@@ -44,6 +44,8 @@ env:
   FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
   # Build and Deploy Configuration (non-sensitive, repository-level)
   CDK_REQUIRE_APPROVAL: never
+  # Suppress repeated config dumps from load-env.sh in CI logs
+  LOAD_ENV_QUIET: true
 
 # Ensure only one deployment runs at a time
 concurrency:
@@ -561,7 +563,7 @@ jobs:
             STATUS="failure"
           fi
 
-          write_header "RAG Ingestion — Deploy" "$STATUS" "RagIngestionStack"
+          write_workflow_header "RAG Ingestion — Deploy" "$STATUS" "RagIngestionStack"
 
           if [ "$STATUS" = "success" ]; then
             write_deploy_summary "rag-ingestion"
