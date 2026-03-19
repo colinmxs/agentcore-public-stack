@@ -117,18 +117,46 @@ jobs:
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
       - name: Build CDK
+        id: build-cdk
         run: |
           bash scripts/stack-infrastructure/build.sh
 
-      - name: Save build artifacts cache
-        uses: actions/cache/save@v5
+      - name: Upload build artifacts
+        uses: actions/upload-artifact@v6
         with:
+          name: infrastructure-cdk-build
           path: |
             infrastructure/lib/**/*.js
             infrastructure/lib/**/*.d.ts
             infrastructure/bin/**/*.js
             infrastructure/bin/**/*.d.ts
-          key: infrastructure-build-${{ github.sha }}
+          retention-days: 1
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.build-cdk.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "Infrastructure — Build" "$STATUS"
+
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "TypeScript Compilation" "1" "CDK build failed — check logs above"
+          else
+            # Count compiled files
+            JS_COUNT=$(find infrastructure/lib infrastructure/bin -name '*.js' 2>/dev/null | wc -l | tr -d ' ')
+            {
+              echo "| | |"
+              echo "|---|---|"
+              echo "| **Compiled Files** | ${JS_COUNT} |"
+              echo ""
+            } >> "${GITHUB_STEP_SUMMARY}"
+          fi
 
   synth:
     name: Synthesize CloudFormation Template
@@ -170,15 +198,11 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v5
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
         with:
-          path: |
-            infrastructure/lib/**/*.js
-            infrastructure/lib/**/*.d.ts
-            infrastructure/bin/**/*.js
-            infrastructure/bin/**/*.d.ts
-          key: infrastructure-build-${{ github.sha }}
+          name: infrastructure-cdk-build
+          path: infrastructure
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
@@ -194,6 +218,7 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Synthesize CloudFormation template
+        id: synth-cfn
         run: |
           bash scripts/stack-infrastructure/synth.sh
 
@@ -203,6 +228,37 @@ jobs:
           name: infrastructure-cdk-synth
           path: infrastructure/cdk.out/
           retention-days: 7
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.synth-cfn.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "Infrastructure — Synth" "$STATUS"
+
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "CDK Synth" "1" "CloudFormation synthesis failed — check logs above"
+          else
+            TEMPLATE="infrastructure/cdk.out/InfrastructureStack.template.json"
+            if [ -f "$TEMPLATE" ]; then
+              RESOURCE_COUNT=$(jq '.Resources | length' "$TEMPLATE" 2>/dev/null || echo "N/A")
+              TEMPLATE_SIZE=$(stat --format='%s' "$TEMPLATE" 2>/dev/null || stat -f '%z' "$TEMPLATE" 2>/dev/null || echo "0")
+              TEMPLATE_SIZE_KB=$(( TEMPLATE_SIZE / 1024 ))
+              {
+                echo "| | |"
+                echo "|---|---|"
+                echo "| **Resources** | ${RESOURCE_COUNT} |"
+                echo "| **Template Size** | ${TEMPLATE_SIZE_KB} KB |"
+                echo ""
+              } >> "${GITHUB_STEP_SUMMARY}"
+            fi
+          fi
 
   test:
     name: Validate CloudFormation Template
@@ -245,15 +301,11 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v5
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
         with:
-          path: |
-            infrastructure/lib/**/*.js
-            infrastructure/lib/**/*.d.ts
-            infrastructure/bin/**/*.js
-            infrastructure/bin/**/*.d.ts
-          key: infrastructure-build-${{ github.sha }}
+          name: infrastructure-cdk-build
+          path: infrastructure
 
       - name: Download synthesized templates
         uses: actions/download-artifact@v7
@@ -290,10 +342,17 @@ jobs:
             STATUS="success"
           fi
 
-          write_header "Infrastructure — CDK Tests" "$STATUS" "InfrastructureStack"
+          write_header "Infrastructure — CDK Diff" "$STATUS"
 
           if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
+            write_failure_summary "CDK Diff" "1" "CloudFormation template validation failed — check logs above"
+          else
+            TEMPLATE="infrastructure/cdk.out/InfrastructureStack.template.json"
+            RESOURCE_COUNT="N/A"
+            if [ -f "$TEMPLATE" ]; then
+              RESOURCE_COUNT=$(jq '.Resources | length' "$TEMPLATE" 2>/dev/null || echo "N/A")
+            fi
+            write_test_summary_cdk "pass" "$RESOURCE_COUNT"
           fi
 
   deploy:
@@ -350,15 +409,11 @@ jobs:
           path: infrastructure/node_modules
           key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
 
-      - name: Restore build artifacts
-        uses: actions/cache/restore@v5
+      - name: Download build artifacts
+        uses: actions/download-artifact@v7
         with:
-          path: |
-            infrastructure/lib/**/*.js
-            infrastructure/lib/**/*.d.ts
-            infrastructure/bin/**/*.js
-            infrastructure/bin/**/*.d.ts
-          key: infrastructure-build-${{ github.sha }}
+          name: infrastructure-cdk-build
+          path: infrastructure
 
       - name: Download synthesized templates
         uses: actions/download-artifact@v7
