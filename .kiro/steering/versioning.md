@@ -1,3 +1,7 @@
+---
+inclusion: manual
+---
+
 # Version Bumping
 
 This monorepo uses a single `VERSION` file at the repo root as the source of truth.
