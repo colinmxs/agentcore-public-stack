@@ -174,7 +174,7 @@ jobs:
       - name: Capture image size
         id: image-size
         run: |
-          IMAGE_SIZE=$(docker inspect --format='{{.Size}}' "${{ env.CDK_PROJECT_PREFIX }}-inference-api:${{ steps.set-tag.outputs.IMAGE_TAG }}")
+          IMAGE_SIZE=$(stat --format='%s' "${{ runner.temp }}/inference-api-image.tar" 2>/dev/null || stat -f '%z' "${{ runner.temp }}/inference-api-image.tar" 2>/dev/null || echo "0")
           echo "IMAGE_SIZE=${IMAGE_SIZE}" >> $GITHUB_OUTPUT
           echo "Image size: ${IMAGE_SIZE} bytes"
 
