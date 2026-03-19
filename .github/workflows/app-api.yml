@@ -133,6 +133,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Record build start time
+        run: echo "BUILD_START=${SECONDS}" >> $GITHUB_ENV
       
       - name: Set image tag
         id: set-tag
@@ -152,12 +155,47 @@ jobs:
           tags: ${{ env.CDK_PROJECT_PREFIX }}-app-api:${{ steps.set-tag.outputs.IMAGE_TAG }}
           outputs: type=docker,dest=${{ runner.temp }}/app-api-image.tar
       
+      - name: Capture image size
+        id: image-size
+        run: |
+          IMAGE_SIZE=$(docker inspect --format='{{.Size}}' "${{ env.CDK_PROJECT_PREFIX }}-app-api:${{ steps.set-tag.outputs.IMAGE_TAG }}")
+          echo "IMAGE_SIZE=${IMAGE_SIZE}" >> $GITHUB_OUTPUT
+          echo "Image size: ${IMAGE_SIZE} bytes"
+
       - name: Upload Docker image artifact
         uses: actions/upload-artifact@v6
         with:
           name: app-api-docker-image
           path: ${{ runner.temp }}/app-api-image.tar
           retention-days: 1
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          # Determine status from previous step outcomes
+          if [ "${{ steps.set-tag.outcome }}" = "failure" ] || [ "${{ steps.image-size.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "App API — Build" "$STATUS" "AppApiStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_build_summary \
+              "${{ steps.set-tag.outputs.IMAGE_TAG }}" \
+              "linux/amd64" \
+              "${{ steps.image-size.outputs.IMAGE_SIZE }}" \
+              "" \
+              ""
+          else
+            write_failure_summary "Docker Build" "1" "Build or image inspection failed — check logs above"
+          fi
+
+          BUILD_DURATION=$(( SECONDS - ${BUILD_START:-0} ))
+          write_timing_footer "build=${BUILD_DURATION}"
 
   build-cdk:
     name: Build CDK
@@ -193,6 +231,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
       
       - name: Download Docker image artifact
         uses: actions/download-artifact@v7
@@ -206,8 +247,29 @@ jobs:
           docker image ls -a
       
       - name: Test Docker image
+        id: run-tests
         run: |
           bash scripts/stack-app-api/test-docker.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            HEALTH_RESULT="fail"
+          else
+            STATUS="success"
+            HEALTH_RESULT="pass"
+          fi
+
+          write_header "App API — Docker Tests" "$STATUS" "AppApiStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_docker "${HEALTH_RESULT}" "${TEST_DURATION}"
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   test-python:
     name: Test Python Code
@@ -218,6 +280,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore Python packages cache
         uses: actions/cache/restore@v5
         with:
@@ -225,8 +290,31 @@ jobs:
           key: python-packages-${{ hashFiles('backend/pyproject.toml') }}
 
       - name: Run Python tests
+        id: run-tests
         run: |
           bash scripts/stack-app-api/test.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "App API — Python Tests" "$STATUS" "AppApiStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_python 0 0 0 0 "${TEST_DURATION}"
+
+          write_timing_footer "test=${TEST_DURATION}"
+
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Python Tests" "1" "Test run failed — check logs above"
+          fi
 
   synth-cdk:
     name: Synthesize CDK
@@ -329,6 +417,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -355,8 +446,29 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Validate CloudFormation template
+        id: run-tests
         run: |
           bash scripts/stack-app-api/test-cdk.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "App API — CDK Tests" "$STATUS" "AppApiStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   push-to-ecr:
     name: Push Docker Image to ECR
@@ -410,8 +522,27 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
       
       - name: Push to ECR
+        id: push-ecr
         run: |
           bash scripts/stack-app-api/push-to-ecr.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.push-ecr.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "App API — Push to ECR" "$STATUS" "AppApiStack"
+
+          ECR_URI="${CDK_AWS_ACCOUNT}.dkr.ecr.${CDK_AWS_REGION}.amazonaws.com/${CDK_PROJECT_PREFIX}-app-api:${IMAGE_TAG}"
+          write_build_summary "${IMAGE_TAG}" "linux/amd64" "0" "${ECR_URI}" ""
+
+          write_timing_footer
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
@@ -458,6 +589,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -502,28 +636,30 @@ jobs:
           path: |
             cdk-outputs-app-api.json
           retention-days: 30
-            
-      - name: Deployment summary
-        if: success()
-        run: | 
-          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
-          
-          echo "## App API Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Stack**: AppApiStack" >> $GITHUB_STEP_SUMMARY
-          echo "- **Image Tag**: ${IMAGE_TAG}" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f cdk-outputs-app-api.json ]; then
-            echo "### Stack Outputs" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat cdk-outputs-app-api.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
           fi
+
+          write_header "App API — Deploy" "$STATUS" "AppApiStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "app-api"
+            if [ -f cdk-outputs-app-api.json ]; then
+              write_cdk_outputs_table "cdk-outputs-app-api.json"
+            fi
+          else
+            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
+          fi
+
+          write_timing_footer
 
   create-git-tag:
     name: Create Git Tag

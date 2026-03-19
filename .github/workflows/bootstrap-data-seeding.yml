@@ -64,6 +64,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "SEED_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -81,11 +84,23 @@ jobs:
         run: |
           bash scripts/stack-bootstrap/seed.sh
 
-      - name: Seeding summary
-        if: success()
+      - name: Generate summary
+        if: always()
         run: |
-          echo "## Bootstrap Data Seeding Complete ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${{ inputs.environment }}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
+          source scripts/common/summary.sh
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
+          fi
+
+          write_header "Bootstrap Data Seeding" "$STATUS" "BootstrapStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "bootstrap"
+          else
+            write_failure_summary "Bootstrap Seed" "1" "Seeding failed — check logs above"
+          fi
+
+          write_timing_footer

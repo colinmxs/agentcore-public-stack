@@ -237,6 +237,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -273,8 +276,29 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Run CDK diff to validate template
+        id: run-tests
         run: |
           bash scripts/stack-infrastructure/test.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "Infrastructure — CDK Tests" "$STATUS" "InfrastructureStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   deploy:
     name: Deploy Infrastructure Stack
@@ -324,6 +348,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -370,29 +397,25 @@ jobs:
           name: infrastructure-outputs
           path: infrastructure/infrastructure-outputs.json
           retention-days: 30
-      
-      - name: Deployment summary
-        if: success()
-        run: | 
-          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
-          
-          echo "## Infrastructure Stack Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Stack**: InfrastructureStack" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Resources Created" >> $GITHUB_STEP_SUMMARY
-          echo "- VPC with public/private subnets" >> $GITHUB_STEP_SUMMARY
-          echo "- Application Load Balancer (ALB)" >> $GITHUB_STEP_SUMMARY
-          echo "- ECS Cluster" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f infrastructure/infrastructure-outputs.json ]; then
-            echo "### Stack Outputs" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat infrastructure/infrastructure-outputs.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
           fi
+
+          write_header "Infrastructure — Deploy" "$STATUS" "InfrastructureStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "infrastructure"
+            write_cdk_outputs_table "infrastructure/infrastructure-outputs.json"
+          else
+            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
+          fi
+
+          write_timing_footer

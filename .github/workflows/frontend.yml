@@ -122,6 +122,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record build start time
+        run: echo "BUILD_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore frontend node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -129,6 +132,7 @@ jobs:
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
 
       - name: Build Frontend application
+        id: build-app
         run: |
           bash scripts/stack-frontend/build.sh
 
@@ -138,6 +142,33 @@ jobs:
           name: frontend-build
           path: frontend/ai.client/dist/
           retention-days: 7
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.build-app.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "Frontend — Build" "$STATUS" "FrontendStack"
+
+          BUILD_DURATION=$(( SECONDS - ${BUILD_START:-0} ))
+
+          if [ "$STATUS" = "success" ]; then
+            echo "### 📦 Build Details" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
+            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
+            echo "| Build Duration | ${BUILD_DURATION}s |" >> "$GITHUB_STEP_SUMMARY"
+            echo "" >> "$GITHUB_STEP_SUMMARY"
+          else
+            write_failure_summary "Frontend Build" "1" "Build failed — check logs above"
+          fi
+
+          write_timing_footer "build=${BUILD_DURATION}"
 
   build-cdk:
     name: Build CDK
@@ -175,6 +206,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore frontend node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -182,6 +216,7 @@ jobs:
           key: frontend-node-modules-${{ hashFiles('frontend/ai.client/package-lock.json') }}
 
       - name: Run Frontend tests
+        id: run-tests
         run: |
           bash scripts/stack-frontend/test.sh
 
@@ -192,6 +227,28 @@ jobs:
           path: frontend/ai.client/coverage/
           retention-days: 7
           if-no-files-found: ignore
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "Frontend — Tests" "$STATUS" "FrontendStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_frontend 0 0 0 0 "${TEST_DURATION}"
+
+          write_timing_footer "test=${TEST_DURATION}"
+
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Frontend Tests" "1" "Test run failed — check logs above"
+          fi
 
   synth-cdk:
     name: Synthesize CDK
@@ -286,6 +343,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -312,8 +372,29 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Validate CloudFormation template
+        id: run-tests
         run: |
           bash scripts/stack-frontend/test-cdk.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "Frontend — CDK Tests" "$STATUS" "FrontendStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
@@ -355,6 +436,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -391,6 +475,27 @@ jobs:
           path: infrastructure/frontend-outputs.json
           retention-days: 30
 
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
+          fi
+
+          write_header "Frontend — CDK Deploy" "$STATUS" "FrontendStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "frontend"
+          else
+            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
+          fi
+
+          write_timing_footer
+
   deploy-assets:
     name: Deploy Frontend Assets
     runs-on: ubuntu-latest
@@ -424,6 +529,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5      
+
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
       
       - name: Download Frontend build artifacts
         uses: actions/download-artifact@v7
@@ -441,25 +549,27 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
       
       - name: Deploy Frontend assets
+        id: deploy-assets
         run: |
           bash scripts/stack-frontend/deploy-assets.sh
       
-      - name: Deployment summary
-        if: success()
+      - name: Generate summary
+        if: always()
         run: |
-          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
-          
-          echo "## Frontend Deployment Complete! 🚀" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Stack**: FrontendStack" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Runtime Configuration" >> $GITHUB_STEP_SUMMARY
-          echo "- **Production Mode**: ${CDK_PRODUCTION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Configuration Source**: Runtime (config.json generated from SSM parameters)" >> $GITHUB_STEP_SUMMARY
-          echo "- **Backend URLs**: Automatically resolved from infrastructure stack outputs" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "**Note:** CloudFront cache invalidation is in progress. Changes may take 5-15 minutes to propagate globally." >> $GITHUB_STEP_SUMMARY
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.deploy-assets.outcome }}" = "failure" ]; then
+            STATUS="failure"
+          else
+            STATUS="success"
+          fi
+
+          write_header "Frontend — Deploy Assets" "$STATUS" "FrontendStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "frontend"
+          else
+            write_failure_summary "Deploy Assets" "1" "Asset deployment failed — check logs above"
+          fi
+
+          write_timing_footer

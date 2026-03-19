@@ -223,6 +223,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -259,8 +262,29 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Run CDK diff to validate template
+        id: run-tests
         run: |
           bash scripts/stack-sagemaker-fine-tuning/test-cdk.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "SageMaker Fine-Tuning — CDK Tests" "$STATUS" "SagemakerFineTuningStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   deploy:
     name: Deploy SageMaker Fine-Tuning Stack
@@ -299,6 +323,9 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
+
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
 
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
@@ -348,29 +375,26 @@ jobs:
             cdk-outputs-sagemaker-fine-tuning.json
           retention-days: 30
 
-      - name: Deployment summary
-        if: success()
+      - name: Generate summary
+        if: always()
         run: |
-          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
+          source scripts/common/summary.sh
 
-          echo "## SageMaker Fine-Tuning Stack Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Stack**: SageMakerFineTuningStack" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Resources Created" >> $GITHUB_STEP_SUMMARY
-          echo "- DynamoDB tables (fine-tuning-jobs, fine-tuning-access)" >> $GITHUB_STEP_SUMMARY
-          echo "- S3 bucket (fine-tuning-data) with CORS and lifecycle rules" >> $GITHUB_STEP_SUMMARY
-          echo "- SageMaker execution IAM role" >> $GITHUB_STEP_SUMMARY
-          echo "- SageMaker security group (outbound HTTPS only)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-
-          if [ -f cdk-outputs-sagemaker-fine-tuning.json ]; then
-            echo "### Stack Outputs" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat cdk-outputs-sagemaker-fine-tuning.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
           fi
+
+          write_header "SageMaker Fine-Tuning — Deploy" "$STATUS" "SagemakerFineTuningStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "sagemaker"
+            if [ -f cdk-outputs-sagemaker-fine-tuning.json ]; then
+              write_cdk_outputs_table "cdk-outputs-sagemaker-fine-tuning.json"
+            fi
+          else
+            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
+          fi
+
+          write_timing_footer

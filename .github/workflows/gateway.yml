@@ -236,6 +236,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -264,8 +267,29 @@ jobs:
           bash scripts/common/install-deps.sh
 
       - name: Test CDK stack
+        id: run-tests
         run: |
           bash scripts/stack-gateway/test-cdk.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "Gateway — CDK Tests" "$STATUS" "GatewayStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"
 
   deploy-stack:
     name: Deploy Gateway Stack
@@ -306,6 +330,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record deploy start time
+        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -345,31 +372,30 @@ jobs:
           path: |
             cdk-outputs-gateway.json
           retention-days: 30
-      
-      - name: Deployment summary
-        if: success()
-        run: | 
-          ENVIRONMENT="${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}"
-          
-          echo "## Gateway Stack Deployment Successful ✅" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Deployment Details" >> $GITHUB_STEP_SUMMARY
-          echo "- **Environment**: ${ENVIRONMENT}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Region**: ${CDK_AWS_REGION}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Project**: ${CDK_PROJECT_PREFIX}" >> $GITHUB_STEP_SUMMARY
-          echo "- **Stack**: GatewayStack" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          echo "### Resources Created" >> $GITHUB_STEP_SUMMARY
-          echo "- Bedrock AgentCore Gateway" >> $GITHUB_STEP_SUMMARY
-          echo "- Lambda Functions (MCP Tools)" >> $GITHUB_STEP_SUMMARY
-          echo "" >> $GITHUB_STEP_SUMMARY
-          
-          if [ -f cdk-outputs-gateway.json ]; then
-            echo "### Stack Outputs" >> $GITHUB_STEP_SUMMARY
-            echo '```json' >> $GITHUB_STEP_SUMMARY
-            cat cdk-outputs-gateway.json >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ job.status }}" = "success" ]; then
+            STATUS="success"
+          else
+            STATUS="failure"
           fi
+
+          write_header "Gateway — Deploy" "$STATUS" "GatewayStack"
+
+          if [ "$STATUS" = "success" ]; then
+            write_deploy_summary "gateway"
+            if [ -f cdk-outputs-gateway.json ]; then
+              write_cdk_outputs_table "cdk-outputs-gateway.json"
+            fi
+          else
+            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
+          fi
+
+          write_timing_footer
 
   test-gateway:
     name: Test Gateway Connectivity
@@ -401,6 +427,9 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
+      - name: Record start time
+        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
+
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -411,5 +440,26 @@ jobs:
           aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
 
       - name: Test Gateway
+        id: run-tests
         run: |
           bash scripts/stack-gateway/test.sh
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
+            STATUS="failure"
+            CDK_RESULT="fail"
+          else
+            STATUS="success"
+            CDK_RESULT="pass"
+          fi
+
+          write_header "Gateway — Connectivity Tests" "$STATUS" "GatewayStack"
+
+          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
+          write_test_summary_cdk "${CDK_RESULT}" 0
+
+          write_timing_footer "test=${TEST_DURATION}"

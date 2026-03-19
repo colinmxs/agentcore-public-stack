@@ -90,3 +90,34 @@ jobs:
           fi
 
           echo "All version checks passed."
+
+      - name: Generate summary
+        if: always()
+        run: |
+          source scripts/common/summary.sh
+
+          # Map step outcomes to pass/fail
+          VB_RESULT="${{ steps.version-bumped.outcome }}"
+          MS_RESULT="${{ steps.manifests-synced.outcome }}"
+          LF_RESULT="${{ steps.lockfiles-synced.outcome }}"
+
+          if [ "${VB_RESULT}" = "success" ]; then VB_STATUS="pass"; else VB_STATUS="fail"; fi
+          if [ "${MS_RESULT}" = "success" ]; then MS_STATUS="pass"; else MS_STATUS="fail"; fi
+          if [ "${LF_RESULT}" = "success" ]; then LF_STATUS="pass"; else LF_STATUS="fail"; fi
+
+          # Determine overall status
+          if [ "${VB_STATUS}" = "pass" ] && [ "${MS_STATUS}" = "pass" ] && [ "${LF_STATUS}" = "pass" ]; then
+            STATUS="success"
+          elif [ "${VB_STATUS}" = "pass" ] || [ "${MS_STATUS}" = "pass" ] || [ "${LF_STATUS}" = "pass" ]; then
+            STATUS="partial"
+          else
+            STATUS="failure"
+          fi
+
+          # Extract old version from main and new version from PR branch
+          OLD_VERSION="$(git show origin/main:VERSION 2>/dev/null | tr -d '[:space:]' || echo "unknown")"
+          NEW_VERSION="$(tr -d '[:space:]' < VERSION || echo "unknown")"
+
+          write_header "Version Check" "${STATUS}"
+          write_version_check_summary "${VB_STATUS}" "${MS_STATUS}" "${LF_STATUS}" "${OLD_VERSION}" "${NEW_VERSION}"
+          write_timing_footer
