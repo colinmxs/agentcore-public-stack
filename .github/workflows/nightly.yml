@@ -295,6 +295,66 @@ jobs:
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
+  # ── Merge Validation Track ────────────────────────────────────────────────
+  # Deploys main first, then overlays develop on top — simulating a real merge.
+  # Runs in parallel with the standard develop-only track above.
+
+  mv-deploy-infrastructure:
+    name: "[MV] Deploy Infrastructure (main)"
+    runs-on: ubuntu-latest
+    needs: [test-backend, test-frontend, install-infrastructure, check-stack-dependencies]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout main
+        uses: actions/checkout@v5
+        with:
+          ref: main
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVInfrastructure
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy infrastructure stack
+        run: bash scripts/stack-infrastructure/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
   deploy-app-api:
     name: Deploy App API (Nightly)
     runs-on: ubuntu-latest
@@ -641,6 +701,453 @@ jobs:
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
+  mv-deploy-rag-ingestion:
+    name: "[MV] Deploy RAG Ingestion (develop→main)"
+    runs-on: ubuntu-24.04-arm
+    needs: mv-deploy-infrastructure
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVRagIngestion
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.rag-ingestion \
+            --platform linux/arm64 \
+            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
+            -t ${CDK_PROJECT_PREFIX}-rag-ingestion:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-rag-ingestion/push-to-ecr.sh
+
+      - name: Deploy RAG Ingestion
+        run: bash scripts/stack-rag-ingestion/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-deploy-inference-api:
+    name: "[MV] Deploy Inference API (develop→main)"
+    runs-on: ubuntu-24.04-arm
+    needs: mv-deploy-rag-ingestion
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_INFERENCE_API_ENABLED: true
+      CDK_INFERENCE_API_CPU: 1024
+      CDK_INFERENCE_API_MEMORY: 2048
+      CDK_INFERENCE_API_DESIRED_COUNT: 1
+      CDK_INFERENCE_API_MAX_CAPACITY: 2
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVInferenceApi
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.inference-api \
+            --platform linux/arm64 \
+            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
+            -t ${CDK_PROJECT_PREFIX}-inference-api:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-inference-api/push-to-ecr.sh
+
+      - name: Build and deploy Inference API
+        run: bash scripts/stack-inference-api/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-deploy-app-api:
+    name: "[MV] Deploy App API (develop→main)"
+    runs-on: ubuntu-latest
+    needs: mv-deploy-inference-api
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_APP_API_ENABLED: true
+      CDK_APP_API_CPU: 512
+      CDK_APP_API_MEMORY: 1024
+      CDK_APP_API_DESIRED_COUNT: 1
+      CDK_APP_API_MAX_CAPACITY: 2
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVAppApi
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Build Docker image
+        run: |
+          IMAGE_TAG=$(git rev-parse --short HEAD)
+          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
+          docker build \
+            -f backend/Dockerfile.app-api \
+            -t ${CDK_PROJECT_PREFIX}-app-api:${IMAGE_TAG} \
+            .
+
+      - name: Push to ECR
+        run: bash scripts/stack-app-api/push-to-ecr.sh
+
+      - name: Build and deploy App API
+        run: bash scripts/stack-app-api/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-deploy-frontend:
+    name: "[MV] Deploy Frontend (develop→main)"
+    runs-on: ubuntu-latest
+    needs: mv-deploy-app-api
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_PRODUCTION: false
+      CDK_FRONTEND_ENABLED: true
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_DOMAIN_NAME: ""
+      CDK_HOSTED_ZONE_DOMAIN: ""
+      CDK_FRONTEND_CERTIFICATE_ARN: ""
+      CDK_FRONTEND_BUCKET_NAME: ""
+      CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS: ""
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Install frontend dependencies
+        run: bash scripts/stack-frontend/install.sh
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVFrontend
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Build and deploy Frontend
+        run: bash scripts/stack-frontend/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-deploy-gateway:
+    name: "[MV] Deploy Gateway (develop→main)"
+    runs-on: ubuntu-latest
+    needs: mv-deploy-app-api
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      CDK_GATEWAY_ENABLED: true
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVGateway
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy Gateway
+        run: bash scripts/stack-gateway/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-smoke-test:
+    name: "[MV] Smoke Test (develop→main)"
+    runs-on: ubuntu-latest
+    needs: [mv-deploy-app-api, mv-deploy-inference-api, mv-deploy-rag-ingestion, mv-deploy-frontend, mv-deploy-gateway]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVSmokeTest
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Run smoke tests
+        id: run-tests
+        run: bash scripts/nightly/smoke-test.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  mv-teardown:
+    name: "[MV] Teardown Merge Validation Stack"
+    runs-on: ubuntu-latest
+    needs: mv-smoke-test
+    if: ${{ always() && github.event.inputs.skip_teardown != 'true' && github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-merge-validation
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVTeardown
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Teardown merge validation stack
+        id: run-teardown
+        run: bash scripts/nightly/teardown.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ steps.run-teardown.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
+  # ── End Merge Validation Track ────────────────────────────────────────────
+
   smoke-test:
     name: Smoke Test Deployment
     runs-on: ubuntu-latest
@@ -838,7 +1345,7 @@ jobs:
   summary:
     name: Nightly Summary
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend, deploy-infrastructure, deploy-app-api, deploy-inference-api, deploy-rag-ingestion, deploy-frontend, deploy-gateway, smoke-test, teardown, analyze-coverage, ai-coverage-analysis]
+    needs: [test-backend, test-frontend, deploy-infrastructure, deploy-app-api, deploy-inference-api, deploy-rag-ingestion, deploy-frontend, deploy-gateway, smoke-test, teardown, analyze-coverage, ai-coverage-analysis, mv-deploy-infrastructure, mv-deploy-app-api, mv-deploy-inference-api, mv-deploy-rag-ingestion, mv-deploy-frontend, mv-deploy-gateway, mv-smoke-test, mv-teardown]
     if: always()
     steps:
       - name: Checkout code
@@ -864,7 +1371,15 @@ jobs:
             "${{ needs.smoke-test.result }}" \
             "${{ needs.teardown.result }}" \
             "${{ needs.analyze-coverage.result }}" \
-            "${{ needs.ai-coverage-analysis.result }}"; do
+            "${{ needs.ai-coverage-analysis.result }}" \
+            "${{ needs.mv-deploy-infrastructure.result }}" \
+            "${{ needs.mv-deploy-app-api.result }}" \
+            "${{ needs.mv-deploy-inference-api.result }}" \
+            "${{ needs.mv-deploy-rag-ingestion.result }}" \
+            "${{ needs.mv-deploy-frontend.result }}" \
+            "${{ needs.mv-deploy-gateway.result }}" \
+            "${{ needs.mv-smoke-test.result }}" \
+            "${{ needs.mv-teardown.result }}"; do
             case "$outcome" in
               failure) AGGREGATE="failure"; break ;;
               skipped) [ "$AGGREGATE" != "failure" ] && AGGREGATE="partial" ;;
@@ -895,4 +1410,12 @@ jobs:
             "Smoke Test|$(map_status "${{ needs.smoke-test.result }}")|${{ needs.smoke-test.outputs.duration || '0' }}" \
             "Teardown|$(map_status "${{ needs.teardown.result }}")|${{ needs.teardown.outputs.duration || '0' }}" \
             "Coverage Analysis|$(map_status "${{ needs.analyze-coverage.result }}")|${{ needs.analyze-coverage.outputs.duration || '0' }}" \
-            "AI Coverage Analysis|$(map_status "${{ needs.ai-coverage-analysis.result }}")|${{ needs.ai-coverage-analysis.outputs.duration || '0' }}"
+            "AI Coverage Analysis|$(map_status "${{ needs.ai-coverage-analysis.result }}")|${{ needs.ai-coverage-analysis.outputs.duration || '0' }}" \
+            "[MV] Deploy Infrastructure|$(map_status "${{ needs.mv-deploy-infrastructure.result }}")|${{ needs.mv-deploy-infrastructure.outputs.duration || '0' }}" \
+            "[MV] Deploy RAG Ingestion|$(map_status "${{ needs.mv-deploy-rag-ingestion.result }}")|${{ needs.mv-deploy-rag-ingestion.outputs.duration || '0' }}" \
+            "[MV] Deploy Inference API|$(map_status "${{ needs.mv-deploy-inference-api.result }}")|${{ needs.mv-deploy-inference-api.outputs.duration || '0' }}" \
+            "[MV] Deploy App API|$(map_status "${{ needs.mv-deploy-app-api.result }}")|${{ needs.mv-deploy-app-api.outputs.duration || '0' }}" \
+            "[MV] Deploy Frontend|$(map_status "${{ needs.mv-deploy-frontend.result }}")|${{ needs.mv-deploy-frontend.outputs.duration || '0' }}" \
+            "[MV] Deploy Gateway|$(map_status "${{ needs.mv-deploy-gateway.result }}")|${{ needs.mv-deploy-gateway.outputs.duration || '0' }}" \
+            "[MV] Smoke Test|$(map_status "${{ needs.mv-smoke-test.result }}")|${{ needs.mv-smoke-test.outputs.duration || '0' }}" \
+            "[MV] Teardown|$(map_status "${{ needs.mv-teardown.result }}")|${{ needs.mv-teardown.outputs.duration || '0' }}"
