@@ -47,14 +47,14 @@ empty_bucket() {
         --output json \
         --query '{Objects: Versions[].{Key:Key,VersionId:VersionId}}' \
         | jq -r '.Objects[]? | "--key \(.Key) --version-id \(.VersionId)"' \
-        | xargs -r -n 2 aws s3api delete-object --bucket "${bucket_name}" || true
+        | xargs -r -n 4 aws s3api delete-object --bucket "${bucket_name}" || true
     
     aws s3api list-object-versions \
         --bucket "${bucket_name}" \
         --output json \
         --query '{Objects: DeleteMarkers[].{Key:Key,VersionId:VersionId}}' \
         | jq -r '.Objects[]? | "--key \(.Key) --version-id \(.VersionId)"' \
-        | xargs -r -n 2 aws s3api delete-object --bucket "${bucket_name}" || true
+        | xargs -r -n 4 aws s3api delete-object --bucket "${bucket_name}" || true
     
     # Delete all objects (non-versioned)
     aws s3 rm "s3://${bucket_name}" --recursive || true
