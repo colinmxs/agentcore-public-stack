@@ -106,8 +106,6 @@ jobs:
     name: Build CDK Code
     runs-on: ubuntu-latest
     needs: [install, check-stack-dependencies]
-    outputs:
-      result: ${{ steps.build-cdk.outcome }}
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
@@ -138,10 +136,6 @@ jobs:
     name: Synthesize CloudFormation Template
     runs-on: ubuntu-latest
     needs: build
-    outputs:
-      result: ${{ steps.synth-cfn.outcome }}
-      resource_count: ${{ steps.synth-meta.outputs.resource_count }}
-      template_size_kb: ${{ steps.synth-meta.outputs.template_size_kb }}
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
@@ -202,22 +196,6 @@ jobs:
         run: |
           bash scripts/stack-infrastructure/synth.sh
 
-      - name: Capture synth metadata
-        id: synth-meta
-        if: always()
-        run: |
-          TEMPLATE="infrastructure/cdk.out/InfrastructureStack.template.json"
-          if [ -f "$TEMPLATE" ]; then
-            RESOURCE_COUNT=$(jq '.Resources | length' "$TEMPLATE" 2>/dev/null || echo "0")
-            TEMPLATE_SIZE=$(stat --format='%s' "$TEMPLATE" 2>/dev/null || stat -f '%z' "$TEMPLATE" 2>/dev/null || echo "0")
-            TEMPLATE_SIZE_KB=$(( TEMPLATE_SIZE / 1024 ))
-          else
-            RESOURCE_COUNT="0"
-            TEMPLATE_SIZE_KB="0"
-          fi
-          echo "resource_count=${RESOURCE_COUNT}" >> "$GITHUB_OUTPUT"
-          echo "template_size_kb=${TEMPLATE_SIZE_KB}" >> "$GITHUB_OUTPUT"
-
       - name: Upload synthesized templates
         uses: actions/upload-artifact@v6
         with:
@@ -230,8 +208,6 @@ jobs:
     runs-on: ubuntu-latest
     needs: synth
     if: ${{ github.event.inputs.skip_tests != 'true' }}
-    outputs:
-      result: ${{ steps.run-tests.outcome }}
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
@@ -301,7 +277,7 @@ jobs:
   deploy:
     name: Deploy Infrastructure Stack
     runs-on: ubuntu-latest
-    needs: [build, synth, test]
+    needs: test
     if: |
       always() && !cancelled() &&
       !contains(needs.*.result, 'failure') &&
@@ -403,38 +379,8 @@ jobs:
           # --- Workflow header (once for the entire workflow) ---
           write_workflow_header "Infrastructure" "$STATUS" "InfrastructureStack"
 
-          # --- Pipeline steps table ---
-          BUILD_RESULT="${{ needs.build.outputs.result }}"
-          SYNTH_RESULT="${{ needs.synth.outputs.result }}"
-          SYNTH_RESOURCES="${{ needs.synth.outputs.resource_count }}"
-          SYNTH_TEMPLATE_KB="${{ needs.synth.outputs.template_size_kb }}"
-          TEST_RESULT="${{ needs.test.outputs.result }}"
-          DEPLOY_RESULT="${{ job.status }}"
-
-          status_icon() {
-            case "$1" in
-              success) echo "✅" ;;
-              failure) echo "❌" ;;
-              skipped) echo "⏭️" ;;
-              *)       echo "⚠️" ;;
-            esac
-          }
-
-          {
-            echo "### Pipeline"
-            echo ""
-            echo "| Step | Status | Details |"
-            echo "|---|---|---|"
-            echo "| Build | $(status_icon "${BUILD_RESULT:-skipped}") | TypeScript compilation |"
-            echo "| Synth | $(status_icon "${SYNTH_RESULT:-skipped}") | ${SYNTH_RESOURCES:-—} resources, ${SYNTH_TEMPLATE_KB:-—} KB |"
-            echo "| Diff | $(status_icon "${TEST_RESULT:-skipped}") | CloudFormation diff against deployed stack |"
-            echo "| Deploy | $(status_icon "${DEPLOY_RESULT}") | \`cdk deploy InfrastructureStack\` |"
-            echo ""
-          } >> "${GITHUB_STEP_SUMMARY}"
-
-          # --- Deploy details (only on success) ---
+          # --- Stack outputs or failure details ---
           if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "infrastructure"
             write_cdk_outputs_table "infrastructure/infrastructure-outputs.json"
           else
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
