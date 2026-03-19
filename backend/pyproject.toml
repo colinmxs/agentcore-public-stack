@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "agentcore-stack"
-version = "1.0.0-beta.6"
+version = "1.0.0-beta.9"
 requires-python = ">=3.9"
 description = "Multi-agent conversational AI system with AWS Bedrock AgentCore"
 readme = "README.md"
@@ -13,9 +13,8 @@ license = {text = "MIT"}
 # Core dependencies shared across both APIs
 dependencies = [
     # FastAPI and web framework
-    "fastapi==0.135.1",
-    "uvicorn[standard]==0.42.0",
-    "starlette>=0.49.1",
+    "fastapi==0.116.1",
+    "uvicorn[standard]==0.35.0",
 
     # AWS and cloud services
     "boto3>=1.40.1",
@@ -27,7 +26,6 @@ dependencies = [
 
     # Authentication (for shared auth module)
     "pyjwt[crypto]>=2.8.0",
-    "cryptography>=46.0.5",
 
     # OAuth provider management
     "authlib>=1.3.0",
@@ -38,15 +36,13 @@ dependencies = [
 # AgentCore-specific dependencies (for inference_api)
 agentcore = [
     "strands-agents>=1.27.0",
-    "strands-agents-tools==0.2.22",
+    "strands-agents-tools==0.2.20",
 
     "aws-opentelemetry-distro>=0.10.1",
     "bedrock-agentcore",
     # Multi-provider LLM support
     "openai>=1.0.0",  # For OpenAI models
     "google-genai>=1.0.0",  # For Google Gemini models
-    # RAG dependencies
-    "tiktoken>=0.5.0",  # Required for token counting in embeddings
 ]
 
 # Document ingestion pipeline dependencies (for Lambda deployment)
@@ -67,8 +63,6 @@ dev = [
     "mypy>=1.0.0",
     "types-aiofiles>=25.1.0",
     "tiktoken>=0.5.0",
-    "numpy>=1.24.0",
-    "pillow>=12.1.1",
 ]
 
 # All dependencies (convenience)
