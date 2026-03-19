@@ -270,23 +270,6 @@ jobs:
         run: |
           bash scripts/stack-gateway/test-cdk.sh
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Gateway — CDK Tests" "$STATUS" "GatewayStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
-          fi
-
   deploy-stack:
     name: Deploy Gateway Stack
     runs-on: ubuntu-latest
@@ -377,13 +360,12 @@ jobs:
             STATUS="failure"
           fi
 
-          write_workflow_header "Gateway — Deploy" "$STATUS" "GatewayStack"
+          # --- Workflow header (once for the entire workflow) ---
+          write_workflow_header "Gateway" "$STATUS" "GatewayStack"
 
+          # --- Stack outputs or failure details ---
           if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "gateway"
-            if [ -f cdk-outputs-gateway.json ]; then
-              write_cdk_outputs_table "cdk-outputs-gateway.json"
-            fi
+            write_cdk_outputs_table "cdk-outputs-gateway.json"
           else
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
           fi
@@ -431,20 +413,3 @@ jobs:
         id: run-tests
         run: |
           bash scripts/stack-gateway/test.sh
-
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Gateway — Connectivity Tests" "$STATUS" "GatewayStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Connectivity Tests" "1" "Gateway connectivity test failed — check logs above"
-          fi

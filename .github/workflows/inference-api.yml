@@ -184,30 +184,6 @@ jobs:
           path: ${{ runner.temp }}/inference-api-image.tar
           retention-days: 1
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.set-tag.outcome }}" = "failure" ] || [ "${{ steps.image-size.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Inference API — Build" "$STATUS" "InferenceApiStack"
-
-          if [ "$STATUS" = "success" ]; then
-            write_build_summary \
-              "${{ steps.set-tag.outputs.IMAGE_TAG }}" \
-              "linux/arm64" \
-              "${{ steps.image-size.outputs.IMAGE_SIZE }}" \
-              "" \
-              ""
-          else
-            write_failure_summary "Docker Build" "1" "Build or image inspection failed — check logs above"
-          fi
-
   build-cdk:
     name: Build CDK
     runs-on: ubuntu-latest
@@ -259,23 +235,6 @@ jobs:
         run: |
           bash scripts/stack-inference-api/test-docker.sh
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Inference API — Docker Tests" "$STATUS" "InferenceApiStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Docker Tests" "1" "Docker health check failed — check logs above"
-          fi
-
   test-python:
     name: Test Python Code
     runs-on: ubuntu-latest
@@ -295,23 +254,6 @@ jobs:
         id: run-tests
         run: |
           bash scripts/stack-inference-api/test.sh
-
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Inference API — Python Tests" "$STATUS" "InferenceApiStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Python Tests" "1" "Test run failed — check logs above"
-          fi
 
   synth-cdk:
     name: Synthesize CDK
@@ -437,23 +379,6 @@ jobs:
         run: |
           bash scripts/stack-inference-api/test-cdk.sh
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Inference API — CDK Tests" "$STATUS" "InferenceApiStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
-          fi
-
   push-to-ecr:
     name: Push Docker Image to ECR
     runs-on: ubuntu-latest
@@ -511,22 +436,6 @@ jobs:
         id: push-ecr
         run: |
           bash scripts/stack-inference-api/push-to-ecr.sh
-
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.push-ecr.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Inference API — Push to ECR" "$STATUS" "InferenceApiStack"
-
-          ECR_URI="${CDK_AWS_ACCOUNT}.dkr.ecr.${CDK_AWS_REGION}.amazonaws.com/${CDK_PROJECT_PREFIX}-inference-api:${IMAGE_TAG}"
-          write_build_summary "${IMAGE_TAG}" "linux/arm64" "0" "${ECR_URI}" ""
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
@@ -623,10 +532,9 @@ jobs:
             STATUS="failure"
           fi
 
-          write_workflow_header "Inference API — Deploy" "$STATUS" "InferenceApiStack"
+          write_workflow_header "Inference API" "$STATUS" "InferenceApiStack"
 
           if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "inference-api"
             if [ -f cdk-outputs-inference-api.json ]; then
               write_cdk_outputs_table "cdk-outputs-inference-api.json"
             fi

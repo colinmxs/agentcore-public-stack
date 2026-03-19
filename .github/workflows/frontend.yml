@@ -142,23 +142,6 @@ jobs:
           path: frontend/ai.client/dist/
           retention-days: 7
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.build-app.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Frontend — Build" "$STATUS" "FrontendStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Frontend Build" "1" "Build failed — check logs above"
-          fi
-
   build-cdk:
     name: Build CDK
     runs-on: ubuntu-latest
@@ -213,23 +196,6 @@ jobs:
           path: frontend/ai.client/coverage/
           retention-days: 7
           if-no-files-found: ignore
-
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Frontend — Tests" "$STATUS" "FrontendStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Frontend Tests" "1" "Test run failed — check logs above"
-          fi
 
   synth-cdk:
     name: Synthesize CDK
@@ -354,23 +320,6 @@ jobs:
         run: |
           bash scripts/stack-frontend/test-cdk.sh
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "Frontend — CDK Tests" "$STATUS" "FrontendStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
-          fi
-
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
     runs-on: ubuntu-latest
@@ -447,25 +396,6 @@ jobs:
           path: infrastructure/frontend-outputs.json
           retention-days: 30
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ job.status }}" = "success" ]; then
-            STATUS="success"
-          else
-            STATUS="failure"
-          fi
-
-          write_workflow_header "Frontend — CDK Deploy" "$STATUS" "FrontendStack"
-
-          if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "frontend"
-          else
-            write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
-          fi
-
   deploy-assets:
     name: Deploy Frontend Assets
     runs-on: ubuntu-latest
@@ -506,6 +436,12 @@ jobs:
           name: frontend-build
           path: frontend/ai.client/dist/
 
+      - name: Download CDK outputs
+        uses: actions/download-artifact@v7
+        with:
+          name: frontend-cdk-outputs
+          path: infrastructure/
+
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -525,16 +461,18 @@ jobs:
         run: |
           source scripts/common/summary.sh
 
-          if [ "${{ steps.deploy-assets.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
+          if [ "${{ job.status }}" = "success" ]; then
             STATUS="success"
+          else
+            STATUS="failure"
           fi
 
-          write_header "Frontend — Deploy Assets" "$STATUS" "FrontendStack"
+          # --- Workflow header (once for the entire workflow) ---
+          write_workflow_header "Frontend" "$STATUS" "FrontendStack"
 
+          # --- Stack outputs or failure details ---
           if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "frontend"
+            write_cdk_outputs_table "infrastructure/frontend-outputs.json"
           else
             write_failure_summary "Deploy Assets" "1" "Asset deployment failed — check logs above"
           fi

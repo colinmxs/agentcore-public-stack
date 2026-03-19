@@ -197,12 +197,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Test Backend" "$STATUS"
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Backend Tests" "1" "Test run failed — check logs above"
-          fi
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -240,12 +235,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Test Frontend" "$STATUS"
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "Frontend Tests" "1" "Test run failed — check logs above"
-          fi
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -301,10 +291,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_workflow_header "Nightly — Deploy Infrastructure" "$STATUS" "InfrastructureStack"
-          write_deploy_summary "infrastructure"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -379,10 +366,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy App API" "$STATUS" "AppApiStack"
-          write_deploy_summary "app-api"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -459,10 +443,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy Inference API" "$STATUS" "InferenceApiStack"
-          write_deploy_summary "inference-api"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -534,10 +515,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy RAG Ingestion" "$STATUS" "RagIngestionStack"
-          write_deploy_summary "rag-ingestion"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -603,10 +581,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy Frontend" "$STATUS" "FrontendStack"
-          write_deploy_summary "frontend"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -662,10 +637,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Deploy Gateway" "$STATUS" "GatewayStack"
-          write_deploy_summary "gateway"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -710,9 +682,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Smoke Test" "$STATUS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -766,9 +736,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-teardown.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Teardown" "$STATUS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -820,9 +788,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-analysis.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — Coverage Analysis" "$STATUS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -865,9 +831,7 @@ jobs:
         id: summary
         if: always()
         run: |
-          source scripts/common/summary.sh
           if [ "${{ steps.run-ai-analysis.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
-          write_header "Nightly — AI Coverage Analysis" "$STATUS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 

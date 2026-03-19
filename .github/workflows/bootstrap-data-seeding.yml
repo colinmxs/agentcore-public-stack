@@ -96,8 +96,6 @@ jobs:
 
           write_workflow_header "Bootstrap Data Seeding" "$STATUS" "BootstrapStack"
 
-          if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "bootstrap"
-          else
+          if [ "$STATUS" = "failure" ]; then
             write_failure_summary "Bootstrap Seed" "1" "Seeding failed — check logs above"
           fi

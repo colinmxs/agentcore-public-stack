@@ -265,23 +265,6 @@ jobs:
         run: |
           bash scripts/stack-sagemaker-fine-tuning/test-cdk.sh
 
-      - name: Generate summary
-        if: always()
-        run: |
-          source scripts/common/summary.sh
-
-          if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
-            STATUS="failure"
-          else
-            STATUS="success"
-          fi
-
-          write_header "SageMaker Fine-Tuning — CDK Tests" "$STATUS" "SagemakerFineTuningStack"
-
-          if [ "$STATUS" = "failure" ]; then
-            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
-          fi
-
   deploy:
     name: Deploy SageMaker Fine-Tuning Stack
     runs-on: ubuntu-latest
@@ -379,13 +362,12 @@ jobs:
             STATUS="failure"
           fi
 
-          write_workflow_header "SageMaker Fine-Tuning — Deploy" "$STATUS" "SagemakerFineTuningStack"
+          # --- Workflow header (once for the entire workflow) ---
+          write_workflow_header "SageMaker Fine-Tuning" "$STATUS" "SagemakerFineTuningStack"
 
+          # --- Stack outputs or failure details ---
           if [ "$STATUS" = "success" ]; then
-            write_deploy_summary "sagemaker"
-            if [ -f cdk-outputs-sagemaker-fine-tuning.json ]; then
-              write_cdk_outputs_table "cdk-outputs-sagemaker-fine-tuning.json"
-            fi
+            write_cdk_outputs_table "cdk-outputs-sagemaker-fine-tuning.json"
           else
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
           fi
