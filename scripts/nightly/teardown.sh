@@ -109,6 +109,62 @@ force_delete_secrets() {
     done
 }
 
+# Delete all CloudWatch log groups containing the project prefix anywhere in the name
+delete_cloudwatch_logs() {
+    log_info "Deleting CloudWatch log groups containing: ${CDK_PROJECT_PREFIX}"
+
+    # Log groups can be under /aws/ecs/, /aws/lambda/, etc. — prefix search won't catch them.
+    # Paginate through all log groups and filter by project prefix in the name.
+    local next_token=""
+    local log_groups=()
+
+    while true; do
+        local response
+        if [ -n "${next_token}" ]; then
+            response=$(aws logs describe-log-groups \
+                --next-token "${next_token}" \
+                --limit 50 \
+                --output json \
+                --region "${CDK_AWS_REGION}" 2>/dev/null || echo '{}')
+        else
+            response=$(aws logs describe-log-groups \
+                --limit 50 \
+                --output json \
+                --region "${CDK_AWS_REGION}" 2>/dev/null || echo '{}')
+        fi
+
+        local page_groups
+        page_groups=$(echo "${response}" | jq -r \
+            --arg prefix "${CDK_PROJECT_PREFIX}" \
+            '.logGroups[]?.logGroupName | select(contains($prefix))' 2>/dev/null || true)
+
+        while IFS= read -r group; do
+            [ -n "${group}" ] && log_groups+=("${group}")
+        done <<< "${page_groups}"
+
+        next_token=$(echo "${response}" | jq -r '.nextToken // empty' 2>/dev/null || true)
+        [ -z "${next_token}" ] && break
+    done
+
+    if [ ${#log_groups[@]} -eq 0 ]; then
+        log_info "No CloudWatch log groups found containing ${CDK_PROJECT_PREFIX}"
+        return 0
+    fi
+
+    log_info "Found ${#log_groups[@]} log group(s) to delete"
+
+    for log_group in "${log_groups[@]}"; do
+        log_info "Deleting log group: ${log_group}"
+        aws logs delete-log-group \
+            --log-group-name "${log_group}" \
+            --region "${CDK_AWS_REGION}" 2>/dev/null && \
+            log_success "Deleted ${log_group}" || \
+            log_warn "Failed to delete ${log_group}, skipping"
+    done
+
+    log_success "CloudWatch log group cleanup complete"
+}
+
 # Destroy CDK stacks
 destroy_stacks() {
     log_info "Destroying CDK stacks with prefix: ${CDK_PROJECT_PREFIX}"
@@ -151,6 +207,9 @@ main() {
     
     # Destroy CDK stacks
     destroy_stacks
+
+    # Delete CloudWatch log groups after CDK destroy (CDK may recreate them during destroy)
+    delete_cloudwatch_logs
     
     log_success "Nightly deployment teardown complete!"
 }
