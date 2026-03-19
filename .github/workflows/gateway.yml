@@ -236,9 +236,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -278,18 +275,15 @@ jobs:
 
           if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
             STATUS="failure"
-            CDK_RESULT="fail"
           else
             STATUS="success"
-            CDK_RESULT="pass"
           fi
 
           write_header "Gateway — CDK Tests" "$STATUS" "GatewayStack"
 
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_cdk "${CDK_RESULT}" 0
-
-          write_timing_footer "test=${TEST_DURATION}"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
+          fi
 
   deploy-stack:
     name: Deploy Gateway Stack
@@ -329,9 +323,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Record deploy start time
-        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
@@ -395,8 +386,6 @@ jobs:
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
           fi
 
-          write_timing_footer
-
   test-gateway:
     name: Test Gateway Connectivity
     runs-on: ubuntu-latest
@@ -427,9 +416,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -451,15 +437,12 @@ jobs:
 
           if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
             STATUS="failure"
-            CDK_RESULT="fail"
           else
             STATUS="success"
-            CDK_RESULT="pass"
           fi
 
           write_header "Gateway — Connectivity Tests" "$STATUS" "GatewayStack"
 
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_cdk "${CDK_RESULT}" 0
-
-          write_timing_footer "test=${TEST_DURATION}"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Connectivity Tests" "1" "Gateway connectivity test failed — check logs above"
+          fi

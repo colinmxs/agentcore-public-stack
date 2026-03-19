@@ -64,9 +64,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "SEED_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -102,5 +99,3 @@ jobs:
           else
             write_failure_summary "Bootstrap Seed" "1" "Seeding failed — check logs above"
           fi
-
-          write_timing_footer

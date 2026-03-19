@@ -133,9 +133,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record build start time
-        run: echo "BUILD_START=${SECONDS}" >> $GITHUB_ENV
-      
       - name: Set image tag
         id: set-tag
         run: |
@@ -209,9 +206,6 @@ jobs:
             write_failure_summary "Docker Build" "1" "Build or image inspection failed — check logs above"
           fi
 
-          BUILD_DURATION=$(( SECONDS - ${BUILD_START:-0} ))
-          write_timing_footer "build=${BUILD_DURATION}"
-
   build-cdk:
     name: Build CDK
     runs-on: ubuntu-latest
@@ -246,9 +240,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
       
       - name: Download Docker image artifact
         uses: actions/download-artifact@v7
@@ -273,18 +264,15 @@ jobs:
 
           if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
             STATUS="failure"
-            HEALTH_RESULT="fail"
           else
             STATUS="success"
-            HEALTH_RESULT="pass"
           fi
 
           write_header "Inference API — Docker Tests" "$STATUS" "InferenceApiStack"
 
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_docker "${HEALTH_RESULT}" "${TEST_DURATION}"
-
-          write_timing_footer "test=${TEST_DURATION}"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Docker Tests" "1" "Docker health check failed — check logs above"
+          fi
 
   test-python:
     name: Test Python Code
@@ -294,9 +282,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
 
       - name: Restore Python packages cache
         uses: actions/cache/restore@v5
@@ -321,11 +306,6 @@ jobs:
           fi
 
           write_header "Inference API — Python Tests" "$STATUS" "InferenceApiStack"
-
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_python 0 0 0 0 "${TEST_DURATION}"
-
-          write_timing_footer "test=${TEST_DURATION}"
 
           if [ "$STATUS" = "failure" ]; then
             write_failure_summary "Python Tests" "1" "Test run failed — check logs above"
@@ -425,9 +405,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -465,18 +442,15 @@ jobs:
 
           if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
             STATUS="failure"
-            CDK_RESULT="fail"
           else
             STATUS="success"
-            CDK_RESULT="pass"
           fi
 
           write_header "Inference API — CDK Tests" "$STATUS" "InferenceApiStack"
 
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_cdk "${CDK_RESULT}" 0
-
-          write_timing_footer "test=${TEST_DURATION}"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
+          fi
 
   push-to-ecr:
     name: Push Docker Image to ECR
@@ -552,8 +526,6 @@ jobs:
           ECR_URI="${CDK_AWS_ACCOUNT}.dkr.ecr.${CDK_AWS_REGION}.amazonaws.com/${CDK_PROJECT_PREFIX}-inference-api:${IMAGE_TAG}"
           write_build_summary "${IMAGE_TAG}" "linux/arm64" "0" "${ECR_URI}" ""
 
-          write_timing_footer
-
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
     runs-on: ubuntu-latest
@@ -595,9 +567,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Record deploy start time
-        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
 
       - name: Restore node_modules cache
         uses: actions/cache/restore@v5
@@ -662,5 +631,3 @@ jobs:
           else
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
           fi
-
-          write_timing_footer

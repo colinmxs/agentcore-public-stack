@@ -167,9 +167,6 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
-
       - name: Set up Python
         uses: actions/setup-python@v6
         with:
@@ -201,8 +198,9 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Test Backend" "$STATUS"
-          write_test_summary_python "0" "0" "0" "0" "$SECONDS"
-          write_timing_footer "tests=$SECONDS"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Backend Tests" "1" "Test run failed — check logs above"
+          fi
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -218,9 +216,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Restore frontend node_modules cache
         uses: actions/cache/restore@v5
@@ -246,8 +241,9 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Test Frontend" "$STATUS"
-          write_test_summary_frontend "0" "0" "0" "0" "$SECONDS"
-          write_timing_footer "tests=$SECONDS"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "Frontend Tests" "1" "Test run failed — check logs above"
+          fi
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -278,9 +274,6 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
-
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -310,7 +303,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy Infrastructure" "$STATUS" "InfrastructureStack"
           write_deploy_summary "infrastructure"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -344,9 +336,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -392,7 +381,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy App API" "$STATUS" "AppApiStack"
           write_deploy_summary "app-api"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -426,9 +414,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -476,7 +461,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy Inference API" "$STATUS" "InferenceApiStack"
           write_deploy_summary "inference-api"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -505,9 +489,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -555,7 +536,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy RAG Ingestion" "$STATUS" "RagIngestionStack"
           write_deploy_summary "rag-ingestion"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -593,9 +573,6 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
-
       - name: Install frontend dependencies
         run: bash scripts/stack-frontend/install.sh
 
@@ -628,7 +605,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy Frontend" "$STATUS" "FrontendStack"
           write_deploy_summary "frontend"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -659,9 +635,6 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
-
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -691,7 +664,6 @@ jobs:
           if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Deploy Gateway" "$STATUS" "GatewayStack"
           write_deploy_summary "gateway"
-          write_timing_footer "deploy=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -719,9 +691,6 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
-
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
         with:
@@ -742,7 +711,6 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-tests.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Smoke Test" "$STATUS"
-          write_timing_footer "tests=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -769,9 +737,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -802,7 +767,6 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-teardown.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Teardown" "$STATUS"
-          write_timing_footer "teardown=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -818,9 +782,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -860,7 +821,6 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-analysis.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — Coverage Analysis" "$STATUS"
-          write_timing_footer "analysis=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 
@@ -880,9 +840,6 @@ jobs:
         uses: actions/checkout@v5
         with:
           ref: ${{ env.NIGHTLY_REF }}
-
-      - name: Record start time
-        run: echo "START_TIME=$SECONDS" >> "$GITHUB_ENV"
 
       - name: Set up Python
         uses: actions/setup-python@v6
@@ -909,7 +866,6 @@ jobs:
           source scripts/common/summary.sh
           if [ "${{ steps.run-ai-analysis.outcome }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
           write_header "Nightly — AI Coverage Analysis" "$STATUS"
-          write_timing_footer "analysis=$SECONDS"
           echo "status=$STATUS" >> "$GITHUB_OUTPUT"
           echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
 

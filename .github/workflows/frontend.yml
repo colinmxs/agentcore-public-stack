@@ -122,9 +122,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record build start time
-        run: echo "BUILD_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Restore frontend node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -156,19 +153,9 @@ jobs:
 
           write_header "Frontend — Build" "$STATUS" "FrontendStack"
 
-          BUILD_DURATION=$(( SECONDS - ${BUILD_START:-0} ))
-
-          if [ "$STATUS" = "success" ]; then
-            echo "### 📦 Build Details" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Metric | Value |" >> "$GITHUB_STEP_SUMMARY"
-            echo "|---|---|" >> "$GITHUB_STEP_SUMMARY"
-            echo "| Build Duration | ${BUILD_DURATION}s |" >> "$GITHUB_STEP_SUMMARY"
-            echo "" >> "$GITHUB_STEP_SUMMARY"
-          else
+          if [ "$STATUS" = "failure" ]; then
             write_failure_summary "Frontend Build" "1" "Build failed — check logs above"
           fi
-
-          write_timing_footer "build=${BUILD_DURATION}"
 
   build-cdk:
     name: Build CDK
@@ -206,9 +193,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Restore frontend node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -240,11 +224,6 @@ jobs:
           fi
 
           write_header "Frontend — Tests" "$STATUS" "FrontendStack"
-
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_frontend 0 0 0 0 "${TEST_DURATION}"
-
-          write_timing_footer "test=${TEST_DURATION}"
 
           if [ "$STATUS" = "failure" ]; then
             write_failure_summary "Frontend Tests" "1" "Test run failed — check logs above"
@@ -343,9 +322,6 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v5
 
-      - name: Record start time
-        run: echo "TEST_START=${SECONDS}" >> $GITHUB_ENV
-
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v5
         with:
@@ -383,18 +359,15 @@ jobs:
 
           if [ "${{ steps.run-tests.outcome }}" = "failure" ]; then
             STATUS="failure"
-            CDK_RESULT="fail"
           else
             STATUS="success"
-            CDK_RESULT="pass"
           fi
 
           write_header "Frontend — CDK Tests" "$STATUS" "FrontendStack"
 
-          TEST_DURATION=$(( SECONDS - ${TEST_START:-0} ))
-          write_test_summary_cdk "${CDK_RESULT}" 0
-
-          write_timing_footer "test=${TEST_DURATION}"
+          if [ "$STATUS" = "failure" ]; then
+            write_failure_summary "CDK Validation" "1" "CloudFormation template validation failed — check logs above"
+          fi
 
   deploy-infrastructure:
     name: Deploy CDK Infrastructure
@@ -435,9 +408,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5
-
-      - name: Record deploy start time
-        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
 
       - name: Restore CDK node_modules cache
         uses: actions/cache/restore@v5
@@ -494,8 +464,6 @@ jobs:
             write_failure_summary "CDK Deploy" "1" "Deployment failed — check logs above"
           fi
 
-          write_timing_footer
-
   deploy-assets:
     name: Deploy Frontend Assets
     runs-on: ubuntu-latest
@@ -529,9 +497,6 @@ jobs:
     steps:
       - name: Checkout code
         uses: actions/checkout@v5      
-
-      - name: Record deploy start time
-        run: echo "DEPLOY_START=${SECONDS}" >> $GITHUB_ENV
       
       - name: Download Frontend build artifacts
         uses: actions/download-artifact@v7
@@ -571,5 +536,3 @@ jobs:
           else
             write_failure_summary "Deploy Assets" "1" "Asset deployment failed — check logs above"
           fi
-
-          write_timing_footer

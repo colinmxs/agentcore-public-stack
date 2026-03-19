@@ -120,4 +120,3 @@ jobs:
 
           write_header "Version Check" "${STATUS}"
           write_version_check_summary "${VB_STATUS}" "${MS_STATUS}" "${LF_STATUS}" "${OLD_VERSION}" "${NEW_VERSION}"
-          write_timing_footer
