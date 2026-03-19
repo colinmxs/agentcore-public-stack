@@ -255,9 +255,9 @@ jobs:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: nightly-agentcore
       CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
-      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
+      CDK_DOMAIN_NAME: ""
       CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
-      CDK_ALB_SUBDOMAIN: ${{ vars.CDK_ALB_SUBDOMAIN }}
+      CDK_ALB_SUBDOMAIN: nightly-api
       CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
@@ -319,9 +319,9 @@ jobs:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: nightly-mv
       CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
-      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
+      CDK_DOMAIN_NAME: ""
       CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
-      CDK_ALB_SUBDOMAIN: ${{ vars.CDK_ALB_SUBDOMAIN }}
+      CDK_ALB_SUBDOMAIN: nightly-mv-api
       CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
       CDK_RETAIN_DATA_ON_DELETE: false
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
