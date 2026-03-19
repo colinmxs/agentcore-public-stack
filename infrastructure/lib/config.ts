@@ -134,8 +134,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
   validateAwsAccount(awsAccount);
   validateAwsRegion(awsRegion);
 
-  // Top-level shared CORS origins — used as default for sections that don't override
-  const corsOrigins = process.env.CDK_CORS_ORIGINS || scope.node.tryGetContext('corsOrigins') || '';
+  // Top-level shared CORS origins — used as default for sections that don't override.
+  // If not explicitly set, auto-derive from CDK_DOMAIN_NAME so callers only need one variable.
+  const domainName = process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName');
+  const corsOrigins = process.env.CDK_CORS_ORIGINS
+    || scope.node.tryGetContext('corsOrigins')
+    || (domainName ? `https://${domainName}` : '');
 
   // Load app version from environment variable or CDK context
   const appVersion = process.env.CDK_APP_VERSION || scope.node.tryGetContext('appVersion') || 'unknown';
@@ -149,7 +153,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
     retainDataOnDelete: parseBooleanEnv(process.env.CDK_RETAIN_DATA_ON_DELETE) ?? scope.node.tryGetContext('retainDataOnDelete'),
     vpcCidr: scope.node.tryGetContext('vpcCidr'),
     corsOrigins,
-    domainName: process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName'),
+    domainName,
     infrastructureHostedZoneDomain: process.env.CDK_HOSTED_ZONE_DOMAIN || scope.node.tryGetContext('infrastructureHostedZoneDomain'),
     albSubdomain: process.env.CDK_ALB_SUBDOMAIN || scope.node.tryGetContext('albSubdomain'),
     certificateArn: process.env.CDK_CERTIFICATE_ARN || scope.node.tryGetContext('certificateArn'),
@@ -408,11 +412,11 @@ function validateConfig(config: AppConfig): void {
 
   // Validate File Upload CORS origins
   if (config.fileUpload.enabled) {
-    const effectiveCors = config.fileUpload.corsOrigins || config.corsOrigins;
+    const effectiveCors = config.fileUpload.corsOrigins || config.corsOrigins || config.domainName;
     if (!effectiveCors || effectiveCors.trim() === '') {
       throw new Error(
         'File Upload stack requires CORS origins to be configured. ' +
-        'Set corsOrigins at the top level or in the fileUpload section.'
+        'Set CDK_DOMAIN_NAME, CDK_CORS_ORIGINS, or corsOrigins in the fileUpload section.'
       );
     }
   }
