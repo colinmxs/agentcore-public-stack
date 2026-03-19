@@ -374,7 +374,10 @@ jobs:
     name: Push Docker Image to ECR
     runs-on: ubuntu-latest
     needs: [build-docker, test-docker, test-python]
-    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    if: |
+      always() && !cancelled() &&
+      !contains(needs.*.result, 'failure') &&
+      github.event_name != 'pull_request'
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
