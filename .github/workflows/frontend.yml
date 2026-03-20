@@ -142,6 +142,12 @@ jobs:
           path: frontend/ai.client/dist/
           retention-days: 7
 
+      - name: Save Frontend build cache
+        uses: actions/cache/save@v5
+        with:
+          path: frontend/ai.client/dist
+          key: frontend-build-${{ hashFiles('frontend/ai.client/src/**', 'frontend/ai.client/angular.json', 'frontend/ai.client/tsconfig.json') }}
+
   build-cdk:
     name: Build CDK
     runs-on: ubuntu-latest

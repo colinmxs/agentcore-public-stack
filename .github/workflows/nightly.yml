@@ -621,8 +621,20 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
+      - name: Restore frontend build cache
+        id: cache-frontend-build
+        uses: actions/cache/restore@v5
+        with:
+          path: frontend/ai.client/dist
+          key: frontend-build-${{ hashFiles('frontend/ai.client/src/**', 'frontend/ai.client/angular.json', 'frontend/ai.client/tsconfig.json') }}
+
       - name: Install frontend dependencies
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
         run: bash scripts/stack-frontend/install.sh
+
+      - name: Build frontend (cache miss)
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
+        run: bash scripts/stack-frontend/build.sh
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -642,8 +654,11 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Build and deploy Frontend
-        run: bash scripts/stack-frontend/deploy.sh
+      - name: Deploy CDK infrastructure
+        run: bash scripts/stack-frontend/deploy-cdk.sh
+
+      - name: Deploy assets
+        run: bash scripts/stack-frontend/deploy-assets.sh
 
       - name: Generate summary
         id: summary
@@ -935,8 +950,20 @@ jobs:
         with:
           ref: main
 
+      - name: Restore frontend build cache
+        id: cache-frontend-build
+        uses: actions/cache/restore@v5
+        with:
+          path: frontend/ai.client/dist
+          key: frontend-build-${{ hashFiles('frontend/ai.client/src/**', 'frontend/ai.client/angular.json', 'frontend/ai.client/tsconfig.json') }}
+
       - name: Install frontend dependencies
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
         run: bash scripts/stack-frontend/install.sh
+
+      - name: Build frontend (cache miss)
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
+        run: bash scripts/stack-frontend/build.sh
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -955,9 +982,6 @@ jobs:
 
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
-
-      - name: Build Frontend
-        run: bash scripts/stack-frontend/build.sh
 
       - name: Deploy CDK infrastructure
         run: bash scripts/stack-frontend/deploy-cdk.sh
@@ -1349,8 +1373,20 @@ jobs:
         with:
           ref: ${{ env.NIGHTLY_REF }}
 
+      - name: Restore frontend build cache
+        id: cache-frontend-build
+        uses: actions/cache/restore@v5
+        with:
+          path: frontend/ai.client/dist
+          key: frontend-build-${{ hashFiles('frontend/ai.client/src/**', 'frontend/ai.client/angular.json', 'frontend/ai.client/tsconfig.json') }}
+
       - name: Install frontend dependencies
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
         run: bash scripts/stack-frontend/install.sh
+
+      - name: Build frontend (cache miss)
+        if: steps.cache-frontend-build.outputs.cache-hit != 'true'
+        run: bash scripts/stack-frontend/build.sh
 
       - name: Restore infrastructure node_modules cache
         uses: actions/cache/restore@v5
@@ -1370,8 +1406,11 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Build and deploy Frontend
-        run: bash scripts/stack-frontend/deploy.sh
+      - name: Deploy CDK infrastructure
+        run: bash scripts/stack-frontend/deploy-cdk.sh
+
+      - name: Deploy assets
+        run: bash scripts/stack-frontend/deploy-assets.sh
 
       - name: Generate summary
         id: summary
