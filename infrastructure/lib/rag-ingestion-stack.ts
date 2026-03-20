@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
@@ -232,6 +233,15 @@ export class RagIngestionStack extends cdk.Stack {
 
     const containerImageUri = `${ecrRepository.repositoryUri}:${imageTag}`;
 
+    // Explicit log group so CloudFormation owns it and it gets destroyed on stack teardown.
+    // Without this, Lambda auto-creates the log group on first invocation and it persists
+    // after CDK destroy, causing "AlreadyExists" errors on the next deploy.
+    const ingestionLogGroup = new logs.LogGroup(this, 'RagIngestionLogGroup', {
+      logGroupName: `/aws/lambda/${getResourceName(config, 'rag-ingestion')}`,
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     this.ingestionLambda = new lambda.DockerImageFunction(
       this,
       'RagIngestionLambda',
@@ -243,6 +253,7 @@ export class RagIngestionStack extends cdk.Stack {
         architecture: lambda.Architecture.ARM_64, // ARM64 (Graviton2) for better price/performance
         timeout: cdk.Duration.seconds(config.ragIngestion.lambdaTimeout),
         memorySize: config.ragIngestion.lambdaMemorySize,
+        logGroup: ingestionLogGroup,
         environment: {
           S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: this.documentsBucket.bucketName,
           DYNAMODB_ASSISTANTS_TABLE_NAME: this.assistantsTable.tableName,
