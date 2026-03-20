@@ -990,8 +990,14 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Build and deploy Frontend
-        run: bash scripts/stack-frontend/deploy.sh
+      - name: Build Frontend
+        run: bash scripts/stack-frontend/build.sh
+
+      - name: Deploy CDK infrastructure
+        run: bash scripts/stack-frontend/deploy-cdk.sh
+
+      - name: Deploy assets
+        run: bash scripts/stack-frontend/deploy-assets.sh
 
       - name: Generate summary
         id: summary
