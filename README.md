@@ -94,7 +94,7 @@ Users can upload images (PNG, JPEG, GIF, WebP) and documents (PDF, CSV, DOCX) di
 
 ### 🧪 Fine-Tuning
 
-Train and run inference on open-source models directly from the platform. Users with admin-granted access can upload datasets, launch **SageMaker training jobs** on models like BERT, RoBERTa, GPT-2, DeepSeek, and more, then run **batch inference** on trained models — all with real-time progress tracking, quota enforcement, and automatic 30-day artifact retention. No ML infrastructure setup required.
+Train and run inference on open-source models directly from the platform. Users with admin-granted access can upload datasets, launch **SageMaker training jobs** on models like BERT, RoBERTa, GPT-2, and more, then run **batch inference** on trained models — all with real-time progress tracking, quota enforcement, and automatic 30-day artifact retention. No ML infrastructure setup required.
 
 ### 🧠 Memory and Context
 

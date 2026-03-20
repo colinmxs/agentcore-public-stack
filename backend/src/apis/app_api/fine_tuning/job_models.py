@@ -195,38 +195,6 @@ AVAILABLE_MODELS: List[AvailableModel] = [
             "context_length": "512",
         },
     ),
-    AvailableModel(
-        model_id="deepseek-r1-distill-qwen-7b",
-        model_name="DeepSeek R1 Distill Qwen 7B",
-        huggingface_model_id="deepseek-ai/DeepSeek-R1-Distill-Qwen-7B",
-        description="7B parameter reasoning model distilled from DeepSeek R1 into Qwen architecture",
-        default_instance_type="ml.g5.2xlarge",
-        default_hyperparameters={
-            "epochs": "3",
-            "per_device_train_batch_size": "4",
-            "learning_rate": "2e-5",
-            "weight_decay": "0.01",
-            "split_ratio": "0.8",
-            "seed": "42",
-            "context_length": "512",
-        },
-    ),
-    AvailableModel(
-        model_id="deepseek-r1-distill-qwen-1.5b",
-        model_name="DeepSeek R1 Distill Qwen 1.5B",
-        huggingface_model_id="deepseek-ai/DeepSeek-R1-Distill-Qwen-1.5B",
-        description="1.5B parameter reasoning model distilled from DeepSeek R1, efficient for smaller-scale tasks",
-        default_instance_type="ml.g5.xlarge",
-        default_hyperparameters={
-            "epochs": "3",
-            "per_device_train_batch_size": "8",
-            "learning_rate": "2e-5",
-            "weight_decay": "0.01",
-            "split_ratio": "0.8",
-            "seed": "42",
-            "context_length": "512",
-        },
-    ),
 ]
 
 MODEL_CATALOG: Dict[str, AvailableModel] = {m.model_id: m for m in AVAILABLE_MODELS}
