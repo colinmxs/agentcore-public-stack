@@ -27,6 +27,12 @@ log_success() {
 
 # Get ALB URL from CDK outputs
 get_alb_url() {
+    # Prefer the custom HTTPS subdomain when configured (avoids HTTP 301 redirect)
+    if [ -n "${CDK_ALB_SUBDOMAIN:-}" ] && [ -n "${CDK_HOSTED_ZONE_DOMAIN:-}" ]; then
+        echo "https://${CDK_ALB_SUBDOMAIN}.${CDK_HOSTED_ZONE_DOMAIN}"
+        return 0
+    fi
+
     local stack_name="${CDK_PROJECT_PREFIX}-InfrastructureStack"
     local alb_dns=$(aws cloudformation describe-stacks \
         --stack-name "${stack_name}" \
@@ -39,7 +45,7 @@ get_alb_url() {
         return 1
     fi
     
-    echo "http://${alb_dns}"
+    echo "https://${alb_dns}"
 }
 
 # Test health endpoint with retries

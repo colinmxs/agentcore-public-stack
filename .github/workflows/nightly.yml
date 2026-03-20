@@ -1426,6 +1426,8 @@ jobs:
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: nightly-mv
+      CDK_ALB_SUBDOMAIN: nightly-mv-api
+      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
@@ -1527,6 +1529,8 @@ jobs:
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: nightly-agentcore
+      CDK_ALB_SUBDOMAIN: nightly-api
+      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
