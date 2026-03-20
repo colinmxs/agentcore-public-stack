@@ -755,22 +755,10 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker image
-        run: |
-          IMAGE_TAG=$(git rev-parse --short HEAD)
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          docker build \
-            -f backend/Dockerfile.rag-ingestion \
-            --platform linux/arm64 \
-            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
-            -t ${CDK_PROJECT_PREFIX}-rag-ingestion:${IMAGE_TAG} \
-            .
-
-      - name: Push to ECR
-        run: bash scripts/stack-rag-ingestion/push-to-ecr.sh
+      - name: Promote develop RAG Ingestion image to nightly-mv ECR
+        env:
+          DEVELOP_PROJECT_PREFIX: ${{ vars.DEVELOP_PROJECT_PREFIX }}
+        run: bash scripts/common/promote-ecr-image.sh rag-ingestion
 
       - name: Deploy RAG Ingestion
         run: bash scripts/stack-rag-ingestion/deploy.sh
@@ -832,22 +820,10 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker image
-        run: |
-          IMAGE_TAG=$(git rev-parse --short HEAD)
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          docker build \
-            -f backend/Dockerfile.inference-api \
-            --platform linux/arm64 \
-            --build-arg APP_VERSION=$(tr -d '[:space:]' < VERSION) \
-            -t ${CDK_PROJECT_PREFIX}-inference-api:${IMAGE_TAG} \
-            .
-
-      - name: Push to ECR
-        run: bash scripts/stack-inference-api/push-to-ecr.sh
+      - name: Promote develop Inference API image to nightly-mv ECR
+        env:
+          DEVELOP_PROJECT_PREFIX: ${{ vars.DEVELOP_PROJECT_PREFIX }}
+        run: bash scripts/common/promote-ecr-image.sh inference-api
 
       - name: Build and deploy Inference API
         run: bash scripts/stack-inference-api/deploy.sh
@@ -909,20 +885,10 @@ jobs:
       - name: Install system dependencies
         run: bash scripts/common/install-deps.sh
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v4
-
-      - name: Build Docker image
-        run: |
-          IMAGE_TAG=$(git rev-parse --short HEAD)
-          echo "IMAGE_TAG=${IMAGE_TAG}" >> $GITHUB_ENV
-          docker build \
-            -f backend/Dockerfile.app-api \
-            -t ${CDK_PROJECT_PREFIX}-app-api:${IMAGE_TAG} \
-            .
-
-      - name: Push to ECR
-        run: bash scripts/stack-app-api/push-to-ecr.sh
+      - name: Promote develop App API image to nightly-mv ECR
+        env:
+          DEVELOP_PROJECT_PREFIX: ${{ vars.DEVELOP_PROJECT_PREFIX }}
+        run: bash scripts/common/promote-ecr-image.sh app-api
 
       - name: Build and deploy App API
         run: bash scripts/stack-app-api/deploy.sh
@@ -1065,10 +1031,70 @@ jobs:
 
   # ── MV Phase 2: Overlay develop on top of the running main stack ──────────
 
+  mv-deploy-infrastructure-develop:
+    name: "[MV] Deploy Infrastructure (develop→main)"
+    runs-on: ubuntu-latest
+    needs: [mv-main-frontend, mv-main-gateway]
+    if: ${{ github.event.inputs.skip_deployment != 'true' }}
+    environment: development
+    outputs:
+      status: ${{ steps.summary.outputs.status }}
+      duration: ${{ steps.summary.outputs.duration }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_PROJECT_PREFIX: nightly-mv
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_DOMAIN_NAME: ""
+      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
+      CDK_ALB_SUBDOMAIN: nightly-mv-api
+      CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
+      CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    steps:
+      - name: Checkout develop
+        uses: actions/checkout@v5
+        with:
+          ref: ${{ env.NIGHTLY_REF }}
+
+      - name: Restore infrastructure node_modules cache
+        uses: actions/cache/restore@v5
+        with:
+          path: infrastructure/node_modules
+          key: infrastructure-node-modules-${{ hashFiles('infrastructure/package-lock.json') }}
+
+      - name: Configure AWS credentials
+        uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ env.CDK_AWS_REGION }}
+          role-session-name: GitHubActions-MVInfrastructureDevelop
+          aws-role-arn: ${{ env.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+
+      - name: Install system dependencies
+        run: bash scripts/common/install-deps.sh
+
+      - name: Deploy infrastructure stack
+        run: bash scripts/stack-infrastructure/deploy.sh
+
+      - name: Generate summary
+        id: summary
+        if: always()
+        run: |
+          if [ "${{ job.status }}" = "success" ]; then STATUS="success"; else STATUS="failure"; fi
+          echo "status=$STATUS" >> "$GITHUB_OUTPUT"
+          echo "duration=$SECONDS" >> "$GITHUB_OUTPUT"
+
   mv-deploy-rag-ingestion:
     name: "[MV] Deploy RAG Ingestion (develop→main)"
     runs-on: ubuntu-24.04-arm
-    needs: [mv-main-frontend, mv-main-gateway]
+    needs: [mv-deploy-infrastructure-develop]
     if: ${{ github.event.inputs.skip_deployment != 'true' }}
     environment: development
     outputs:
@@ -1713,7 +1739,7 @@ jobs:
   summary:
     name: Nightly Summary
     runs-on: ubuntu-latest
-    needs: [test-backend, test-frontend, deploy-infrastructure, deploy-app-api, deploy-inference-api, deploy-rag-ingestion, deploy-frontend, deploy-gateway, smoke-test, teardown, analyze-coverage, ai-coverage-analysis, mv-deploy-infrastructure, mv-main-rag-ingestion, mv-main-inference-api, mv-main-app-api, mv-main-frontend, mv-main-gateway, mv-deploy-rag-ingestion, mv-deploy-inference-api, mv-deploy-app-api, mv-deploy-frontend, mv-deploy-gateway, mv-smoke-test, mv-teardown]
+    needs: [test-backend, test-frontend, deploy-infrastructure, deploy-app-api, deploy-inference-api, deploy-rag-ingestion, deploy-frontend, deploy-gateway, smoke-test, teardown, analyze-coverage, ai-coverage-analysis, mv-deploy-infrastructure, mv-main-rag-ingestion, mv-main-inference-api, mv-main-app-api, mv-main-frontend, mv-main-gateway, mv-deploy-infrastructure-develop, mv-deploy-rag-ingestion, mv-deploy-inference-api, mv-deploy-app-api, mv-deploy-frontend, mv-deploy-gateway, mv-smoke-test, mv-teardown]
     if: always()
     steps:
       - name: Checkout code
@@ -1746,6 +1772,7 @@ jobs:
             "${{ needs.mv-main-app-api.result }}" \
             "${{ needs.mv-main-frontend.result }}" \
             "${{ needs.mv-main-gateway.result }}" \
+            "${{ needs.mv-deploy-infrastructure-develop.result }}" \
             "${{ needs.mv-deploy-rag-ingestion.result }}" \
             "${{ needs.mv-deploy-inference-api.result }}" \
             "${{ needs.mv-deploy-app-api.result }}" \
@@ -1790,6 +1817,7 @@ jobs:
             "[MV] Deploy App API (main)|$(map_status "${{ needs.mv-main-app-api.result }}")|${{ needs.mv-main-app-api.outputs.duration || '0' }}" \
             "[MV] Deploy Frontend (main)|$(map_status "${{ needs.mv-main-frontend.result }}")|${{ needs.mv-main-frontend.outputs.duration || '0' }}" \
             "[MV] Deploy Gateway (main)|$(map_status "${{ needs.mv-main-gateway.result }}")|${{ needs.mv-main-gateway.outputs.duration || '0' }}" \
+            "[MV] Deploy Infrastructure (develop)|$(map_status "${{ needs.mv-deploy-infrastructure-develop.result }}")|${{ needs.mv-deploy-infrastructure-develop.outputs.duration || '0' }}" \
             "[MV] Deploy RAG Ingestion (develop)|$(map_status "${{ needs.mv-deploy-rag-ingestion.result }}")|${{ needs.mv-deploy-rag-ingestion.outputs.duration || '0' }}" \
             "[MV] Deploy Inference API (develop)|$(map_status "${{ needs.mv-deploy-inference-api.result }}")|${{ needs.mv-deploy-inference-api.outputs.duration || '0' }}" \
             "[MV] Deploy App API (develop)|$(map_status "${{ needs.mv-deploy-app-api.result }}")|${{ needs.mv-deploy-app-api.outputs.duration || '0' }}" \
