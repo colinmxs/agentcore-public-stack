@@ -233,11 +233,7 @@ export class RagIngestionStack extends cdk.Stack {
 
     const containerImageUri = `${ecrRepository.repositoryUri}:${imageTag}`;
 
-    // Explicit log group so CloudFormation owns it and it gets destroyed on stack teardown.
-    // Without this, Lambda auto-creates the log group on first invocation and it persists
-    // after CDK destroy, causing "AlreadyExists" errors on the next deploy.
     const ingestionLogGroup = new logs.LogGroup(this, 'RagIngestionLogGroup', {
-      logGroupName: `/aws/lambda/${getResourceName(config, 'rag-ingestion')}`,
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
