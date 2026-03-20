@@ -195,7 +195,7 @@ export class AppApiStack extends cdk.Stack {
     const assistantsCorsOrigins = buildCorsOrigins(config.assistants?.corsOrigins);
 
     const assistantsDocumentsBucket = new s3.Bucket(this, "AssistantsDocumentBucket", {
-      bucketName: getResourceName(config, "assistants-documents"),
+      bucketName: getResourceName(config, "assistants-documents", config.awsAccount),
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
@@ -218,7 +218,7 @@ export class AppApiStack extends cdk.Stack {
     // Create S3 Vector Bucket (not a regular S3 bucket)
     // Using CfnResource since there are no L2 constructs for S3 Vectors yet
     // Bucket name: 3-63 chars, lowercase, numbers, hyphens only
-    const assistantsVectorStoreBucketName = getResourceName(config, "assistants-vector-store-v1");
+    const assistantsVectorStoreBucketName = getResourceName(config, "assistants-vector-store-v1", config.awsAccount);
 
     const assistantsVectorBucket = new CfnResource(this, "AssistantsVectorBucket", {
       type: "AWS::S3Vectors::VectorBucket",

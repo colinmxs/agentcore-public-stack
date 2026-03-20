@@ -102,7 +102,7 @@ export class RagIngestionStack extends cdk.Stack {
     const ragCorsOrigins = Array.from(corsOrigins);
 
     this.documentsBucket = new s3.Bucket(this, 'RagDocumentsBucket', {
-      bucketName: getResourceName(config, 'rag-documents'),
+      bucketName: getResourceName(config, 'rag-documents', config.awsAccount),
       encryption: s3.BucketEncryption.S3_MANAGED,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
@@ -128,7 +128,7 @@ export class RagIngestionStack extends cdk.Stack {
     // ============================================================
 
     // Create S3 Vector Bucket (using CfnResource since there are no L2 constructs yet)
-    const vectorBucketName = getResourceName(config, 'rag-vector-store-v1');
+    const vectorBucketName = getResourceName(config, 'rag-vector-store-v1', config.awsAccount);
 
     const vectorBucket = new CfnResource(this, 'RagVectorBucket', {
       type: 'AWS::S3Vectors::VectorBucket',

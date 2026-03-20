@@ -165,6 +165,37 @@ delete_cloudwatch_logs() {
     log_success "CloudWatch log group cleanup complete"
 }
 
+# Delete S3 Vector Buckets (not visible via standard s3api list-buckets)
+delete_vector_buckets() {
+    log_info "Finding S3 Vector Buckets with prefix: ${CDK_PROJECT_PREFIX}"
+
+    local vector_buckets
+    vector_buckets=$(aws s3vectors list-vector-buckets \
+        --region "${CDK_AWS_REGION}" \
+        --output json \
+        --query "vectorBuckets[?starts_with(vectorBucketName, '${CDK_PROJECT_PREFIX}')].vectorBucketName" \
+        2>/dev/null | jq -r '.[]?' || true)
+
+    if [ -z "${vector_buckets}" ]; then
+        log_info "No S3 Vector Buckets found with prefix ${CDK_PROJECT_PREFIX}"
+        return 0
+    fi
+
+    log_info "Found vector buckets: ${vector_buckets}"
+
+    while IFS= read -r vbucket; do
+        [ -z "${vbucket}" ] && continue
+        log_info "Deleting vector bucket: ${vbucket}"
+        aws s3vectors delete-vector-bucket \
+            --vector-bucket-name "${vbucket}" \
+            --region "${CDK_AWS_REGION}" 2>/dev/null && \
+            log_success "Vector bucket ${vbucket} deleted" || \
+            log_warn "Failed to delete vector bucket ${vbucket}, skipping"
+    done <<< "${vector_buckets}"
+
+    log_success "All S3 Vector Buckets deleted"
+}
+
 # Destroy CDK stacks in reverse dependency order
 destroy_stacks() {
     log_info "Destroying CDK stacks in reverse order..."
@@ -209,6 +240,9 @@ main() {
     
     # Empty S3 buckets first
     empty_nightly_buckets
+
+    # Delete S3 Vector Buckets (not listed by standard s3api, must use s3vectors API)
+    delete_vector_buckets
     
     # Force-delete Secrets Manager secrets before CDK destroy
     # CloudFormation only schedules secrets for deletion (7-day recovery window),
