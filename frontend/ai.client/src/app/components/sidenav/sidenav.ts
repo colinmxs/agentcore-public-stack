@@ -1,5 +1,5 @@
 import { Component, inject, computed } from '@angular/core';
-import { Router } from '@angular/router';
+import { Router, RouterLink, RouterLinkActive } from '@angular/router';
 import { SessionList } from './components/session-list/session-list';
 import { SessionService } from '../../session/services/session/session.service';
 import { UserService } from '../../auth/user.service';
@@ -10,7 +10,7 @@ import { TooltipDirective } from '../tooltip/tooltip.directive';
 
 @Component({
   selector: 'app-sidenav',
-  imports: [SessionList, UserDropdownComponent, TooltipDirective],
+  imports: [SessionList, UserDropdownComponent, TooltipDirective, RouterLink, RouterLinkActive],
   templateUrl: './sidenav.html',
   styleUrl: './sidenav.css',
 })
@@ -40,6 +40,11 @@ export class Sidenav {
   newSession() {
     this.sidenavService.close();
     this.router.navigate(['']);
+  }
+
+  navigateToAssistants() {
+    this.sidenavService.close();
+    this.router.navigate(['/assistants']);
   }
 
   toggleCollapse() {
