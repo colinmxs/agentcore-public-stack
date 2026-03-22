@@ -98,13 +98,14 @@ export const routes: Routes = [
         canActivate: [authGuard],
     },
     {
-        path: 'settings/connections',
-        loadComponent: () => import('./settings/connections/connections.page').then(m => m.ConnectionsPage),
-        canActivate: [authGuard],
-    },
-    {
         path: 'settings/oauth/callback',
         loadComponent: () => import('./settings/oauth-callback/oauth-callback.page').then(m => m.OAuthCallbackPage),
+    },
+    {
+        path: 'settings',
+        loadComponent: () => import('./settings/settings.page').then(m => m.SettingsPage),
+        canActivate: [authGuard],
+        loadChildren: () => import('./settings/settings.routes').then(m => m.settingsRoutes),
     },
     {
         path: 'admin/quota',
