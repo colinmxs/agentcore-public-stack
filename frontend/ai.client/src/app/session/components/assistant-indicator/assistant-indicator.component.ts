@@ -4,84 +4,142 @@ import {
   input,
   computed,
   output,
+  signal,
+  ElementRef,
+  inject,
 } from '@angular/core';
+import { NgIcon, provideIcons } from '@ng-icons/core';
+import {
+  heroPencilSquare,
+  heroPlusCircle,
+  heroChevronDown,
+  heroUserGroup,
+} from '@ng-icons/heroicons/outline';
 
 /**
- * A subtle, frosted-glass indicator chip that shows which assistant
- * is powering the current conversation. Displays the assistant's
- * avatar (emoji or gradient letter) and name in a compact format.
+ * A prominent assistant indicator chip with gradient accent and
+ * action dropdown menu (Share, Edit, New Session).
  */
 @Component({
   selector: 'app-assistant-indicator',
-  standalone: true,
-  imports: [],
+  imports: [NgIcon],
+  providers: [
+    provideIcons({
+      heroPencilSquare,
+      heroPlusCircle,
+      heroChevronDown,
+      heroUserGroup,
+    }),
+  ],
   changeDetection: ChangeDetectionStrategy.OnPush,
+  host: {
+    '(document:click)': 'onDocumentClick($event)',
+    '(document:keydown.escape)': 'onEscape()',
+  },
   template: `
-    <button
-      type="button"
-      (click)="onClick()"
-      class="assistant-indicator group"
-      [attr.aria-label]="'Chatting with ' + name()"
-    >
-      <!-- Avatar circle with gradient -->
-      <div
-        class="assistant-indicator__avatar"
-        [style.background]="avatarGradient()"
+    <div class="indicator-wrapper">
+      <button
+        type="button"
+        (click)="toggleMenu()"
+        class="assistant-indicator"
+        [attr.aria-label]="'Assistant: ' + name() + '. Click for options.'"
+        [attr.aria-expanded]="menuOpen()"
+        aria-haspopup="menu"
       >
-        @if (emoji()) {
-          <span class="text-sm leading-none">{{ emoji() }}</span>
-        } @else {
-          <span class="text-xs font-semibold leading-none text-white">{{ firstLetter() }}</span>
-        }
-      </div>
+        <!-- Gradient accent bar -->
+        <div class="indicator-accent" [style.background]="avatarGradient()"></div>
 
-      <!-- Assistant name -->
-      <span class="assistant-indicator__name">
-        {{ name() }}
-      </span>
+        <!-- Avatar -->
+        <div class="indicator-avatar" [style.background]="avatarGradient()">
+          @if (emoji()) {
+            <span class="text-base leading-none">{{ emoji() }}</span>
+          } @else {
+            <span class="text-xs font-bold leading-none text-white">{{ firstLetter() }}</span>
+          }
+        </div>
 
-      <!-- Subtle chevron hint for interactivity -->
-      <svg
-        class="assistant-indicator__chevron"
-        viewBox="0 0 16 16"
-        fill="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M4 6L8 10L12 6"
-          stroke="currentColor"
-          stroke-width="1.5"
-          stroke-linecap="round"
-          stroke-linejoin="round"
+        <!-- Name + owner -->
+        <div class="indicator-text">
+          <span class="indicator-name">{{ name() }}</span>
+          @if (ownerName()) {
+            <span class="indicator-owner">by {{ ownerName() }}</span>
+          }
+        </div>
+
+        <!-- Chevron -->
+        <ng-icon
+          name="heroChevronDown"
+          class="indicator-chevron"
+          [class.rotated]="menuOpen()"
+          aria-hidden="true"
         />
-      </svg>
-    </button>
+      </button>
+
+      <!-- Dropdown menu -->
+      @if (menuOpen()) {
+        <div class="indicator-menu" role="menu" aria-label="Assistant actions">
+          <button
+            type="button"
+            class="menu-item"
+            role="menuitem"
+            (click)="onNewSession()"
+          >
+            <ng-icon name="heroPlusCircle" class="menu-icon" />
+            <span>New session</span>
+          </button>
+
+          @if (isOwner()) {
+            <button
+              type="button"
+              class="menu-item"
+              role="menuitem"
+              (click)="onEdit()"
+            >
+              <ng-icon name="heroPencilSquare" class="menu-icon" />
+              <span>Edit assistant</span>
+            </button>
+
+            <button
+              type="button"
+              class="menu-item"
+              role="menuitem"
+              (click)="onShare()"
+            >
+              <ng-icon name="heroUserGroup" class="menu-icon" />
+              <span>Share settings</span>
+            </button>
+          }
+        </div>
+      }
+    </div>
   `,
   styles: [`
     @import "tailwindcss";
     @custom-variant dark (&:where(.dark, .dark *));
 
+    .indicator-wrapper {
+      position: relative;
+      display: inline-flex;
+    }
+
     .assistant-indicator {
       display: inline-flex;
       align-items: center;
       gap: 0.5rem;
-      padding: 0.375rem 0.75rem 0.375rem 0.375rem;
-      border-radius: 9999px;
+      padding: 0.375rem 0.625rem 0.375rem 0;
+      border-radius: 0.75rem;
+      position: relative;
+      overflow: hidden;
 
-      /* Frosted glass effect */
-      background: rgba(255, 255, 255, 0.72);
-      backdrop-filter: blur(12px);
-      -webkit-backdrop-filter: blur(12px);
-
-      /* Subtle border and shadow */
-      border: 1px solid rgba(0, 0, 0, 0.06);
+      /* Card-like surface */
+      background: white;
+      border: 1px solid var(--color-gray-200);
       box-shadow:
-        0 1px 3px rgba(0, 0, 0, 0.04),
-        0 4px 12px rgba(0, 0, 0, 0.03),
-        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+        0 1px 3px rgba(0, 0, 0, 0.06),
+        0 4px 12px rgba(0, 0, 0, 0.04);
 
       /* Animation */
-      animation: indicator-enter 0.4s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      animation: indicator-enter 0.35s cubic-bezier(0.16, 1, 0.3, 1) forwards;
       opacity: 0;
 
       /* Interaction */
@@ -89,15 +147,14 @@ import {
       transition:
         transform 0.2s cubic-bezier(0.16, 1, 0.3, 1),
         box-shadow 0.2s ease,
-        background 0.2s ease;
+        border-color 0.2s ease;
 
       &:hover {
         transform: translateY(-1px);
-        background: rgba(255, 255, 255, 0.85);
+        border-color: var(--color-gray-300);
         box-shadow:
-          0 2px 8px rgba(0, 0, 0, 0.06),
-          0 8px 24px rgba(0, 0, 0, 0.06),
-          inset 0 1px 0 rgba(255, 255, 255, 0.8);
+          0 2px 8px rgba(0, 0, 0, 0.08),
+          0 8px 24px rgba(0, 0, 0, 0.06);
       }
 
       &:active {
@@ -105,108 +162,218 @@ import {
       }
 
       &:focus-visible {
-        outline: 2px solid var(--color-primary-500);
+        outline: 2px solid var(--color-blue-500);
         outline-offset: 2px;
       }
     }
 
     /* Dark mode */
     :host-context(html.dark) .assistant-indicator {
-      background: rgba(31, 41, 55, 0.75);
-      border-color: rgba(255, 255, 255, 0.08);
+      background: rgb(30 41 59); /* slate-800 */
+      border-color: rgba(255, 255, 255, 0.1);
       box-shadow:
         0 1px 3px rgba(0, 0, 0, 0.2),
-        0 4px 12px rgba(0, 0, 0, 0.15),
-        inset 0 1px 0 rgba(255, 255, 255, 0.05);
+        0 4px 12px rgba(0, 0, 0, 0.15);
 
       &:hover {
-        background: rgba(31, 41, 55, 0.88);
+        border-color: rgba(255, 255, 255, 0.18);
         box-shadow:
           0 2px 8px rgba(0, 0, 0, 0.25),
-          0 8px 24px rgba(0, 0, 0, 0.2),
-          inset 0 1px 0 rgba(255, 255, 255, 0.08);
+          0 8px 24px rgba(0, 0, 0, 0.2);
       }
     }
 
-    .assistant-indicator__avatar {
+    /* Gradient accent bar on the left edge */
+    .indicator-accent {
+      position: absolute;
+      left: 0;
+      top: 0;
+      bottom: 0;
+      width: 3px;
+      border-radius: 0.75rem 0 0 0.75rem;
+    }
+
+    .indicator-avatar {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 1.625rem;
-      height: 1.625rem;
+      width: 1.75rem;
+      height: 1.75rem;
       border-radius: 0.5rem;
       flex-shrink: 0;
+      margin-left: 0.625rem;
       box-shadow:
         0 1px 2px rgba(0, 0, 0, 0.1),
         inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
 
-    .assistant-indicator__name {
+    .indicator-text {
+      display: flex;
+      flex-direction: column;
+      min-width: 0;
+    }
+
+    .indicator-name {
+      font-size: 0.8125rem;
+      font-weight: 600;
+      color: var(--color-gray-800);
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+      max-width: 200px;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      line-height: 1.2;
+    }
+
+    :host-context(html.dark) .indicator-name {
+      color: var(--color-gray-100);
+    }
+
+    .indicator-owner {
+      font-size: 0.6875rem;
+      color: var(--color-gray-400);
+      line-height: 1.2;
+      white-space: nowrap;
+    }
+
+    :host-context(html.dark) .indicator-owner {
+      color: var(--color-gray-500);
+    }
+
+    .indicator-chevron {
+      font-size: 0.875rem;
+      color: var(--color-gray-400);
+      flex-shrink: 0;
+      transition: transform 0.2s ease;
+    }
+
+    .indicator-chevron.rotated {
+      transform: rotate(180deg);
+    }
+
+    :host-context(html.dark) .indicator-chevron {
+      color: var(--color-gray-500);
+    }
+
+    /* ── Dropdown menu ── */
+    .indicator-menu {
+      position: absolute;
+      bottom: calc(100% + 0.375rem);
+      left: 50%;
+      transform: translateX(-50%);
+      min-width: 11rem;
+      padding: 0.25rem;
+      border-radius: 0.75rem;
+      background: white;
+      border: 1px solid var(--color-gray-200);
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.1),
+        0 1px 4px rgba(0, 0, 0, 0.06);
+      animation: menu-enter 0.15s cubic-bezier(0.16, 1, 0.3, 1) forwards;
+      z-index: 50;
+    }
+
+    :host-context(html.dark) .indicator-menu {
+      background: rgb(30 41 59);
+      border-color: rgba(255, 255, 255, 0.1);
+      box-shadow:
+        0 4px 16px rgba(0, 0, 0, 0.3),
+        0 1px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .menu-item {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      width: 100%;
+      padding: 0.5rem 0.75rem;
+      border-radius: 0.5rem;
       font-size: 0.8125rem;
       font-weight: 500;
       color: var(--color-gray-700);
-      letter-spacing: -0.01em;
-      white-space: nowrap;
-      max-width: 160px;
-      overflow: hidden;
-      text-overflow: ellipsis;
+      cursor: pointer;
+      transition: all 120ms ease;
+      border: none;
+      background: none;
+
+      &:hover {
+        background: var(--color-gray-100);
+        color: var(--color-gray-900);
+      }
+
+      &:focus-visible {
+        outline: 2px solid var(--color-blue-500);
+        outline-offset: -2px;
+      }
     }
 
-    :host-context(html.dark) .assistant-indicator__name {
-      color: var(--color-gray-200);
+    :host-context(html.dark) .menu-item {
+      color: var(--color-gray-300);
+
+      &:hover {
+        background: rgba(255, 255, 255, 0.08);
+        color: var(--color-gray-100);
+      }
     }
 
-    .assistant-indicator__chevron {
-      width: 0.875rem;
-      height: 0.875rem;
+    .menu-icon {
+      font-size: 1rem;
       color: var(--color-gray-400);
       flex-shrink: 0;
-      transition:
-        transform 0.2s ease,
-        color 0.2s ease;
     }
 
-    .assistant-indicator:hover .assistant-indicator__chevron {
+    :host-context(html.dark) .menu-icon {
       color: var(--color-gray-500);
-      transform: translateY(1px);
-    }
-
-    :host-context(html.dark) .assistant-indicator__chevron {
-      color: var(--color-gray-500);
-    }
-
-    :host-context(html.dark) .assistant-indicator:hover .assistant-indicator__chevron {
-      color: var(--color-gray-400);
     }
 
     @keyframes indicator-enter {
       0% {
         opacity: 0;
-        transform: translateY(-8px) scale(0.96);
+        transform: translateY(-6px) scale(0.97);
       }
       100% {
         opacity: 1;
         transform: translateY(0) scale(1);
       }
     }
+
+    @keyframes menu-enter {
+      0% {
+        opacity: 0;
+        transform: translateX(-50%) translateY(4px) scale(0.96);
+      }
+      100% {
+        opacity: 1;
+        transform: translateX(-50%) translateY(0) scale(1);
+      }
+    }
   `],
 })
 export class AssistantIndicatorComponent {
+  private elementRef = inject(ElementRef);
+
   // Inputs
   readonly name = input.required<string>();
   readonly emoji = input<string>('');
   readonly imageUrl = input<string | null>(null);
+  readonly ownerName = input<string>('');
+  readonly isOwner = input<boolean>(false);
 
-  // Output for click interaction (can be used to show details)
-  readonly indicatorClicked = output<void>();
+  // Outputs
+  readonly newSessionClicked = output<void>();
+  readonly editClicked = output<void>();
+  readonly shareClicked = output<void>();
 
-  // Computed: Get first letter of name for avatar fallback
+  // Menu state
+  readonly menuOpen = signal(false);
+
+  // Computed: first letter for avatar fallback
   readonly firstLetter = computed(() => {
     const name = this.name();
     return name ? name.charAt(0).toUpperCase() : '?';
   });
 
-  // Computed: Generate a gradient based on the first letter
+  // Computed: gradient based on first letter
   readonly avatarGradient = computed(() => {
     const letter = this.firstLetter();
     const gradients: Record<string, string> = {
@@ -237,11 +404,35 @@ export class AssistantIndicatorComponent {
       'Y': 'linear-gradient(135deg, #a8edea 0%, #fed6e3 100%)',
       'Z': 'linear-gradient(135deg, #5ee7df 0%, #b490ca 100%)',
     };
-
     return gradients[letter] || 'linear-gradient(135deg, #667eea 0%, #764ba2 100%)';
   });
 
-  onClick(): void {
-    this.indicatorClicked.emit();
+  onDocumentClick(event: MouseEvent): void {
+    if (this.menuOpen() && !this.elementRef.nativeElement.contains(event.target)) {
+      this.menuOpen.set(false);
+    }
+  }
+
+  onEscape(): void {
+    this.menuOpen.set(false);
+  }
+
+  toggleMenu(): void {
+    this.menuOpen.update(v => !v);
+  }
+
+  onNewSession(): void {
+    this.menuOpen.set(false);
+    this.newSessionClicked.emit();
+  }
+
+  onEdit(): void {
+    this.menuOpen.set(false);
+    this.editClicked.emit();
+  }
+
+  onShare(): void {
+    this.menuOpen.set(false);
+    this.shareClicked.emit();
   }
 }

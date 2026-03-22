@@ -207,7 +207,11 @@
             <app-assistant-indicator
               [name]="assistant()!.name"
               [emoji]="assistant()!.emoji ?? ''"
-              (indicatorClicked)="onAssistantIndicatorClicked()" />
+              [ownerName]="assistant()!.ownerName"
+              [isOwner]="isAssistantOwner()"
+              (newSessionClicked)="onAssistantNewSession()"
+              (editClicked)="onAssistantEdit()"
+              (shareClicked)="onAssistantShare()" />
           </div>
         }
         <app-chat-input
@@ -259,7 +263,11 @@
             <app-assistant-indicator
               [name]="assistant()!.name"
               [emoji]="assistant()!.emoji ?? ''"
-              (indicatorClicked)="onAssistantIndicatorClicked()" />
+              [ownerName]="assistant()!.ownerName"
+              [isOwner]="isAssistantOwner()"
+              (newSessionClicked)="onAssistantNewSession()"
+              (editClicked)="onAssistantEdit()"
+              (shareClicked)="onAssistantShare()" />
           </div>
         }
         <app-chat-input

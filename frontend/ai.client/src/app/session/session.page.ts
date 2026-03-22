@@ -14,9 +14,14 @@ import { ModelSettings } from '../components/model-settings/model-settings';
 import { UserService } from '../auth/user.service';
 import { ChatHttpService } from './services/chat/chat-http.service';
 import { StreamParserService } from './services/chat/stream-parser.service';
+import { Dialog } from '@angular/cdk/dialog';
 import { AssistantService } from '../assistants/services/assistant.service';
 import { Assistant } from '../assistants/models/assistant.model';
 import { ChatContainerComponent, ChatContainerConfig } from './components/chat-container/chat-container.component';
+import {
+  ShareAssistantDialogComponent,
+  ShareAssistantDialogData,
+} from '../assistants/components/share-assistant-dialog.component';
 
 @Component({
   selector: 'app-session-page',
@@ -38,6 +43,7 @@ export class ConversationPage implements OnDestroy {
   private streamParserService = inject(StreamParserService);
   private assistantService = inject(AssistantService);
   private router = inject(Router);
+  private dialog = inject(Dialog);
 
   sessionId = signal<string | null>(null);
   assistantIdFromQuery = signal<string | null>(null);
@@ -342,6 +348,54 @@ export class ConversationPage implements OnDestroy {
       relativeTo: this.route,
       queryParams: { assistantId: null },
       queryParamsHandling: 'merge'
+    });
+  }
+
+  /**
+   * Start a new session with the same assistant.
+   * Uses onSameUrlNavigation workaround since we may already be on '/'.
+   */
+  newAssistantSession(): void {
+    const assistantId = this.assistant()?.assistantId;
+    if (!assistantId) return;
+
+    // If already on the root route (no sessionId), clear state and re-trigger assistant load
+    if (!this.sessionId()) {
+      // Already on a new session page — just reset signals to clear messages
+      this.assistant.set(null);
+      this.assistantError.set(null);
+      // Re-set assistantId query param to trigger the assistant load effect
+      this.router.navigate(['/'], {
+        queryParams: { assistantId },
+        queryParamsHandling: 'replace',
+      });
+      return;
+    }
+
+    // Navigate from an existing session to a fresh one with the assistant
+    this.router.navigate(['/'], { queryParams: { assistantId } });
+  }
+
+  /**
+   * Navigate to the assistant edit page.
+   */
+  editAssistant(): void {
+    const assistantId = this.assistant()?.assistantId;
+    if (assistantId) {
+      this.router.navigate(['/assistants', assistantId, 'edit']);
+    }
+  }
+
+  /**
+   * Open the share assistant dialog.
+   */
+  shareAssistant(): void {
+    const assistant = this.assistant();
+    if (!assistant) return;
+
+    this.dialog.open<unknown, ShareAssistantDialogData>(ShareAssistantDialogComponent, {
+      data: { assistant },
+      hasBackdrop: false,
     });
   }
 
