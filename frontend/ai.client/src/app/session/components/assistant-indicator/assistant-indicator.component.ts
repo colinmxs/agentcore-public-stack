@@ -46,15 +46,12 @@ import {
         [attr.aria-expanded]="menuOpen()"
         aria-haspopup="menu"
       >
-        <!-- Gradient accent bar -->
-        <div class="indicator-accent" [style.background]="avatarGradient()"></div>
-
         <!-- Avatar -->
         <div class="indicator-avatar" [style.background]="avatarGradient()">
           @if (emoji()) {
-            <span class="text-base leading-none">{{ emoji() }}</span>
+            <span class="text-lg leading-none">{{ emoji() }}</span>
           } @else {
-            <span class="text-xs font-bold leading-none text-white">{{ firstLetter() }}</span>
+            <span class="text-sm font-bold leading-none text-white">{{ firstLetter() }}</span>
           }
         </div>
 
@@ -125,8 +122,8 @@ import {
     .assistant-indicator {
       display: inline-flex;
       align-items: center;
-      gap: 0.5rem;
-      padding: 0.375rem 0.625rem 0.375rem 0;
+      gap: 0.625rem;
+      padding: 0.25rem 0.75rem 0.25rem 0;
       border-radius: 0.75rem;
       position: relative;
       overflow: hidden;
@@ -183,28 +180,15 @@ import {
       }
     }
 
-    /* Gradient accent bar on the left edge */
-    .indicator-accent {
-      position: absolute;
-      left: 0;
-      top: 0;
-      bottom: 0;
-      width: 3px;
-      border-radius: 0.75rem 0 0 0.75rem;
-    }
-
     .indicator-avatar {
       display: flex;
       align-items: center;
       justify-content: center;
-      width: 1.75rem;
-      height: 1.75rem;
-      border-radius: 0.5rem;
+      width: 2.25rem;
+      align-self: stretch;
+      margin: -0.25rem 0;
+      border-radius: 0.75rem 0 0 0.75rem;
       flex-shrink: 0;
-      margin-left: 0.625rem;
-      box-shadow:
-        0 1px 2px rgba(0, 0, 0, 0.1),
-        inset 0 1px 0 rgba(255, 255, 255, 0.2);
     }
 
     .indicator-text {

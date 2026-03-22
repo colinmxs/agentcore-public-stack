@@ -3,6 +3,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { provideRouter } from '@angular/router';
 import { ReactiveFormsModule } from '@angular/forms';
 import { signal } from '@angular/core';
+import { Dialog } from '@angular/cdk/dialog';
 import { AssistantFormPage } from './assistant-form.page';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService } from '../services/document.service';
@@ -38,6 +39,10 @@ describe('AssistantFormPage', () => {
     theme: signal('light'),
   };
 
+  const mockDialog = {
+    open: vi.fn(),
+  };
+
   beforeEach(async () => {
     TestBed.resetTestingModule();
     vi.clearAllMocks();
@@ -50,6 +55,7 @@ describe('AssistantFormPage', () => {
         { provide: DocumentService, useValue: mockDocumentService },
         { provide: SidenavService, useValue: mockSidenavService },
         { provide: ThemeService, useValue: mockThemeService },
+        { provide: Dialog, useValue: mockDialog },
       ],
     })
       .overrideComponent(AssistantFormPage, {
