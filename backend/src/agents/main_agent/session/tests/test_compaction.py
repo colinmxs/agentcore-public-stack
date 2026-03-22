@@ -69,10 +69,10 @@ class TestCompactionConfig:
         assert config.max_tool_content_length == 500
 
     def test_from_env(self, monkeypatch):
-        monkeypatch.setenv("COMPACTION_ENABLED", "true")
-        monkeypatch.setenv("COMPACTION_TOKEN_THRESHOLD", "50000")
-        monkeypatch.setenv("COMPACTION_PROTECTED_TURNS", "3")
-        monkeypatch.setenv("COMPACTION_MAX_TOOL_CONTENT_LENGTH", "1000")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_ENABLED", "true")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD", "50000")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_PROTECTED_TURNS", "3")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_MAX_TOOL_CONTENT_LENGTH", "1000")
 
         config = CompactionConfig.from_env()
         assert config.enabled is True

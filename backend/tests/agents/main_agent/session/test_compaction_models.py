@@ -118,10 +118,10 @@ class TestCompactionStateFromDictNoneEmpty:
 
 class TestCompactionConfigFromEnv:
     def test_from_env_reads_all_variables(self, monkeypatch):
-        monkeypatch.setenv("COMPACTION_ENABLED", "true")
-        monkeypatch.setenv("COMPACTION_TOKEN_THRESHOLD", "50000")
-        monkeypatch.setenv("COMPACTION_PROTECTED_TURNS", "4")
-        monkeypatch.setenv("COMPACTION_MAX_TOOL_CONTENT_LENGTH", "1000")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_ENABLED", "true")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD", "50000")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_PROTECTED_TURNS", "4")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_MAX_TOOL_CONTENT_LENGTH", "1000")
 
         config = CompactionConfig.from_env()
         assert config.enabled is True
@@ -130,12 +130,12 @@ class TestCompactionConfigFromEnv:
         assert config.max_tool_content_length == 1000
 
     def test_from_env_enabled_case_insensitive(self, monkeypatch):
-        monkeypatch.setenv("COMPACTION_ENABLED", "True")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_ENABLED", "True")
         config = CompactionConfig.from_env()
         assert config.enabled is True
 
     def test_from_env_enabled_false_string(self, monkeypatch):
-        monkeypatch.setenv("COMPACTION_ENABLED", "false")
+        monkeypatch.setenv("AGENTCORE_MEMORY_COMPACTION_ENABLED", "false")
         config = CompactionConfig.from_env()
         assert config.enabled is False
 
@@ -146,10 +146,10 @@ class TestCompactionConfigFromEnv:
 
 class TestCompactionConfigDefaults:
     def test_from_env_defaults_when_no_vars(self, monkeypatch):
-        monkeypatch.delenv("COMPACTION_ENABLED", raising=False)
-        monkeypatch.delenv("COMPACTION_TOKEN_THRESHOLD", raising=False)
-        monkeypatch.delenv("COMPACTION_PROTECTED_TURNS", raising=False)
-        monkeypatch.delenv("COMPACTION_MAX_TOOL_CONTENT_LENGTH", raising=False)
+        monkeypatch.delenv("AGENTCORE_MEMORY_COMPACTION_ENABLED", raising=False)
+        monkeypatch.delenv("AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD", raising=False)
+        monkeypatch.delenv("AGENTCORE_MEMORY_COMPACTION_PROTECTED_TURNS", raising=False)
+        monkeypatch.delenv("AGENTCORE_MEMORY_COMPACTION_MAX_TOOL_CONTENT_LENGTH", raising=False)
 
         config = CompactionConfig.from_env()
         assert config.enabled is False

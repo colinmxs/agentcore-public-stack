@@ -5,8 +5,8 @@ Prerequisites:
 1. AWS credentials configured
 2. AGENTCORE_MEMORY_ID set
 3. DYNAMODB_SESSIONS_METADATA_TABLE_NAME set
-4. COMPACTION_ENABLED=true
-5. COMPACTION_TOKEN_THRESHOLD set low for testing (e.g., 1000)
+4. AGENTCORE_MEMORY_COMPACTION_ENABLED=true
+5. AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD set low for testing (e.g., 1000)
 
 Run with:
     cd backend/src
@@ -47,13 +47,13 @@ def check_prerequisites():
         return False
 
     # Check compaction is enabled
-    if os.environ.get('COMPACTION_ENABLED', 'false').lower() != 'true':
-        logger.warning("COMPACTION_ENABLED is not 'true' - setting it for this test")
-        os.environ['COMPACTION_ENABLED'] = 'true'
+    if os.environ.get('AGENTCORE_MEMORY_COMPACTION_ENABLED', 'false').lower() != 'true':
+        logger.warning("AGENTCORE_MEMORY_COMPACTION_ENABLED is not 'true' - setting it for this test")
+        os.environ['AGENTCORE_MEMORY_COMPACTION_ENABLED'] = 'true'
 
     # Set a low threshold for testing
-    current_threshold = os.environ.get('COMPACTION_TOKEN_THRESHOLD', '100000')
-    logger.info(f"Current COMPACTION_TOKEN_THRESHOLD: {current_threshold}")
+    current_threshold = os.environ.get('AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD', '100000')
+    logger.info(f"Current AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD: {current_threshold}")
 
     return True
 

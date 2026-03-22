@@ -255,7 +255,7 @@ Comprehensive unit and property-based test coverage for the Agent Core module (`
 3. WHEN CompactionState.from_dict is called with a valid dictionary, THE Test_Suite SHALL verify that it reconstructs the correct state
 4. WHEN CompactionState.from_dict is called with None or empty dict, THE Test_Suite SHALL verify that it returns default state
 5. FOR ALL CompactionState instances, THE Test_Suite SHALL verify that from_dict(to_dict(state)) produces an equivalent state (round-trip property)
-6. THE Test_Suite SHALL verify that CompactionConfig.from_env reads COMPACTION_ENABLED, COMPACTION_TOKEN_THRESHOLD, COMPACTION_PROTECTED_TURNS, and COMPACTION_MAX_TOOL_CONTENT_LENGTH from environment
+6. THE Test_Suite SHALL verify that CompactionConfig.from_env reads AGENTCORE_MEMORY_COMPACTION_ENABLED, AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD, AGENTCORE_MEMORY_COMPACTION_PROTECTED_TURNS, and AGENTCORE_MEMORY_COMPACTION_MAX_TOOL_CONTENT_LENGTH from environment
 7. WHEN no environment variables are set, THE Test_Suite SHALL verify that CompactionConfig.from_env returns default values
 
 ### Requirement 17: Memory Configuration Tests

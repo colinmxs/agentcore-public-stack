@@ -1,6 +1,7 @@
 """
 Session manager factory for creating AgentCore Memory session managers
 """
+import os
 import logging
 from typing import Optional, Any, Dict, Tuple
 from functools import lru_cache
@@ -91,8 +92,8 @@ class SessionFactory:
             session_id: Session identifier for message persistence
             user_id: User identifier for cross-session preferences
             caching_enabled: Whether to enable prompt caching
-            compaction_enabled: Override COMPACTION_ENABLED env var
-            compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
+            compaction_enabled: Override AGENTCORE_MEMORY_COMPACTION_ENABLED env var
+            compaction_threshold: Override AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
             Session manager instance (TurnBasedSessionManager or PreviewSessionManager)
@@ -140,8 +141,8 @@ class SessionFactory:
             user_id: User identifier
             aws_region: AWS region
             caching_enabled: Whether to enable caching
-            compaction_enabled: Override COMPACTION_ENABLED env var
-            compaction_threshold: Override COMPACTION_TOKEN_THRESHOLD env var
+            compaction_enabled: Override AGENTCORE_MEMORY_COMPACTION_ENABLED env var
+            compaction_threshold: Override AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD env var
 
         Returns:
             TurnBasedSessionManager with compaction support
@@ -159,6 +160,10 @@ class SessionFactory:
         # Discover actual strategy IDs from the memory configuration
         semantic_id, preference_id, summary_id = _discover_strategy_ids(memory_id, aws_region)
 
+        # Load retrieval thresholds from environment (configurable per deployment)
+        relevance_score = float(os.environ.get("AGENTCORE_MEMORY_RELEVANCE_SCORE", "0.7"))
+        top_k = int(os.environ.get("AGENTCORE_MEMORY_TOP_K", "10"))
+
         # Build retrieval config using the correct namespace patterns
         # AgentCore stores memories in: /strategies/{strategyId}/actors/{actorId}
         retrieval_config: Dict[str, RetrievalConfig] = {}
@@ -167,8 +172,8 @@ class SessionFactory:
             # User preferences (e.g., coding style, response length preferences)
             preference_namespace = f"/strategies/{preference_id}/actors/{{actorId}}"
             retrieval_config[preference_namespace] = RetrievalConfig(
-                top_k=5,
-                relevance_score=0.5
+                top_k=top_k,
+                relevance_score=relevance_score
             )
             logger.info(f"   • Preferences namespace: {preference_namespace}")
 
@@ -176,8 +181,8 @@ class SessionFactory:
             # Semantic facts (e.g., user's name, project details, learned information)
             facts_namespace = f"/strategies/{semantic_id}/actors/{{actorId}}"
             retrieval_config[facts_namespace] = RetrievalConfig(
-                top_k=10,
-                relevance_score=0.3
+                top_k=top_k,
+                relevance_score=relevance_score
             )
             logger.info(f"   • Facts namespace: {facts_namespace}")
 
@@ -186,10 +191,12 @@ class SessionFactory:
             # Note: Summary namespace includes sessionId since summaries are per-session
             summary_namespace = f"/strategies/{summary_id}/actors/{{actorId}}/sessions/{{sessionId}}"
             retrieval_config[summary_namespace] = RetrievalConfig(
-                top_k=5,
-                relevance_score=0.3
+                top_k=top_k,
+                relevance_score=relevance_score
             )
             logger.info(f"   • Summary namespace: {summary_namespace}")
+
+        logger.info(f"   • Retrieval: top_k={top_k}, relevance_score={relevance_score}")
 
         if not retrieval_config:
             logger.warning("⚠️ No memory strategies found - long-term memory retrieval disabled")

@@ -10,6 +10,12 @@ Complete inventory of all configuration variables across the AgentCore Public St
 | AWS_PROFILE | No | `default` | AWS credential chain |
 | AGENTCORE_MEMORY_TYPE | No | `file` | `agents/main_agent/session/` |
 | AGENTCORE_MEMORY_ID | Conditional | — | `agents/main_agent/session/` (required when MEMORY_TYPE=dynamodb) |
+| AGENTCORE_MEMORY_RELEVANCE_SCORE | No | `0.7` | `agents/main_agent/session/session_factory.py` |
+| AGENTCORE_MEMORY_TOP_K | No | `10` | `agents/main_agent/session/session_factory.py` |
+| AGENTCORE_MEMORY_COMPACTION_ENABLED | No | `false` | `agents/main_agent/session/` |
+| AGENTCORE_MEMORY_COMPACTION_TOKEN_THRESHOLD | No | `100000` | `agents/main_agent/session/` |
+| AGENTCORE_MEMORY_COMPACTION_PROTECTED_TURNS | No | `2` | `agents/main_agent/session/` |
+| AGENTCORE_MEMORY_COMPACTION_MAX_TOOL_CONTENT_LENGTH | No | `500` | `agents/main_agent/session/` |
 | AGENTCORE_GATEWAY_MCP_ENABLED | No | `true` | `agents/main_agent/integrations/external_mcp_client.py` |
 | AGENTCORE_CODE_INTERPRETER_ID | No | — | `agents/builtin_tools/code_interpreter_diagram_tool.py` |
 | ENABLE_QUOTA_ENFORCEMENT | No | `true` | `agents/main_agent/quota/` |
@@ -43,10 +49,6 @@ Complete inventory of all configuration variables across the AgentCore Public St
 | S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME | No | — | `apis/app_api/assistants/` |
 | S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME | No | — | `apis/app_api/assistants/` |
 | S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME | No | — | `apis/app_api/assistants/` |
-| COMPACTION_ENABLED | No | `false` | `agents/main_agent/session/` |
-| COMPACTION_TOKEN_THRESHOLD | No | `100000` | `agents/main_agent/session/` |
-| COMPACTION_PROTECTED_TURNS | No | `2` | `agents/main_agent/session/` |
-| COMPACTION_MAX_TOOL_CONTENT_LENGTH | No | `500` | `agents/main_agent/session/` |
 | APP_ROLE_USER_CACHE_TTL_MINUTES | No | `5` | `apis/shared/rbac/` |
 | APP_ROLE_ROLE_CACHE_TTL_MINUTES | No | `10` | `apis/shared/rbac/` |
 | APP_ROLE_MAPPING_CACHE_TTL_MINUTES | No | `10` | `apis/shared/rbac/` |

@@ -4,7 +4,8 @@ session ID and environment.
 
 Requirements: 15.1–15.4
 """
-from unittest.mock import patch, MagicMock
+import os
+from unittest.mock import patch, MagicMock, call
 
 import pytest
 
@@ -173,3 +174,63 @@ class TestIsCloudMode:
         from agents.main_agent.session.session_factory import SessionFactory
 
         assert SessionFactory.is_cloud_mode() is False
+
+
+# ---------------------------------------------------------------------------
+# Retrieval threshold env vars (AGENTCORE_MEMORY_RELEVANCE_SCORE / TOP_K)
+# ---------------------------------------------------------------------------
+
+class TestRetrievalThresholdEnvVars:
+    """Verify that _create_cloud_session_manager reads retrieval threshold env vars."""
+
+    @patch("agents.main_agent.session.session_factory.AGENTCORE_MEMORY_AVAILABLE", True)
+    @patch("agents.main_agent.session.session_factory._discover_strategy_ids")
+    @patch("agents.main_agent.session.session_factory.AgentCoreMemoryConfig")
+    @patch("agents.main_agent.session.session_factory.RetrievalConfig")
+    @patch("agents.main_agent.session.session_factory.AgentCoreMemorySessionManager")
+    @patch("agents.main_agent.session.turn_based_session_manager.TurnBasedSessionManager", create=True)
+    def test_uses_default_thresholds(
+        self, mock_tbsm, mock_session_mgr, mock_retrieval, mock_mem_config, mock_discover, monkeypatch
+    ):
+        """Default relevance_score=0.7 and top_k=10 when env vars not set."""
+        from agents.main_agent.session.session_factory import SessionFactory
+
+        monkeypatch.delenv("AGENTCORE_MEMORY_RELEVANCE_SCORE", raising=False)
+        monkeypatch.delenv("AGENTCORE_MEMORY_TOP_K", raising=False)
+        mock_discover.return_value = ("semantic-1", "pref-1", "sum-1")
+        mock_session_mgr.return_value = MagicMock()
+
+        SessionFactory._create_cloud_session_manager(
+            memory_id="mem-1", session_id="s-1", user_id="u-1",
+            aws_region="us-west-2", caching_enabled=True,
+        )
+
+        assert mock_retrieval.call_count == 3
+        for c in mock_retrieval.call_args_list:
+            assert c == call(top_k=10, relevance_score=0.7)
+
+    @patch("agents.main_agent.session.session_factory.AGENTCORE_MEMORY_AVAILABLE", True)
+    @patch("agents.main_agent.session.session_factory._discover_strategy_ids")
+    @patch("agents.main_agent.session.session_factory.AgentCoreMemoryConfig")
+    @patch("agents.main_agent.session.session_factory.RetrievalConfig")
+    @patch("agents.main_agent.session.session_factory.AgentCoreMemorySessionManager")
+    @patch("agents.main_agent.session.turn_based_session_manager.TurnBasedSessionManager", create=True)
+    def test_reads_custom_thresholds_from_env(
+        self, mock_tbsm, mock_session_mgr, mock_retrieval, mock_mem_config, mock_discover, monkeypatch
+    ):
+        """Custom env vars are passed to RetrievalConfig."""
+        from agents.main_agent.session.session_factory import SessionFactory
+
+        monkeypatch.setenv("AGENTCORE_MEMORY_RELEVANCE_SCORE", "0.85")
+        monkeypatch.setenv("AGENTCORE_MEMORY_TOP_K", "20")
+        mock_discover.return_value = ("semantic-1", "pref-1", "sum-1")
+        mock_session_mgr.return_value = MagicMock()
+
+        SessionFactory._create_cloud_session_manager(
+            memory_id="mem-1", session_id="s-1", user_id="u-1",
+            aws_region="us-west-2", caching_enabled=True,
+        )
+
+        assert mock_retrieval.call_count == 3
+        for c in mock_retrieval.call_args_list:
+            assert c == call(top_k=20, relevance_score=0.85)
