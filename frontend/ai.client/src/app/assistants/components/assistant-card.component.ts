@@ -16,60 +16,178 @@ import {
   imports: [],
   changeDetection: ChangeDetectionStrategy.OnPush,
   template: `
-    <div class="flex flex-col items-center text-center">
-      <!-- Avatar with emoji or first letter -->
-      <div
-        class="flex size-20 items-center justify-center rounded-xl text-3xl font-semibold text-white shadow-sm"
-        [style.background]="avatarGradient()"
-      >
-        @if (emoji()) {
-          <span class="text-5xl">{{ emoji() }}</span>
-        } @else {
-          {{ firstLetter() }}
-        }
+    <div class="assistant-card">
+      <!-- Gradient hero banner -->
+      <div class="banner" [style.background]="avatarGradient()">
+        <div class="banner-noise"></div>
       </div>
 
-      <!-- Name -->
-      <h2 class="mt-4 text-xl font-bold text-gray-900 dark:text-white">
-        {{ name() }}
-      </h2>
-
-      <!-- Owner -->
-      <p class="mt-1 text-sm text-gray-500 dark:text-gray-400">
-        By {{ ownerName() || 'You' }}
-      </p>
-
-      <!-- Description -->
-      @if (description()) {
-        <p class="mt-3 text-sm text-gray-600 dark:text-gray-300 max-w-md">
-          {{ description() }}
-        </p>
-      }
-
-      <!-- Conversation Starters -->
-      @if (starters().length > 0) {
-        <div class="mt-6 w-full max-w-md">
-          <p class="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400 mb-3">
-            Example Conversation Starters
-          </p>
-          <div class="flex flex-col gap-2">
-            @for (starter of starters(); track $index) {
-              <button
-                type="button"
-                (click)="onStarterClick(starter)"
-                class="w-full rounded-xl bg-white dark:bg-slate-800 border border-gray-300 dark:border-white/10 px-4 py-3 text-left text-sm text-gray-700 dark:text-gray-200 hover:bg-gray-50 dark:hover:bg-slate-700 transition-colors"
-              >
-                {{ starter }}
-              </button>
-            }
-          </div>
+      <!-- Avatar overlapping the banner edge -->
+      <div class="avatar-wrapper">
+        <div class="avatar" [style.background]="avatarGradient()">
+          @if (emoji()) {
+            <span class="text-4xl leading-none">{{ emoji() }}</span>
+          } @else {
+            <span class="text-2xl font-bold text-white leading-none">{{ firstLetter() }}</span>
+          }
         </div>
-      }
+      </div>
+
+      <!-- Content below avatar -->
+      <div class="card-body">
+        <h2 class="text-xl font-bold text-gray-900 dark:text-white tracking-tight">
+          {{ name() }}
+        </h2>
+
+        <p class="mt-1 text-xs font-medium text-gray-400 dark:text-gray-500 uppercase tracking-widest">
+          By {{ ownerName() || 'You' }}
+        </p>
+
+        @if (description()) {
+          <p class="mt-3 text-sm text-gray-500 dark:text-gray-400 max-w-sm leading-relaxed">
+            {{ description() }}
+          </p>
+        }
+
+        @if (starters().length > 0) {
+          <div class="mt-6 w-full max-w-sm">
+            <p class="text-[10px] font-semibold uppercase tracking-[0.15em] text-gray-400 dark:text-gray-500 mb-2.5">
+              Try asking
+            </p>
+            <div class="flex flex-col gap-1.5">
+              @for (starter of starters(); track $index) {
+                <button
+                  type="button"
+                  (click)="onStarterClick(starter)"
+                  class="starter-btn group"
+                >
+                  <span class="starter-accent" [style.background]="avatarGradient()"></span>
+                  <span class="flex-1 text-left">{{ starter }}</span>
+                  <svg class="size-4 shrink-0 text-gray-300 dark:text-gray-600 group-hover:text-gray-500 dark:group-hover:text-gray-300 transition-all group-hover:translate-x-0.5" fill="none" viewBox="0 0 24 24" stroke="currentColor" stroke-width="2">
+                    <path stroke-linecap="round" stroke-linejoin="round" d="M13.5 4.5 21 12m0 0-7.5 7.5M21 12H3" />
+                  </svg>
+                </button>
+              }
+            </div>
+          </div>
+        }
+      </div>
     </div>
   `,
   styles: [`
     :host {
-      display: block;
+      display: flex;
+      justify-content: center;
+    }
+
+    .assistant-card {
+      position: relative;
+      border-radius: 1rem;
+      overflow: hidden;
+      background: white;
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06), 0 8px 24px rgba(0, 0, 0, 0.06);
+      width: 100%;
+      max-width: 28rem;
+    }
+
+    :host-context(.dark) .assistant-card {
+      background: rgb(30 41 59); /* slate-800 */
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.2), 0 8px 24px rgba(0, 0, 0, 0.15);
+    }
+
+    .banner {
+      position: relative;
+      height: 4rem;
+      overflow: hidden;
+    }
+
+    .banner-noise {
+      position: absolute;
+      inset: 0;
+      opacity: 0.08;
+      background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 256 256' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='4' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+      background-size: 128px 128px;
+      mix-blend-mode: overlay;
+    }
+
+    .avatar-wrapper {
+      display: flex;
+      justify-content: center;
+      margin-top: -2rem;
+      position: relative;
+      z-index: 1;
+    }
+
+    .avatar {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      width: 4rem;
+      height: 4rem;
+      border-radius: 1rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.12);
+      ring: 3px solid white;
+      border: 3px solid white;
+    }
+
+    :host-context(.dark) .avatar {
+      border-color: rgb(30 41 59);
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      text-align: center;
+      padding: 0.75rem 1.5rem 1.5rem;
+    }
+
+    .starter-btn {
+      display: flex;
+      align-items: center;
+      gap: 0.75rem;
+      width: 100%;
+      padding: 0.625rem 0.875rem;
+      border-radius: 0.625rem;
+      font-size: 0.8125rem;
+      line-height: 1.4;
+      color: rgb(55 65 81); /* gray-700 */
+      background: rgb(249 250 251); /* gray-50 */
+      border: 1px solid rgb(229 231 235); /* gray-200 */
+      transition: all 150ms ease;
+      cursor: pointer;
+      text-align: left;
+    }
+
+    .starter-btn:hover {
+      background: white;
+      border-color: rgb(209 213 219); /* gray-300 */
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.06);
+    }
+
+    :host-context(.dark) .starter-btn {
+      color: rgb(209 213 219); /* gray-300 */
+      background: rgb(30 41 59 / 0.6); /* slate-800/60 */
+      border-color: rgb(255 255 255 / 0.08);
+    }
+
+    :host-context(.dark) .starter-btn:hover {
+      background: rgb(51 65 85 / 0.8); /* slate-700/80 */
+      border-color: rgb(255 255 255 / 0.12);
+      box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
+    }
+
+    .starter-accent {
+      width: 3px;
+      height: 1.25rem;
+      border-radius: 2px;
+      flex-shrink: 0;
+      opacity: 0.6;
+      transition: opacity 150ms ease;
+    }
+
+    .starter-btn:hover .starter-accent {
+      opacity: 1;
     }
   `],
 })

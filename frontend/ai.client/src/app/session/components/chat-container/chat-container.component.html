@@ -21,8 +21,8 @@
       <div
         class="chat-container-empty embedded">
         <div class="w-full max-w-[720px] animate-fade-in px-4 mt-0 relative">
-          <!-- Greeting (hidden when assistant is selected) -->
-          @if (!assistant()) {
+          <!-- Greeting (hidden when assistant is selected or loading) -->
+          @if (!assistant() && !isLoadingAssistant()) {
             <div class="mb-8 flex items-center justify-center gap-4 relative">
               <div>
                 <app-animated-text [text]="greetingMessage()" [speed]="50" />
@@ -37,7 +37,7 @@
                 <button
                   type="button"
                   (click)="onAssistantClosed()"
-                  class="absolute top-2 right-2 z-10 rounded-sm p-1 text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 dark:hover:text-gray-300 dark:hover:bg-gray-700 dark:focus-visible:outline-primary-400"
+                  class="absolute top-2 right-2 z-10 rounded-sm p-1 text-white/70 hover:text-white hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                   aria-label="Remove assistant">
                   <ng-icon name="heroXMark" class="size-5" aria-hidden="true" />
                 </button>
@@ -77,7 +77,13 @@
     </div>
   } @else {
     <!-- Full-page mode: original layout -->
-    @if (assistant()) {
+    @if (isLoadingAssistant()) {
+      <!-- Assistant is loading: show empty centered container to prevent flicker -->
+      <div
+        class="chat-container-empty full-page"
+        [class.sidenav-expanded]="!isSidenavCollapsed()">
+      </div>
+    } @else if (assistant()) {
       <!-- Assistant selected: show only assistant card with fixed input at bottom -->
       <div
         class="chat-container-empty full-page"
@@ -89,7 +95,7 @@
               <button
                 type="button"
                 (click)="onAssistantClosed()"
-                class="absolute top-2 right-2 z-10 rounded-sm p-1 text-gray-400 hover:text-gray-500 hover:bg-gray-100 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-primary-600 dark:hover:text-gray-300 dark:hover:bg-gray-700 dark:focus-visible:outline-primary-400"
+                class="absolute top-2 right-2 z-10 rounded-sm p-1 text-white/70 hover:text-white hover:bg-white/20 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-white"
                 aria-label="Remove assistant">
                 <ng-icon name="heroXMark" class="size-5" aria-hidden="true" />
               </button>

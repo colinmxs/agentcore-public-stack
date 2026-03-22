@@ -43,6 +43,7 @@ export class ConversationPage implements OnDestroy {
   assistantIdFromQuery = signal<string | null>(null);
   assistant = signal<Assistant | null>(null);
   assistantError = signal<string | null>(null);
+  isLoadingAssistant = signal(false);
   isSettingsOpen = signal(false);
 
   /**
@@ -307,6 +308,7 @@ export class ConversationPage implements OnDestroy {
 
     try {
       this.assistantError.set(null);
+      this.isLoadingAssistant.set(true);
       // Only check existence (404), not access (403) - access validated on backend
       const loadedAssistant = await this.assistantService.getAssistant(assistantId);
       this.assistant.set(loadedAssistant);
@@ -327,6 +329,8 @@ export class ConversationPage implements OnDestroy {
       
       // Don't clear assistant on error - let backend validate on message send
       // This allows user to see the assistant card even if frontend fetch fails
+    } finally {
+      this.isLoadingAssistant.set(false);
     }
   }
 

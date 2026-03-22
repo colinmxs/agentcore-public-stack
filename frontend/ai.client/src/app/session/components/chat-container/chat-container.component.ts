@@ -78,6 +78,7 @@ export class ChatContainerComponent {
   // Optional inputs
   assistant = input<Assistant | null>(null);
   assistantError = input<string | null>(null);
+  isLoadingAssistant = input<boolean>(false);
   isChatLoading = input<boolean>(false);
   isLoadingSession = input<boolean>(false);
   streamingMessageId = input<string | null>(null);
