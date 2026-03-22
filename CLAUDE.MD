@@ -275,6 +275,85 @@ The auth provider config itself (client ID, issuer URL, endpoints) lives in the 
 
 **SSE stream disconnecting:** Check 600-second timeout, client connection, quota exceeded events
 
+## Coding Standards
+
+### Python (Backend)
+- **Naming**: `snake_case` for functions, variables, modules; `PascalCase` for classes
+- **Imports**: Standard library first, then third-party, then local — separated by blank lines
+- **Type hints**: Required on all function signatures
+- **Strings**: Use f-strings for interpolation, double quotes preferred
+- **Formatter**: Follow PEP 8 conventions
+
+### TypeScript (Frontend & CDK)
+- **Naming**: `camelCase` for functions/variables/properties; `PascalCase` for classes, interfaces, and types; `UPPER_SNAKE_CASE` for constants
+- **Interfaces**: Prefix with `I` only if project convention exists, otherwise plain `PascalCase`
+- **Access modifiers**: Use `private`/`protected`/`public` explicitly on class members
+- **Strict mode**: TypeScript strict mode is enabled — no `any` unless absolutely necessary
+
+### General
+- No commented-out code in commits
+- No `console.log` / `print()` left in production code
+- Prefer early returns over deep nesting
+
+## Testing
+
+### Backend
+- Run: `python -m pytest tests/ -v` from the `backend/` directory
+- Test files: `test_<module>.py` in `tests/` mirroring the source structure
+- Use `pytest` fixtures for shared setup
+
+### Frontend
+- Run: `npm test` from `frontend/ai.client/` (uses `ng test` under the hood)
+- **Do NOT run Vitest directly** — always use `ng test` or `npm test`
+- Scaffold tests using the Angular CLI (`ng generate` creates `.spec.ts` files automatically)
+- Test files: `<component>.spec.ts` co-located with the component
+
+### CDK
+- Run: `npm test` from `infrastructure/`
+- Snapshot tests for stack outputs
+
+## Git & Branching
+
+- **Branch from**: `develop` (never branch from `main` for feature work)
+- **Branch naming**: `feature/<short-description>` (e.g., `feature/add-quota-dashboard`)
+- **Commits**: Use conventional commit messages — `feat:`, `fix:`, `refactor:`, `docs:`, `test:`, `chore:`
+- **PRs**: Target `develop` for feature branches; `main` is updated via release merges only
+- **Keep commits focused**: One logical change per commit
+
+## Dependency Management
+
+- **Never install new packages without explicit user approval.** Always ask first.
+- When proposing a new dependency, explain why it's needed and whether an existing package already covers the use case.
+- Backend dependencies go in `backend/pyproject.toml`
+- Frontend dependencies go in `frontend/ai.client/package.json`
+- CDK dependencies go in `infrastructure/package.json`
+
+## Cross-Package Boundaries
+
+Frontend and backend MUST agree on a shared API schema — this is the contract between them.
+
+- When adding or modifying an API endpoint, define the request/response types on **both sides** before implementing
+- Backend route handlers define the shape; frontend TypeScript interfaces must match
+- Breaking changes to an endpoint require updating both packages in the same PR
+- SSE event types (documented above) are part of the contract — changes must be coordinated
+
+## File Creation Rules
+
+Follow the existing organizational structure. Do not create new top-level directories or invent new patterns.
+
+| Change Type | Where It Goes |
+|-------------|---------------|
+| New backend API route | `backend/src/apis/app_api/<domain>/` with router + models |
+| New admin endpoint | `backend/src/apis/app_api/admin/<domain>/` |
+| New agent tool | `backend/src/agents/main_agent/tools/` + register in `__init__.py` |
+| New Angular page | `frontend/ai.client/src/app/<feature>/pages/<page-name>/` |
+| New Angular component | `frontend/ai.client/src/app/<feature>/components/<component-name>/` |
+| New Angular service | `frontend/ai.client/src/app/<feature>/services/` or `src/app/services/` if shared |
+| New CDK stack | `infrastructure/lib/<stack-name>-stack.ts` |
+| Shared backend utilities | `backend/src/apis/shared/` |
+
+When in doubt, look at how an existing similar feature is organized and follow that pattern.
+
 ## Constraints
 
 1. Only implement what's explicitly requested
