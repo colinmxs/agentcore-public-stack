@@ -27,11 +27,17 @@ import {
   heroChevronRight,
   heroFaceSmile,
   heroXMark,
+  heroUserGroup,
 } from '@ng-icons/heroicons/outline';
+import { Dialog } from '@angular/cdk/dialog';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
 import { PickerComponent } from '@ctrl/ngx-emoji-mart';
 import { CdkConnectedOverlay, CdkOverlayOrigin, ConnectedPosition } from '@angular/cdk/overlay';
 import { ThemeService } from '../../components/topnav/components/theme-toggle/theme.service';
+import {
+  ShareAssistantDialogComponent,
+  ShareAssistantDialogData,
+} from '../components/share-assistant-dialog.component';
 
 @Component({
   selector: 'app-assistant-form-page',
@@ -53,6 +59,7 @@ import { ThemeService } from '../../components/topnav/components/theme-toggle/th
       heroChevronRight,
       heroFaceSmile,
       heroXMark,
+      heroUserGroup,
     }),
   ],
 })
@@ -64,6 +71,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   private documentService = inject(DocumentService);
   readonly sidenavService = inject(SidenavService);
   private readonly themeService = inject(ThemeService);
+  private readonly dialog = inject(Dialog);
 
   // Emoji picker popover state
   readonly isEmojiPickerOpen = signal(false);
@@ -277,6 +285,23 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   clearEmoji(): void {
     this.form.patchValue({ emoji: '' });
+  }
+
+  openShareDialog(): void {
+    const assistantId = this.assistantId();
+    if (!assistantId) return;
+
+    // Build a minimal assistant object from the current form state
+    const assistant = {
+      assistantId,
+      name: this.form.get('name')?.value || '',
+      visibility: this.form.get('visibility')?.value || 'PRIVATE',
+    } as import('../models/assistant.model').Assistant;
+
+    this.dialog.open<unknown, ShareAssistantDialogData>(ShareAssistantDialogComponent, {
+      data: { assistant },
+      hasBackdrop: false,
+    });
   }
 
   async onFileSelected(event: Event): Promise<void> {
