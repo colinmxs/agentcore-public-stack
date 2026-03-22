@@ -324,7 +324,7 @@ def update_runtime_with_retry(
             )
             
             # Update runtime with new container image
-            update_runtime(runtime_id, current_runtime, new_image_uri)
+            update_runtime(runtime_id, current_runtime, new_image_uri, provider_id)
             
             # Update DynamoDB status to READY
             update_provider_status(provider_id, 'READY')
@@ -402,10 +402,121 @@ def update_runtime_with_retry(
     }
 
 
+def get_fresh_environment_variables(provider_id: str, current_runtime: Dict[str, Any]) -> Dict[str, str]:
+    """
+    Re-fetch environment variables from SSM Parameter Store.
+    
+    This ensures that renamed tables, new parameters, or changed values
+    are picked up on every deploy — not carried forward stale from the
+    original create_runtime call.
+    
+    Non-SSM env vars (PROVIDER_ID, LOG_LEVEL, etc.) are reconstructed
+    from the current runtime's existing values and known defaults.
+    
+    Args:
+        provider_id: Provider ID for this runtime
+        current_runtime: Current runtime config (used for non-SSM values)
+        
+    Returns:
+        Complete dict of environment variables for the runtime
+    """
+    existing_env = current_runtime.get('environmentVariables', {})
+    
+    # Define SSM parameters to fetch (mirrors runtime-provisioner)
+    ssm_param_map = {
+        # DynamoDB tables
+        'DYNAMODB_USERS_TABLE_NAME': f"/{PROJECT_PREFIX}/users/users-table-name",
+        'DYNAMODB_APP_ROLES_TABLE_NAME': f"/{PROJECT_PREFIX}/rbac/app-roles-table-name",
+        'DYNAMODB_OIDC_STATE_TABLE_NAME': f"/{PROJECT_PREFIX}/auth/oidc-state-table-name",
+        'DYNAMODB_API_KEYS_TABLE_NAME': f"/{PROJECT_PREFIX}/auth/api-keys-table-name",
+        'DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME': f"/{PROJECT_PREFIX}/oauth/providers-table-name",
+        'DYNAMODB_OAUTH_USER_TOKENS_TABLE_NAME': f"/{PROJECT_PREFIX}/oauth/user-tokens-table-name",
+        'DYNAMODB_ASSISTANTS_TABLE_NAME': f"/{PROJECT_PREFIX}/rag/assistants-table-name",
+        # Quota & cost tracking
+        'DYNAMODB_QUOTA_TABLE': f"/{PROJECT_PREFIX}/quota/user-quotas-table-name",
+        'DYNAMODB_QUOTA_EVENTS_TABLE': f"/{PROJECT_PREFIX}/quota/quota-events-table-name",
+        'DYNAMODB_SESSIONS_METADATA_TABLE_NAME': f"/{PROJECT_PREFIX}/cost-tracking/sessions-metadata-table-name",
+        'DYNAMODB_COST_SUMMARY_TABLE_NAME': f"/{PROJECT_PREFIX}/cost-tracking/user-cost-summary-table-name",
+        'DYNAMODB_SYSTEM_ROLLUP_TABLE_NAME': f"/{PROJECT_PREFIX}/cost-tracking/system-cost-rollup-table-name",
+        'DYNAMODB_MANAGED_MODELS_TABLE_NAME': f"/{PROJECT_PREFIX}/admin/managed-models-table-name",
+        'DYNAMODB_USER_FILES_TABLE_NAME': f"/{PROJECT_PREFIX}/user-file-uploads/table-name",
+        # Auth secrets
+        'AUTH_PROVIDER_SECRETS_ARN': f"/{PROJECT_PREFIX}/auth/auth-provider-secrets-arn",
+        # OAuth
+        'OAUTH_TOKEN_ENCRYPTION_KEY_ARN': f"/{PROJECT_PREFIX}/oauth/token-encryption-key-arn",
+        'OAUTH_CLIENT_SECRETS_ARN': f"/{PROJECT_PREFIX}/oauth/client-secrets-arn",
+        'OAUTH_CALLBACK_URL': f"/{PROJECT_PREFIX}/oauth/callback-url",
+        # S3 / RAG
+        'S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME': f"/{PROJECT_PREFIX}/rag/vector-bucket-name",
+        'S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME': f"/{PROJECT_PREFIX}/rag/vector-index-name",
+        # URLs
+        'API_URL': f"/{PROJECT_PREFIX}/network/alb-url",
+        'FRONTEND_URL': f"/{PROJECT_PREFIX}/frontend/url",
+        'CORS_ORIGINS': f"/{PROJECT_PREFIX}/frontend/cors-origins",
+        # Shared AgentCore resources
+        'MEMORY_ARN': f"/{PROJECT_PREFIX}/inference-api/memory-arn",
+        'MEMORY_ID': f"/{PROJECT_PREFIX}/inference-api/memory-id",
+        'AGENTCORE_MEMORY_ID': f"/{PROJECT_PREFIX}/inference-api/memory-id",
+        'CODE_INTERPRETER_ID': f"/{PROJECT_PREFIX}/inference-api/code-interpreter-id",
+        'BROWSER_ID': f"/{PROJECT_PREFIX}/inference-api/browser-id",
+        'GATEWAY_URL': f"/{PROJECT_PREFIX}/gateway/gateway-url",
+    }
+    
+    # Batch-fetch SSM parameters (GetParameters supports up to 10 at a time)
+    param_names = list(ssm_param_map.values())
+    fetched_params = {}
+    
+    for i in range(0, len(param_names), 10):
+        batch = param_names[i:i + 10]
+        try:
+            response = ssm.get_parameters(Names=batch)
+            for param in response.get('Parameters', []):
+                fetched_params[param['Name']] = param['Value']
+            invalid = response.get('InvalidParameters', [])
+            if invalid:
+                logger.warning(f"SSM parameters not found: {invalid}")
+        except ClientError as e:
+            logger.error(f"Failed to fetch SSM parameter batch: {e}")
+            raise
+    
+    # Build fresh env vars from SSM values
+    env_vars = {}
+    for env_key, ssm_name in ssm_param_map.items():
+        if ssm_name in fetched_params:
+            env_vars[env_key] = fetched_params[ssm_name]
+        elif env_key in existing_env:
+            # Fall back to existing value if SSM param not found
+            logger.warning(f"SSM param {ssm_name} not found, keeping existing value for {env_key}")
+            env_vars[env_key] = existing_env[env_key]
+    
+    # Set non-SSM env vars (static config / derived values)
+    env_vars['LOG_LEVEL'] = existing_env.get('LOG_LEVEL', 'INFO')
+    env_vars['PROJECT_NAME'] = PROJECT_PREFIX
+    env_vars['AWS_REGION'] = AWS_REGION
+    env_vars['AWS_DEFAULT_REGION'] = AWS_REGION
+    env_vars['PROVIDER_ID'] = provider_id
+    env_vars['DYNAMODB_AUTH_PROVIDERS_TABLE_NAME'] = AUTH_PROVIDERS_TABLE
+    env_vars['AGENTCORE_MEMORY_TYPE'] = existing_env.get('AGENTCORE_MEMORY_TYPE', 'dynamodb')
+    env_vars['ENABLE_AUTHENTICATION'] = existing_env.get('ENABLE_AUTHENTICATION', 'true')
+    env_vars['UPLOAD_DIR'] = existing_env.get('UPLOAD_DIR', '/tmp/uploads')
+    env_vars['OUTPUT_DIR'] = existing_env.get('OUTPUT_DIR', '/tmp/output')
+    env_vars['GENERATED_IMAGES_DIR'] = existing_env.get('GENERATED_IMAGES_DIR', '/tmp/generated_images')
+    
+    # Preserve any extra env vars that aren't in our known set
+    # (e.g., custom vars added manually or by future features)
+    known_keys = set(env_vars.keys())
+    for key, value in existing_env.items():
+        if key not in known_keys:
+            env_vars[key] = value
+    
+    return env_vars
+
+
 def update_runtime(
     runtime_id: str,
     current_runtime: Dict[str, Any],
-    new_image_uri: str
+    new_image_uri: str,
+    provider_id: str
 ) -> None:
     """
     Update AgentCore Runtime with new container image
@@ -414,6 +525,7 @@ def update_runtime(
         runtime_id: Runtime ID to update
         current_runtime: Current runtime configuration from GetAgentRuntime
         new_image_uri: New container image URI
+        provider_id: Provider ID for environment variable construction
     """
     logger.info(f"Updating runtime {runtime_id} with image {new_image_uri}")
     
@@ -450,9 +562,21 @@ def update_runtime(
         'requestHeaderAllowlist': sorted(existing_headers)
     }
     
-    # Preserve environment variables if present
-    if 'environmentVariables' in current_runtime:
-        update_params['environmentVariables'] = current_runtime['environmentVariables']
+    # Re-fetch environment variables from SSM to pick up any changes
+    # (e.g., renamed tables, new parameters added since runtime creation).
+    # Previously we preserved stale env vars from the existing runtime,
+    # which caused issues when SSM parameter values changed between deploys.
+    try:
+        fresh_env_vars = get_fresh_environment_variables(provider_id, current_runtime)
+        update_params['environmentVariables'] = fresh_env_vars
+        logger.info(f"Refreshed {len(fresh_env_vars)} environment variables from SSM")
+    except Exception as e:
+        logger.warning(
+            f"Failed to refresh env vars from SSM: {e}. "
+            "Falling back to existing runtime env vars."
+        )
+        if 'environmentVariables' in current_runtime:
+            update_params['environmentVariables'] = current_runtime['environmentVariables']
     
     # Call UpdateAgentRuntime API
     try:

@@ -230,7 +230,12 @@ class TestRetryLogic:
         assert call_kwargs["roleArn"] == runtime_resp["roleArn"]
         assert call_kwargs["networkConfiguration"] == runtime_resp["networkConfiguration"]
         assert call_kwargs["authorizerConfiguration"] == runtime_resp["authorizerConfiguration"]
-        assert call_kwargs["environmentVariables"] == runtime_resp["environmentVariables"]
+        # Env vars are refreshed from SSM (not blindly preserved from runtime).
+        # The refreshed set should include static config vars at minimum.
+        env_vars = call_kwargs["environmentVariables"]
+        assert "PROJECT_NAME" in env_vars
+        assert "PROVIDER_ID" in env_vars
+        assert env_vars["PROVIDER_ID"] == "p1"
 
     def test_update_always_includes_authorization_header(self, lambda_module):
         """Authorization header MUST be in requestHeaderAllowlist even when

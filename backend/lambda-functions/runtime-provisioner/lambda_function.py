@@ -158,7 +158,7 @@ def handle_modify(record: Dict[str, Any]) -> None:
         provider_config = parse_provider_from_stream(new_image)
         
         # Update runtime
-        update_runtime(runtime_id, provider_config)
+        update_runtime(runtime_id, provider_config, provider_id)
         
         # Update DynamoDB status
         update_provider_runtime_status(provider_id, 'READY')
@@ -319,13 +319,14 @@ def create_runtime(provider_id: str, provider_config: Dict[str, Any]) -> Dict[st
     }
 
 
-def update_runtime(runtime_id: str, provider_config: Dict[str, Any]) -> None:
+def update_runtime(runtime_id: str, provider_config: Dict[str, Any], provider_id: str) -> None:
     """
     Update existing AgentCore Runtime with new JWT configuration
 
     Args:
         runtime_id: Runtime ID to update
         provider_config: New provider configuration
+        provider_id: Provider ID for environment variable construction
     """
     # Determine discovery URL
     discovery_url = determine_discovery_url(
@@ -371,10 +372,22 @@ def update_runtime(runtime_id: str, provider_config: Dict[str, Any]) -> None:
             'requestHeaderAllowlist': sorted(existing_headers)
         }
 
-    # Preserve environment variables — without this, a JWT config change
-    # would silently wipe all env vars (table names, API keys, etc.)
-    if 'environmentVariables' in current_runtime:
-        update_params['environmentVariables'] = current_runtime['environmentVariables']
+    # Re-fetch environment variables from SSM to pick up any changes
+    # (e.g., renamed tables, new parameters added since runtime creation).
+    # Previously we preserved stale env vars from the existing runtime,
+    # which caused issues when SSM parameter values changed between deploys.
+    try:
+        shared_resources = get_shared_resource_ids()
+        fresh_env_vars = get_runtime_environment_variables(provider_id, shared_resources)
+        update_params['environmentVariables'] = fresh_env_vars
+        logger.info(f"Refreshed {len(fresh_env_vars)} environment variables from SSM")
+    except Exception as e:
+        logger.warning(
+            f"Failed to refresh env vars from SSM: {e}. "
+            "Falling back to existing runtime env vars."
+        )
+        if 'environmentVariables' in current_runtime:
+            update_params['environmentVariables'] = current_runtime['environmentVariables']
 
     bedrock_agentcore.update_agent_runtime(**update_params)
 

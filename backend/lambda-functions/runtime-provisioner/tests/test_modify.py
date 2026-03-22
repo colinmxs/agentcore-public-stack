@@ -239,10 +239,12 @@ class TestModifyEdgeCases:
         assert "agentcoreRuntimeError" in item
 
 
-class TestModifyPreservesEnvironmentVariables:
-    """Environment variables must survive JWT config updates."""
+class TestModifyRefreshesEnvironmentVariables:
+    """Environment variables must be refreshed from SSM on every update."""
 
-    def test_modify_preserves_env_vars(self, lambda_module):
+    def test_modify_refreshes_env_vars_from_ssm(self, lambda_module):
+        """Even if the runtime has stale env vars, update should fetch
+        fresh values from SSM Parameter Store."""
         mod, bedrock = lambda_module
         pid = "prov-envvars"
         _seed_provider(mod, pid)
@@ -257,14 +259,16 @@ class TestModifyPreservesEnvironmentVariables:
         mod.lambda_handler(event, {})
 
         call_kwargs = bedrock.update_agent_runtime.call_args[1]
-        assert call_kwargs["environmentVariables"] == {
-            "TABLE_NAME": "my-table",
-            "API_KEY": "secret-123",
-        }
+        env_vars = call_kwargs["environmentVariables"]
+        # Env vars should come from SSM, not from the runtime's existing values
+        assert "DYNAMODB_USERS_TABLE_NAME" in env_vars
+        assert env_vars["DYNAMODB_USERS_TABLE_NAME"] == "test-users-table"
+        assert env_vars["PROVIDER_ID"] == pid
+        assert env_vars["PROJECT_NAME"] == "test-project"
 
-    def test_modify_works_when_no_env_vars_exist(self, lambda_module):
-        """If the runtime has no env vars, update should still succeed
-        without passing environmentVariables."""
+    def test_modify_refreshes_env_vars_even_when_runtime_has_none(self, lambda_module):
+        """If the runtime has no env vars, update should still fetch
+        fresh values from SSM and include them."""
         mod, bedrock = lambda_module
         pid = "prov-noenv"
         _seed_provider(mod, pid)
@@ -284,7 +288,10 @@ class TestModifyPreservesEnvironmentVariables:
         mod.lambda_handler(event, {})
 
         call_kwargs = bedrock.update_agent_runtime.call_args[1]
-        assert "environmentVariables" not in call_kwargs
+        # Should still have env vars from SSM
+        assert "environmentVariables" in call_kwargs
+        env_vars = call_kwargs["environmentVariables"]
+        assert "DYNAMODB_USERS_TABLE_NAME" in env_vars
 
 
 class TestModifyAlwaysIncludesAuthorizationHeader:
