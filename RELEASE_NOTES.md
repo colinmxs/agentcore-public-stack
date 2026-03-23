@@ -24,7 +24,7 @@ The user dropdown menu has been slimmed down to just email, admin link, settings
 
 ### Backend
 
-A new `user-settings` DynamoDB table and repository store per-user preferences (starting with `defaultModelId`). The table is provisioned in the Infrastructure stack with IAM permissions granted to both the App API and Inference API Fargate tasks. Graceful degradation is built in — if the table doesn't exist yet, the API returns defaults without errors.
+A new `user-settings` DynamoDB table and repository store per-user preferences (starting with `defaultModelId`). The table is provisioned in the Infrastructure stack with IAM permissions granted to both the App API Fargate tasks and Inference API runtime roles. Graceful degradation is built in — if the table doesn't exist yet, the API returns defaults without errors.
 
 ### Removed
 
