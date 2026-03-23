@@ -18,7 +18,7 @@ def get_user_settings_repository() -> UserSettingsRepository:
     return UserSettingsRepository()
 
 
-@router.get("/", response_model=UserSettings)
+@router.get("", response_model=UserSettings)
 async def get_settings(
     current_user: User = Depends(get_current_user),
     repo: UserSettingsRepository = Depends(get_user_settings_repository),
@@ -29,7 +29,7 @@ async def get_settings(
     return UserSettings(**settings)
 
 
-@router.put("/", response_model=UserSettings)
+@router.put("", response_model=UserSettings)
 async def update_settings(
     body: UserSettingsUpdate,
     current_user: User = Depends(get_current_user),
