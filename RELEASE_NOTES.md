@@ -1,3 +1,125 @@
+# Release Notes — v1.0.0-beta.17
+
+**Release Date:** March 23, 2026
+**Previous Release:** v1.0.0-beta.16 (March 20, 2026)
+
+---
+
+## Highlights
+
+This release delivers three major improvements: a **centralized Settings experience** that consolidates scattered user preferences into dedicated pages backed by a new DynamoDB table, a **pip-to-uv migration** that modernizes the entire Python build pipeline with hardened Docker images, and **runtime environment refresh** so AgentCore containers always pick up the latest SSM parameter values on every deploy instead of carrying forward stale configuration.
+
+---
+
+## Centralized User Settings
+
+The user dropdown menu has been slimmed down to just email, admin link, settings, and logout. All user-facing features that were previously scattered across the dropdown and standalone pages have been consolidated into a `/settings/*` route hierarchy with dedicated pages:
+
+- **Profile** — Read-only user info display with a link to My Files
+- **Appearance** — Theme chooser (persisted to localStorage) with placeholders for density and font size
+- **Chat Preferences** — Default model selector backed by a new User Settings API (`GET/PUT /users/me/settings`), show-token-count toggle, and links to Manage Conversations and Memories
+- **Connections** — Full OAuth connect/disconnect flow via a new `ConnectionsService`
+- **API Keys** — Migrated from the standalone `/api-keys` page with loading states
+- **Usage** — Migrated from the standalone `/costs` dashboard with a month picker for historical data
+
+### Backend
+
+A new `user-settings` DynamoDB table and repository store per-user preferences (starting with `defaultModelId`). The table is provisioned in the Infrastructure stack with IAM permissions granted to both the App API and Inference API Fargate tasks. Graceful degradation is built in — if the table doesn't exist yet, the API returns defaults without errors.
+
+### Removed
+
+The standalone Notifications and Privacy settings pages were removed as unnecessary.
+
+---
+
+## pip → uv Migration
+
+The entire Python toolchain has been migrated from pip to [uv](https://docs.astral.sh/uv/), affecting Docker builds, CI pipelines, and local development workflows.
+
+### Docker Security Hardening
+
+- All base images pinned to `@sha256` digests (Python 3.13-slim, Lambda Python 3.12)
+- Non-root `USER` directive added to the App API Dockerfile
+- Rust toolchain installed via `COPY --from=rust:1.87-slim` (pinned digest) instead of `curl | sh`
+- Torch pinned to exact version (`2.10.0`) in RAG ingestion with `--require-hashes` install from a generated `requirements.lock`
+- `curl` removed from builder stages
+
+### CI/CD
+
+- All three Dockerfiles (app-api, inference-api, rag-ingestion) rewritten for uv
+- CI install and test scripts updated for both app-api and inference-api
+- Workflow caching switched to uv cache paths
+- `backend/uv.lock` added to workflow path triggers
+- `sync-version.sh` now handles `uv.lock` regeneration with PEP 440 version conversion
+
+### New Release Workflow
+
+A standalone `release.yml` workflow triggers on push to main, creating annotated git tags and GitHub Releases from `RELEASE_NOTES.md`. Pre-release versions (alpha/beta/rc/dev) are automatically detected and flagged.
+
+### Dependabot
+
+A new `.github/dependabot.yml` monitors pip, npm, and GitHub Actions dependencies.
+
+---
+
+## Runtime Provisioner: SSM Environment Refresh
+
+Previously, when an AgentCore runtime was updated (e.g., on redeploy), the provisioner Lambda preserved the existing environment variables from the original runtime creation. This meant renamed tables, new SSM parameters, or changed values were never picked up.
+
+Now, `update_runtime()` re-fetches all environment variables from SSM on every update. A fallback to existing values is included if the SSM refresh fails, maintaining stability. The runtime-updater Lambda also gained a `get_fresh_environment_variables()` function for consistent handling.
+
+---
+
+## Configurable Memory Retrieval Thresholds
+
+AgentCore Memory retrieval is now tunable via two new environment variables:
+
+- `AGENTCORE_MEMORY_RELEVANCE_SCORE` — Minimum relevance score for retrieved memories (default raised from 0.3–0.5 to 0.7)
+- `AGENTCORE_MEMORY_TOP_K` — Maximum number of memories to retrieve
+
+All memory-related environment variables have been renamed from `COMPACTION_*` to `AGENTCORE_MEMORY_COMPACTION_*` for consistent naming.
+
+---
+
+## Assistant UX Improvements
+
+The assistant experience in the chat interface received several polish updates:
+
+- **Action dropdown** on the assistant indicator with options to start a new session, edit the assistant, or share it
+- **Share dialog** on the assistant form page for sharing assistants with other users
+- **Skeleton loading indicators** replace blank states while the assistant and chat input are loading
+- **Improved greeting visibility** — the assistant greeting now shows/hides properly based on loading state
+- **Sidenav updates** — the new session button and assistant navigation link are now accessible from the sidebar
+- **Responsive card layout** fix for the assistant list page
+
+---
+
+## SageMaker Fine-Tuning Fixes
+
+- **Job name scoping** — Training and transform job names are now prefixed with `PROJECT_PREFIX` to match the IAM policy's `${projectPrefix}-*` resource constraint. Previously, jobs used `ft-` and `inf-` prefixes which caused `AccessDeniedException` on `CreateTrainingJob`.
+- **Missing IAM actions** — Added `sagemaker:CreateModel` and `sagemaker:DeleteModel` actions plus the model resource ARN to the IAM policy for transform job support.
+- **Log access** — Added `logs:DescribeLogStreams` to the IAM policy so the fine-tuning dashboard can display SageMaker training logs.
+- **CDK toggle** — Added `CDK_FINE_TUNING_ENABLED` environment variable to the app-api CI workflow for conditional stack deployment.
+
+---
+
+## Bug Fixes
+
+- **User settings API trailing slashes** — Removed trailing slashes from the `/users/me/settings` routes that caused 307 redirects on some HTTP clients.
+- **Assistant list card layout** — Fixed responsive grid breakpoints on the assistant list page so cards don't overflow on narrow viewports.
+
+---
+
+## Documentation & Developer Experience
+
+- Updated `CLAUDE.md` with revised coding standards, testing guidelines, and file creation rules
+- README logo and header formatting refreshed for better visibility and alignment
+
+---
+
+
+---
+
 # Release Notes — v1.0.0-beta.16
 
 **Release Date:** March 20, 2026
