@@ -3,7 +3,9 @@
 <!-- IMAGE PLACEHOLDER: Animated GIF or hero banner showing the AgentCore chat interface in action — a user asking a question, the agent streaming a response, and a tool being invoked (e.g., Code Interpreter generating a chart). Dimensions: ~800x400px, optimized for GitHub rendering. -->
 <!-- Example: ![AgentCore Demo](docs/images/hero-demo.gif) -->
 
-# 🤖 AgentCore Public Stack
+<img src="frontend/ai.client/public/img/logo-light.png" alt="AgentCore Logo" height="40" align="left" style="margin-right: 12px;" />
+
+# AgentCore Public Stack
 
 **An open-source, production-ready Generative AI platform for institutions**
 *Built by Boise State University, designed for everyone.*
