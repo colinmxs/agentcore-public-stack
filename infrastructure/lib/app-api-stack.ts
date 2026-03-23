@@ -1152,7 +1152,7 @@ export class AppApiStack extends cdk.Stack {
         new iam.PolicyStatement({
           sid: 'SageMakerLogsReadAccess',
           effect: iam.Effect.ALLOW,
-          actions: ['logs:GetLogEvents', 'logs:FilterLogEvents'],
+          actions: ['logs:DescribeLogStreams', 'logs:GetLogEvents', 'logs:FilterLogEvents'],
           resources: [
             `arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/sagemaker/*`,
           ],
