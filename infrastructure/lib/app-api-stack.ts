@@ -1121,10 +1121,13 @@ export class AppApiStack extends cdk.Stack {
             'sagemaker:CreateTransformJob',
             'sagemaker:DescribeTransformJob',
             'sagemaker:StopTransformJob',
+            'sagemaker:CreateModel',
+            'sagemaker:DeleteModel',
           ],
           resources: [
-            `arn:aws:sagemaker:${config.awsRegion}:${config.awsAccount}:training-job/${config.projectPrefix}-*`,
-            `arn:aws:sagemaker:${config.awsRegion}:${config.awsAccount}:transform-job/${config.projectPrefix}-*`,
+            `arn:aws:sagemaker:${config.awsRegion}:${config.awsAccount}:training-job/${config.projectPrefix}-ft-*`,
+            `arn:aws:sagemaker:${config.awsRegion}:${config.awsAccount}:transform-job/${config.projectPrefix}-inf-*`,
+            `arn:aws:sagemaker:${config.awsRegion}:${config.awsAccount}:model/model-${config.projectPrefix}-inf-*`,
           ],
         })
       );
