@@ -3,7 +3,7 @@
 <!-- IMAGE PLACEHOLDER: Animated GIF or hero banner showing the AgentCore chat interface in action — a user asking a question, the agent streaming a response, and a tool being invoked (e.g., Code Interpreter generating a chart). Dimensions: ~800x400px, optimized for GitHub rendering. -->
 <!-- Example: ![AgentCore Demo](docs/images/hero-demo.gif) -->
 
-<img src="frontend/ai.client/public/img/logo-light.png" alt="AgentCore Logo" height="40" align="left" style="margin-right: 12px;" />
+<img src="frontend/ai.client/public/img/logo-light.png" alt="AgentCore Logo" height="50" />
 
 # AgentCore Public Stack
 
@@ -258,7 +258,7 @@ For commercial licensing inquiries, please contact: [techtransfer@boisestate.edu
 
 <div align="center">
 
-**Built with ❤️ at Boise State University**
+**Built at Boise State University**
 
 [Report a Bug](https://github.com/Boise-State-Development/agentcore-public-stack/issues) · [Request a Feature](https://github.com/Boise-State-Development/agentcore-public-stack/issues) · [Deployment Guide](.github/README-ACTIONS.md)
 
