@@ -624,9 +624,17 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
-    // Grant S3 Vectors permissions for assistants vector store
+    // Grant S3 Vectors permissions for RAG vector store (imported from RagIngestionStack)
+    // Note: The vector bucket/index are created in RagIngestionStack and imported via SSM.
+    // The App API uses these for document vector operations (query, delete, list).
+    const ragVectorBucketName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rag/vector-bucket-name`
+    );
+
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
+        sid: 'RagVectorStoreAccess',
         effect: iam.Effect.ALLOW,
         actions: [
           "s3vectors:ListVectorBuckets",
@@ -641,8 +649,8 @@ export class AppApiStack extends cdk.Stack {
           "s3vectors:QueryVectors",
         ],
         resources: [
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}`,
-          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${assistantsVectorStoreBucketName}/index/*`,
+          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${ragVectorBucketName}`,
+          `arn:aws:s3vectors:${config.awsRegion}:${config.awsAccount}:bucket/${ragVectorBucketName}/index/*`,
         ],
       })
     );
