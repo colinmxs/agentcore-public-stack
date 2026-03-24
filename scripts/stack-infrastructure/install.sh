@@ -16,6 +16,10 @@ log_info() {
     echo "[INFO] $1"
 }
 
+log_error() {
+    echo "[ERROR] $1" >&2
+}
+
 log_success() {
     echo "[SUCCESS] $1"
 }
@@ -31,8 +35,8 @@ if [ -f "package-lock.json" ]; then
     log_info "Running npm ci (clean install from package-lock.json)..."
     npm ci
 else
-    log_info "No package-lock.json found. Running npm install..."
-    npm install
+    log_error "package-lock.json not found. Cannot run npm ci."
+    exit 1
 fi
 
 log_success "CDK dependencies installed successfully"
@@ -43,7 +47,7 @@ log_success "CDK dependencies installed successfully"
 
 if ! command -v cdk &> /dev/null; then
     log_info "AWS CDK CLI not found, installing..."
-    npm install -g aws-cdk
+    npm install -g aws-cdk@2.1113.0
     log_success "AWS CDK CLI installed successfully"
 else
     log_info "AWS CDK CLI already installed: $(cdk --version)"
