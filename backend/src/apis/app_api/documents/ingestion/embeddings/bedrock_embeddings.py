@@ -165,6 +165,7 @@ def _get_aws_region() -> str:
 
 async def generate_embeddings(
     chunks: List[str],
+    skip_token_validation: bool = False,
 ) -> List[List[float]]:
     """
     Generate embeddings for text chunks using Bedrock (parallelized)
@@ -174,6 +175,8 @@ async def generate_embeddings(
 
     Args:
         chunks: List of text chunks to embed
+        skip_token_validation: If True, skip tiktoken-based token validation.
+            Use for short inputs (e.g. search queries) where tiktoken may not be installed.
 
     Returns:
         List of embedding vectors (one per chunk)
@@ -182,7 +185,9 @@ async def generate_embeddings(
         Exception: If Bedrock API call fails
     """
     # Layer 2 safety net: split any chunks that exceed the Titan token limit
-    chunks = _validate_and_split_chunks(chunks)
+    # Skip for short inputs (search queries) where tiktoken may not be available
+    if not skip_token_validation:
+        chunks = _validate_and_split_chunks(chunks)
 
     bedrock_runtime = boto3.client("bedrock-runtime", region_name=AWS_REGION)
 
@@ -379,7 +384,9 @@ async def search_assistant_knowledgebase(assistant_id: str, query: str):
     client = boto3.client("s3vectors", region_name=AWS_REGION)
 
     # 1. Generate vector for the query
-    query_embedding = await generate_embeddings([query])
+    # skip_token_validation=True: search queries are short, and tiktoken
+    # is only installed in the ingestion Lambda / dev environments.
+    query_embedding = await generate_embeddings([query], skip_token_validation=True)
 
     # 2. Query the Global Index with a STRICT Filter
     response = client.query_vectors(
