@@ -9,8 +9,6 @@ import glob
 import re
 from pathlib import Path
 
-import pytest
-
 # Repository root is 3 levels up from backend/tests/supply_chain/
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
