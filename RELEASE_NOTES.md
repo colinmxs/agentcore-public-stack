@@ -7,7 +7,7 @@
 
 ## Highlights
 
-This release is a **supply chain security hardening** release. Every dependency across all three ecosystems (Python, npm, GitHub Actions) has been pinned to exact versions, all GitHub Actions are SHA-pinned, CI runners are locked to `ubuntu-24.04`, Dockerfile `apt`/`dnf` packages are version-pinned, and a new 11-file property-based test suite enforces these invariants going forward. Alongside the hardening, the release adds **CodeQL Advanced security scanning**, a **flexible nightly track system** that replaces the monolithic nightly pipeline, migrates **RAG resources out of the App API stack** into the dedicated RAG Ingestion stack, and enables **Angular production build optimization** — which was previously disabled, meaning production bundles were shipping unminified.
+This release is a **supply chain security hardening** release. Every dependency across all three ecosystems (Python, npm, GitHub Actions) has been pinned to exact versions, all GitHub Actions are SHA-pinned, CI runners are locked to `ubuntu-24.04`, Dockerfile `apt`/`dnf` packages are version-pinned, and a new 11-file property-based test suite enforces these invariants going forward. Alongside the hardening, the release adds **CodeQL Advanced security scanning**, a **flexible nightly track system** that replaces the monolithic nightly pipeline, and migrates **RAG resources out of the App API stack** into the dedicated RAG Ingestion stack.
 
 ---
 
@@ -142,12 +142,6 @@ A new `.github/dependabot.yml` monitors all four ecosystems (pip, frontend npm, 
 | mermaid | 11.12.1 | 11.12.3 |
 | Vitest | 4.0.8 | 4.0.18 |
 | mypy target | py3.9 | py3.10 |
-
----
-
-## Frontend Production Build Optimization
-
-Angular production builds were previously shipping without optimization — no minification, no tree-shaking, no dead code elimination. The `optimization` flag in `angular.json` was set to `false` at the base level and never overridden for the production configuration. This has been corrected; production builds now run with full optimization enabled, which should yield a significant reduction in bundle size served through CloudFront.
 
 ---
 
