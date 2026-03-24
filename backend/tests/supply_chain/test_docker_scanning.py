@@ -4,7 +4,6 @@ Feature: supply-chain-hardening, Property 6: Nightly workflow includes image sca
 Validates: Requirements 7.1, 7.4
 """
 
-import re
 from pathlib import Path
 
 import yaml

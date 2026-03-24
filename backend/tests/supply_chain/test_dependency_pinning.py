@@ -78,10 +78,6 @@ def test_all_python_dependencies_use_exact_pins():
 
     violations = []
     for section, dep_string in all_deps:
-        # Extract package name for error reporting
-        name_match = PACKAGE_NAME_PATTERN.match(dep_string)
-        pkg_name = name_match.group(1) if name_match else dep_string
-
         # Check for forbidden operators (>=, ~=, >, <, etc.)
         if FORBIDDEN_OPERATORS.search(dep_string):
             violations.append(

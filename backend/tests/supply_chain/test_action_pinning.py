@@ -9,8 +9,6 @@ import glob
 import re
 from pathlib import Path
 
-import pytest
-
 # Repository root is 3 levels up from backend/tests/supply_chain/
 REPO_ROOT = Path(__file__).resolve().parents[3]
 WORKFLOWS_DIR = REPO_ROOT / ".github" / "workflows"
@@ -59,7 +57,6 @@ def _collect_all_uses_lines() -> list[tuple[str, int, str]]:
                 stripped = line.strip()
                 if stripped.startswith("uses:") or stripped.startswith("- uses:"):
                     # Normalize "- uses:" to "uses:" for pattern matching
-                    normalized = stripped.lstrip("- ").strip()
                     short_path = str(yaml_path.relative_to(REPO_ROOT))
                     results.append((short_path, line_no, line.rstrip()))
     return results
