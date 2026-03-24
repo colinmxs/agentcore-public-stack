@@ -7,7 +7,7 @@
 
 ## Highlights
 
-This release is a **supply chain security hardening** release. Every dependency across all three ecosystems (Python, npm, GitHub Actions) has been pinned to exact versions, all GitHub Actions are SHA-pinned, CI runners are locked to `ubuntu-24.04`, Dockerfile `apt`/`dnf` packages are version-pinned, and a new 11-file property-based test suite enforces these invariants going forward. Alongside the hardening, the release adds **CodeQL Advanced security scanning**, a **flexible nightly track system** that replaces the monolithic nightly pipeline, and migrates **RAG resources out of the App API stack** into the dedicated RAG Ingestion stack.
+This release is a **supply chain security hardening** release. Every dependency across all three ecosystems (Python, npm, GitHub Actions) has been pinned to exact versions, all GitHub Actions are SHA-pinned, CI runners are locked to `ubuntu-24.04`, Dockerfile `apt`/`dnf` packages are version-pinned, and a new 11-file property-based test suite enforces these invariants going forward. Alongside the hardening, the release adds **CodeQL Advanced security scanning**, a **flexible nightly track system** that replaces the monolithic nightly pipeline, migrates **RAG resources out of the App API stack** into the dedicated RAG Ingestion stack, and enables **Angular production build optimization** — which was previously disabled, meaning production bundles were shipping unminified.
 
 ---
 
@@ -71,7 +71,7 @@ These tests run as part of the standard `pytest` suite and will catch regression
 
 A new `codeql.yml` workflow provides static analysis across three languages: Python, TypeScript, and GitHub Actions. It uses the `security-and-quality` query suite for broad vulnerability and code quality coverage, plus the `github-actions` threat model for full Actions taint tracking (18 queries covering code injection, artifact poisoning, cache poisoning, and secret exposure).
 
-The workflow runs on push and PR to `develop`, plus a weekly scheduled scan to catch new CVEs even when code hasn't changed. A custom `codeql-config.yml` excludes vendored, generated, test, and build artifact paths to keep scan times reasonable.
+The workflow runs on push and PR to `develop`, plus a weekly scheduled scan to catch new CVEs even when code hasn't changed. A custom `codeql-config.yml` excludes vendored, generated, test, and build artifact paths to keep scan times reasonable. The first scan already surfaced unused imports and variables in the supply chain test suite, which have been cleaned up in this release.
 
 ---
 
@@ -94,6 +94,14 @@ A new `resolve-tracks` job parses the tokens into boolean flags and branch refs 
 RAG resources (assistants documents bucket, S3 Vector Bucket, Vector Index) have been removed from `AppApiStack` and are now exclusively managed by `RagIngestionStack`. The App API stack imports these resources via SSM parameters, improving separation of concerns and eliminating cross-stack resource ownership issues.
 
 The vector store IAM permissions in the App API task role now reference the RAG vector bucket imported from SSM (`/${projectPrefix}/rag/vector-bucket-name`) instead of a locally-created bucket, with a named SID (`RagVectorStoreAccess`) for better auditability.
+
+---
+
+## Embeddings Refactor
+
+Core embedding and vector store operations have been extracted from the ingestion pipeline into a new shared module at `apis.shared.embeddings`. The functions `generate_embeddings`, `store_embeddings_in_s3`, `search_assistant_knowledgebase`, and `delete_vectors_for_document` now live in `apis.shared.embeddings.bedrock_embeddings`, with the ingestion-specific module re-exporting them for backward compatibility.
+
+A new `skip_token_validation` parameter on `generate_embeddings` allows callers to bypass tiktoken-based token validation for short inputs in environments where tiktoken is unavailable (e.g., search Lambda functions). The ingestion pipeline retains its own token validation and chunk-splitting logic.
 
 ---
 
@@ -134,6 +142,12 @@ A new `.github/dependabot.yml` monitors all four ecosystems (pip, frontend npm, 
 | mermaid | 11.12.1 | 11.12.3 |
 | Vitest | 4.0.8 | 4.0.18 |
 | mypy target | py3.9 | py3.10 |
+
+---
+
+## Frontend Production Build Optimization
+
+Angular production builds were previously shipping without optimization — no minification, no tree-shaking, no dead code elimination. The `optimization` flag in `angular.json` was set to `false` at the base level and never overridden for the production configuration. This has been corrected; production builds now run with full optimization enabled, which should yield a significant reduction in bundle size served through CloudFront.
 
 ---
 
