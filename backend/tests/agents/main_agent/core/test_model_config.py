@@ -113,7 +113,6 @@ class TestToBedrockConfig:
     def test_bedrock_config_without_caching(self):
         """Req 1.6 (negative) — caching disabled → no cache_config key."""
         cfg = ModelConfig(caching_enabled=False)
-        result = cfg.to_bedrock_config()
 
         assert result["model_id"] == cfg.model_id
         assert result["temperature"] == cfg.temperature
