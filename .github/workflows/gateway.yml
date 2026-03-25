@@ -70,6 +70,7 @@ jobs:
   install:
     name: Install Dependencies
     runs-on: ubuntu-24.04
+    if: github.event_name != 'pull_request'
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
