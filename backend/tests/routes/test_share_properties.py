@@ -6,11 +6,9 @@ Each test maps to a design property from the share-conversations spec.
 Feature: share-conversations
 """
 
-import json
-import string
 from datetime import datetime, timezone
-from typing import List, Optional
-from unittest.mock import AsyncMock, MagicMock, patch
+from typing import Optional
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
@@ -21,20 +19,17 @@ from hypothesis import strategies as st
 from apis.app_api.shares.models import (
     CreateShareRequest,
     ShareResponse,
-    SharedConversationResponse,
     UpdateShareRequest,
 )
-from apis.app_api.shares.routes import conversations_share_router, shares_router, shared_view_router
+from apis.app_api.shares.routes import conversations_share_router, shares_router
 from apis.app_api.shares.service import (
     AccessDeniedError,
     NotOwnerError,
-    SessionNotFoundError,
     ShareNotFoundError,
     ShareService,
 )
-from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
-from apis.shared.sessions.models import MessageContent, MessageResponse
+from apis.shared.sessions.models import MessageResponse
 
 from tests.routes.conftest import mock_auth_user
 

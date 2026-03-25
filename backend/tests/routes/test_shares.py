@@ -13,7 +13,6 @@ from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
-from fastapi.testclient import TestClient
 
 from apis.app_api.shares.routes import conversations_share_router, shares_router, shared_view_router
 from apis.app_api.shares.models import ShareResponse, ShareListResponse, SharedConversationResponse
