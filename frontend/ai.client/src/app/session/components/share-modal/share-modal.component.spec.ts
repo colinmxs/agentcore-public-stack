@@ -219,17 +219,18 @@ describe('ShareModalComponent', () => {
   // Validation: canSubmit
   // -----------------------------------------------------------------------
 
-  it('should disable submit when specific access has no emails', async () => {
+  it('should enable submit when specific access has no additional emails (owner-only share)', async () => {
     await component.ngOnInit();
     fixture.detectChanges();
 
     (component as any).selectedAccess.set('specific');
     fixture.detectChanges();
 
-    expect((component as any).canSubmit()).toBe(false);
+    // Owner email is always included, so sharing with just yourself is valid
+    expect((component as any).canSubmit()).toBe(true);
   });
 
-  it('should enable submit when specific access has emails', async () => {
+  it('should enable submit when specific access has additional emails', async () => {
     await component.ngOnInit();
     fixture.detectChanges();
 

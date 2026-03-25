@@ -264,9 +264,8 @@ export class ShareModalComponent implements OnInit {
   });
 
   protected canSubmit = computed(() => {
-    if (this.selectedAccess() === 'specific') {
-      return this.allowedEmails().length > 0;
-    }
+    // For 'specific' access, owner email is always included automatically,
+    // so sharing with just yourself (no additional emails) is valid
     return true;
   });
 
