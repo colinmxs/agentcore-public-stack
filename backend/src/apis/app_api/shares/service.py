@@ -4,12 +4,14 @@ Business logic for creating, retrieving, updating, and revoking
 conversation share snapshots.  Supports multiple shares per session.
 """
 
+import json
 import logging
 import os
 import re
 import uuid
+from decimal import Decimal
 from datetime import datetime, timezone
-from typing import List, Optional
+from typing import Any, List, Optional
 
 import boto3
 from boto3.dynamodb.conditions import Key
@@ -76,6 +78,10 @@ class ShareService:
         ]
 
         metadata_snapshot = metadata.model_dump(by_alias=True, exclude_none=True)
+
+        # Convert floats to Decimal for DynamoDB compatibility
+        messages_snapshot = self._convert_floats_to_decimal(messages_snapshot)
+        metadata_snapshot = self._convert_floats_to_decimal(metadata_snapshot)
 
         # Build item
         share_id = str(uuid.uuid4())
@@ -363,6 +369,22 @@ class ShareService:
             return None
 
         return {"role": role, "content": converse_content}
+
+    @staticmethod
+    def _convert_floats_to_decimal(obj: Any) -> Any:
+        """Recursively convert float values to Decimal for DynamoDB compatibility.
+
+        DynamoDB's boto3 resource doesn't accept Python floats directly.
+        This converts all floats in nested dicts/lists to Decimal.
+        """
+        if isinstance(obj, float):
+            # Use string conversion to preserve precision
+            return Decimal(str(obj))
+        elif isinstance(obj, dict):
+            return {k: ShareService._convert_floats_to_decimal(v) for k, v in obj.items()}
+        elif isinstance(obj, list):
+            return [ShareService._convert_floats_to_decimal(item) for item in obj]
+        return obj
 
     @staticmethod
     def _sanitize_id(value: str, max_length: int = 128) -> str:
