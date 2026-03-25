@@ -127,6 +127,7 @@ jobs:
     name: Synthesize CloudFormation Template
     runs-on: ubuntu-24.04
     needs: build
+    if: github.event_name != 'pull_request'
     outputs:
       enabled: ${{ steps.check.outputs.enabled }}
 

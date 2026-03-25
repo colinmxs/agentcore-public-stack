@@ -154,6 +154,7 @@ jobs:
     name: Synthesize CloudFormation
     runs-on: ubuntu-24.04
     needs: build-cdk
+    if: github.event_name != 'pull_request'
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input

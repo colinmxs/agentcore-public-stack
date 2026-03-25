@@ -102,6 +102,7 @@ jobs:
     name: Build Docker Image
     runs-on: ubuntu-24.04-arm  # Use ARM64-native runner for ARM64 Lambda builds
     needs: [install, check-stack-dependencies]
+    if: github.event_name != 'pull_request'
     
     # Select environment to get project prefix for image naming
     environment: ${{ github.event.inputs.environment || (github.ref == 'refs/heads/main' && 'production') || (github.ref == 'refs/heads/develop' && 'development') || 'development' }}
