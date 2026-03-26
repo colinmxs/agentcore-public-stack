@@ -3,15 +3,33 @@
 This module provides tiktoken-based token validation for the document
 ingestion pipeline. The core embedding generation and vector store
 operations live in apis.shared.embeddings.
+
+Re-exports shared functions so the Lambda handler (which imports from
+embeddings.bedrock_embeddings) can access them without knowing the
+full apis.shared.embeddings path.
 """
 
 import logging
 import re
 from typing import List
 
+# Re-export shared functions for Lambda handler compatibility.
+# The handler imports from embeddings.bedrock_embeddings (Lambda task root path).
+from apis.shared.embeddings.bedrock_embeddings import (  # noqa: F401
+    generate_embeddings,
+    store_embeddings_in_s3,
+    search_assistant_knowledgebase,
+)
+
 logger = logging.getLogger(__name__)
 
-__all__ = ["validate_and_split_chunks", "_validate_and_split_chunks"]
+__all__ = [
+    "generate_embeddings",
+    "store_embeddings_in_s3",
+    "search_assistant_knowledgebase",
+    "validate_and_split_chunks",
+    "_validate_and_split_chunks",
+]
 
 # --- Token validation safety net (tiktoken-based, ingestion only) ---
 
