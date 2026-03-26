@@ -1,3 +1,125 @@
+# Release Notes — v1.0.0-beta.20
+
+**Release Date:** March 26, 2026
+**Previous Release:** v1.0.0-beta.19 (March 25, 2026)
+
+---
+
+## Highlights
+
+This release is a **security and code quality hardening pass** — no new features, but a significant reduction in technical debt and vulnerability exposure. All open CodeQL findings on `develop` have been resolved or triaged, four Dependabot security vulnerabilities have been patched, a cyclic import in the storage layer has been eliminated, and silent exception swallowing across the streaming and admin layers has been replaced with proper logging. Conversation sharing also receives bug fixes for message export and UI polish.
+
+---
+
+## Security Vulnerability Patches
+
+Four Dependabot-flagged vulnerabilities have been patched across all three package ecosystems:
+
+| Package | Version Change | Severity | Issue |
+|---------|---------------|----------|-------|
+| `requests` (Python) | 2.32.5 → 2.33.0 | Medium | Insecure temp file reuse in `extract_zipped_paths()` |
+| `picomatch` (frontend) | 4.0.3 → 4.0.4 | High / Medium | ReDoS via extglob quantifiers; method injection in POSIX character classes |
+| `picomatch` (infrastructure) | 2.3.1 → 2.3.2 | Medium | Method injection in POSIX character classes |
+| `diff` (infrastructure) | patched | Low | DoS in `parsePatch` / `applyPatch` |
+
+Frontend and infrastructure `picomatch` fixes use npm `overrides` to force patched versions through transitive dependency trees (`@angular-devkit/core`, `@angular/build`).
+
+**Known unfixable:** `yaml@1.10.2` is bundled inside `aws-cdk-lib@2.244.0` (latest) — awaiting an AWS CDK update. `Pygments@2.19.2` (latest) has no patched version yet.
+
+---
+
+## CodeQL Remediation — All Findings Resolved
+
+Two passes resolved every open CodeQL finding on `develop`, covering 130+ files across Python, TypeScript, and GitHub Actions.
+
+### Log Injection (180 fixes)
+
+User-controlled values removed from f-string log statements across the entire backend. All logging now uses `%s`-style parameterized formatting, preventing log injection attacks where user input could forge log entries.
+
+### Silent Exception Swallowing (5 fixes)
+
+Empty `except: pass` blocks — a recurring source of hidden bugs — have been eliminated:
+
+- **`event_formatter.py`** — Errors during final result extraction now log a warning instead of vanishing silently. This was masking streaming failures that were impossible to diagnose.
+- **`url_fetcher.py`** — Bare `except:` (catching `BaseException` including `KeyboardInterrupt`) narrowed to `Exception` with an explanatory comment.
+- **`code_interpreter_diagram_tool.py`** — Same bare `except:` fix as above.
+- **`admin/users/service.py`** — Invalid pagination cursors now log a warning instead of silently resetting to page 1.
+- **`tool_result_processor.py`** — `JSONDecodeError` catch annotated with intent comment.
+
+### Cyclic Import Eliminated
+
+The circular dependency between `metadata_storage.py` and `dynamodb_storage.py` has been broken by moving the `get_metadata_storage()` factory function to the package `__init__.py`. The dependency graph is now one-directional:
+
+```
+storage/__init__.py (factory) → dynamodb_storage.py → metadata_storage.py (ABC)
+```
+
+Three callers updated to import from `apis.app_api.storage` instead of `apis.app_api.storage.metadata_storage`.
+
+### Other Fixes
+
+- **Unreachable code** — Dead `if result_seen: break` removed from `stream_processor.py` (`result_seen` was initialized to `False` and never set to `True`)
+- **Redundant assignment** — Unused `job =` on `create_inference_job()` call removed in fine-tuning routes
+- **Print during import** — `print()` statements in `inference_api/main.py` replaced with `logging`
+- **Commented-out code** — Stale `InvocationRequest` class removed from inference API models
+- **Unnecessary lambdas** — `lambda v: int(v)` simplified to `int` in fine-tuning repositories
+- **13 unused local variables** removed across 10 files
+- **3 unused imports** removed (including dead re-exports in `bedrock_embeddings.py`)
+
+### False Positives Dismissed (11 alerts)
+
+- 9× `actions/untrusted-checkout` on nightly workflows — these are schedule/dispatch only, never triggered by PRs
+- 1× `py/non-iterable-in-for-loop` — iterating over `Enum` members is valid Python
+- 1× `py/unused-global-variable` — `_generic_validator_initialized` is used via `global` statement (CodeQL doesn't track this)
+
+---
+
+## Conversation Sharing Fixes
+
+### Message Export Fix
+
+The share export feature (`POST /shares/{share_id}/export`) was failing to persist messages to AgentCore Memory. The root cause was using the deprecated `append_message` API which no longer works with the current SDK version. Fixed by switching to `create_message` with proper `SessionMessage` wrapping and index-based ordering.
+
+### UI Improvements
+
+- Shared conversation header simplified — metadata and export button repositioned for cleaner layout
+- Export button moved to a floating action bar at the bottom of the shared view
+- Icon updates: share icon replaced with `heroAdjustmentsHorizontal` in session management, `heroChatBubbleLeftRight` in shared view header
+- Sidenav service integrated into shared view for consistent navigation behavior
+
+---
+
+## RAG Ingestion Fixes
+
+### Lambda Image Digest Refresh
+
+Fixed an issue where RAG ingestion Lambda deployments would report "no changes" even after pushing a fresh Docker image. The root cause: CDK resolves the image tag via SSM at synth time, and if the tag hasn't changed (only the underlying layers), CloudFormation sees no diff. The deploy script now explicitly calls `update-function-code` after image push to force a digest refresh, with a wait condition to ensure the update completes.
+
+### Shared Embeddings Module
+
+Added the shared embeddings package to the RAG ingestion Lambda Docker image, resolving import errors when `bedrock_embeddings.py` attempted to load re-exported functions from `apis.shared.embeddings`.
+
+---
+
+## Test Fixes
+
+- Removed stale `AgentCoreMemorySessionManager` mock patch from session factory tests — the previous CodeQL commit correctly removed the unused import, but the test was still patching it at the old module path
+- Updated shared view page spec with expanded test coverage (254 lines rewritten)
+- Updated share export tests to match the new `create_message` API
+
+---
+
+## Deployment Notes
+
+This is a drop-in upgrade with no infrastructure changes, no new environment variables, and no migration steps. All changes are backward-compatible.
+
+- **Backend:** Restart App API and Inference API containers to pick up code quality fixes and `requests` upgrade
+- **Frontend:** Rebuild and deploy to pick up `picomatch` security patch and sharing UI fixes
+- **Infrastructure:** Run `npm install` to pick up `picomatch` and `diff` patches in lockfile
+- **RAG Ingestion:** Redeploy to pick up the Lambda image digest fix and shared embeddings module
+
+---
+
 # Release Notes — v1.0.0-beta.19
 
 **Release Date:** March 25, 2026
