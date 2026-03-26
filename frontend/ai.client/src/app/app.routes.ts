@@ -1,5 +1,4 @@
 import { Routes } from '@angular/router';
-import { ConversationPage } from './session/session.page';
 import { authGuard } from './auth/auth.guard';
 import { adminGuard } from './auth/admin.guard';
 
@@ -12,6 +11,11 @@ export const routes: Routes = [
     {
         path: 's/:sessionId',
         loadComponent: () => import('./session/session.page').then(m => m.ConversationPage),
+        canActivate: [authGuard],
+    },
+    {
+        path: 'shared/:shareId',
+        loadComponent: () => import('./shared/shared-view.page').then(m => m.SharedViewPage),
         canActivate: [authGuard],
     },
     {

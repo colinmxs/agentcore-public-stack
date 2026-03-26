@@ -182,10 +182,7 @@ async def list_assistants_endpoint(
     """
     user_id = current_user.user_id
 
-    logger.info(
-        f"GET /assistants - User: {user_id}, Limit: {limit}, NextToken: {next_token}, "
-        f"IncludeArchived: {include_archived}, IncludeDrafts: {include_drafts}, IncludePublic: {include_public}"
-    )
+    logger.info("GET /assistants")
 
     try:
         # Retrieve assistants for the user with pagination
@@ -266,7 +263,7 @@ async def get_assistant_endpoint(assistant_id: str, current_user: User = Depends
     """
     user_id = current_user.user_id
 
-    logger.info(f"GET /assistants/{assistant_id} - User: {user_id}")
+    logger.info("GET /assistants/{assistant_id}")
 
     try:
         # First check if assistant exists (without access check)
@@ -321,7 +318,7 @@ async def update_assistant_endpoint(assistant_id: str, request: UpdateAssistantR
     """
     user_id = current_user.user_id
 
-    logger.info(f"PUT /assistants/{assistant_id} - User: {user_id}")
+    logger.info("PUT /assistants/{assistant_id}")
 
     try:
         # Update assistant
@@ -379,7 +376,7 @@ async def archive_assistant_endpoint(assistant_id: str, current_user: User = Dep
     """
     user_id = current_user.user_id
 
-    logger.info(f"POST /assistants/{assistant_id}/archive - User: {user_id}")
+    logger.info("POST /assistants/{assistant_id}/archive")
 
     try:
         # Archive assistant (soft delete)
@@ -424,7 +421,7 @@ async def delete_assistant_endpoint(assistant_id: str, current_user: User = Depe
     """
     user_id = current_user.user_id
 
-    logger.info(f"DELETE /assistants/{assistant_id} - User: {user_id}")
+    logger.info("DELETE /assistants/{assistant_id}")
 
     try:
         # Delete assistant permanently (hard delete)
@@ -473,7 +470,7 @@ async def test_chat_endpoint(assistant_id: str, request: AssistantTestChatReques
     """
     user_id = current_user.user_id
 
-    logger.info(f"POST /assistants/{assistant_id}/test-chat - User: {user_id}, Message: {request.message[:50]}...")
+    logger.info("POST /assistants/{assistant_id}/test-chat")
 
     try:
         # 1. Get assistant and verify ownership
@@ -603,7 +600,7 @@ async def share_assistant_endpoint(assistant_id: str, request: ShareAssistantReq
     """
     user_id = current_user.user_id
 
-    logger.info(f"POST /assistants/{assistant_id}/shares - User: {user_id}, Emails: {len(request.emails)}")
+    logger.info("POST /assistants/{assistant_id}/shares")
 
     try:
         # Share assistant with emails
@@ -647,7 +644,7 @@ async def unshare_assistant_endpoint(assistant_id: str, request: UnshareAssistan
     """
     user_id = current_user.user_id
 
-    logger.info(f"DELETE /assistants/{assistant_id}/shares - User: {user_id}, Emails: {len(request.emails)}")
+    logger.info("DELETE /assistants/{assistant_id}/shares")
 
     try:
         # Unshare assistant from emails
@@ -690,7 +687,7 @@ async def get_assistant_shares_endpoint(assistant_id: str, current_user: User = 
     """
     user_id = current_user.user_id
 
-    logger.info(f"GET /assistants/{assistant_id}/shares - User: {user_id}")
+    logger.info("GET /assistants/{assistant_id}/shares")
 
     try:
         # Get share list

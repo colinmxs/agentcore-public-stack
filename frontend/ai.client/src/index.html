@@ -10,7 +10,9 @@
   <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png">
   <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png">
   <link rel="manifest" href="/site.webmanifest">
-
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Space+Mono:wght@400;700&family=Outfit:wght@300;500;700;900&display=swap" rel="stylesheet">
 </head>
 <script>
   // Initialize theme before page loads to prevent flash
@@ -19,7 +21,7 @@
     const stored = localStorage.getItem(storageKey);
     const preference = (stored === 'light' || stored === 'dark' || stored === 'system') ? stored : 'system';
 
-    let theme = 'light';
+    let theme;
     if (preference === 'system') {
       theme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
     } else {

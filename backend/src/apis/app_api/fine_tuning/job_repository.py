@@ -2,7 +2,6 @@
 
 import os
 import logging
-import uuid
 from datetime import datetime, timezone
 from decimal import Decimal
 from typing import Optional, List, Dict, Any
@@ -125,7 +124,7 @@ class FineTuningJobsRepository:
                 return None
             return self._item_to_dict(item)
         except ClientError as e:
-            logger.error(f"Error getting job {job_id}: {e}")
+            logger.error("Error getting job")
             raise
 
     def list_user_jobs(self, user_id: str) -> List[dict]:

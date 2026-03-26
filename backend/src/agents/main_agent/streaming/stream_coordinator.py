@@ -10,7 +10,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any, AsyncGenerator, Dict, List, Optional, Union
 
-from apis.shared.errors import ConversationalErrorEvent, ErrorCode, StreamErrorEvent, build_conversational_error_event
+from apis.shared.errors import ErrorCode, StreamErrorEvent, build_conversational_error_event
 
 from .stream_processor import process_agent_stream
 

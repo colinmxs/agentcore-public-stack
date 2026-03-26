@@ -52,7 +52,7 @@ async def list_access(
     repo: FineTuningAccessRepository = Depends(get_repository),
 ):
     """List all users with fine-tuning access (admin only)."""
-    logger.info(f"Admin {admin_user.email} listing fine-tuning access grants")
+    logger.info("Admin listing fine-tuning access grants")
 
     try:
         grants = repo.list_access()
@@ -72,7 +72,7 @@ async def grant_access(
     repo: FineTuningAccessRepository = Depends(get_repository),
 ):
     """Grant fine-tuning access to a user by email (admin only)."""
-    logger.info(f"Admin {admin_user.email} granting fine-tuning access to {request.email}")
+    logger.info("Admin granting fine-tuning access")
 
     try:
         grant = repo.grant_access(
@@ -95,7 +95,7 @@ async def get_access(
     repo: FineTuningAccessRepository = Depends(get_repository),
 ):
     """Get fine-tuning access info for a specific user (admin only)."""
-    logger.info(f"Admin {admin_user.email} getting fine-tuning access for {email}")
+    logger.info("Admin getting fine-tuning access")
 
     grant = repo.get_access(email)
     if not grant:
@@ -114,10 +114,7 @@ async def update_quota(
     repo: FineTuningAccessRepository = Depends(get_repository),
 ):
     """Update GPU-hour quota for a user (admin only)."""
-    logger.info(
-        f"Admin {admin_user.email} updating quota for {email} "
-        f"to {request.monthly_quota_hours} hours"
-    )
+    logger.info("Admin updating fine-tuning quota")
 
     try:
         result = repo.update_quota(email, request.monthly_quota_hours)
@@ -141,7 +138,7 @@ async def revoke_access(
     repo: FineTuningAccessRepository = Depends(get_repository),
 ):
     """Revoke fine-tuning access for a user (admin only)."""
-    logger.info(f"Admin {admin_user.email} revoking fine-tuning access for {email}")
+    logger.info("Admin revoking fine-tuning access")
 
     try:
         success = repo.revoke_access(email)
@@ -166,7 +163,7 @@ async def list_all_jobs(
     jobs_repo: FineTuningJobsRepository = Depends(get_jobs_repository),
 ):
     """List all fine-tuning jobs across all users (admin only)."""
-    logger.info(f"Admin {admin_user.email} listing all fine-tuning jobs (status={status_filter})")
+    logger.info("Admin listing all fine-tuning jobs")
 
     try:
         jobs = jobs_repo.list_all_jobs(status_filter=status_filter)
@@ -188,7 +185,7 @@ async def list_all_inference_jobs(
     inf_repo: InferenceRepository = Depends(get_inf_repository),
 ):
     """List all inference jobs across all users (admin only)."""
-    logger.info(f"Admin {admin_user.email} listing all inference jobs (status={status_filter})")
+    logger.info("Admin listing all inference jobs")
 
     try:
         jobs = inf_repo.list_all_inference_jobs(status_filter=status_filter)

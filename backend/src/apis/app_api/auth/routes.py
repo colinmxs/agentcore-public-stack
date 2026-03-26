@@ -109,7 +109,7 @@ async def login(
             prompt=prompt
         )
 
-        logger.info(f"Generated authorization URL for OIDC login (provider: {provider_id})")
+        logger.info("Generated authorization URL for OIDC login")
 
         return LoginResponse(
             authorization_url=authorization_url,
@@ -241,7 +241,7 @@ async def logout(
             post_logout_redirect_uri=post_logout_redirect_uri
         )
 
-        logger.info(f"Generated logout URL (provider: {provider_id})")
+        logger.info("Generated logout URL")
 
         return LogoutResponse(logout_url=logout_url)
 
