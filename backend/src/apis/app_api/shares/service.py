@@ -279,8 +279,8 @@ class ShareService:
     ) -> int:
         """Write snapshot messages into AgentCore Memory for a new session.
 
-        Converts each MessageResponse dict back to Bedrock Converse format
-        and appends it via AgentCoreMemorySessionManager.
+        Converts each MessageResponse dict to SessionMessage format and
+        persists via create_message to the "default" namespace.
 
         Returns:
             Number of messages successfully written.
@@ -297,6 +297,7 @@ class ShareService:
             from bedrock_agentcore.memory.integrations.strands.session_manager import (
                 AgentCoreMemorySessionManager,
             )
+            from strands.types.session import SessionMessage
         except ImportError:
             logger.error("AgentCore Memory SDK not available — cannot copy messages")
             return 0
@@ -318,15 +319,18 @@ class ShareService:
         )
 
         count = 0
-        for msg_dict in snapshot_messages:
+        for idx, msg_dict in enumerate(snapshot_messages):
             converse_msg = self._snapshot_msg_to_converse(msg_dict)
             if converse_msg is None:
                 continue
             try:
-                await asyncio.to_thread(mgr.append_message, converse_msg, None)
+                # Create SessionMessage with proper index for ordering
+                session_msg = SessionMessage.from_message(converse_msg, index=idx)
+                # Use create_message with "default" namespace (same as list_messages uses)
+                await asyncio.to_thread(mgr.create_message, session_id, "default", session_msg)
                 count += 1
             except Exception as e:
-                logger.warning(f"Failed to copy message {count}: {e}")
+                logger.warning(f"Failed to copy message {idx}: {e}")
 
         logger.info(f"Copied {count}/{len(snapshot_messages)} messages to AgentCore Memory")
         return count

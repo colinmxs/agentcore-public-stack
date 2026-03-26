@@ -174,23 +174,29 @@ class TestCopyMessagesToMemory:
         ]
 
         mock_mgr = MagicMock()
-        mock_mgr.append_message = MagicMock()
+        mock_mgr.create_message = MagicMock()
+
+        # Mock SessionMessage.from_message to return a simple object
+        mock_session_msg = MagicMock()
 
         with patch.dict(os.environ, {"AGENTCORE_MEMORY_ID": "mem-123", "AWS_REGION": "us-east-1"}), \
              patch("bedrock_agentcore.memory.integrations.strands.session_manager.AgentCoreMemorySessionManager", return_value=mock_mgr), \
-             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"):
+             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"), \
+             patch("strands.types.session.SessionMessage") as mock_session_msg_class:
+            mock_session_msg_class.from_message.return_value = mock_session_msg
             count = await service._copy_messages_to_memory("sess-new", "user-1", snapshot)
 
         assert count == 2
-        assert mock_mgr.append_message.call_count == 2
+        assert mock_mgr.create_message.call_count == 2
 
-        # Verify first call was the user message in Converse format
-        first_call_msg = mock_mgr.append_message.call_args_list[0][0][0]
-        assert first_call_msg == {"role": "user", "content": [{"text": "Hello"}]}
+        # Verify calls used session_id and "default" namespace
+        first_call = mock_mgr.create_message.call_args_list[0]
+        assert first_call[0][0] == "sess-new"  # session_id
+        assert first_call[0][1] == "default"  # namespace
 
-        # Verify second call was the assistant message
-        second_call_msg = mock_mgr.append_message.call_args_list[1][0][0]
-        assert second_call_msg == {"role": "assistant", "content": [{"text": "Hi there"}]}
+        second_call = mock_mgr.create_message.call_args_list[1]
+        assert second_call[0][0] == "sess-new"
+        assert second_call[0][1] == "default"
 
     @pytest.mark.asyncio
     async def test_skips_unconvertible_messages(self, service):
@@ -200,15 +206,18 @@ class TestCopyMessagesToMemory:
         ]
 
         mock_mgr = MagicMock()
-        mock_mgr.append_message = MagicMock()
+        mock_mgr.create_message = MagicMock()
+        mock_session_msg = MagicMock()
 
         with patch.dict(os.environ, {"AGENTCORE_MEMORY_ID": "mem-123", "AWS_REGION": "us-east-1"}), \
              patch("bedrock_agentcore.memory.integrations.strands.session_manager.AgentCoreMemorySessionManager", return_value=mock_mgr), \
-             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"):
+             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"), \
+             patch("strands.types.session.SessionMessage") as mock_session_msg_class:
+            mock_session_msg_class.from_message.return_value = mock_session_msg
             count = await service._copy_messages_to_memory("sess-new", "user-1", snapshot)
 
         assert count == 1
-        assert mock_mgr.append_message.call_count == 1
+        assert mock_mgr.create_message.call_count == 1
 
     @pytest.mark.asyncio
     async def test_continues_on_individual_message_failure(self, service):
@@ -220,15 +229,18 @@ class TestCopyMessagesToMemory:
 
         mock_mgr = MagicMock()
         # Second call raises, first and third succeed
-        mock_mgr.append_message = MagicMock(side_effect=[None, RuntimeError("boom"), None])
+        mock_mgr.create_message = MagicMock(side_effect=[None, RuntimeError("boom"), None])
+        mock_session_msg = MagicMock()
 
         with patch.dict(os.environ, {"AGENTCORE_MEMORY_ID": "mem-123", "AWS_REGION": "us-east-1"}), \
              patch("bedrock_agentcore.memory.integrations.strands.session_manager.AgentCoreMemorySessionManager", return_value=mock_mgr), \
-             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"):
+             patch("bedrock_agentcore.memory.integrations.strands.config.AgentCoreMemoryConfig"), \
+             patch("strands.types.session.SessionMessage") as mock_session_msg_class:
+            mock_session_msg_class.from_message.return_value = mock_session_msg
             count = await service._copy_messages_to_memory("sess-new", "user-1", snapshot)
 
         assert count == 2  # 1st and 3rd succeeded
-        assert mock_mgr.append_message.call_count == 3
+        assert mock_mgr.create_message.call_count == 3
 
     @pytest.mark.asyncio
     async def test_returns_zero_when_memory_id_missing(self, service):

@@ -18,7 +18,7 @@ import {
   heroArrowLeft,
   heroChatBubbleLeftRight,
   heroEllipsisVertical,
-  heroShare,
+  heroAdjustmentsHorizontal,
   heroClipboard,
 } from '@ng-icons/heroicons/outline';
 import { SessionService, BulkDeleteSessionResult } from '../session/services/session/session.service';
@@ -49,7 +49,7 @@ const MAX_SELECTION = 20;
       heroArrowLeft,
       heroChatBubbleLeftRight,
       heroEllipsisVertical,
-      heroShare,
+      heroAdjustmentsHorizontal,
       heroClipboard,
     }),
   ],
@@ -223,7 +223,7 @@ const MAX_SELECTION = 20;
                           class="flex w-full items-center gap-2 px-3 py-2 text-sm text-gray-700 hover:bg-gray-50 dark:text-gray-300 dark:hover:bg-gray-600"
                           role="menuitem"
                         >
-                          <ng-icon name="heroShare" class="size-4" />
+                          <ng-icon name="heroAdjustmentsHorizontal" class="size-4" />
                           Manage Shared Instances
                         </button>
                         <button

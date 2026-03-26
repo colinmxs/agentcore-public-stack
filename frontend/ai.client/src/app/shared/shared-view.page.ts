@@ -1,50 +1,36 @@
-import { Component, ChangeDetectionStrategy, inject, signal, OnInit } from '@angular/core';
+import { Component, ChangeDetectionStrategy, computed, inject, signal, OnInit } from '@angular/core';
 import { ActivatedRoute, Router } from '@angular/router';
 import { DatePipe } from '@angular/common';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroLockClosed,
   heroExclamationTriangle,
-  heroDocumentDuplicate,
+  heroChatBubbleLeftRight,
 } from '@ng-icons/heroicons/outline';
 import { ShareService, SharedConversationResponse } from '../session/services/share/share.service';
 import { MessageListComponent } from '../session/components/message-list/message-list.component';
 import { SessionService } from '../session/services/session/session.service';
 import { UserService } from '../auth/user.service';
+import { SidenavService } from '../services/sidenav/sidenav.service';
 import { Message } from '../session/services/models/message.model';
 
 @Component({
   selector: 'app-shared-view',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [NgIcon, DatePipe, MessageListComponent],
-  providers: [provideIcons({ heroLockClosed, heroExclamationTriangle, heroDocumentDuplicate })],
+  providers: [provideIcons({ heroLockClosed, heroExclamationTriangle, heroChatBubbleLeftRight })],
   template: `
     <div class="min-h-screen bg-white dark:bg-gray-900">
       <!-- Header banner -->
       <div class="sticky top-0 z-10 border-b border-gray-200 bg-white/95 backdrop-blur dark:border-gray-700 dark:bg-gray-900/95">
-        <div class="mx-auto flex max-w-4xl items-center justify-between px-4 py-3">
+        <div class="mx-auto flex max-w-4xl items-center justify-center px-4 py-3">
           <div class="flex items-center gap-2">
             <ng-icon name="heroLockClosed" class="size-4 text-gray-400" aria-hidden="true" />
             <span class="text-xs font-medium text-gray-500 dark:text-gray-400">Shared read-only snapshot</span>
-          </div>
-          <div class="flex items-center gap-3">
             @if (conversation()) {
               <span class="text-xs text-gray-400 dark:text-gray-500">
-                Shared {{ conversation()!.createdAt | date:'medium' }}
+                · {{ conversation()!.createdAt | date:'medium' }}
               </span>
-              <button
-                type="button"
-                (click)="onExport()"
-                [disabled]="isExporting()"
-                class="inline-flex items-center gap-1.5 rounded-md bg-primary-600 px-2.5 py-1.5 text-xs font-medium text-white shadow-xs hover:bg-primary-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-primary-500 dark:hover:bg-primary-400"
-              >
-                @if (isExporting()) {
-                  <span class="size-3.5 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true"></span>
-                } @else {
-                  <ng-icon name="heroDocumentDuplicate" class="size-3.5" aria-hidden="true" />
-                }
-                Export to new conversation
-              </button>
             }
           </div>
         </div>
@@ -82,11 +68,29 @@ import { Message } from '../session/services/models/message.model';
         </div>
 
         <!-- Messages -->
-        <div class="mx-auto max-w-4xl px-4 pb-16">
+        <div class="mx-auto max-w-4xl px-4 pb-32">
           <app-message-list
             [messages]="messages()"
             [embeddedMode]="true"
           />
+        </div>
+
+        <!-- Floating export button at bottom center of content area -->
+        <div class="fixed bottom-8 z-20 flex justify-center pointer-events-none" [style.left]="buttonLeft()" [style.right]="'0'">
+          <button
+            type="button"
+            (click)="onExport()"
+            [disabled]="isExporting()"
+            class="pointer-events-auto inline-flex items-center gap-2 rounded-full bg-primary-500 px-6 py-3 text-sm font-semibold text-white shadow-lg ring-1 ring-primary-500 transition-all hover:bg-primary-400 hover:shadow-xl hover:scale-105 disabled:opacity-50 disabled:cursor-not-allowed disabled:hover:scale-100 dark:bg-primary-400 dark:ring-primary-400 dark:hover:bg-primary-300"
+          >
+            @if (isExporting()) {
+              <span class="size-5 animate-spin rounded-full border-2 border-white border-t-transparent" aria-hidden="true"></span>
+              <span>Exporting...</span>
+            } @else {
+              <ng-icon name="heroChatBubbleLeftRight" class="size-5" aria-hidden="true" />
+              <span>Continue this conversation</span>
+            }
+          </button>
         </div>
       }
     </div>
@@ -98,6 +102,13 @@ export class SharedViewPage implements OnInit {
   private shareService = inject(ShareService);
   private sessionService = inject(SessionService);
   private userService = inject(UserService);
+  private sidenavService = inject(SidenavService);
+
+  /** Left offset for the floating button so it centers over the content area, not the viewport */
+  readonly buttonLeft = computed(() => {
+    const sidebarVisible = !this.sidenavService.isCollapsed() && !this.sidenavService.isHidden();
+    return sidebarVisible ? '18rem' : '0';
+  });
 
   protected conversation = signal<SharedConversationResponse | null>(null);
   protected messages = signal<Message[]>([]);
