@@ -5,8 +5,6 @@ import {
   CreateAssistantDraftRequest,
   CreateAssistantRequest, 
   UpdateAssistantRequest,
-  ShareAssistantRequest,
-  UnshareAssistantRequest,
   AssistantSharesResponse
 } from '../models/assistant.model';
 import { AssistantApiService } from './assistant-api.service';

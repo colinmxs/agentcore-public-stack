@@ -1,14 +1,13 @@
 """Users API routes for non-admin user operations."""
 
 from fastapi import APIRouter, HTTPException, Depends, Query
-from typing import List
 import logging
 
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 from apis.shared.rbac.service import get_app_role_service
 from apis.shared.users.repository import UserRepository
-from apis.shared.users.models import UserProfile, UserListItem, UserStatus
+from apis.shared.users.models import UserStatus
 from .models import UserSearchResult, UserSearchResponse, UserPermissionsResponse
 
 logger = logging.getLogger(__name__)
@@ -81,7 +80,7 @@ async def search_users(
             - 401 if not authenticated
             - 500 if server error
     """
-    logger.info(f"GET /users/search - User: {current_user.user_id}, Query: {q}, Limit: {limit}")
+    logger.info("GET /users/search")
     
     if not user_repo.enabled:
         logger.debug("User repository not enabled - returning empty results")
@@ -166,11 +165,11 @@ async def search_users(
         # Limit results
         results = results[:limit]
         
-        logger.info(f"Found {len(results)} users matching query '{q}'")
+        logger.info("User search completed")
         return UserSearchResponse(users=results)
     
     except Exception as e:
-        logger.error(f"Error searching users: {e}", exc_info=True)
+        logger.error("Error searching users", exc_info=True)
         raise HTTPException(
             status_code=500,
             detail=f"Failed to search users: {str(e)}"

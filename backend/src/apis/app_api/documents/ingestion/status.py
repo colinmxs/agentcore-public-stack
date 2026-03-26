@@ -6,7 +6,6 @@ Centralized status update logic with error message formatting.
 import logging
 import os
 import traceback
-import uuid
 from datetime import datetime, timezone
 from typing import Optional, Tuple, Literal
 

@@ -4,7 +4,6 @@ Business logic for creating, retrieving, updating, and revoking
 conversation share snapshots.  Supports multiple shares per session.
 """
 
-import json
 import logging
 import os
 import re

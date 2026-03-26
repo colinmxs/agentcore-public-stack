@@ -232,10 +232,10 @@ async def delete_document(assistant_id: str, document_id: str, user_id: str = De
             from apis.shared.embeddings.bedrock_embeddings import delete_vectors_for_document
 
             deleted_count = await delete_vectors_for_document(document_id)
-            logger.info(f"Deleted {deleted_count} vectors for document {document_id}")
+            logger.info(f"Deleted {deleted_count} vectors for document")
         except Exception as vector_error:
             # Log but don't fail - DynamoDB and S3 deletion succeeded
-            logger.warning(f"Failed to delete vectors for document {document_id}: {vector_error}")
+            logger.warning(f"Failed to delete vectors for document: {vector_error}")
 
         return None
 

@@ -3,9 +3,7 @@ Simple URL Fetcher Tool - Strands Native
 Fetches and extracts text content from web pages
 """
 
-import json
 import logging
-from typing import Optional
 from strands import tool
 
 logger = logging.getLogger(__name__)

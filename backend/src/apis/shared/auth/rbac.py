@@ -1,6 +1,6 @@
 """Role-based access control utilities."""
 
-from typing import List, Callable
+from typing import Callable
 from fastapi import Depends, HTTPException, status
 import logging
 

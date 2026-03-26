@@ -241,7 +241,7 @@ export class InfrastructureStack extends cdk.Stack {
       });
 
       // HTTP listener only redirects to HTTPS (no target groups here)
-      const httpRedirectListener = this.alb.addListener('HttpListener', {
+      const _httpRedirectListener = this.alb.addListener('HttpListener', {
         port: 80,
         protocol: elbv2.ApplicationProtocol.HTTP,
         defaultAction: elbv2.ListenerAction.redirect({

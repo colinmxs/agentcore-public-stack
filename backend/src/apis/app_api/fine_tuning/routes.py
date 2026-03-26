@@ -20,7 +20,6 @@ from .repository import (
 from .job_models import (
     AVAILABLE_MODELS,
     MODEL_CATALOG,
-    AvailableModel,
     PresignRequest,
     PresignResponse,
     CreateJobRequest,

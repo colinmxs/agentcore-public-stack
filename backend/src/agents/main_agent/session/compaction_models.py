@@ -6,7 +6,6 @@ compaction, which helps manage token usage in long conversations.
 """
 
 from dataclasses import dataclass, field
-from datetime import datetime, timezone
 from typing import Optional, Dict, Any
 import os
 
