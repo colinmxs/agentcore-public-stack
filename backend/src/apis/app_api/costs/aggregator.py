@@ -5,7 +5,7 @@ from datetime import datetime, timezone, timedelta
 from typing import Optional, Dict, Tuple
 
 from .models import UserCostSummary, ModelCostSummary, CostBreakdown
-from apis.app_api.storage.metadata_storage import get_metadata_storage
+from apis.app_api.storage import get_metadata_storage
 
 logger = logging.getLogger(__name__)
 
@@ -279,15 +279,7 @@ class CostAggregator:
         # Parse period to get date range
         try:
             year, month = period.split('-')
-            # Calculate last day of month
-            if month == '12':
-                next_month = 1
-                next_year = int(year) + 1
-            else:
-                next_month = int(month) + 1
-                next_year = int(year)
-
-            # Get last day by going to first day of next month and subtracting a day
+            # Get last day of month
             from calendar import monthrange
             last_day = monthrange(int(year), int(month))[1]
 

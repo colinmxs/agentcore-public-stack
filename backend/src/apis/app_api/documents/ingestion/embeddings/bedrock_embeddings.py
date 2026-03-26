@@ -3,25 +3,15 @@
 This module provides tiktoken-based token validation for the document
 ingestion pipeline. The core embedding generation and vector store
 operations live in apis.shared.embeddings.
-
-Re-exports shared functions for backward compatibility with existing
-ingestion code that imports from this module.
 """
 
 import logging
 import re
 from typing import List
 
-# Re-export shared functions so existing ingestion imports still work
-from apis.shared.embeddings.bedrock_embeddings import (  # noqa: F401
-    BEDROCK_EMBEDDING_CONFIG,
-    delete_vectors_for_document,
-    generate_embeddings,
-    search_assistant_knowledgebase,
-    store_embeddings_in_s3,
-)
-
 logger = logging.getLogger(__name__)
+
+__all__ = ["validate_and_split_chunks", "_validate_and_split_chunks"]
 
 # --- Token validation safety net (tiktoken-based, ingestion only) ---
 

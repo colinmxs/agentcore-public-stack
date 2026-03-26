@@ -248,7 +248,7 @@ class AdminCostService:
         Returns:
             List of TierUsageSummary (currently empty, placeholder).
         """
-        period = period or self._get_current_period()
+        _period = period or self._get_current_period()  # TODO: use once tier aggregation is implemented
         logger.info("Getting tier usage for period")
 
         # TODO: Implement tier usage aggregation

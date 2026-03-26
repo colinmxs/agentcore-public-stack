@@ -230,7 +230,7 @@ class InferenceRepository:
         field_map = {
             "transform_start_time": ("transform_start_time", None),
             "transform_end_time": ("transform_end_time", None),
-            "billable_seconds": ("billable_seconds", lambda v: int(v)),
+            "billable_seconds": ("billable_seconds", int),
             "estimated_cost_usd": ("estimated_cost_usd", lambda v: Decimal(str(v))),
             "error_message": ("error_message", None),
             "result_s3_key": ("result_s3_key", None),

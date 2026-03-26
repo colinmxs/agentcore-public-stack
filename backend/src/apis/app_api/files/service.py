@@ -284,7 +284,7 @@ class FileUploadService:
             raise
 
         # Update status to READY
-        updated = await self.repository.update_file_status(
+        await self.repository.update_file_status(
             user_id, upload_id, FileStatus.READY
         )
 

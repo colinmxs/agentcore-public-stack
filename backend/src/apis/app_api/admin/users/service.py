@@ -63,7 +63,8 @@ class UserAdminService:
             try:
                 last_key = json.loads(base64.b64decode(cursor).decode())
             except Exception:
-                pass
+                # Invalid cursor format; start from the beginning
+                logger.warning("Invalid pagination cursor, ignoring")
 
         # Query based on filters
         if domain:

@@ -5,15 +5,9 @@ Core embedding/vector operations are in apis.shared.embeddings.
 """
 
 from .bedrock_embeddings import (
-    generate_embeddings,
-    store_embeddings_in_s3,
-    search_assistant_knowledgebase,
     validate_and_split_chunks,
 )
 
 __all__ = [
-    "generate_embeddings",
-    "store_embeddings_in_s3",
-    "search_assistant_knowledgebase",
     "validate_and_split_chunks",
 ]

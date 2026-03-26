@@ -719,7 +719,7 @@ async def create_inference_job(
     input_s3_uri = f"s3://{s3_service.bucket_name}/{request.input_s3_key}"
 
     # Create DynamoDB record
-    job = inf_repo.create_inference_job(
+    inf_repo.create_inference_job(
         user_id=user.user_id,
         email=user.email,
         job_id=job_id,

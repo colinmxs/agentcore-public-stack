@@ -475,7 +475,6 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                     # Update existing metadata with assistant_id in preferences
                     prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
                     prefs_dict["assistant_id"] = input_data.rag_assistant_id
-                    preferences = SessionPreferences(**prefs_dict)
 
                     updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.rag_assistant_id})
 

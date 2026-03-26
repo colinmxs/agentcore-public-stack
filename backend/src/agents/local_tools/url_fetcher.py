@@ -113,7 +113,8 @@ async def fetch_url_content(
                 title_tag = soup.find('title')
                 if title_tag:
                     title = title_tag.get_text().strip()
-            except:
+            except Exception:
+                # Title extraction is best-effort; fall back to default
                 pass
 
             # Extract text

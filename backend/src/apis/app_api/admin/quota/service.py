@@ -326,18 +326,17 @@ class QuotaAdminService:
         # Calculate quota info
         if resolved:
             tier = resolved.tier
-            limit = (
+            _limit = (
                 tier.daily_cost_limit
                 if tier.period_type == "daily" and tier.daily_cost_limit
                 else tier.monthly_cost_limit
             )
             # Convert Decimal limit to float for calculations
-            limit_float = float(limit) if limit else 0
+            limit_float = float(_limit) if _limit else 0
             percentage_used = (current_usage / limit_float * 100) if limit_float > 0 else 0
             remaining = max(0, limit_float - current_usage)
         else:
             tier = None
-            limit = None
             percentage_used = 0
             remaining = None
 

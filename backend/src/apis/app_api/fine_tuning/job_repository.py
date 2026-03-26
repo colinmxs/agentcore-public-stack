@@ -217,7 +217,7 @@ class FineTuningJobsRepository:
         field_map = {
             "training_start_time": ("training_start_time", None),
             "training_end_time": ("training_end_time", None),
-            "billable_seconds": ("billable_seconds", lambda v: int(v)),
+            "billable_seconds": ("billable_seconds", int),
             "estimated_cost_usd": ("estimated_cost_usd", lambda v: Decimal(str(v))),
             "error_message": ("error_message", None),
             "training_progress": ("training_progress", lambda v: Decimal(str(v))),

@@ -420,8 +420,6 @@ async def get_strategies_endpoint(
     Returns:
         StrategiesResponse with list of strategies
     """
-    user_id = current_user.user_id
-
     logger.info("GET /memory/strategies")
 
     if not is_memory_available():

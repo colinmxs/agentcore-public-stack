@@ -311,7 +311,7 @@ async def _update_cost_summary_async(
             date = now.strftime('%Y-%m-%d')
 
         # Use storage abstraction for the atomic update
-        from apis.app_api.storage.metadata_storage import get_metadata_storage
+        from apis.app_api.storage import get_metadata_storage
         storage = get_metadata_storage()
 
         await storage.update_user_cost_summary(

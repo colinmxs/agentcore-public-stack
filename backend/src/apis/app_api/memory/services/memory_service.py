@@ -461,8 +461,7 @@ async def delete_memory(
             logger.info("Successfully deleted memory record")
             return True
         elif failed:
-            error_msg = failed[0].get('errorMessage', 'Unknown error')
-            logger.warning("Failed to delete memory record")
+            logger.warning("Failed to delete memory record: %s", failed[0].get('errorMessage', 'Unknown error'))
             return False
         else:
             logger.info("Delete request processed for memory record")

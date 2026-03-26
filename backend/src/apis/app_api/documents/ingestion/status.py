@@ -117,7 +117,6 @@ def _format_error_message(exception: Exception) -> Tuple[str, str]:
     Returns:
         Tuple of (user_friendly_message, full_traceback_string)
     """
-    exception_type = type(exception).__name__
     exception_message = str(exception)
     
     # Get full traceback for technical details
