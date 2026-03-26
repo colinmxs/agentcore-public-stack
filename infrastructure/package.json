@@ -22,5 +22,8 @@
   "dependencies": {
     "aws-cdk-lib": "2.244.0",
     "constructs": "10.5.1"
+  },
+  "overrides": {
+    "picomatch": ">=2.3.2"
   }
 }
