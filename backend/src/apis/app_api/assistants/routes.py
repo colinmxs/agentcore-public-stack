@@ -30,7 +30,6 @@ from apis.shared.assistants.models import (
     UpdateAssistantRequest,
 )
 from apis.shared.assistants.service import (
-    archive_assistant,
     assistant_exists,
     create_assistant,
     create_assistant_draft,
@@ -147,7 +146,6 @@ async def create_assistant_endpoint(request: CreateAssistantRequest, current_use
 async def list_assistants_endpoint(
     limit: Optional[int] = Query(None, ge=1, le=1000, description="Maximum number of assistants to return"),
     next_token: Optional[str] = Query(None, description="Pagination token for retrieving the next page"),
-    include_archived: bool = Query(False, description="Include archived assistants"),
     include_drafts: bool = Query(False, description="Include draft assistants"),
     include_public: bool = Query(False, description="Include public assistants (in addition to user's own)"),
     current_user: User = Depends(get_current_user),
@@ -161,13 +159,11 @@ async def list_assistants_endpoint(
     When include_public=True, returns both the user's own assistants AND all public
     assistants (excluding those owned by the user to avoid duplicates).
 
-    By default, excludes draft and archived assistants. Use query parameters
-    to include them.
+    By default, excludes draft assistants. Use query parameters to include them.
 
     Args:
         limit: Maximum number of assistants to return (optional, 1-1000)
         next_token: Pagination token for retrieving next page (optional)
-        include_archived: Whether to include archived assistants (default: False)
         include_drafts: Whether to include draft assistants (default: False)
         include_public: Whether to include public assistants (default: False)
         current_user: Authenticated user from JWT token (injected by dependency)
@@ -190,7 +186,6 @@ async def list_assistants_endpoint(
             owner_id=user_id,
             limit=limit,
             next_token=next_token,
-            include_archived=include_archived,
             include_drafts=include_drafts,
             include_public=include_public,
         )
@@ -350,59 +345,13 @@ async def update_assistant_endpoint(assistant_id: str, request: UpdateAssistantR
         raise HTTPException(status_code=500, detail=f"Failed to update assistant: {str(e)}")
 
 
-@router.post("/{assistant_id}/archive", response_model=AssistantResponse, response_model_exclude_none=True)
-async def archive_assistant_endpoint(assistant_id: str, current_user: User = Depends(get_current_user)):
-    """
-    Archive an assistant (soft delete).
-
-    Sets the assistant status to ARCHIVED. The assistant will not appear
-    in default listings but can still be retrieved by ID and can be
-    un-archived by setting status back to COMPLETE.
-
-    Requires JWT authentication. Users can only archive their own assistants.
-
-    Args:
-        assistant_id: Assistant identifier from URL path
-        current_user: Authenticated user from JWT token (injected by dependency)
-
-    Returns:
-        AssistantResponse with status=ARCHIVED
-
-    Raises:
-        HTTPException:
-            - 401 if not authenticated
-            - 404 if assistant not found or not owned by user
-            - 500 if server error
-    """
-    user_id = current_user.user_id
-
-    logger.info("POST /assistants/{assistant_id}/archive")
-
-    try:
-        # Archive assistant (soft delete)
-        archived_assistant = await archive_assistant(assistant_id=assistant_id, owner_id=user_id)
-
-        if not archived_assistant:
-            raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
-
-        # Convert to response model
-        return AssistantResponse.model_validate(archived_assistant.model_dump(by_alias=True))
-
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.error(f"Error archiving assistant: {e}", exc_info=True)
-        raise HTTPException(status_code=500, detail=f"Failed to archive assistant: {str(e)}")
-
-
 @router.delete("/{assistant_id}", status_code=204)
 async def delete_assistant_endpoint(assistant_id: str, current_user: User = Depends(get_current_user)):
     """
-    Delete an assistant permanently (hard delete).
+    Delete an assistant permanently.
 
     This is irreversible. The assistant and all associated data will be
-    permanently removed. Consider using POST /assistants/{id}/archive for
-    soft deletion instead.
+    permanently removed.
 
     Requires JWT authentication. Users can only delete their own assistants.
 
