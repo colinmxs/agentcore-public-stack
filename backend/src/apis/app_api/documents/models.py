@@ -88,3 +88,12 @@ class DownloadUrlResponse(BaseModel):
     download_url: str = Field(..., alias="downloadUrl", description="Presigned S3 URL for download")
     filename: str = Field(..., description="Original filename")
     expires_in: int = Field(..., alias="expiresIn", description="URL expiration in seconds")
+
+
+class ReportUploadFailureRequest(BaseModel):
+    """Request body for reporting a client-side upload failure"""
+
+    model_config = ConfigDict(populate_by_name=True)
+
+    error: str = Field(..., description="User-friendly error message")
+    details: Optional[str] = Field(None, description="Technical error details")

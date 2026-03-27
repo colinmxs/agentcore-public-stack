@@ -424,11 +424,57 @@ async def delete_assistant_endpoint(assistant_id: str, current_user: User = Depe
     logger.info("DELETE /assistants/{assistant_id}")
 
     try:
-        # Delete assistant permanently (hard delete)
+        # 1. Collect all document IDs before deleting the assistant
+        #    (we need the assistant to exist for ownership verification)
+        document_ids = []
+        try:
+            docs, _ = await list_assistant_documents(
+                assistant_id=assistant_id,
+                owner_id=user_id,
+                limit=1000,
+            )
+            document_ids = [doc.document_id for doc in docs]
+        except Exception as doc_err:
+            logger.warning(f"Failed to list documents for cleanup during assistant deletion: {doc_err}")
+
+        # 2. Delete assistant record from DynamoDB (hard delete)
         success = await delete_assistant(assistant_id=assistant_id, owner_id=user_id)
 
         if not success:
             raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
+
+        # 3. Clean up associated resources in the background (best-effort)
+        #    Delete vectors for each document, then delete document records and S3 objects
+        async def _cleanup_assistant_resources():
+            from apis.shared.embeddings.bedrock_embeddings import delete_vectors_for_assistant
+
+            # Delete all vectors belonging to this assistant from the vector store
+            try:
+                deleted_count = await delete_vectors_for_assistant(assistant_id)
+                logger.info(f"Cleaned up {deleted_count} vectors for deleted assistant {assistant_id}")
+            except Exception as vec_err:
+                logger.error(f"Failed to clean up vectors for assistant {assistant_id}: {vec_err}")
+
+            # Delete S3 source files and DynamoDB document records
+            if document_ids:
+                try:
+                    import boto3
+                    from apis.app_api.documents.services.storage_service import _get_documents_bucket
+
+                    s3_client = boto3.client("s3")
+                    bucket = _get_documents_bucket()
+
+                    for doc in docs:
+                        try:
+                            if doc.s3_key:
+                                s3_client.delete_object(Bucket=bucket, Key=doc.s3_key)
+                        except Exception:
+                            pass  # Best-effort S3 cleanup
+                except Exception as s3_err:
+                    logger.warning(f"Failed to clean up S3 objects for assistant {assistant_id}: {s3_err}")
+
+        # Run cleanup without blocking the response
+        asyncio.ensure_future(_cleanup_assistant_resources())
 
         # Return 204 No Content (no response body)
         return None

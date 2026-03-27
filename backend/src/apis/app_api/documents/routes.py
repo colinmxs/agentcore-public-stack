@@ -6,8 +6,8 @@ from typing import Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 
 from apis.shared.assistants.service import get_assistant
-from apis.app_api.documents.models import CreateDocumentRequest, DocumentResponse, DocumentsListResponse, DownloadUrlResponse, UploadUrlResponse
-from apis.app_api.documents.services.document_service import _generate_document_id, create_document, list_assistant_documents
+from apis.app_api.documents.models import CreateDocumentRequest, DocumentResponse, DocumentsListResponse, DownloadUrlResponse, UploadUrlResponse, ReportUploadFailureRequest
+from apis.app_api.documents.services.document_service import _generate_document_id, create_document, list_assistant_documents, update_document_status
 from apis.app_api.documents.services.document_service import delete_document as delete_document_service
 from apis.app_api.documents.services.document_service import get_document as get_document_service
 from apis.app_api.documents.services.storage_service import generate_download_url, generate_upload_url
@@ -77,6 +77,57 @@ async def generate_upload_url_endpoint(
     except Exception as e:
         logger.error(f"Error generating upload URL: {e}", exc_info=True)
         raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to generate upload URL: {str(e)}")
+
+
+@router.post("/{document_id}/upload-failed", response_model=DocumentResponse, status_code=status.HTTP_200_OK)
+async def report_upload_failure(
+    assistant_id: str, document_id: str, request: ReportUploadFailureRequest, user_id: str = Depends(get_current_user_id)
+) -> DocumentResponse:
+    """
+    Report that a client-side S3 upload failed.
+
+    Marks the document as 'failed' in DynamoDB so the frontend stops polling
+    and displays the error. Called by the client when the presigned URL upload
+    to S3 fails (network error, permission error, etc.).
+
+    Args:
+        assistant_id: Parent assistant identifier
+        document_id: Document identifier
+        request: Error details from the client
+        user_id: Authenticated user ID from JWT
+    """
+    try:
+        # Verify document exists and user owns the assistant
+        document = await get_document_service(assistant_id, document_id, user_id)
+        if not document:
+            raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document not found: {document_id}")
+
+        # Only allow marking as failed if still in 'uploading' state
+        if document.status != "uploading":
+            raise HTTPException(
+                status_code=status.HTTP_409_CONFLICT,
+                detail=f"Document is in '{document.status}' state, not 'uploading'. Cannot mark as upload failed.",
+            )
+
+        error_message = request.error or "Upload to S3 failed"
+        updated = await update_document_status(
+            assistant_id=assistant_id,
+            document_id=document_id,
+            status="failed",
+            error_message=error_message,
+            error_details=request.details,
+        )
+
+        if not updated:
+            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to update document status")
+
+        return DocumentResponse.model_validate(updated.model_dump(by_alias=True))
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Error reporting upload failure: {e}", exc_info=True)
+        raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail=f"Failed to report upload failure: {str(e)}")
 
 
 @router.get("", response_model=DocumentsListResponse, status_code=status.HTTP_200_OK)
