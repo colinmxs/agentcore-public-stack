@@ -180,6 +180,7 @@ export class RagIngestionStack extends cdk.Stack {
       pointInTimeRecovery: true,
       removalPolicy: getRemovalPolicy(config),
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
+      timeToLiveAttribute: 'ttl',
     });
 
     // Add Global Secondary Indexes

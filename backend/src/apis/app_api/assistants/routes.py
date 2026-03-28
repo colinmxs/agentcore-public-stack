@@ -347,85 +347,36 @@ async def update_assistant_endpoint(assistant_id: str, request: UpdateAssistantR
 
 @router.delete("/{assistant_id}", status_code=204)
 async def delete_assistant_endpoint(assistant_id: str, current_user: User = Depends(get_current_user)):
-    """
-    Delete an assistant permanently.
-
-    This is irreversible. The assistant and all associated data will be
-    permanently removed.
-
-    Requires JWT authentication. Users can only delete their own assistants.
-
-    Args:
-        assistant_id: Assistant identifier from URL path
-        current_user: Authenticated user from JWT token (injected by dependency)
-
-    Returns:
-        204 No Content on successful deletion
-
-    Raises:
-        HTTPException:
-            - 401 if not authenticated
-            - 404 if assistant not found or not owned by user
-            - 500 if server error
-    """
+    """Delete an assistant and all associated documents using soft-delete + background cleanup."""
     user_id = current_user.user_id
-
     logger.info("DELETE /assistants/{assistant_id}")
 
     try:
-        # 1. Collect all document IDs before deleting the assistant
-        #    (we need the assistant to exist for ownership verification)
-        document_ids = []
-        try:
-            docs, _ = await list_assistant_documents(
+        # 1. List all documents for the assistant
+        docs, _ = await list_assistant_documents(
+            assistant_id=assistant_id,
+            owner_id=user_id,
+            limit=1000,
+        )
+
+        # 2. Batch soft-delete all documents with TTL
+        if docs:
+            from apis.app_api.documents.services.document_service import batch_soft_delete_documents
+            await batch_soft_delete_documents(
                 assistant_id=assistant_id,
-                owner_id=user_id,
-                limit=1000,
+                document_ids=[doc.document_id for doc in docs],
             )
-            document_ids = [doc.document_id for doc in docs]
-        except Exception as doc_err:
-            logger.warning(f"Failed to list documents for cleanup during assistant deletion: {doc_err}")
 
-        # 2. Delete assistant record from DynamoDB (hard delete)
+        # 3. Hard-delete assistant record
         success = await delete_assistant(assistant_id=assistant_id, owner_id=user_id)
-
         if not success:
             raise HTTPException(status_code=404, detail=f"Assistant not found: {assistant_id}")
 
-        # 3. Clean up associated resources in the background (best-effort)
-        #    Delete vectors for each document, then delete document records and S3 objects
-        async def _cleanup_assistant_resources():
-            from apis.shared.embeddings.bedrock_embeddings import delete_vectors_for_assistant
+        # 4. Fire-and-forget background cleanup for all documents
+        if docs:
+            from apis.app_api.documents.services.cleanup_service import cleanup_assistant_documents
+            asyncio.ensure_future(cleanup_assistant_documents(assistant_id, docs))
 
-            # Delete all vectors belonging to this assistant from the vector store
-            try:
-                deleted_count = await delete_vectors_for_assistant(assistant_id)
-                logger.info(f"Cleaned up {deleted_count} vectors for deleted assistant {assistant_id}")
-            except Exception as vec_err:
-                logger.error(f"Failed to clean up vectors for assistant {assistant_id}: {vec_err}")
-
-            # Delete S3 source files and DynamoDB document records
-            if document_ids:
-                try:
-                    import boto3
-                    from apis.app_api.documents.services.storage_service import _get_documents_bucket
-
-                    s3_client = boto3.client("s3")
-                    bucket = _get_documents_bucket()
-
-                    for doc in docs:
-                        try:
-                            if doc.s3_key:
-                                s3_client.delete_object(Bucket=bucket, Key=doc.s3_key)
-                        except Exception:
-                            pass  # Best-effort S3 cleanup
-                except Exception as s3_err:
-                    logger.warning(f"Failed to clean up S3 objects for assistant {assistant_id}: {s3_err}")
-
-        # Run cleanup without blocking the response
-        asyncio.ensure_future(_cleanup_assistant_resources())
-
-        # Return 204 No Content (no response body)
         return None
 
     except HTTPException:

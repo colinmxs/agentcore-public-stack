@@ -247,6 +247,48 @@ async def delete_vectors_for_document(document_id: str) -> int:
         return 0
 
 
+async def delete_vectors_for_document_deterministic(
+    document_id: str,
+    chunk_count: int,
+) -> int:
+    """
+    Delete vectors using deterministic keys: {document_id}#{i} for i in range(chunk_count).
+    No probing, no list-scan. O(chunk_count) with a single batch delete call.
+
+    Deletion of non-existent keys is a no-op in the S3 Vectors API.
+
+    Args:
+        document_id: The document identifier
+        chunk_count: Number of chunks to delete
+
+    Returns:
+        Number of keys sent for deletion (= chunk_count)
+
+    Raises:
+        Exception: If S3 Vectors API call fails (caller handles retries)
+    """
+    if chunk_count == 0:
+        return 0
+
+    client = boto3.client("s3vectors", region_name=AWS_REGION)
+    vector_bucket = _get_vector_store_bucket()
+    vector_index = _get_vector_store_index()
+
+    keys = [f"{document_id}#{i}" for i in range(chunk_count)]
+    batch_size = 500
+
+    for i in range(0, len(keys), batch_size):
+        batch = keys[i : i + batch_size]
+        client.delete_vectors(
+            vectorBucketName=vector_bucket,
+            indexName=vector_index,
+            keys=batch,
+        )
+
+    logger.info(f"Deterministic delete: sent {chunk_count} keys for document {document_id}")
+    return chunk_count
+
+
 async def delete_vectors_for_assistant(assistant_id: str) -> int:
     """
     Delete ALL vectors belonging to an assistant from the S3 vector store.

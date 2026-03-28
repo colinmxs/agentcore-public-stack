@@ -8,7 +8,6 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from apis.shared.assistants.service import get_assistant
 from apis.app_api.documents.models import CreateDocumentRequest, DocumentResponse, DocumentsListResponse, DownloadUrlResponse, UploadUrlResponse, ReportUploadFailureRequest
 from apis.app_api.documents.services.document_service import _generate_document_id, create_document, list_assistant_documents, update_document_status
-from apis.app_api.documents.services.document_service import delete_document as delete_document_service
 from apis.app_api.documents.services.document_service import get_document as get_document_service
 from apis.app_api.documents.services.storage_service import generate_download_url, generate_upload_url
 from apis.shared.auth.dependencies import get_current_user_id
@@ -241,52 +240,25 @@ async def get_download_url(assistant_id: str, document_id: str, user_id: str = D
 
 @router.delete("/{document_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_document(assistant_id: str, document_id: str, user_id: str = Depends(get_current_user_id)) -> None:
-    """
-    Delete document from DynamoDB, S3, and vector store
-
-    Args:
-        assistant_id: Parent assistant identifier
-        document_id: Document identifier
-        user_id: Authenticated user ID from JWT
-    """
+    """Delete document using soft-delete + background cleanup pattern."""
     try:
-        # Get document first to get S3 key
-        document = await get_document_service(assistant_id, document_id, user_id)
+        from apis.app_api.documents.services.document_service import soft_delete_document
+        from apis.app_api.documents.services.cleanup_service import cleanup_document_resources
 
+        document = await soft_delete_document(assistant_id, document_id, user_id)
         if not document:
             raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=f"Document not found: {document_id}")
 
-        # Delete from DynamoDB
-        success = await delete_document_service(assistant_id, document_id, user_id)
-
-        if not success:
-            raise HTTPException(status_code=status.HTTP_500_INTERNAL_SERVER_ERROR, detail="Failed to delete document")
-
-        # Delete S3 object
-        try:
-            import boto3
-
-            from apis.app_api.documents.services.storage_service import _get_documents_bucket
-
-            s3_client = boto3.client("s3")
-            bucket = _get_documents_bucket()
-
-            s3_client.delete_object(Bucket=bucket, Key=document.s3_key)
-
-            logger.info(f"Deleted S3 object: {document.s3_key}")
-        except Exception as s3_error:
-            # Log but don't fail - DynamoDB deletion succeeded
-            logger.warning(f"Failed to delete S3 object {document.s3_key}: {s3_error}")
-
-        # Delete vector store objects
-        try:
-            from apis.shared.embeddings.bedrock_embeddings import delete_vectors_for_document
-
-            deleted_count = await delete_vectors_for_document(document_id)
-            logger.info(f"Deleted {deleted_count} vectors for document")
-        except Exception as vector_error:
-            # Log but don't fail - DynamoDB and S3 deletion succeeded
-            logger.warning(f"Failed to delete vectors for document: {vector_error}")
+        # Fire-and-forget cleanup (response already sent as 204)
+        import asyncio
+        asyncio.ensure_future(
+            cleanup_document_resources(
+                document_id=document.document_id,
+                assistant_id=assistant_id,
+                s3_key=document.s3_key,
+                chunk_count=document.chunk_count,
+            )
+        )
 
         return None
 
