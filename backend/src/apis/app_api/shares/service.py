@@ -196,6 +196,44 @@ class ShareService:
         self._table.delete_item(Key={"share_id": item["share_id"]})
         logger.info(f"Revoked share {item['share_id']}")
 
+    async def delete_shares_for_session(self, session_id: str) -> int:
+        """Delete all share snapshots for a session.
+
+        Called as a background task when the session owner deletes a conversation.
+        Removes share records so that existing share links stop working.
+        Exported conversations (copied into recipients' own sessions) are unaffected.
+
+        Returns:
+            Number of shares deleted.
+        """
+        if not self._enabled:
+            logger.debug("ShareService disabled - skipping share cleanup")
+            return 0
+
+        try:
+            items = self._find_shares_by_session(session_id)
+            if not items:
+                return 0
+
+            # Batch delete all shares for this session
+            with self._table.batch_writer() as batch:
+                for item in items:
+                    batch.delete_item(Key={"share_id": item["share_id"]})
+
+            logger.info(
+                f"Deleted {len(items)} share(s) for session "
+                f"{self._sanitize_id(session_id)}"
+            )
+            return len(items)
+
+        except Exception:
+            logger.error(
+                "Failed to delete shares for session "
+                f"{self._sanitize_id(session_id)}",
+                exc_info=True,
+            )
+            return 0
+
     async def get_shares_for_session(self, session_id: str, user_id: str) -> ShareListResponse:
         """Return all shares for a session owned by the user."""
         self._ensure_enabled()

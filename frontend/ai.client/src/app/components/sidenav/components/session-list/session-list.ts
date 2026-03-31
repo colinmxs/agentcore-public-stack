@@ -312,7 +312,7 @@ export class SessionList {
     const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
       data: {
         title: 'Delete Conversation',
-        message: 'Are you sure you want to delete this conversation? This action cannot be undone.',
+        message: 'Are you sure you want to delete this conversation? This action cannot be undone. Any shared links to this conversation will stop working.',
         confirmText: 'Delete',
         cancelText: 'Cancel',
         destructive: true

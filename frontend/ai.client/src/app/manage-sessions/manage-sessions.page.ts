@@ -305,7 +305,7 @@ export class ManageSessionsPage implements OnInit {
   readonly isAtSelectionLimit = computed(() => this.selectedCount() >= this.maxSelection);
 
   /** Whether there are more sessions to load */
-  readonly hasMoreSessions = computed(() => this.nextToken() !== null);
+  readonly hasMoreSessions = computed(() => !!this.nextToken());
 
   /** Close menu when clicking outside */
   @HostListener('document:click', ['$event'])
@@ -386,7 +386,7 @@ export class ManageSessionsPage implements OnInit {
     const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
       data: {
         title: 'Delete Conversation',
-        message: `Are you sure you want to delete "${session.title || 'Untitled Conversation'}"? This action cannot be undone. Your usage data will be preserved for billing purposes.`,
+        message: `Are you sure you want to delete "${session.title || 'Untitled Conversation'}"? This action cannot be undone. Your usage data will be preserved for billing purposes. Any shared links to this conversation will stop working.`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         destructive: true,
@@ -461,7 +461,7 @@ export class ManageSessionsPage implements OnInit {
     const dialogRef = this.dialog.open<boolean>(ConfirmationDialogComponent, {
       data: {
         title: `Delete ${count} Conversation${count === 1 ? '' : 's'}`,
-        message: `Are you sure you want to delete ${count} conversation${count === 1 ? '' : 's'}? This action cannot be undone. Your usage data will be preserved for billing purposes.`,
+        message: `Are you sure you want to delete ${count} conversation${count === 1 ? '' : 's'}? This action cannot be undone. Your usage data will be preserved for billing purposes. Any shared links to these conversations will stop working.`,
         confirmText: 'Delete',
         cancelText: 'Cancel',
         destructive: true,

@@ -21,6 +21,7 @@ from apis.shared.sessions.models import (
 from apis.shared.sessions.messages import get_messages
 from apis.shared.sessions.metadata import store_session_metadata, get_session_metadata, list_user_sessions
 from .services.session_service import SessionService
+from apis.app_api.shares.service import get_share_service
 from apis.shared.auth.dependencies import get_current_user
 from apis.shared.auth.models import User
 
@@ -352,6 +353,13 @@ async def delete_session_endpoint(
             session_id
         )
 
+        # 3. Delete share snapshots so share links stop working
+        share_service = get_share_service()
+        background_tasks.add_task(
+            share_service.delete_shares_for_session,
+            session_id
+        )
+
         logger.info("Successfully deleted session")
 
         return Response(status_code=204)
@@ -411,6 +419,7 @@ async def bulk_delete_sessions_endpoint(
 
     try:
         service = SessionService()
+        share_service = get_share_service()
 
         for session_id in session_ids:
             try:
@@ -428,6 +437,10 @@ async def bulk_delete_sessions_endpoint(
                     )
                     background_tasks.add_task(
                         service.delete_session_files,
+                        session_id
+                    )
+                    background_tasks.add_task(
+                        share_service.delete_shares_for_session,
                         session_id
                     )
                     results.append(BulkDeleteSessionResult(
