@@ -191,8 +191,6 @@ async def test_idempotent_soft_delete(
     """
     import time as _time
 
-    existing_ttl = int(_time.time()) + 3 * 86400  # existing TTL from a prior delete
-
     # Build the DynamoDB ALL_NEW response simulating a document already in
     # "deleting" status.  The update_item call should still succeed because
     # the ConditionExpression only checks attribute_exists(PK).

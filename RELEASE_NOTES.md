@@ -1,13 +1,120 @@
 # Release Notes — v1.0.0-beta.20
 
-**Release Date:** March 26, 2026
+**Release Date:** April 1, 2026
 **Previous Release:** v1.0.0-beta.19 (March 25, 2026)
 
 ---
 
 ## Highlights
 
-This release is a **security and code quality hardening pass** — no new features, but a significant reduction in technical debt and vulnerability exposure. All open CodeQL findings on `develop` have been resolved or triaged, four Dependabot security vulnerabilities have been patched, a cyclic import in the storage layer has been eliminated, and silent exception swallowing across the streaming and admin layers has been replaced with proper logging. Conversation sharing also receives bug fixes for message export and UI polish.
+This release delivers **reliable document deletion** with a soft-delete lifecycle and background cleanup, a **displayText system** that preserves original user messages when RAG augmentation or file attachments modify the prompt, a **fine-tuning cost dashboard** for admin visibility into SageMaker training spend, and a major **dependency refresh** across all three ecosystems via Dependabot. The security and code quality hardening from the initial beta.20 scope is also included — all CodeQL findings resolved, four Dependabot security vulnerabilities patched, cyclic imports eliminated, and silent exception swallowing replaced with proper logging.
+
+---
+
+## Reliable Document Deletion
+
+Document deletion has been rearchitected with a soft-delete pattern and background cleanup to prevent orphaned S3 objects and vector embeddings.
+
+### Soft-Delete Lifecycle
+
+Documents now transition through a `deleting` status before removal. The delete endpoint marks the document immediately and returns, while cleanup runs asynchronously. A DynamoDB TTL field (7-day expiry) acts as a backstop for failed cleanups.
+
+### Cleanup Service
+
+A new `cleanup_service.py` handles retry logic for S3 vector deletion and source file removal. Deterministic vector key generation ensures reliable cleanup even if the original ingestion metadata is incomplete.
+
+### Search Filtering
+
+The search path now filters out non-complete documents, preventing stale results from appearing when a document is mid-deletion. The RAG service cross-checks document status during search.
+
+### Assistant Deletion
+
+When an assistant is deleted, all associated documents are batch soft-deleted with background cleanup. A new `delete_vectors_for_assistant` function removes embeddings from the vector store by assistant ID.
+
+### Upload Failure Reporting
+
+A new `POST /{document_id}/upload-failed` endpoint allows the frontend to report client-side upload errors, marking documents as failed with error details for debugging.
+
+### Test Coverage
+
+4,200+ lines of new tests across property-based tests (cleanup service, document deletion, search filtering, vector deletion) and integration tests (delete endpoints, cleanup service, document deletion flows).
+
+---
+
+## DisplayText for RAG-Augmented and File Attachment Messages
+
+When RAG augmentation or file attachments modify the user's prompt before sending it to the agent, the original message text is now preserved and displayed in the UI instead of the augmented version.
+
+### How It Works
+
+- The `stream_async` and `StreamCoordinator` accept an `original_message` parameter to capture the user's input before modification
+- When the original differs from the augmented version, a `displayText` metadata record (`D#` prefix) is stored in DynamoDB alongside the cost record
+- The metadata retrieval path queries both cost records (`C#`) and display text records (`D#`)
+- The frontend `user-message` component renders `displayText` when available, falling back to the stored message content
+
+### Debug Output Toggle
+
+A new `showDebugOutput` setting in Chat Preferences lets users toggle visibility of debug information, useful for inspecting what the agent actually received versus what the UI displays.
+
+---
+
+## Fine-Tuning Cost Dashboard
+
+A new admin page provides visibility into SageMaker fine-tuning costs and usage.
+
+### Admin Cost Endpoint
+
+`GET /admin/fine-tuning/costs` returns aggregated cost data for fine-tuning jobs, with per-user breakdowns showing training hours consumed and quota utilization.
+
+### Default Quota Hours
+
+Fine-tuning access control now supports a default monthly quota for users without explicit grants, configurable via `CDK_FINE_TUNING_DEFAULT_QUOTA_HOURS` in the infrastructure config.
+
+### Frontend
+
+A dedicated `/admin/fine-tuning-costs` page displays cost summaries, per-user breakdowns, and usage statistics with period selection.
+
+### Fine-Tuning Dashboard Polish
+
+The fine-tuning dashboard also received an informational section explaining the fine-tuning workflow and updated icons for better visual clarity.
+
+---
+
+## Assistant Simplification
+
+### Archive Removal
+
+The assistant archive functionality has been removed entirely. The `ARCHIVED` status, `archive_assistant` endpoint, and `include_archived` query parameter are gone. Assistants now have a single delete operation — simpler lifecycle, less code.
+
+---
+
+## Conversation Sharing Fixes
+
+### Shared Conversation Deletion
+
+Deleting a session now properly cascades to associated shared conversations. The shares service cleans up all share records when the parent session is deleted, and the frontend session list reflects the deletion state correctly.
+
+### Message Export Fix
+
+The share export feature (`POST /shares/{share_id}/export`) was failing to persist messages to AgentCore Memory. Fixed by switching from the deprecated `append_message` API to `create_message` with proper `SessionMessage` wrapping and index-based ordering.
+
+### UI Improvements
+
+- Shared conversation header simplified — metadata and export button repositioned for cleaner layout
+- Export button moved to a floating action bar at the bottom of the shared view
+- Icon updates: share icon replaced with `heroAdjustmentsHorizontal` in session management, `heroChatBubbleLeftRight` in shared view header
+
+---
+
+## Testing Infrastructure
+
+### Analog.js Migration
+
+Frontend testing has been migrated to Analog.js tooling (`@analogjs/vite-plugin-angular` and `@analogjs/vitest-angular` v3.0.0-alpha.18). The standalone `vitest.config.ts` has been removed in favor of Analog.js configuration. Analog.js dependencies are pinned to exact versions per the supply chain policy.
+
+### Property-Based Testing
+
+`fast-check` has been added as a dev dependency (v4.6.0, exact pin) for property-based testing in the frontend test suite.
 
 ---
 
@@ -74,21 +181,6 @@ Three callers updated to import from `apis.app_api.storage` instead of `apis.app
 
 ---
 
-## Conversation Sharing Fixes
-
-### Message Export Fix
-
-The share export feature (`POST /shares/{share_id}/export`) was failing to persist messages to AgentCore Memory. The root cause was using the deprecated `append_message` API which no longer works with the current SDK version. Fixed by switching to `create_message` with proper `SessionMessage` wrapping and index-based ordering.
-
-### UI Improvements
-
-- Shared conversation header simplified — metadata and export button repositioned for cleaner layout
-- Export button moved to a floating action bar at the bottom of the shared view
-- Icon updates: share icon replaced with `heroAdjustmentsHorizontal` in session management, `heroChatBubbleLeftRight` in shared view header
-- Sidenav service integrated into shared view for consistent navigation behavior
-
----
-
 ## RAG Ingestion Fixes
 
 ### Lambda Image Digest Refresh
@@ -98,6 +190,48 @@ Fixed an issue where RAG ingestion Lambda deployments would report "no changes" 
 ### Shared Embeddings Module
 
 Added the shared embeddings package to the RAG ingestion Lambda Docker image, resolving import errors when `bedrock_embeddings.py` attempted to load re-exported functions from `apis.shared.embeddings`.
+
+---
+
+## CI/CD Improvements
+
+### PR Workflow Optimization
+
+CDK synthesis (`synth-cdk`) is now skipped on pull requests in the app-api workflow, matching the existing pattern for Docker builds and deployments. PRs no longer require AWS credentials for the synth step.
+
+### GitHub Actions Updates
+
+- `actions/upload-artifact` upgraded from 6.0.0 to 7.0.0
+- `actions/download-artifact` upgraded from 7.0.0 to 8.0.1
+- `actions/setup-node` upgraded from 5.0.0 to 6.3.0
+- `github/codeql-action` upgraded to latest SHA
+
+---
+
+## Dependency Upgrades
+
+| Component | From | To |
+|---|---|---|
+| uvicorn | 0.35.0 | 0.42.0 |
+| boto3 | 1.42.73 | 1.42.78 |
+| strands-agents | 1.32.0 | 1.33.0 |
+| strands-agents-tools | 0.2.23 | 0.3.0 |
+| aws-opentelemetry-distro | 0.14.2 | 0.16.0 |
+| bedrock-agentcore | 1.4.7 | 1.4.8 |
+| openai | 2.29.0 | 2.30.0 |
+| google-genai | 1.68.0 | 1.69.0 |
+| cachetools | 7.0.5 | 6.2.4 (downgraded for aws-opentelemetry-distro compatibility) |
+| hypothesis | 6.151.9 | 6.151.10 |
+| ruff | 0.15.7 | 0.15.8 |
+| Angular packages | 21.2.5 | 21.2.6 |
+| @angular/cdk | 21.2.3 | 21.2.4 |
+| @angular/build | 21.2.3 | 21.2.5 |
+| @angular/cli | 21.2.3 | 21.2.5 |
+| ng2-charts | bumped | latest |
+| aws-cdk-lib | 2.244.0 | latest |
+| constructs | bumped | latest |
+| jest / @types/jest | bumped | latest |
+| jsdom | bumped | 29.0.1 |
 
 ---
 
@@ -111,11 +245,11 @@ Added the shared embeddings package to the RAG ingestion Lambda Docker image, re
 
 ## Deployment Notes
 
-This is a drop-in upgrade with no infrastructure changes, no new environment variables, and no migration steps. All changes are backward-compatible.
+This release includes new backend endpoints and frontend pages but no new infrastructure resources (no new DynamoDB tables or S3 buckets). All changes are backward-compatible.
 
-- **Backend:** Restart App API and Inference API containers to pick up code quality fixes and `requests` upgrade
-- **Frontend:** Rebuild and deploy to pick up `picomatch` security patch and sharing UI fixes
-- **Infrastructure:** Run `npm install` to pick up `picomatch` and `diff` patches in lockfile
+- **Backend:** Restart App API and Inference API containers to pick up document deletion, displayText, cost dashboard, and dependency upgrades
+- **Frontend:** Rebuild and deploy to pick up Analog.js testing migration, displayText rendering, cost dashboard page, and `picomatch` security patch
+- **Infrastructure:** Run `npm install` to pick up `picomatch` and `diff` patches in lockfile. Redeploy if using fine-tuning to pick up the default quota hours config.
 - **RAG Ingestion:** Redeploy to pick up the Lambda image digest fix and shared embeddings module
 
 ---
