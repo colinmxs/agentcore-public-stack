@@ -4,7 +4,6 @@ Property-based tests for cleanup service.
 Feature: reliable-document-deletion
 """
 
-import asyncio
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest

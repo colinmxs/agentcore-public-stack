@@ -117,7 +117,7 @@ def _filter_vectors_by_document_status(vectors: List[Dict[str, Any]], assistant_
                         )
                 except Exception as e:
                     logger.warning(f"Failed to look up document {doc_id}: {e}")
-                    pass  # Skip individual lookup failures
+                    # Skip individual lookup failures
         else:
             # No table configured — fall back to unfiltered
             logger.warning("DYNAMODB_ASSISTANTS_TABLE_NAME not configured, returning unfiltered results")

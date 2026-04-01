@@ -1,7 +1,7 @@
 """Admin request/response models for fine-tuning access management."""
 
 from pydantic import BaseModel, Field
-from typing import List, Optional
+from typing import List
 from apis.app_api.fine_tuning.models import FineTuningAccessGrant
 
 

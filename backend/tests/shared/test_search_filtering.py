@@ -11,7 +11,6 @@ Requirements: 3.1, 3.2, 3.3, 3.4
 
 from unittest.mock import MagicMock, patch
 
-import pytest
 
 
 def _make_vector(doc_id, chunk_idx=0):

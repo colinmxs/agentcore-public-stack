@@ -7,7 +7,7 @@ Endpoints under test:
 Requirements: 2.1, 2.2, 8.1, 8.2
 """
 
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import pytest
 from fastapi import FastAPI
