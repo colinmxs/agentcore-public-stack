@@ -404,7 +404,7 @@ def handler(event, context):
                     'AllowedOrigins': [frontend_url, 'http://localhost:4200'],
                     'AllowedMethods': ['GET', 'PUT', 'HEAD'],
                     'AllowedHeaders': ['Content-Type', 'Content-Length', 'x-amz-*'],
-                    'ExposedHeaders': ['ETag', 'Content-Length', 'Content-Type'],
+                    'ExposeHeaders': ['ETag', 'Content-Length', 'Content-Type'],
                     'MaxAgeSeconds': 3600
                 })
             
