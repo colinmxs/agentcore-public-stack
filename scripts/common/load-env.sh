@@ -152,9 +152,6 @@ build_cdk_context_params() {
     if [ -n "${ENV_INFERENCE_API_LOG_LEVEL:-}" ]; then
         context_params="${context_params} --context inferenceApi.logLevel=\"${ENV_INFERENCE_API_LOG_LEVEL}\""
     fi
-    if [ -n "${ENV_INFERENCE_API_CORS_ORIGINS:-}" ]; then
-        context_params="${context_params} --context inferenceApi.corsOrigins=\"${ENV_INFERENCE_API_CORS_ORIGINS}\""
-    fi
 
     # Gateway optional parameters
     if [ -n "${CDK_GATEWAY_ENABLED:-}" ]; then

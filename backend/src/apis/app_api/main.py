@@ -69,7 +69,7 @@ app = FastAPI(
 )
 
 # Add CORS middleware - origins from CDK-provided CORS_ORIGINS env var
-_cors_origins = os.environ.get("CORS_ORIGINS", "http://localhost:4200").split(",")
+_cors_origins = os.environ.get("CORS_ORIGINS", "").split(",")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=[o.strip() for o in _cors_origins if o.strip()],

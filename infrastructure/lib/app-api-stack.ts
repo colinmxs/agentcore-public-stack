@@ -404,7 +404,7 @@ export class AppApiStack extends cdk.Stack {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
         FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
-        CORS_ORIGINS: buildCorsOrigins(config).join(','),
+        CORS_ORIGINS: buildCorsOrigins(config, config.appApi.additionalCorsOrigins).join(','),
         DYNAMODB_QUOTA_TABLE: userQuotasTableName,
         DYNAMODB_EVENTS_TABLE: quotaEventsTableName,
         DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,

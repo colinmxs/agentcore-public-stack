@@ -37,6 +37,7 @@ export interface FrontendConfig {
   enabled: boolean;
   bucketName?: string;
   cloudFrontPriceClass: string;
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 export interface AssistantsConfig {
@@ -51,6 +52,7 @@ export interface AppApiConfig {
   desiredCount: number;
   maxCapacity: number;
   imageTag: string;
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 export interface InferenceApiConfig {
@@ -62,6 +64,7 @@ export interface InferenceApiConfig {
   imageTag: string;
   // Environment variables for runtime container
   logLevel: string;
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 export interface GatewayConfig {
@@ -95,6 +98,7 @@ export interface RagIngestionConfig {
 export interface FineTuningConfig {
   enabled: boolean;              // Enable/disable SageMaker Fine-Tuning stack
   defaultQuotaHours: number;     // Default monthly GPU-hour quota for all users (0 = whitelist-only)
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 /**
@@ -142,12 +146,21 @@ export function loadConfig(scope: cdk.App): AppConfig {
   validateAwsAccount(awsAccount);
   validateAwsRegion(awsRegion);
 
-  // Top-level shared CORS origins — used as default for sections that don't override.
-  // If not explicitly set, auto-derive from CDK_DOMAIN_NAME so callers only need one variable.
+  // Top-level shared CORS origins — always includes https://{domainName} when set.
+  // CDK_CORS_ORIGINS provides ADDITIONAL origins on top of the domain.
   const domainName = process.env.CDK_DOMAIN_NAME || scope.node.tryGetContext('domainName');
-  const corsOrigins = process.env.CDK_CORS_ORIGINS
+  const extraCorsOrigins = process.env.CDK_CORS_ORIGINS
     || scope.node.tryGetContext('corsOrigins')
-    || (domainName ? `https://${domainName}` : '');
+    || '';
+  // Build corsOrigins: domain-derived origin first, then any extras
+  const corsOriginParts: string[] = [];
+  if (domainName) {
+    corsOriginParts.push(`https://${domainName}`);
+  }
+  if (extraCorsOrigins) {
+    corsOriginParts.push(extraCorsOrigins);
+  }
+  const corsOrigins = corsOriginParts.join(',');
 
   // Load app version from environment variable or CDK context
   const appVersion = process.env.CDK_APP_VERSION || scope.node.tryGetContext('appVersion') || 'unknown';
@@ -182,6 +195,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       enabled: parseBooleanEnv(process.env.CDK_FRONTEND_ENABLED) ?? scope.node.tryGetContext('frontend')?.enabled,
       bucketName: process.env.CDK_FRONTEND_BUCKET_NAME || scope.node.tryGetContext('frontend')?.bucketName,
       cloudFrontPriceClass: process.env.CDK_FRONTEND_CLOUDFRONT_PRICE_CLASS || scope.node.tryGetContext('frontend')?.cloudFrontPriceClass,
+      additionalCorsOrigins: process.env.CDK_FRONTEND_CORS_ORIGINS || scope.node.tryGetContext('frontend')?.additionalCorsOrigins,
     },
     appApi: {
       enabled: parseBooleanEnv(process.env.CDK_APP_API_ENABLED) ?? scope.node.tryGetContext('appApi')?.enabled,
@@ -190,6 +204,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       desiredCount: parseIntEnv(process.env.CDK_APP_API_DESIRED_COUNT) ?? scope.node.tryGetContext('appApi')?.desiredCount,
       imageTag: scope.node.tryGetContext('imageTag') || '',
       maxCapacity: parseIntEnv(process.env.CDK_APP_API_MAX_CAPACITY) || scope.node.tryGetContext('appApi')?.maxCapacity,
+      additionalCorsOrigins: process.env.CDK_APP_API_CORS_ORIGINS || scope.node.tryGetContext('appApi')?.additionalCorsOrigins,
     },
     inferenceApi: {
       enabled: parseBooleanEnv(process.env.CDK_INFERENCE_API_ENABLED) ?? scope.node.tryGetContext('inferenceApi')?.enabled,
@@ -200,6 +215,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       imageTag: scope.node.tryGetContext('imageTag') || '',
       // Environment variables from GitHub Secrets/Variables with context fallback
       logLevel: process.env.ENV_INFERENCE_API_LOG_LEVEL || scope.node.tryGetContext('inferenceApi')?.logLevel,
+      additionalCorsOrigins: process.env.CDK_INFERENCE_API_CORS_ORIGINS || scope.node.tryGetContext('inferenceApi')?.additionalCorsOrigins,
     },
     gateway: {
       enabled: parseBooleanEnv(process.env.CDK_GATEWAY_ENABLED) ?? scope.node.tryGetContext('gateway')?.enabled,
@@ -233,6 +249,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
     fineTuning: {
       enabled: parseBooleanEnv(process.env.CDK_FINE_TUNING_ENABLED) ?? scope.node.tryGetContext('fineTuning')?.enabled ?? false,
       defaultQuotaHours: parseIntEnv(process.env.CDK_FINE_TUNING_DEFAULT_QUOTA_HOURS) ?? scope.node.tryGetContext('fineTuning')?.defaultQuotaHours ?? 0,
+      additionalCorsOrigins: process.env.CDK_FINE_TUNING_CORS_ORIGINS || scope.node.tryGetContext('fineTuning')?.additionalCorsOrigins,
     },
     tags: {
       ...(scope.node.tryGetContext('tags') || {}),
@@ -563,10 +580,12 @@ export function applyStandardTags(stack: cdk.Stack, config: AppConfig): void {
  *
  * Always includes:
  *   1. https://{CDK_DOMAIN_NAME}  (from config.corsOrigins)
- *   2. http://localhost:4200      (local dev)
  *
  * Optionally appends extra origins from:
+ *   - CDK_CORS_ORIGINS (already merged into config.corsOrigins)
  *   - additionalOrigins parameter (section-specific CDK_*_CORS_ORIGINS)
+ *
+ * localhost is NOT auto-included. Add it via CDK_CORS_ORIGINS for local dev.
  *
  * Returns a de-duplicated array suitable for S3 CORS rules or
  * a comma-joined string for container env vars.
@@ -576,7 +595,6 @@ export function applyStandardTags(stack: cdk.Stack, config: AppConfig): void {
  */
 export function buildCorsOrigins(config: AppConfig, additionalOrigins?: string): string[] {
   const origins = new Set<string>();
-  origins.add('http://localhost:4200');
   if (config.corsOrigins) {
     config.corsOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
   }

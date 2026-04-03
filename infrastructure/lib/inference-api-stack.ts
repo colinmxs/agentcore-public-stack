@@ -873,7 +873,7 @@ export class InferenceApiStack extends cdk.Stack {
     );
 
     // Frontend CORS origins — single source: buildCorsOrigins (from CDK_DOMAIN_NAME)
-    const corsOrigins = buildCorsOrigins(config).join(',');
+    const corsOrigins = buildCorsOrigins(config, config.inferenceApi.additionalCorsOrigins).join(',');
 
     // ============================================================
     // Single CDK-Managed AgentCore Runtime with Cognito JWT Authorizer

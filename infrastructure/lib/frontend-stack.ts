@@ -333,7 +333,7 @@ export class FrontendStack extends cdk.Stack {
     });
 
     // Construct CORS origins list via shared helper
-    const corsOrigins = buildCorsOrigins(config).join(',');
+    const corsOrigins = buildCorsOrigins(config, config.frontend.additionalCorsOrigins).join(',');
 
     // Export CORS origins for runtime provisioner
     new ssm.StringParameter(this, 'CorsOriginsParameter', {

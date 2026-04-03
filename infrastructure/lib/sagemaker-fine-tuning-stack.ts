@@ -127,7 +127,7 @@ export class SageMakerFineTuningStack extends cdk.Stack {
     // ============================================================
 
     // Build CORS origins for fine-tuning data bucket
-    const fineTuningCorsOrigins = buildCorsOrigins(config);
+    const fineTuningCorsOrigins = buildCorsOrigins(config, config.fineTuning.additionalCorsOrigins);
 
     this.fineTuningDataBucket = new s3.Bucket(this, 'FineTuningDataBucket', {
       bucketName: getResourceName(config, 'fine-tuning-data', config.awsAccount),
