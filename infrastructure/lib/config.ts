@@ -445,13 +445,11 @@ function validateConfig(config: AppConfig): void {
   }
 
   // Validate File Upload CORS origins
-  if (config.fileUpload.enabled) {
-    if (!config.corsOrigins && !config.domainName) {
-      throw new Error(
-        'File Upload stack requires CORS origins to be configured. ' +
-        'Set CDK_DOMAIN_NAME or CDK_CORS_ORIGINS.'
-      );
-    }
+  if (config.fileUpload.enabled && !config.corsOrigins) {
+    console.warn(
+      'Warning: File Upload is enabled but no CORS origins configured. ' +
+      'Set CDK_DOMAIN_NAME or CDK_CORS_ORIGINS to enable browser uploads.'
+    );
   }
 
   // Validate required fields for all enabled stacks
