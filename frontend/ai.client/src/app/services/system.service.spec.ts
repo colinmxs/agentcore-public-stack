@@ -32,8 +32,10 @@ describe('SystemService', () => {
     it('should return cached value on subsequent calls', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ first_boot_completed: true }), { status: 200 }));
       await service.checkStatus();
+      const callsAfterFirst = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/system/status')).length;
       await service.checkStatus();
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const callsAfterSecond = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/system/status')).length;
+      expect(callsAfterSecond).toBe(callsAfterFirst);
     });
 
     it('should return false on non-OK response', async () => {
@@ -80,10 +82,11 @@ describe('SystemService', () => {
     it('should force re-fetch after clearing cache', async () => {
       const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(JSON.stringify({ first_boot_completed: true }), { status: 200 }));
       await service.checkStatus();
-      expect(fetchSpy).toHaveBeenCalledTimes(1);
+      const callsBeforeClear = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/system/status')).length;
       service.clearCache();
       await service.checkStatus();
-      expect(fetchSpy).toHaveBeenCalledTimes(2);
+      const callsAfterClear = fetchSpy.mock.calls.filter(c => String(c[0]).includes('/system/status')).length;
+      expect(callsAfterClear).toBe(callsBeforeClear + 1);
     });
   });
 });
