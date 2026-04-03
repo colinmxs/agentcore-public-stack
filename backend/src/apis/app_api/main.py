@@ -68,29 +68,15 @@ app = FastAPI(
     lifespan=lifespan
 )
 
-# Add CORS middleware
-# CORS origins are automatically configured based on FRONTEND_URL environment variable
-allowed_origins = []
-
-# Read frontend URL from environment variable (set by CDK based on frontend.domainName)
-frontend_url = os.getenv('FRONTEND_URL', '')
-if frontend_url:
-    allowed_origins.append(frontend_url)
-    logger.info(f"CORS: Added frontend origin: {frontend_url}")
-
-# Fallback: Add localhost for local development if no frontend URL configured
-if not allowed_origins:
-    allowed_origins.append("http://localhost:4200")
-    logger.info("CORS: Added local development origin (fallback)")
-
-if allowed_origins:
-    app.add_middleware(
-        CORSMiddleware,
-        allow_origins=allowed_origins,
-        allow_credentials=True,
-        allow_methods=["*"],
-        allow_headers=["*"],
-    )
+# Add CORS middleware - use configured origins or localhost for local dev
+_cors_origins = os.environ.get("CORS_ALLOWED_ORIGINS", "http://localhost:4200").split(",")
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[o.strip() for o in _cors_origins],
+    allow_credentials=False,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
 
 
 # Import routers
@@ -111,6 +97,7 @@ from apis.app_api.documents.routes import router as documents_router
 from apis.app_api.users.routes import router as users_router
 from apis.app_api.user_settings.routes import router as user_settings_router
 from apis.shared.oauth.routes import router as oauth_router
+from apis.app_api.system.routes import router as system_router
 from apis.app_api.shares.routes import conversations_share_router, shares_router, shared_view_router
 
 # Include routers
@@ -131,6 +118,7 @@ app.include_router(memory_router)  # AgentCore Memory access endpoints
 app.include_router(tools_router)  # Tool discovery and permissions
 app.include_router(files_router)  # File upload via pre-signed URLs
 app.include_router(oauth_router)  # OAuth provider connections
+app.include_router(system_router)  # System status and first-boot endpoints
 app.include_router(conversations_share_router)  # Share conversations endpoints
 app.include_router(shares_router)  # Share management (update, revoke, export)
 app.include_router(shared_view_router)  # Shared conversation read-only view
