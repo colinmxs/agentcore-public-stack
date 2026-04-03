@@ -338,10 +338,50 @@ def seed_system_admin_role(
     try:
         existing = table.get_item(Key={"PK": pk, "SK": "DEFINITION"})
         if "Item" in existing:
-            msg = "system_admin role already exists — skipped"
-            logger.info(msg)
-            result.skipped = 1
-            result.details.append(msg)
+            # Role exists — ensure JWT mapping is present (additive, non-destructive)
+            try:
+                jwt_check = table.get_item(Key={"PK": pk, "SK": "JWT_MAPPING#system_admin"})
+                if "Item" in jwt_check:
+                    msg = "system_admin role already exists with JWT mapping — skipped"
+                    logger.info(msg)
+                    result.skipped = 1
+                    result.details.append(msg)
+                    return result
+            except ClientError:
+                pass  # If check fails, try to add the mapping anyway
+
+            # JWT mapping is missing — add it without touching anything else
+            logger.info("system_admin role exists but JWT_MAPPING#system_admin is missing — adding it")
+            try:
+                jwt_mapping_item = {
+                    "PK": pk,
+                    "SK": "JWT_MAPPING#system_admin",
+                    "GSI1PK": "JWT_ROLE#system_admin",
+                    "GSI1SK": pk,
+                    "roleId": role_id,
+                    "enabled": True,
+                }
+                table.put_item(Item=jwt_mapping_item)
+
+                # Also update the DEFINITION to include the mapping in jwtRoleMappings
+                existing_mappings = existing["Item"].get("jwtRoleMappings", [])
+                if "system_admin" not in existing_mappings:
+                    existing_mappings.append("system_admin")
+                    table.update_item(
+                        Key={"PK": pk, "SK": "DEFINITION"},
+                        UpdateExpression="SET jwtRoleMappings = :m",
+                        ExpressionAttributeValues={":m": existing_mappings},
+                    )
+
+                msg = "Added missing JWT_MAPPING#system_admin to existing system_admin role"
+                logger.info(msg)
+                result.created = 1
+                result.details.append(msg)
+            except ClientError as e:
+                msg = f"Failed to add JWT mapping to existing system_admin role: {e}"
+                logger.error(msg)
+                result.failed = 1
+                result.details.append(msg)
             return result
     except ClientError as e:
         msg = f"Failed to check existing system_admin role: {e}"

@@ -14,7 +14,7 @@ SYSTEM_ADMIN_ROLE = AppRole(
     role_id="system_admin",
     display_name="System Administrator",
     description="Full access to all system features. This role cannot be deleted.",
-    jwt_role_mappings=["system_admin"],  # Maps Cognito group "system_admin" to this AppRole
+    jwt_role_mappings=[],  # Populated by bootstrap seed script
     inherits_from=[],
     granted_tools=["*"],
     granted_models=["*"],
@@ -69,25 +69,7 @@ async def seed_system_roles(repository: AppRoleRepository = None):
         try:
             existing = await repository.get_role(role.role_id)
             if existing:
-                # Role exists — ensure required JWT mappings are present (additive only).
-                # This handles existing deployments where the role was seeded before
-                # jwt_role_mappings was populated. We only ADD missing mappings;
-                # we never remove mappings an admin may have added.
-                if role.jwt_role_mappings:
-                    existing_mappings = set(existing.jwt_role_mappings or [])
-                    required_mappings = set(role.jwt_role_mappings)
-                    missing = required_mappings - existing_mappings
-                    if missing:
-                        merged = list(existing_mappings | required_mappings)
-                        existing.jwt_role_mappings = merged
-                        await repository.update_role(existing)
-                        logger.info(
-                            f"Added missing JWT mappings {missing} to system role: {role.role_id}"
-                        )
-                    else:
-                        logger.debug(f"System role '{role.role_id}' already exists with correct mappings")
-                else:
-                    logger.debug(f"System role '{role.role_id}' already exists")
+                logger.debug(f"System role '{role.role_id}' already exists")
                 continue
 
             # Set timestamps
