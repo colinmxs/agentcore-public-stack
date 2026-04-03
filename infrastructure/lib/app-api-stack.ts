@@ -13,7 +13,7 @@ import * as sns from "aws-cdk-lib/aws-sns";
 import * as events from "aws-cdk-lib/aws-events";
 import * as targets from "aws-cdk-lib/aws-events-targets";
 import { Construct } from "constructs";
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy } from "./config";
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, buildCorsOrigins } from "./config";
 
 export interface AppApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -404,6 +404,7 @@ export class AppApiStack extends cdk.Stack {
         AWS_REGION: config.awsRegion,
         PROJECT_PREFIX: config.projectPrefix,
         FRONTEND_URL: config.domainName ? `https://${config.domainName}` : 'http://localhost:4200',
+        CORS_ORIGINS: buildCorsOrigins(config).join(','),
         DYNAMODB_QUOTA_TABLE: userQuotasTableName,
         DYNAMODB_EVENTS_TABLE: quotaEventsTableName,
         DYNAMODB_OIDC_STATE_TABLE_NAME: oidcStateTableName,

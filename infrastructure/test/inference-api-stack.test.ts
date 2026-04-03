@@ -152,6 +152,16 @@ describe('InferenceApiStack', () => {
     });
   });
 
+  describe('AgentCore Runtime', () => {
+    test('runtime environment includes CORS_ORIGINS', () => {
+      template.hasResourceProperties('AWS::BedrockAgentCore::Runtime', {
+        EnvironmentVariables: Match.objectLike({
+          CORS_ORIGINS: Match.anyValue(),
+        }),
+      });
+    });
+  });
+
   describe('AgentCore Memory', () => {
     test('CfnMemory resource exists', () => {
       template.hasResourceProperties('AWS::BedrockAgentCore::Memory', {

@@ -47,7 +47,6 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
       maxCapacity: 2,
       imageTag: 'latest',
       logLevel: 'INFO',
-      corsOrigins: 'http://localhost:4200',
     },
     gateway: {
       enabled: true,
@@ -58,7 +57,6 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
     },
     assistants: {
       enabled: true,
-      corsOrigins: 'http://localhost:4200',
     },
     fileUpload: {
       enabled: true,
@@ -69,7 +67,6 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
     },
     ragIngestion: {
       enabled: true,
-      corsOrigins: 'http://localhost:4200',
       lambdaMemorySize: 3008,
       lambdaTimeout: 900,
       embeddingModel: 'amazon.titan-embed-text-v2',

@@ -51,7 +51,6 @@ describe('RagIngestionStack', () => {
         maxCapacity: 4,
         imageTag: 'latest',
         logLevel: 'INFO',
-        corsOrigins: 'http://localhost:3000',
       },
       gateway: {
         enabled: true,
@@ -69,11 +68,11 @@ describe('RagIngestionStack', () => {
       },
       assistants: {
         enabled: true,
-        corsOrigins: 'http://localhost:3000,https://example.com',
+        additionalCorsOrigins: 'http://localhost:3000,https://example.com',
       },
       ragIngestion: {
         enabled: true,
-        corsOrigins: 'http://localhost:3000,https://example.com',
+        additionalCorsOrigins: 'http://localhost:3000,https://example.com',
         lambdaMemorySize: 3008,
         lambdaTimeout: 900,
         embeddingModel: 'amazon.titan-embed-text-v2',

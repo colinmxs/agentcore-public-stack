@@ -5,7 +5,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects, buildCorsOrigins } from './config';
 
 export interface SageMakerFineTuningStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -126,16 +126,8 @@ export class SageMakerFineTuningStack extends cdk.Stack {
     // S3 Bucket for Fine-Tuning Data
     // ============================================================
 
-    // Build CORS origins for presigned URL uploads
-    const corsOrigins = new Set<string>();
-    corsOrigins.add('http://localhost:4200');
-    if (config.domainName) {
-      corsOrigins.add(`https://${config.domainName}`);
-    }
-    if (config.corsOrigins) {
-      config.corsOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => corsOrigins.add(o));
-    }
-    const fineTuningCorsOrigins = Array.from(corsOrigins);
+    // Build CORS origins for fine-tuning data bucket
+    const fineTuningCorsOrigins = buildCorsOrigins(config);
 
     this.fineTuningDataBucket = new s3.Bucket(this, 'FineTuningDataBucket', {
       bucketName: getResourceName(config, 'fine-tuning-data', config.awsAccount),

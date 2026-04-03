@@ -10,7 +10,7 @@ import * as acm from 'aws-cdk-lib/aws-certificatemanager';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects, buildCorsOrigins } from './config';
 
 export interface FrontendStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -332,10 +332,8 @@ export class FrontendStack extends cdk.Stack {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    // Construct CORS origins list
-    const corsOrigins = config.domainName
-      ? `https://${config.domainName}`
-      : `https://${this.distributionDomainName}`;
+    // Construct CORS origins list via shared helper
+    const corsOrigins = buildCorsOrigins(config).join(',');
 
     // Export CORS origins for runtime provisioner
     new ssm.StringParameter(this, 'CorsOriginsParameter', {

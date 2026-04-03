@@ -7,7 +7,7 @@ import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as xray from 'aws-cdk-lib/aws-xray';
 import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags } from './config';
+import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags, buildCorsOrigins } from './config';
 
 export interface InferenceApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -872,9 +872,8 @@ export class InferenceApiStack extends cdk.Stack {
       this, `/${config.projectPrefix}/rag/vector-index-name`
     );
 
-    // Frontend CORS origins (constructed from config, not imported from FrontendStack
-    // to avoid circular dependency: InferenceApiStack ↔ FrontendStack)
-    const corsOrigins = config.domainName ? `https://${config.domainName}` : 'http://localhost:4200';
+    // Frontend CORS origins — single source: buildCorsOrigins (from CDK_DOMAIN_NAME)
+    const corsOrigins = buildCorsOrigins(config).join(',');
 
     // ============================================================
     // Single CDK-Managed AgentCore Runtime with Cognito JWT Authorizer

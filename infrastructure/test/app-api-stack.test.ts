@@ -100,6 +100,18 @@ describe('AppApiStack', () => {
         ]),
       });
     });
+
+    test('container environment includes CORS_ORIGINS derived from domainName', () => {
+      template.hasResourceProperties('AWS::ECS::TaskDefinition', {
+        ContainerDefinitions: Match.arrayWith([
+          Match.objectLike({
+            Environment: Match.arrayWith([
+              Match.objectLike({ Name: 'CORS_ORIGINS' }),
+            ]),
+          }),
+        ]),
+      });
+    });
   });
 
   // ============================================================

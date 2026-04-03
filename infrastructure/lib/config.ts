@@ -41,7 +41,7 @@ export interface FrontendConfig {
 
 export interface AssistantsConfig {
   enabled: boolean;
-  corsOrigins: string;
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 export interface AppApiConfig {
@@ -62,7 +62,6 @@ export interface InferenceApiConfig {
   imageTag: string;
   // Environment variables for runtime container
   logLevel: string;
-  corsOrigins: string;
 }
 
 export interface GatewayConfig {
@@ -80,12 +79,12 @@ export interface FileUploadConfig {
   maxFilesPerMessage: number;    // Maximum files per message (default: 5)
   userQuotaBytes: number;        // Per-user storage quota (default: 1GB)
   retentionDays: number;         // File retention (default: 365 days)
-  corsOrigins?: string;          // Comma-separated CORS origins (defaults based on environment)
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
 export interface RagIngestionConfig {
   enabled: boolean;              // Enable/disable RAG stack
-  corsOrigins: string;           // Comma-separated CORS origins
+  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
   lambdaMemorySize: number;      // Lambda memory in MB (default: 3008)
   lambdaTimeout: number;         // Lambda timeout in seconds (default: 900)
   embeddingModel: string;        // Bedrock model ID (default: "amazon.titan-embed-text-v2")
@@ -201,7 +200,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
       imageTag: scope.node.tryGetContext('imageTag') || '',
       // Environment variables from GitHub Secrets/Variables with context fallback
       logLevel: process.env.ENV_INFERENCE_API_LOG_LEVEL || scope.node.tryGetContext('inferenceApi')?.logLevel,
-      corsOrigins: process.env.ENV_INFERENCE_API_CORS_ORIGINS || scope.node.tryGetContext('inferenceApi')?.corsOrigins,
     },
     gateway: {
       enabled: parseBooleanEnv(process.env.CDK_GATEWAY_ENABLED) ?? scope.node.tryGetContext('gateway')?.enabled,
@@ -217,15 +215,15 @@ export function loadConfig(scope: cdk.App): AppConfig {
       maxFilesPerMessage: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILES_PER_MESSAGE) || scope.node.tryGetContext('fileUpload')?.maxFilesPerMessage,
       userQuotaBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_USER_QUOTA) || scope.node.tryGetContext('fileUpload')?.userQuotaBytes,
       retentionDays: parseIntEnv(process.env.CDK_FILE_UPLOAD_RETENTION_DAYS) || scope.node.tryGetContext('fileUpload')?.retentionDays,
-      corsOrigins: process.env.CDK_FILE_UPLOAD_CORS_ORIGINS || scope.node.tryGetContext('fileUpload')?.corsOrigins || corsOrigins,
+      additionalCorsOrigins: process.env.CDK_FILE_UPLOAD_CORS_ORIGINS || scope.node.tryGetContext('fileUpload')?.additionalCorsOrigins,
     },
     assistants: {
       enabled: parseBooleanEnv(process.env.CDK_ASSISTANTS_ENABLED) ?? scope.node.tryGetContext('assistants')?.enabled,
-      corsOrigins: process.env.CDK_ASSISTANTS_CORS_ORIGINS || scope.node.tryGetContext('assistants')?.corsOrigins || corsOrigins,
+      additionalCorsOrigins: process.env.CDK_ASSISTANTS_CORS_ORIGINS || scope.node.tryGetContext('assistants')?.additionalCorsOrigins,
     },
     ragIngestion: {
       enabled: parseBooleanEnv(process.env.CDK_RAG_ENABLED) ?? scope.node.tryGetContext('ragIngestion')?.enabled,
-      corsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.corsOrigins || corsOrigins,
+      additionalCorsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.additionalCorsOrigins,
       lambdaMemorySize: parseIntEnv(process.env.CDK_RAG_LAMBDA_MEMORY) || scope.node.tryGetContext('ragIngestion')?.lambdaMemorySize,
       lambdaTimeout: parseIntEnv(process.env.CDK_RAG_LAMBDA_TIMEOUT) || scope.node.tryGetContext('ragIngestion')?.lambdaTimeout,
       embeddingModel: process.env.CDK_RAG_EMBEDDING_MODEL || scope.node.tryGetContext('ragIngestion')?.embeddingModel,
@@ -409,11 +407,11 @@ function validateConfig(config: AppConfig): void {
     }
 
     // Validate CORS origins if provided
-    if (config.ragIngestion.corsOrigins) {
-      const origins = config.ragIngestion.corsOrigins.split(',').map(o => o.trim());
+    if (config.corsOrigins) {
+      const origins = config.corsOrigins.split(',').map(o => o.trim());
       origins.forEach(origin => {
         if (origin && !origin.startsWith('http://') && !origin.startsWith('https://') && origin !== '*') {
-          console.warn(`Warning: RAG CORS origin '${origin}' should start with http:// or https:// or be '*'`);
+          console.warn(`Warning: CORS origin '${origin}' should start with http:// or https:// or be '*'`);
         }
       });
     }
@@ -431,11 +429,10 @@ function validateConfig(config: AppConfig): void {
 
   // Validate File Upload CORS origins
   if (config.fileUpload.enabled) {
-    const effectiveCors = config.fileUpload.corsOrigins || config.corsOrigins || config.domainName;
-    if (!effectiveCors || effectiveCors.trim() === '') {
+    if (!config.corsOrigins && !config.domainName) {
       throw new Error(
         'File Upload stack requires CORS origins to be configured. ' +
-        'Set CDK_DOMAIN_NAME, CDK_CORS_ORIGINS, or corsOrigins in the fileUpload section.'
+        'Set CDK_DOMAIN_NAME or CDK_CORS_ORIGINS.'
       );
     }
   }
@@ -559,4 +556,32 @@ export function applyStandardTags(stack: cdk.Stack, config: AppConfig): void {
   Object.entries(config.tags).forEach(([key, value]) => {
     cdk.Tags.of(stack).add(key, value);
   });
+}
+
+/**
+ * Build the canonical CORS origins list for a stack.
+ *
+ * Always includes:
+ *   1. https://{CDK_DOMAIN_NAME}  (from config.corsOrigins)
+ *   2. http://localhost:4200      (local dev)
+ *
+ * Optionally appends extra origins from:
+ *   - additionalOrigins parameter (section-specific CDK_*_CORS_ORIGINS)
+ *
+ * Returns a de-duplicated array suitable for S3 CORS rules or
+ * a comma-joined string for container env vars.
+ *
+ * @param config  The top-level AppConfig
+ * @param additionalOrigins  Optional comma-separated extra origins to append
+ */
+export function buildCorsOrigins(config: AppConfig, additionalOrigins?: string): string[] {
+  const origins = new Set<string>();
+  origins.add('http://localhost:4200');
+  if (config.corsOrigins) {
+    config.corsOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
+  }
+  if (additionalOrigins) {
+    additionalOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
+  }
+  return Array.from(origins);
 }

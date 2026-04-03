@@ -12,7 +12,7 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
-import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects } from './config';
+import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, getAutoDeleteObjects, buildCorsOrigins } from './config';
 
 export interface InfrastructureStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -1192,17 +1192,7 @@ export class InfrastructureStack extends cdk.Stack {
     // dependency: InferenceApiStack (tier 2) deploys before AppApiStack (tier 3).
 
     // Build CORS origins for file upload bucket
-    const fileUploadCorsOrigins: string[] = (() => {
-      const origins = new Set<string>();
-      origins.add('http://localhost:4200');
-      if (config.domainName) {
-        origins.add(`https://${config.domainName}`);
-      }
-      if (config.fileUpload?.corsOrigins) {
-        config.fileUpload.corsOrigins.split(',').map(o => o.trim()).filter(Boolean).forEach(o => origins.add(o));
-      }
-      return Array.from(origins);
-    })();
+    const fileUploadCorsOrigins = buildCorsOrigins(config, config.fileUpload?.additionalCorsOrigins);
 
     // S3 Bucket for user file uploads
     const userFilesBucket = new s3.Bucket(this, "UserFilesBucket", {
