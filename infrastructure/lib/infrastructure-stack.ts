@@ -1203,7 +1203,7 @@ export class InfrastructureStack extends cdk.Stack {
       versioned: false,
       removalPolicy: getRemovalPolicy(config),
       autoDeleteObjects: getAutoDeleteObjects(config),
-      cors: [
+      cors: fileUploadCorsOrigins.length > 0 ? [
         {
           allowedOrigins: fileUploadCorsOrigins,
           allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
@@ -1211,7 +1211,7 @@ export class InfrastructureStack extends cdk.Stack {
           exposedHeaders: ["ETag", "Content-Length", "Content-Type"],
           maxAge: 3600,
         },
-      ],
+      ] : undefined,
       lifecycleRules: [
         {
           id: "transition-to-ia",

@@ -137,7 +137,7 @@ export class SageMakerFineTuningStack extends cdk.Stack {
       versioned: false,
       removalPolicy: getRemovalPolicy(config),
       autoDeleteObjects: getAutoDeleteObjects(config),
-      cors: [
+      cors: fineTuningCorsOrigins.length > 0 ? [
         {
           allowedOrigins: fineTuningCorsOrigins,
           allowedMethods: [s3.HttpMethods.GET, s3.HttpMethods.PUT, s3.HttpMethods.HEAD],
@@ -145,7 +145,7 @@ export class SageMakerFineTuningStack extends cdk.Stack {
           exposedHeaders: ['ETag', 'Content-Length', 'Content-Type'],
           maxAge: 3600,
         },
-      ],
+      ] : undefined,
       lifecycleRules: [
         {
           id: 'expire-objects',
