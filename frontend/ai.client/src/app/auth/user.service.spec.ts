@@ -79,7 +79,8 @@ describe('UserService', () => {
         lastName: 'User',
         fullName: 'Test User',
         roles: ['Admin'],
-        picture: 'https://example.com/pic.jpg'
+        picture: 'https://example.com/pic.jpg',
+        providerSub: '',
       });
     });
   });
