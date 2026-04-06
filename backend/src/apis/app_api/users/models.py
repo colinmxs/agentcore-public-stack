@@ -38,3 +38,5 @@ class UserProfileSyncRequest(BaseModel):
     email: str = Field(..., description="User email from ID token")
     name: str = Field("", description="User display name from ID token")
     picture: Optional[str] = Field(None, description="Profile picture URL from ID token")
+    roles: List[str] = Field(default_factory=list, description="User roles from ID token")
+    provider_sub: Optional[str] = Field(None, alias="provider_sub", description="IdP user identifier from ID token")

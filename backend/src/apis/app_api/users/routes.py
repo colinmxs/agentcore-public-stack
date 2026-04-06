@@ -78,7 +78,7 @@ async def sync_my_profile(
         user_id=current_user.user_id,
         email=email,
         name=body.name or current_user.name,
-        roles=current_user.roles or [],
+        roles=body.roles if body.roles else current_user.roles or [],
         picture=body.picture,
         email_domain=email_domain,
         created_at=now,

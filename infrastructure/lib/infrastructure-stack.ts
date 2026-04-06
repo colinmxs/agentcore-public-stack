@@ -1093,6 +1093,7 @@ export class InfrastructureStack extends cdk.Stack {
       },
       customAttributes: {
         'provider_sub': new cognito.StringAttribute({ mutable: true }),
+        'roles': new cognito.StringAttribute({ mutable: true }),
       },
       passwordPolicy: {
         minLength: config.cognito.passwordMinLength || 8,

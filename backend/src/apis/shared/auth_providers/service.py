@@ -221,12 +221,15 @@ class AuthProviderService:
         """Build Cognito attribute mapping from provider claim configuration.
 
         Maps Cognito standard attributes to the provider's claim names.
-        Always includes email→email_claim and custom:provider_sub→sub.
+        Uses the configured user_id_claim for custom:provider_sub and
+        roles_claim for custom:roles.
         """
         mapping: Dict[str, str] = {
             "email": data.email_claim or "email",
-            "custom:provider_sub": "sub",
+            "custom:provider_sub": data.user_id_claim or "sub",
         }
+        if data.roles_claim:
+            mapping["custom:roles"] = data.roles_claim
         if data.name_claim:
             mapping["name"] = data.name_claim
         if data.first_name_claim:
@@ -243,8 +246,10 @@ class AuthProviderService:
         "client_id",
         "client_secret",
         "scopes",
+        "user_id_claim",
         "email_claim",
         "name_claim",
+        "roles_claim",
         "first_name_claim",
         "last_name_claim",
         "picture_claim",
@@ -314,8 +319,10 @@ class AuthProviderService:
 
                     # Rebuild attribute mapping if any claim fields changed
                     claim_fields = changed_oidc & {
+                        "user_id_claim",
                         "email_claim",
                         "name_claim",
+                        "roles_claim",
                         "first_name_claim",
                         "last_name_claim",
                         "picture_claim",
@@ -323,10 +330,14 @@ class AuthProviderService:
                     if claim_fields:
                         # Merge existing claims with updates
                         email_claim = updates.email_claim or existing.email_claim or "email"
+                        user_id_claim = updates.user_id_claim if updates.user_id_claim is not None else existing.user_id_claim
                         mapping: Dict[str, str] = {
                             "email": email_claim,
-                            "custom:provider_sub": "sub",
+                            "custom:provider_sub": user_id_claim or "sub",
                         }
+                        roles_claim = updates.roles_claim if updates.roles_claim is not None else existing.roles_claim
+                        if roles_claim:
+                            mapping["custom:roles"] = roles_claim
                         name_claim = updates.name_claim if updates.name_claim is not None else existing.name_claim
                         if name_claim:
                             mapping["name"] = name_claim

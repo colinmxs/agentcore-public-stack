@@ -122,8 +122,15 @@ export class UserService {
         lastName = nameParts.slice(1).join(' ') || '';
       }
 
-      // Extract roles from cognito:groups (Cognito tokens) or roles claim (other OIDC)
-      const roles = jwtPayload['cognito:groups'] || jwtPayload.roles || [];
+      // Extract roles from cognito:groups (Cognito tokens), custom:roles (federated), or roles claim (other OIDC)
+      const cognitoRoles = jwtPayload['custom:roles'];
+      const parsedCognitoRoles = typeof cognitoRoles === 'string'
+        ? cognitoRoles.split(',').map((r: string) => r.trim()).filter(Boolean)
+        : cognitoRoles;
+      const roles = jwtPayload['cognito:groups'] || parsedCognitoRoles || jwtPayload.roles || [];
+
+      // Extract IdP user identifier (mapped via custom:provider_sub)
+      const providerSub = jwtPayload['custom:provider_sub'] || '';
 
       const user: User = {
         email,
@@ -132,7 +139,8 @@ export class UserService {
         lastName,
         fullName,
         roles,
-        picture: jwtPayload.picture
+        picture: jwtPayload.picture,
+        providerSub,
       };
 
       return user;
@@ -229,6 +237,8 @@ export class UserService {
           email: user.email,
           name: user.fullName,
           picture: user.picture || null,
+          roles: user.roles || [],
+          provider_sub: user.providerSub || null,
         })
       );
     } catch (error) {
