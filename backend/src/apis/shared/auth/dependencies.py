@@ -65,26 +65,33 @@ def _get_user_repository():
 
 
 async def _enrich_user_from_store(user: User) -> None:
-    """Fill in missing identity claims (email, name) from the Users DynamoDB table.
+    """Fill in missing identity claims from the Users DynamoDB table.
 
     Cognito access tokens only carry sub, cognito:groups, and username.
-    The Users table (populated during first-boot / user sync) stores the
-    full profile.  Results are cached in-memory to avoid per-request lookups.
+    The Users table (populated by the frontend's /users/me/sync call
+    which decodes the ID token) stores the full profile including the
+    IdP roles mapped via custom:roles.
+
+    This enrichment is critical for RBAC: the access token's
+    cognito:groups contains the Cognito provider group name (e.g.
+    ``us-west-2_Pool_provider-name``), not the actual IdP roles.
+    The stored profile has the real roles parsed from the ID token.
+
+    Results are cached in-memory to avoid per-request DynamoDB lookups.
     """
     import time
 
-    # Nothing to do if the token already has email
-    if user.email:
-        return
-
-    # Check cache
+    # Check cache first
     now = time.monotonic()
     cached = _user_profile_cache.get(user.user_id)
     if cached:
         ts, profile = cached
         if now - ts < _USER_PROFILE_CACHE_TTL:
-            user.email = profile.get("email", user.email) or user.email
-            user.name = profile.get("name", user.name) or user.name
+            user.email = profile.get("email") or user.email
+            user.name = profile.get("name") or user.name
+            stored_roles = profile.get("roles")
+            if stored_roles:
+                user.roles = stored_roles
             return
 
     # Cache miss — query DynamoDB
@@ -95,10 +102,16 @@ async def _enrich_user_from_store(user: User) -> None:
     try:
         stored = await repo.get_user_by_user_id(user.user_id)
         if stored:
-            profile = {"email": stored.email, "name": stored.name}
+            profile = {
+                "email": stored.email,
+                "name": stored.name,
+                "roles": stored.roles,
+            }
             _user_profile_cache[user.user_id] = (now, profile)
             user.email = stored.email or user.email
             user.name = stored.name or user.name
+            if stored.roles:
+                user.roles = stored.roles
     except Exception as e:
         logger.debug(f"Profile enrichment failed for {user.user_id}: {e}")
 
