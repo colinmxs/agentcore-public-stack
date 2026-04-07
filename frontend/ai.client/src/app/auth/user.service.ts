@@ -4,6 +4,7 @@ import { firstValueFrom } from 'rxjs';
 import { AuthService } from './auth.service';
 import { ConfigService } from '../services/config.service';
 import { User, JWTPayload, UserPermissions } from './user.model';
+import { parseRolesFromToken } from './parse-roles';
 
 /**
  * Service for managing current user information decoded from JWT tokens.
@@ -122,12 +123,8 @@ export class UserService {
         lastName = nameParts.slice(1).join(' ') || '';
       }
 
-      // Extract roles from cognito:groups (Cognito tokens), custom:roles (federated), or roles claim (other OIDC)
-      const cognitoRoles = jwtPayload['custom:roles'];
-      const parsedCognitoRoles = typeof cognitoRoles === 'string'
-        ? cognitoRoles.split(',').map((r: string) => r.trim()).filter(Boolean)
-        : cognitoRoles;
-      const roles = jwtPayload['cognito:groups'] || parsedCognitoRoles || jwtPayload.roles || [];
+      // Extract roles using shared parser (handles JSON arrays, comma-separated, fallbacks)
+      const roles = parseRolesFromToken(jwtPayload);
 
       // Extract IdP user identifier (mapped via custom:provider_sub)
       const providerSub = jwtPayload['custom:provider_sub'] || '';

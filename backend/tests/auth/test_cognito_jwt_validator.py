@@ -199,16 +199,74 @@ class TestClaimExtraction:
 
         assert user.email == ""
 
-    def test_cognito_groups_extracted_as_roles(self, validator, make_cognito_jwt):
+    # ---- custom:roles takes priority over cognito:groups ----
+
+    def test_custom_roles_preferred_over_cognito_groups(self, validator, make_cognito_jwt):
+        """custom:roles (IdP roles) should win over cognito:groups (provider group name)."""
         token = make_cognito_jwt(claims={
-            "cognito:groups": ["admin", "editor"],
+            "cognito:groups": ["us-west-2_Pool_ms-entra-id"],
+            "custom:roles": "admin,editor",
         })
         user = validator.validate_token(token)
 
         assert user.roles == ["admin", "editor"]
 
-    def test_custom_roles_extracted_as_comma_separated(self, validator, make_cognito_jwt):
-        """Falls back to custom:roles when cognito:groups is absent."""
+    def test_custom_roles_json_array_preferred_over_cognito_groups(self, validator, make_cognito_jwt):
+        """JSON array in custom:roles should win over cognito:groups."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": ["us-west-2_Pool_ms-entra-id"],
+            "custom:roles": '["DotNetDevelopers","Staff"]',
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["DotNetDevelopers", "Staff"]
+
+    # ---- custom:roles JSON array parsing ----
+
+    def test_custom_roles_json_array_string(self, validator, make_cognito_jwt):
+        """Entra ID sends roles as a JSON array serialized to a string."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": None,
+            "custom:roles": '["DotNetDevelopers","All-Employees Entra Sync","Staff"]',
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["DotNetDevelopers", "All-Employees Entra Sync", "Staff"]
+
+    def test_custom_roles_json_single_element_array(self, validator, make_cognito_jwt):
+        """Single-element JSON array."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": None,
+            "custom:roles": '["Admin"]',
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["Admin"]
+
+    def test_custom_roles_json_empty_array(self, validator, make_cognito_jwt):
+        """Empty JSON array should return empty roles."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": None,
+            "custom:roles": '[]',
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == []
+
+    def test_custom_roles_json_strips_whitespace(self, validator, make_cognito_jwt):
+        """JSON array elements with whitespace should be trimmed."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": None,
+            "custom:roles": '["  Admin  ", " Staff "]',
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["Admin", "Staff"]
+
+    # ---- custom:roles comma-separated fallback ----
+
+    def test_custom_roles_comma_separated(self, validator, make_cognito_jwt):
+        """Plain comma-separated string (non-JSON) still works."""
         token = make_cognito_jwt(claims={
             "cognito:groups": None,
             "custom:roles": "admin,editor",
@@ -216,6 +274,30 @@ class TestClaimExtraction:
         user = validator.validate_token(token)
 
         assert user.roles == ["admin", "editor"]
+
+    def test_custom_roles_comma_separated_with_spaces(self, validator, make_cognito_jwt):
+        """Comma-separated with spaces around values."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": None,
+            "custom:roles": " admin , editor , viewer ",
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["admin", "editor", "viewer"]
+
+    # ---- cognito:groups fallback ----
+
+    def test_cognito_groups_used_when_no_custom_roles(self, validator, make_cognito_jwt):
+        """cognito:groups is used as fallback when custom:roles is absent."""
+        token = make_cognito_jwt(claims={
+            "cognito:groups": ["admin", "editor"],
+            "custom:roles": None,
+        })
+        user = validator.validate_token(token)
+
+        assert user.roles == ["admin", "editor"]
+
+    # ---- no roles at all ----
 
     def test_no_roles_returns_empty_list(self, validator, make_cognito_jwt):
         token = make_cognito_jwt(claims={
@@ -225,6 +307,8 @@ class TestClaimExtraction:
         user = validator.validate_token(token)
 
         assert user.roles == []
+
+    # ---- picture ----
 
     def test_picture_extracted(self, validator, make_cognito_jwt):
         token = make_cognito_jwt(claims={

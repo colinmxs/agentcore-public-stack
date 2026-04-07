@@ -1,13 +1,18 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
+import { HttpClientTestingModule } from '@angular/common/http/testing';
 import { UserService } from './user.service';
 import { AuthService } from './auth.service';
+import { ConfigService } from '../services/config.service';
 
 describe('UserService', () => {
   let service: UserService;
   let mockAuthService: {
     getAccessToken: ReturnType<typeof vi.fn>;
     getIdToken: ReturnType<typeof vi.fn>;
+  };
+  let mockConfigService: {
+    appApiUrl: ReturnType<typeof vi.fn>;
   };
 
   // Create base64url-encoded JWT token
@@ -43,11 +48,16 @@ describe('UserService', () => {
       getAccessToken: vi.fn(),
       getIdToken: vi.fn(),
     };
+    mockConfigService = {
+      appApiUrl: vi.fn().mockReturnValue('http://localhost:8000'),
+    };
 
     TestBed.configureTestingModule({
+      imports: [HttpClientTestingModule],
       providers: [
         UserService,
-        { provide: AuthService, useValue: mockAuthService }
+        { provide: AuthService, useValue: mockAuthService },
+        { provide: ConfigService, useValue: mockConfigService },
       ]
     });
 

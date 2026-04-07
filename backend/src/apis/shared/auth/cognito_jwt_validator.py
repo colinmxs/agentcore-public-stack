@@ -103,15 +103,31 @@ class CognitoJWTValidator:
     def _extract_roles(self, payload: dict) -> List[str]:
         """Extract roles from Cognito token claims.
 
-        Checks `cognito:groups` (list from Cognito User Pool Groups) first,
-        then falls back to `custom:roles` (comma-separated string).
+        Priority order:
+        1. ``custom:roles`` – IdP roles mapped via Cognito attribute mapping.
+           The value is a string that may be a JSON array (e.g. Entra ID sends
+           ``'["Admin","Staff"]'``) or a comma-separated list.
+        2. ``cognito:groups`` – Cognito User Pool Groups.  For federated users
+           this typically contains the Cognito provider group name (e.g.
+           ``us-west-2_Pool_provider-name``), not the IdP roles, so it is only
+           used as a fallback when ``custom:roles`` is absent.
         """
-        groups = payload.get("cognito:groups")
-        if isinstance(groups, list):
-            return groups
+        import json
 
         custom_roles = payload.get("custom:roles", "")
         if custom_roles:
+            # Try JSON array first (e.g. '["Admin","Editor"]')
+            try:
+                parsed = json.loads(custom_roles)
+                if isinstance(parsed, list):
+                    return [str(r).strip() for r in parsed if str(r).strip()]
+            except (json.JSONDecodeError, TypeError):
+                pass
+            # Fall back to comma-separated
             return [r.strip() for r in custom_roles.split(",") if r.strip()]
+
+        groups = payload.get("cognito:groups")
+        if isinstance(groups, list):
+            return groups
 
         return []
