@@ -46,6 +46,15 @@ security = HTTPBearer(auto_error=False)
 _user_profile_cache: dict[str, tuple[float, dict]] = {}
 _USER_PROFILE_CACHE_TTL = 300  # 5 minutes
 
+
+def invalidate_user_profile_cache(user_id: str) -> None:
+    """Remove a user's cached profile so the next request re-reads from DynamoDB.
+
+    Call this after updating the Users table (e.g. from /users/me/sync) so
+    that subsequent requests pick up the fresh roles immediately.
+    """
+    _user_profile_cache.pop(user_id, None)
+
 _user_repository = None
 
 

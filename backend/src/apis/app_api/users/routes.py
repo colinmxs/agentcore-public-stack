@@ -88,6 +88,10 @@ async def sync_my_profile(
 
     try:
         await user_repo.upsert_user(profile)
+        # Invalidate the in-memory profile cache so the enrichment function
+        # picks up the fresh roles on the very next request.
+        from apis.shared.auth.dependencies import invalidate_user_profile_cache
+        invalidate_user_profile_cache(current_user.user_id)
         logger.info("Synced profile for user %s", current_user.user_id)
     except Exception as e:
         logger.error(f"Failed to sync profile for {current_user.user_id}: {e}", exc_info=True)
