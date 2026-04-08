@@ -1,7 +1,7 @@
 # Release Notes — v1.0.0-beta.22
 
-**Release Date:** April 7, 2026
-**Previous Release:** v1.0.0-beta.21 (April 3, 2026)
+**Release Date:** April 8, 2026
+**Previous Release:** v1.0.0-beta.20 (April 1, 2026)
 
 ---
 
@@ -132,7 +132,7 @@ All six CDK stacks now use a single shared `buildCorsOrigins()` helper in `confi
 - File upload CORS validation softened from hard error to warning since `loadConfig` runs for all stacks
 - Infrastructure workflow updated with Cognito context values
 - Trivy image scanning action upgraded from `v0.28.0` to `v0.35.0` with corrected SHA pin — the previous pin (`18f2510`) was actually the `v0.29.0` commit SHA mislabeled as `v0.28.0`, and was among the tags compromised in the [March 2026 trivy-action supply chain attack](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23). The new pin (`57a97c7e`) points to the post-remediation immutable `v0.35.0` release
-- App API `synth-cdk` job now skipped on pull requests (`if: github.event_name != 'pull_request'`), matching the existing pattern for Docker builds and deployments — PRs no longer require AWS credentials or ARM runners for the app-api workflow
+- App API `synth-cdk` job now actually skipped on pull requests — the `if: github.event_name != 'pull_request'` guard was missing despite being documented in beta.20. PRs no longer require AWS credentials or ARM runners for the app-api workflow
 
 ---
 
@@ -157,46 +157,28 @@ All six CDK stacks now use a single shared `buildCorsOrigins()` helper in `confi
 
 | Component | From | To |
 |---|---|---|
-| Angular packages | 21.2.5 | 21.2.7 |
-| @angular/cdk | 21.2.3 | 21.2.5 |
-| @angular/build | 21.2.3 | 21.2.6 |
-| @angular/cli | 21.2.3 | 21.2.6 |
-| @ng-icons/core | 33.1.0 | 33.2.0 |
-| @ng-icons/heroicons | 33.1.0 | 33.2.0 |
-| katex | 0.16.33 | 0.16.45 |
-| marked | 17.0.3 | 17.0.6 |
-| mermaid | 11.12.3 | 11.14.0 |
-| ng2-charts | 8.0.0 | 10.0.0 |
-| tailwindcss | 4.2.1 | 4.2.2 |
-| @tailwindcss/postcss | 4.2.1 | 4.2.2 |
-| postcss | 8.5.6 | 8.5.8 |
-| vitest | 4.0.18 | 4.1.2 |
-| @vitest/coverage-v8 | 4.0.18 | 4.1.2 |
-| jsdom | 27.4.0 | 29.0.1 |
-| fast-check | 3.23.2 | 4.6.0 |
+| Angular packages | 21.2.6 | 21.2.7 |
+| @angular/cdk | 21.2.4 | 21.2.5 |
+| @angular/build | 21.2.5 | 21.2.6 |
+| @angular/cli | 21.2.5 | 21.2.6 |
+| katex | 0.16.44 | 0.16.45 |
+| marked | 17.0.5 | 17.0.6 |
+| mermaid | 11.13.0 | 11.14.0 |
 | @analogjs/vite-plugin-angular | 3.0.0-alpha.18 | 3.0.0-alpha.26 |
 | @analogjs/vitest-angular | 3.0.0-alpha.18 | 3.0.0-alpha.26 |
-| aws-cdk-lib | 2.244.0 | 2.248.0 |
-| aws-cdk (CLI) | 2.1113.0 | 2.1117.0 |
-| constructs | 10.5.1 | 10.6.0 |
-| @types/jest | 29.5.14 | 30.0.0 |
-| @types/node | 24.10.1 | 25.5.2 |
-| jest | 29.7.0 | 30.3.0 |
+| aws-cdk-lib | 2.245.0 | 2.248.0 |
+| aws-cdk (CLI) | 2.1115.0 | 2.1117.0 |
+| @types/node | 25.5.0 | 25.5.2 |
 | ts-jest | 29.4.6 | 29.4.9 |
 | fastapi | 0.135.2 | 0.135.3 |
-| uvicorn | 0.35.0 | 0.44.0 |
-| boto3 | 1.42.73 | 1.42.83 |
-| strands-agents | 1.32.0 | 1.34.1 |
-| strands-agents-tools | 0.2.23 | 0.3.0 |
-| aws-opentelemetry-distro | 0.14.2 | 0.16.0 |
-| bedrock-agentcore | 1.4.7 | 1.6.0 |
-| openai | 2.29.0 | 2.30.0 |
-| google-genai | 1.68.0 | 1.70.0 |
-| cachetools | 7.0.5 | 6.2.4 |
-| hypothesis | 6.151.9 | 6.151.11 |
-| ruff | 0.15.7 | 0.15.9 |
+| uvicorn | 0.42.0 | 0.44.0 |
+| boto3 | 1.42.78 | 1.42.83 |
+| strands-agents | 1.33.0 | 1.34.1 |
+| bedrock-agentcore | 1.4.8 | 1.6.0 |
+| google-genai | 1.69.0 | 1.70.0 |
+| hypothesis | 6.151.10 | 6.151.11 |
+| ruff | 0.15.8 | 0.15.9 |
 | mypy | 1.19.1 | 1.20.0 |
-| moto | 5.1.22 (dynamodb) | 5.1.22 (dynamodb,cognitoidp) |
 
 ---
 
