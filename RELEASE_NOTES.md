@@ -131,6 +131,8 @@ All six CDK stacks now use a single shared `buildCorsOrigins()` helper in `confi
 - SSM `StringParameter` creation guarded with conditional check to prevent empty string values (SSM parameter tier rejects empty strings)
 - File upload CORS validation softened from hard error to warning since `loadConfig` runs for all stacks
 - Infrastructure workflow updated with Cognito context values
+- Trivy image scanning action upgraded from `v0.28.0` to `v0.35.0` with corrected SHA pin — the previous pin (`18f2510`) was actually the `v0.29.0` commit SHA mislabeled as `v0.28.0`, and was among the tags compromised in the [March 2026 trivy-action supply chain attack](https://github.com/aquasecurity/trivy/security/advisories/GHSA-69fq-xp46-6x23). The new pin (`57a97c7e`) points to the post-remediation immutable `v0.35.0` release
+- App API `synth-cdk` job now skipped on pull requests (`if: github.event_name != 'pull_request'`), matching the existing pattern for Docker builds and deployments — PRs no longer require AWS credentials or ARM runners for the app-api workflow
 
 ---
 
@@ -181,17 +183,19 @@ All six CDK stacks now use a single shared `buildCorsOrigins()` helper in `confi
 | @types/node | 24.10.1 | 25.5.2 |
 | jest | 29.7.0 | 30.3.0 |
 | ts-jest | 29.4.6 | 29.4.9 |
-| uvicorn | 0.35.0 | 0.42.0 |
-| boto3 | 1.42.73 | 1.42.78 |
-| strands-agents | 1.32.0 | 1.33.0 |
+| fastapi | 0.135.2 | 0.135.3 |
+| uvicorn | 0.35.0 | 0.44.0 |
+| boto3 | 1.42.73 | 1.42.83 |
+| strands-agents | 1.32.0 | 1.34.1 |
 | strands-agents-tools | 0.2.23 | 0.3.0 |
 | aws-opentelemetry-distro | 0.14.2 | 0.16.0 |
-| bedrock-agentcore | 1.4.7 | 1.4.8 |
+| bedrock-agentcore | 1.4.7 | 1.6.0 |
 | openai | 2.29.0 | 2.30.0 |
-| google-genai | 1.68.0 | 1.69.0 |
+| google-genai | 1.68.0 | 1.70.0 |
 | cachetools | 7.0.5 | 6.2.4 |
-| hypothesis | 6.151.9 | 6.151.10 |
-| ruff | 0.15.7 | 0.15.8 |
+| hypothesis | 6.151.9 | 6.151.11 |
+| ruff | 0.15.7 | 0.15.9 |
+| mypy | 1.19.1 | 1.20.0 |
 | moto | 5.1.22 (dynamodb) | 5.1.22 (dynamodb,cognitoidp) |
 
 ---

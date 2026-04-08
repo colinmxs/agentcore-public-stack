@@ -255,6 +255,7 @@ jobs:
     name: Synthesize CDK
     runs-on: ubuntu-24.04-arm  # Use ARM64-native runner for ARM64 Lambda builds
     needs: build-cdk
+    if: github.event_name != 'pull_request'
     
     # Select environment based on trigger
     # Manual: workflow_dispatch input
