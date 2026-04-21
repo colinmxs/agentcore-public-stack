@@ -29,11 +29,6 @@ on:
         required: false
         default: ''
         type: string
-      run-e2e:
-        description: 'Whether to run E2E tests'
-        required: false
-        default: 'false'
-        type: string
       source-project-prefix:
         description: 'Source project prefix for ECR image promotion (e.g. dev-boisestateai-v2). If set, tries to promote images instead of building. Falls back to building if source image not found.'
         required: false
