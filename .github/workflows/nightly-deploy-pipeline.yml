@@ -29,6 +29,11 @@ on:
         required: false
         default: ''
         type: string
+      run-e2e:
+        description: 'Whether to run E2E tests'
+        required: false
+        default: 'false'
+        type: string
       source-project-prefix:
         description: 'Source project prefix for ECR image promotion (e.g. dev-boisestateai-v2). If set, tries to promote images instead of building. Falls back to building if source image not found.'
         required: false
@@ -628,7 +633,17 @@ jobs:
 
       - name: Install frontend dependencies
         if: steps.cache-frontend.outputs.cache-hit != 'true'
-        run: bash scripts/stack-frontend/install.sh
+        run: |
+          cd frontend/ai.client
+          npm ci
+
+      - name: Verify Playwright package
+        run: |
+          cd frontend/ai.client
+          if [ ! -d "node_modules/@playwright/test" ]; then
+            echo "::warning::@playwright/test missing from cached node_modules — reinstalling"
+            npm ci
+          fi
 
       - name: Configure AWS credentials
         uses: ./.github/actions/configure-aws-credentials
