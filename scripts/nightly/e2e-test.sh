@@ -2,8 +2,9 @@
 set -euo pipefail
 
 # Script: Run Playwright E2E Tests Against a Deployed Nightly Stack
-# Description: Installs Playwright browsers, resolves the ALB URL, and runs
-#              the full E2E suite using the CI-specific Playwright config.
+# Description: Installs Playwright browsers, resolves the frontend CloudFront
+#              URL, and runs the full E2E suite using the CI-specific Playwright
+#              config.
 #
 # Required environment variables:
 #   CDK_PROJECT_PREFIX    — CDK project prefix (e.g. nightly-develop)
@@ -13,9 +14,10 @@ set -euo pipefail
 #   USER_USERNAME         — Cognito regular user test account username
 #   USER_PASSWORD         — Cognito regular user test account password
 #
-# Optional environment variables:
-#   CDK_ALB_SUBDOMAIN     — ALB subdomain (preferred over CF lookup)
-#   CDK_HOSTED_ZONE_DOMAIN — Hosted zone domain (used with subdomain)
+# The script resolves the frontend URL from:
+#   1. SSM parameter /${CDK_PROJECT_PREFIX}/frontend/url (set by FrontendStack)
+#   2. CloudFormation WebsiteUrl output from FrontendStack
+#   3. CloudFormation DistributionDomainName output from FrontendStack
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -33,29 +35,60 @@ log_warn()    { echo -e "${YELLOW}[WARN]${NC} $1"; }
 log_success() { echo -e "${GREEN}[SUCCESS]${NC} $1"; }
 
 # ---------------------------------------------------------------------------
-# Resolve the base URL of the deployed stack
+# Resolve the frontend URL of the deployed stack (CloudFront / S3)
 # ---------------------------------------------------------------------------
 get_base_url() {
-    # Prefer the custom HTTPS subdomain when configured
-    if [ -n "${CDK_ALB_SUBDOMAIN:-}" ] && [ -n "${CDK_HOSTED_ZONE_DOMAIN:-}" ]; then
-        echo "https://${CDK_ALB_SUBDOMAIN}.${CDK_HOSTED_ZONE_DOMAIN}"
+    # Try SSM parameter first (set by FrontendStack)
+    local ssm_key="/${CDK_PROJECT_PREFIX}/frontend/url"
+    local frontend_url
+    frontend_url=$(aws ssm get-parameter \
+        --name "${ssm_key}" \
+        --query "Parameter.Value" \
+        --output text \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
+
+    if [ -n "${frontend_url}" ] && [ "${frontend_url}" != "None" ]; then
+        # SSM value may already include https:// or may be a bare domain
+        if [[ "${frontend_url}" == https://* ]]; then
+            echo "${frontend_url}"
+        else
+            echo "https://${frontend_url}"
+        fi
         return 0
     fi
 
-    local stack_name="${CDK_PROJECT_PREFIX}-InfrastructureStack"
-    local alb_dns
-    alb_dns=$(aws cloudformation describe-stacks \
+    # Fallback: query CloudFormation WebsiteUrl output from FrontendStack
+    local stack_name="${CDK_PROJECT_PREFIX}-FrontendStack"
+    frontend_url=$(aws cloudformation describe-stacks \
         --stack-name "${stack_name}" \
-        --query "Stacks[0].Outputs[?OutputKey=='AlbDnsName'].OutputValue" \
+        --query "Stacks[0].Outputs[?OutputKey=='WebsiteUrl'].OutputValue" \
         --output text \
-        --region "${CDK_AWS_REGION}")
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
 
-    if [ -z "${alb_dns}" ]; then
-        log_error "Could not retrieve ALB DNS name from stack ${stack_name}"
-        return 1
+    if [ -n "${frontend_url}" ] && [ "${frontend_url}" != "None" ]; then
+        if [[ "${frontend_url}" == https://* ]]; then
+            echo "${frontend_url}"
+        else
+            echo "https://${frontend_url}"
+        fi
+        return 0
     fi
 
-    echo "https://${alb_dns}"
+    # Last resort: query CloudFront distribution domain from FrontendStack
+    local cf_domain
+    cf_domain=$(aws cloudformation describe-stacks \
+        --stack-name "${stack_name}" \
+        --query "Stacks[0].Outputs[?OutputKey=='DistributionDomainName'].OutputValue" \
+        --output text \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
+
+    if [ -n "${cf_domain}" ] && [ "${cf_domain}" != "None" ]; then
+        echo "https://${cf_domain}"
+        return 0
+    fi
+
+    log_error "Could not resolve frontend URL from SSM (${ssm_key}) or FrontendStack outputs"
+    return 1
 }
 
 # ---------------------------------------------------------------------------

@@ -604,8 +604,6 @@ jobs:
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_PROJECT_PREFIX: ${{ inputs.project-prefix }}
-      CDK_ALB_SUBDOMAIN: ${{ inputs.alb-subdomain }}
-      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
       ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
       ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
       USER_USERNAME: ${{ secrets.E2E_USER_USERNAME }}
