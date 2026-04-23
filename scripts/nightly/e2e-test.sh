@@ -92,6 +92,122 @@ get_base_url() {
 }
 
 # ---------------------------------------------------------------------------
+# Patch Cognito App Client callback URLs to include the dynamic CloudFront URL
+# ---------------------------------------------------------------------------
+# The nightly stack has no custom domain, so the CloudFront distribution URL
+# changes every run. Cognito rejects OAuth redirects to URLs not in its
+# allowlist, so we must add the CloudFront URL before running auth tests.
+# ---------------------------------------------------------------------------
+patch_cognito_callback_urls() {
+    local frontend_url="$1"
+    local callback_url="${frontend_url}/auth/callback"
+    local logout_url="${frontend_url}"
+
+    # Fetch Cognito resource IDs from SSM
+    local user_pool_id
+    user_pool_id=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/user-pool-id" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}")
+
+    local client_id
+    client_id=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/app-client-id" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}")
+
+    log_info "  User Pool ID: ${user_pool_id}"
+    log_info "  Client ID:    ${client_id}"
+
+    # Read current app client settings
+    local current_config
+    current_config=$(aws cognito-idp describe-user-pool-client \
+        --user-pool-id "${user_pool_id}" \
+        --client-id "${client_id}" \
+        --region "${CDK_AWS_REGION}" \
+        --output json)
+
+    # Extract existing callback and logout URLs
+    local existing_callbacks
+    existing_callbacks=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+urls = data['UserPoolClient'].get('CallbackURLs', [])
+print('\n'.join(urls))
+")
+
+    local existing_logouts
+    existing_logouts=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+urls = data['UserPoolClient'].get('LogoutURLs', [])
+print('\n'.join(urls))
+")
+
+    # Check if the CloudFront callback URL is already present
+    if echo "${existing_callbacks}" | grep -qF "${callback_url}"; then
+        log_info "  Callback URL already present — skipping patch"
+        return 0
+    fi
+
+    # Build updated URL lists using python3 for reliable JSON construction
+    local callbacks_json
+    callbacks_json=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+urls = data['UserPoolClient'].get('CallbackURLs', [])
+urls.append('${callback_url}')
+print(json.dumps(urls))
+")
+
+    local logouts_json
+    logouts_json=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+urls = data['UserPoolClient'].get('LogoutURLs', [])
+new_url = '${logout_url}'
+if new_url not in urls:
+    urls.append(new_url)
+print(json.dumps(urls))
+")
+
+    log_info "  Adding callback URL: ${callback_url}"
+    log_info "  Adding logout URL:   ${logout_url}"
+
+    # Extract current OAuth settings to preserve them
+    local allowed_flows
+    allowed_flows=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+flows = data['UserPoolClient'].get('AllowedOAuthFlows', [])
+print(' '.join(flows))
+")
+
+    local allowed_scopes
+    allowed_scopes=$(echo "${current_config}" | python3 -c "
+import sys, json
+data = json.load(sys.stdin)
+scopes = data['UserPoolClient'].get('AllowedOAuthScopes', [])
+print(' '.join(scopes))
+")
+
+    # Update the app client with the new callback/logout URLs
+    aws cognito-idp update-user-pool-client \
+        --user-pool-id "${user_pool_id}" \
+        --client-id "${client_id}" \
+        --callback-urls "${callbacks_json}" \
+        --logout-urls "${logouts_json}" \
+        --allowed-o-auth-flows ${allowed_flows} \
+        --allowed-o-auth-scopes ${allowed_scopes} \
+        --allowed-o-auth-flows-user-pool-client \
+        --supported-identity-providers COGNITO \
+        --region "${CDK_AWS_REGION}" \
+        --no-cli-pager > /dev/null
+
+    log_success "  Cognito app client patched successfully"
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 main() {
@@ -126,6 +242,10 @@ main() {
         exit 1
     fi
     log_info "Frontend responded with HTTP ${response_code}"
+
+    # --- Ensure Cognito allows the dynamic CloudFront callback URL ---
+    log_info "Patching Cognito app client with CloudFront callback URL..."
+    patch_cognito_callback_urls "${base_url}"
 
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"

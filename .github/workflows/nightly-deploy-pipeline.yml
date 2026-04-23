@@ -603,7 +603,6 @@ jobs:
       contents: read
     env:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
-      CDK_DOMAIN_NAME: "e2e.alpha.boisestate.ai"
       CDK_PROJECT_PREFIX: ${{ inputs.project-prefix }}
       ADMIN_USERNAME: ${{ secrets.E2E_ADMIN_USERNAME }}
       ADMIN_PASSWORD: ${{ secrets.E2E_ADMIN_PASSWORD }}
