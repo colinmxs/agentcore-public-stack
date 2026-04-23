@@ -34,8 +34,11 @@ test.describe('Manage Sessions Page (user)', () => {
 
   test('should select and deselect a session', async ({ page }) => {
     await page.goto('/manage-sessions');
-    await expect(page.getByText('Loading conversations...')).toBeHidden({ timeout: 100_000 });
-
+    await expect(page.getByText('Loading conversations...')).toBeHidden({ timeout: 15_000 });
+    await expect(
+      page.locator('input[type="checkbox"]').first().or(page.getByText('No conversations'))
+    ).toBeVisible({ timeout: 15_000 });
+    
     const checkbox = page.locator('input[type="checkbox"]').first();
     const hasCheckbox = (await checkbox.count()) > 0;
     test.skip(!hasCheckbox, 'No sessions available to select');
