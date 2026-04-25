@@ -29,7 +29,7 @@ interface AuthProviderPublicListResponse {
       <div class="w-full max-w-md px-4 py-12">
         <!-- Logo -->
         <div class="mb-8 flex justify-center">
-          <div class="size-16 rounded-xl bg-primary-500 dark:bg-primary-400" aria-label="Logo"></div>
+          <div class="size-16 rounded-xl bg-primary-500 dark:bg-primary-400" role="img" aria-label="Logo"></div>
         </div>
 
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
