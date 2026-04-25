@@ -15,14 +15,7 @@ import { SystemService, FirstBootError } from '../../services/system.service';
       <div class="w-full max-w-md px-4 py-12">
         <!-- Logo -->
         <div class="mb-8 flex justify-center">
-          <img
-            src="/img/logo-light.png"
-            alt="Logo"
-            class="size-16 dark:hidden">
-          <img
-            src="/img/logo-dark.png"
-            alt="Logo"
-            class="hidden size-16 dark:block">
+          <div class="size-16 rounded-xl bg-primary-500 dark:bg-primary-400" role="img" aria-label="Logo"></div>
         </div>
 
         <div class="bg-white dark:bg-gray-800 rounded-lg shadow-sm p-8">
