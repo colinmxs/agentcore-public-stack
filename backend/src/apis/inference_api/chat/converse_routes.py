@@ -28,6 +28,7 @@ from apis.shared import quota as shared_quota
 from apis.shared.rbac.service import get_app_role_service
 from apis.app_api.costs.calculator import CostCalculator
 from apis.app_api.costs.pricing_config import create_pricing_snapshot
+from agents.main_agent.core.model_config import _model_supports_temperature
 from apis.shared.sessions.metadata import store_message_metadata
 from apis.shared.sessions.models import (
     MessageMetadata,
@@ -145,7 +146,7 @@ def _build_converse_params(request: ConverseRequest) -> dict:
     ]
 
     inference_config: dict = {}
-    if request.temperature is not None:
+    if _model_supports_temperature(request.model_id) and request.temperature is not None:
         inference_config["temperature"] = request.temperature
     if request.max_tokens is not None:
         inference_config["maxTokens"] = request.max_tokens

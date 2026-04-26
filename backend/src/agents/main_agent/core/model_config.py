@@ -14,6 +14,19 @@ class ModelProvider(str, Enum):
     GEMINI = "gemini"
 
 
+# Model ID substrings that identify models which no longer accept a
+# ``temperature`` inference parameter (Anthropic deprecated it for these).
+_MODELS_WITHOUT_TEMPERATURE: frozenset[str] = frozenset([
+    "claude-opus-4-7",
+])
+
+
+def _model_supports_temperature(model_id: str) -> bool:
+    """Return ``False`` for models that have deprecated the temperature parameter."""
+    model_lower = model_id.lower()
+    return not any(pattern in model_lower for pattern in _MODELS_WITHOUT_TEMPERATURE)
+
+
 @dataclass
 class RetryConfig:
     """Configuration for model invocation retry behavior.
@@ -109,10 +122,12 @@ class ModelConfig:
         """
         from strands.models import CacheConfig
 
-        config = {
+        config: Dict[str, Any] = {
             "model_id": self.model_id,
-            "temperature": self.temperature
         }
+
+        if _model_supports_temperature(self.model_id):
+            config["temperature"] = self.temperature
 
         # TODO: Re-enable once Bedrock supports cachePoint blocks alongside
         # non-PDF document blocks (.md, .docx, etc.). Currently causes:

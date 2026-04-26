@@ -133,6 +133,37 @@ class TestToBedrockConfig:
 
         assert "boto_client_config" not in result
 
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "global.anthropic.claude-opus-4-7-20250514-v1:0",
+            "us.anthropic.claude-opus-4-7-20250514-v1:0",
+            "anthropic.claude-opus-4-7-20250514-v1:0",
+            "claude-opus-4-7",
+        ],
+    )
+    def test_bedrock_config_omits_temperature_for_claude_opus_4_7(self, model_id: str):
+        """claude-opus-4-7 has deprecated temperature — it must not appear in config."""
+        cfg = ModelConfig(model_id=model_id, temperature=0.7)
+        result = cfg.to_bedrock_config()
+
+        assert "temperature" not in result
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+            "anthropic.claude-3-sonnet",
+            "us.anthropic.claude-sonnet-4-5-20250929-v1:0",
+        ],
+    )
+    def test_bedrock_config_includes_temperature_for_standard_models(self, model_id: str):
+        """Standard Bedrock models should still receive the temperature parameter."""
+        cfg = ModelConfig(model_id=model_id, temperature=0.5)
+        result = cfg.to_bedrock_config()
+
+        assert result["temperature"] == 0.5
+
 
 # ---------------------------------------------------------------------------
 # Req 1.8–1.9 — to_openai_config / to_gemini_config
