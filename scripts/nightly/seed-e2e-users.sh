@@ -9,9 +9,9 @@ set -euo pipefail
 # Required environment variables:
 #   CDK_PROJECT_PREFIX  — CDK project prefix (resolves User Pool ID from SSM)
 #   CDK_AWS_REGION      — AWS region
-#   ADMIN_USERNAME      — Admin test account username (email)
+#   ADMIN_USERNAME      — Admin test account username
 #   ADMIN_PASSWORD      — Admin test account password
-#   USER_USERNAME       — Regular user test account username (email)
+#   USER_USERNAME       — Regular user test account username
 #   USER_PASSWORD       — Regular user test account password
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
