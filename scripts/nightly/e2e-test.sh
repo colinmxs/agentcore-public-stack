@@ -247,6 +247,10 @@ main() {
     log_info "Patching Cognito app client with CloudFront callback URL..."
     patch_cognito_callback_urls "${base_url}"
 
+    # --- Seed E2E test users in Cognito ---
+    log_info "Seeding E2E test users in Cognito User Pool..."
+    bash "${SCRIPT_DIR}/seed-e2e-users.sh"
+
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"
 

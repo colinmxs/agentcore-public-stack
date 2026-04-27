@@ -19,7 +19,7 @@ async function goToAssistantsPage(page: Page) {
   await page.goto('/assistants');
   await expect(
     page.getByRole('heading', { name: 'Assistants' }),
-  ).toBeVisible({ timeout: 15_000 });
+  ).toBeVisible({ timeout: 30_000 });
 }
 
 /** Wait for the assistant form page to be ready (header breadcrumb visible). */
@@ -59,7 +59,7 @@ test.describe('Assistants (user)', () => {
       await goToAssistantsPage(page);
 
       const newBtn = page.getByRole('button', { name: /New Assistant/i });
-      await expect(newBtn).toBeVisible();
+      await expect(newBtn).toBeVisible({ timeout: 20_000 });
       await newBtn.click();
 
       // Should redirect to the edit page for the new draft

@@ -21,6 +21,16 @@ async function cognitoLogin(
   await page.getByRole('textbox', { name: 'Username' }).fill(username);
   await page.getByRole('textbox', { name: 'Password' }).fill(password);
   await page.getByRole('button', { name: 'submit' }).click();
+
+  // Fast-fail if Cognito rejects credentials (avoids 30s timeout)
+  const loginError = page.getByText('Incorrect username or password.');
+  const errorVisible = await loginError.isVisible({ timeout: 3_000 }).catch(() => false);
+  if (errorVisible) {
+    throw new Error(
+      `Cognito login failed for "${username}" — user may not exist in this User Pool or password is incorrect`,
+    );
+  }
+
   await page.waitForURL('**/', { timeout: 30_000 });
   await expect(page.locator('textarea#user-message')).toBeVisible({ timeout: 10_000 });
   await page.context().storageState({ path: storageStatePath });
