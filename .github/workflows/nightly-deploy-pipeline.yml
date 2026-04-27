@@ -342,6 +342,8 @@ jobs:
       CDK_APP_API_DESIRED_COUNT: 1
       CDK_APP_API_MAX_CAPACITY: 2
       CDK_RETAIN_DATA_ON_DELETE: false
+      CDK_DOMAIN_NAME: ""
+      CDK_CORS_ORIGINS: ${{ vars.CDK_CORS_ORIGINS }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}

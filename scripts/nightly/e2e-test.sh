@@ -208,6 +208,185 @@ print(' '.join(scopes))
 }
 
 # ---------------------------------------------------------------------------
+# Patch App API ECS service CORS_ORIGINS to include the CloudFront URL
+# ---------------------------------------------------------------------------
+# The nightly stack has no custom domain, so the frontend is served from a
+# dynamic CloudFront URL that isn't known at CDK deploy time. The App API's
+# CORS_ORIGINS env var therefore doesn't include it, causing all cross-origin
+# API requests to fail. This function:
+#   1. Reads the current ECS task definition
+#   2. Appends the CloudFront origin to CORS_ORIGINS
+#   3. Registers a new task definition revision
+#   4. Updates the ECS service to use it
+#   5. Waits for the service to stabilize
+# ---------------------------------------------------------------------------
+patch_app_api_cors() {
+    local frontend_url="$1"
+
+    # Resolve ECS cluster and service names from SSM
+    local cluster_name
+    cluster_name=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/network/ecs-cluster-name" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}")
+
+    local service_name="${CDK_PROJECT_PREFIX}-app-api-service"
+
+    log_info "  Cluster: ${cluster_name}"
+    log_info "  Service: ${service_name}"
+
+    # Get the current task definition ARN from the service
+    local task_def_arn
+    task_def_arn=$(aws ecs describe-services \
+        --cluster "${cluster_name}" \
+        --services "${service_name}" \
+        --query "services[0].taskDefinition" \
+        --output text \
+        --region "${CDK_AWS_REGION}")
+
+    log_info "  Current task definition: ${task_def_arn}"
+
+    # Get the full task definition
+    local task_def_json
+    task_def_json=$(aws ecs describe-task-definition \
+        --task-definition "${task_def_arn}" \
+        --query "taskDefinition" \
+        --output json \
+        --region "${CDK_AWS_REGION}")
+
+    # Check current CORS_ORIGINS value
+    local current_cors
+    current_cors=$(echo "${task_def_json}" | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+for container in td.get('containerDefinitions', []):
+    for env in container.get('environment', []):
+        if env['name'] == 'CORS_ORIGINS':
+            print(env['value'])
+            sys.exit(0)
+print('')
+")
+
+    log_info "  Current CORS_ORIGINS: ${current_cors:-<empty>}"
+
+    # Check if the frontend URL is already in CORS_ORIGINS
+    if echo "${current_cors}" | grep -qF "${frontend_url}"; then
+        log_info "  CloudFront origin already in CORS_ORIGINS — skipping patch"
+        return 0
+    fi
+
+    # Build new CORS_ORIGINS value
+    local new_cors
+    if [ -n "${current_cors}" ]; then
+        new_cors="${current_cors},${frontend_url}"
+    else
+        new_cors="${frontend_url}"
+    fi
+
+    log_info "  New CORS_ORIGINS: ${new_cors}"
+
+    # Register a new task definition revision with updated CORS_ORIGINS
+    # We need to extract the relevant fields and update the environment variable
+    local new_task_def
+    new_task_def=$(echo "${task_def_json}" | NEW_CORS="${new_cors}" python3 -c "
+import sys, json, os
+
+td = json.load(sys.stdin)
+new_cors_value = os.environ['NEW_CORS']
+
+# Update CORS_ORIGINS in container environment
+for container in td.get('containerDefinitions', []):
+    found = False
+    for env in container.get('environment', []):
+        if env['name'] == 'CORS_ORIGINS':
+            env['value'] = new_cors_value
+            found = True
+            break
+    if not found:
+        container.setdefault('environment', []).append({
+            'name': 'CORS_ORIGINS',
+            'value': new_cors_value
+        })
+
+# Build the register-task-definition input (only allowed fields)
+register_input = {
+    'family': td['family'],
+    'containerDefinitions': td['containerDefinitions'],
+    'taskRoleArn': td.get('taskRoleArn', ''),
+    'executionRoleArn': td.get('executionRoleArn', ''),
+    'networkMode': td.get('networkMode', 'awsvpc'),
+    'requiresCompatibilities': td.get('requiresCompatibilities', ['FARGATE']),
+    'cpu': td.get('cpu', ''),
+    'memory': td.get('memory', ''),
+}
+
+# Include runtimePlatform only if present (not all task defs have it)
+if 'runtimePlatform' in td and td['runtimePlatform']:
+    register_input['runtimePlatform'] = td['runtimePlatform']
+
+# Remove empty optional fields
+register_input = {k: v for k, v in register_input.items() if v}
+
+print(json.dumps(register_input))
+")
+
+    local new_task_def_arn
+    new_task_def_arn=$(echo "${new_task_def}" | aws ecs register-task-definition \
+        --cli-input-json file:///dev/stdin \
+        --query "taskDefinition.taskDefinitionArn" \
+        --output text \
+        --region "${CDK_AWS_REGION}")
+
+    log_info "  Registered new task definition: ${new_task_def_arn}"
+
+    # Update the ECS service to use the new task definition
+    aws ecs update-service \
+        --cluster "${cluster_name}" \
+        --service "${service_name}" \
+        --task-definition "${new_task_def_arn}" \
+        --force-new-deployment \
+        --region "${CDK_AWS_REGION}" \
+        --no-cli-pager > /dev/null
+
+    log_info "  ECS service update initiated — waiting for stabilization..."
+
+    # Wait for the service to stabilize (new tasks running with updated CORS)
+    aws ecs wait services-stable \
+        --cluster "${cluster_name}" \
+        --services "${service_name}" \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true
+
+    # Verify the service is healthy by hitting the health endpoint
+    local alb_url
+    alb_url=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/network/alb-url" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
+
+    if [ -n "${alb_url}" ] && [ "${alb_url}" != "None" ]; then
+        log_info "  Verifying App API health after CORS patch..."
+        local retries=0
+        local max_retries=20
+        while [ ${retries} -lt ${max_retries} ]; do
+            local status_code
+            status_code=$(curl -s -o /dev/null -w "%{http_code}" "${alb_url}/health" --max-time 10 || echo "000")
+            if [ "${status_code}" = "200" ]; then
+                log_success "  App API healthy after CORS patch (HTTP 200)"
+                return 0
+            fi
+            retries=$((retries + 1))
+            if [ ${retries} -lt ${max_retries} ]; then
+                log_info "  Health check returned HTTP ${status_code}, retrying in 15s... (${retries}/${max_retries})"
+                sleep 15
+            fi
+        done
+        log_warn "  App API health check did not return 200 after ${max_retries} attempts — proceeding anyway"
+    fi
+
+    log_success "  App API CORS patched successfully"
+}
+
+# ---------------------------------------------------------------------------
 # Main
 # ---------------------------------------------------------------------------
 main() {
@@ -242,6 +421,10 @@ main() {
         exit 1
     fi
     log_info "Frontend responded with HTTP ${response_code}"
+
+    # --- Patch App API CORS to allow requests from the CloudFront origin ---
+    log_info "Patching App API CORS origins to include CloudFront URL..."
+    patch_app_api_cors "${base_url}"
 
     # --- Ensure Cognito allows the dynamic CloudFront callback URL ---
     log_info "Patching Cognito app client with CloudFront callback URL..."
