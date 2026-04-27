@@ -87,6 +87,19 @@ export interface ReasoningEvent {
 }
 
 /**
+ * OAuth required event — emitted when an external MCP tool needs the user
+ * to grant consent via AgentCore Identity. The agent's tool call is paused
+ * (Strands interrupt) and the frontend resumes the same turn after the
+ * user completes consent by POSTing back the carried `interruptId`.
+ */
+export interface OAuthRequiredEvent {
+  type: 'oauth_required';
+  providerId: string;
+  authorizationUrl: string;
+  interruptId: string;
+}
+
+/**
  * Tool result event data structure
  */
 export interface ToolResultEventData {
@@ -123,7 +136,8 @@ export type StreamEventType =
   | 'quota_warning'
   | 'quota_exceeded'
   | 'stream_error'
-  | 'citation';
+  | 'citation'
+  | 'oauth_required';
 
 /**
  * Union type of all possible event data types
@@ -143,6 +157,7 @@ export type StreamEventData =
   | StreamErrorEvent
   | ConversationalStreamErrorEvent
   | Citation
+  | OAuthRequiredEvent
   | null
   | undefined;
 

@@ -199,7 +199,7 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [`arn:aws:ssm:${config.awsRegion}:${config.awsAccount}:parameter/${config.projectPrefix}/*`],
     }));
 
-    // Secrets Manager read permissions for OAuth client secrets (imported from App API Stack)
+    // Secrets Manager read permissions for OAuth client secrets (imported from Infrastructure Stack)
     const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/oauth/client-secrets-arn`
@@ -218,7 +218,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB Users Table permissions (imported from App API Stack)
+    // DynamoDB Users Table permissions (imported from Infrastructure Stack)
     const usersTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/users/users-table-arn`
@@ -240,7 +240,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB AppRoles Table permissions (imported from App API Stack)
+    // DynamoDB AppRoles Table permissions (imported from Infrastructure Stack)
     // This table stores both RBAC roles AND tool catalog definitions
     const appRolesTableArn = ssm.StringParameter.valueForStringParameter(
       this,
@@ -262,7 +262,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB OAuth Providers Table permissions (imported from App API Stack)
+    // DynamoDB OAuth Providers Table permissions (imported from Infrastructure Stack)
     const oauthProvidersTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/oauth/providers-table-arn`
@@ -283,7 +283,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB OAuth User Tokens Table permissions (imported from App API Stack)
+    // DynamoDB OAuth User Tokens Table permissions (imported from Infrastructure Stack)
     const oauthUserTokensTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/oauth/user-tokens-table-arn`
@@ -482,7 +482,26 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB Quota Tables permissions (imported from App API Stack)
+    // AgentCore Identity OAuth2 token vault access — lets the Runtime fetch
+    // user-federated OAuth tokens for external MCP tools (e.g. Google, Slack)
+    // via IdentityClient.get_token. When the user has not consented, this
+    // call returns an authorization URL instead of a token, which the
+    // inference route surfaces as an `oauth_required` SSE event.
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'GetResourceOauth2Token',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'bedrock-agentcore:GetResourceOauth2Token',
+      ],
+      resources: [
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/default`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/default/*`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/default`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/default/workload-identity/hosted_agent_*`,
+      ],
+    }));
+
+    // DynamoDB Quota Tables permissions (imported from Infrastructure Stack)
     const userQuotasTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/quota/user-quotas-table-arn`
@@ -510,7 +529,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB Cost Tracking Tables permissions (imported from App API Stack)
+    // DynamoDB Cost Tracking Tables permissions (imported from Infrastructure Stack)
     const sessionsMetadataTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`
@@ -545,7 +564,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB Managed Models Table permissions (imported from App API Stack)
+    // DynamoDB Managed Models Table permissions (imported from Infrastructure Stack)
     const managedModelsTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/admin/managed-models-table-arn`
@@ -585,7 +604,7 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // DynamoDB Auth Providers Table permissions (imported from App API Stack)
+    // DynamoDB Auth Providers Table permissions (imported from Infrastructure Stack)
     const authProvidersTableArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/auth/auth-providers-table-arn`

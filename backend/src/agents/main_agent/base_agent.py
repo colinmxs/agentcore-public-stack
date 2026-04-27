@@ -8,12 +8,13 @@ stream_async() for their specific agent type.
 
 import logging
 from abc import ABC, abstractmethod
-from typing import AsyncGenerator, List, Optional
+from typing import Any, AsyncGenerator, Dict, List, Optional
 
 from agents.main_agent.core import ModelConfig, SystemPromptBuilder, AgentFactory
 from agents.main_agent.session import SessionFactory
 from agents.main_agent.session.hooks import (
     StopHook,
+    OAuthConsentHook,
     EmailApprovalHook,
     ExternalWriteApprovalHook,
     DangerousToolApprovalHook,
@@ -88,6 +89,19 @@ class BaseAgent(ABC):
             model_id=model_id, temperature=temperature, caching_enabled=caching_enabled, provider=provider, max_tokens=max_tokens
         )
 
+        # Frozen snapshot of agent-construction params, used when the turn
+        # pauses on OAuth consent so the resume request can rebuild this exact
+        # agent shape without depending on the in-process agent cache.
+        # ``system_prompt`` is captured below after the prompt builder resolves.
+        self._construction_snapshot: dict = {
+            "enabled_tools": enabled_tools,
+            "model_id": model_id,
+            "provider": provider,
+            "temperature": temperature,
+            "caching_enabled": caching_enabled,
+            "max_tokens": max_tokens,
+        }
+
         # Load retry configuration from environment variables
         from agents.main_agent.core.model_config import RetryConfig
         self.model_config.retry_config = RetryConfig.from_env()
@@ -99,6 +113,10 @@ class BaseAgent(ABC):
         else:
             self.prompt_builder = SystemPromptBuilder()
             self.system_prompt = self.prompt_builder.build(include_date=True)
+
+        # Capture the resolved system prompt — what we'd need to pass back to
+        # ``get_agent`` to land on the same cache key on resume.
+        self._construction_snapshot["system_prompt"] = self.system_prompt
 
         # Initialize tool registry and filter
         self.tool_registry = create_default_registry()
@@ -131,9 +149,21 @@ class BaseAgent(ABC):
 
     @abstractmethod
     async def stream_async(
-        self, message: str, session_id: Optional[str] = None, files: Optional[List] = None, citations: Optional[List] = None, original_message: Optional[str] = None
+        self,
+        message: str,
+        session_id: Optional[str] = None,
+        files: Optional[List] = None,
+        citations: Optional[List] = None,
+        original_message: Optional[str] = None,
+        interrupt_responses: Optional[List[Dict[str, Any]]] = None,
     ) -> AsyncGenerator[str, None]:
-        """Stream agent responses. Subclasses must implement."""
+        """Stream agent responses. Subclasses must implement.
+
+        When `interrupt_responses` is provided, the call resumes a paused
+        agent turn (Strands interrupt protocol) instead of starting a new
+        one. In that case `message`/`files` are ignored — the original turn
+        already has the user's prompt in its context.
+        """
         ...
 
     def _register_external_mcp_tools(self) -> None:
@@ -187,6 +217,8 @@ class BaseAgent(ABC):
 
         Includes:
         - StopHook: Always enabled, cancels tool execution on user stop
+        - OAuthConsentHook: Pauses the agent (Strands interrupt) when an
+          OAuth-gated MCP tool is about to run without a cached token
         - Approval hooks: Gate dangerous operations for user confirmation
 
         Returns:
@@ -197,12 +229,94 @@ class BaseAgent(ABC):
         # Always-on: session cancellation
         hooks.append(StopHook(self.session_manager))
 
+        # OAuth consent gate for external MCP tools. Registered unconditionally;
+        # the hook is a no-op for tools that don't have a registered provider.
+        hooks.append(self._build_oauth_consent_hook())
+
         # Approval gates for dangerous operations
         hooks.append(EmailApprovalHook())
         hooks.append(ExternalWriteApprovalHook())
         hooks.append(DangerousToolApprovalHook())
 
         return hooks
+
+    def _build_oauth_consent_hook(self) -> OAuthConsentHook:
+        """Construct the OAuth consent hook with closures over the MCP
+        integration and provider repository so it stays decoupled from them.
+        """
+        from agents.main_agent.integrations.external_mcp_client import (
+            get_external_mcp_integration,
+        )
+        from strands.tools.mcp import MCPAgentTool
+
+        integration = get_external_mcp_integration()
+
+        def provider_lookup(selected_tool: object) -> Optional[str]:
+            if not isinstance(selected_tool, MCPAgentTool):
+                return None
+            return integration.provider_for_client(selected_tool.mcp_client)
+
+        async def scopes_lookup(provider_id: str) -> List[str]:
+            from apis.shared.oauth.provider_repository import get_provider_repository
+
+            provider = await get_provider_repository().get_provider(provider_id)
+            return provider.scopes if provider else []
+
+        async def provider_type_lookup(provider_id: str) -> Optional[str]:
+            # AgentCore Identity needs vendor-specific OAuth params
+            # forwarded via `customParameters` (e.g. Google's
+            # `access_type=offline` for refresh tokens). The hook reads
+            # this to forward those.
+            from apis.shared.oauth.provider_repository import get_provider_repository
+
+            provider = await get_provider_repository().get_provider(provider_id)
+            return provider.provider_type.value if provider else None
+
+        async def custom_parameters_lookup(
+            provider_id: str,
+        ) -> Optional[dict[str, str]]:
+            # Admin-supplied OAuth extras (e.g. `hd=mycorp.com` for
+            # Google Workspace domain restriction). Merged with the
+            # vendor baseline by `custom_parameters_for`; baseline wins
+            # on conflict.
+            from apis.shared.oauth.provider_repository import get_provider_repository
+
+            provider = await get_provider_repository().get_provider(provider_id)
+            return provider.custom_parameters if provider else None
+
+        async def disconnected_lookup(provider_id: str) -> bool:
+            # Durable per-(user, provider) disconnect intent. Read from DDB
+            # on every gate call so a /disconnect on another replica is
+            # picked up before the next tool runs.
+            from apis.shared.oauth.disconnect_repository import (
+                get_disconnect_repository,
+            )
+
+            return await get_disconnect_repository().is_disconnected(
+                self.user_id, provider_id
+            )
+
+        async def mark_disconnected(provider_id: str) -> None:
+            # Persist a disconnect from the AfterToolCallEvent 401-retry
+            # path so subsequent requests (potentially on other replicas)
+            # also force a fresh consent.
+            from apis.shared.oauth.disconnect_repository import (
+                get_disconnect_repository,
+            )
+
+            await get_disconnect_repository().mark_disconnected(
+                self.user_id, provider_id
+            )
+
+        return OAuthConsentHook(
+            user_id=self.user_id,
+            provider_lookup=provider_lookup,
+            scopes_lookup=scopes_lookup,
+            provider_type_lookup=provider_type_lookup,
+            custom_parameters_lookup=custom_parameters_lookup,
+            disconnected_lookup=disconnected_lookup,
+            mark_disconnected=mark_disconnected,
+        )
 
     def _build_filtered_tools(self) -> List:
         """
@@ -226,22 +340,34 @@ class BaseAgent(ABC):
         if external_mcp_tool_ids:
             import asyncio
 
+            from bedrock_agentcore.runtime import BedrockAgentCoreContext
+
             from agents.main_agent.integrations.external_mcp_client import get_external_mcp_integration
+
+            # Capture request-scoped context values before crossing the thread
+            # boundary below. ContextVars do not propagate into the executor's
+            # fresh event loop, so anything we need there must be passed as args.
+            oauth2_callback_url = BedrockAgentCoreContext.get_oauth2_callback_url()
+            workload_access_token = BedrockAgentCoreContext.get_workload_access_token()
 
             external_integration = get_external_mcp_integration()
             loop = asyncio.get_event_loop()
             if loop.is_running():
                 import concurrent.futures
 
-                with concurrent.futures.ThreadPoolExecutor() as executor:
-                    future = executor.submit(
-                        asyncio.run,
-                        external_integration.load_external_tools(
-                            external_mcp_tool_ids,
-                            user_id=self.user_id,
-                            auth_token=self.auth_token,
-                        ),
+                async def _load_with_context():
+                    if oauth2_callback_url:
+                        BedrockAgentCoreContext.set_oauth2_callback_url(oauth2_callback_url)
+                    if workload_access_token:
+                        BedrockAgentCoreContext.set_workload_access_token(workload_access_token)
+                    return await external_integration.load_external_tools(
+                        external_mcp_tool_ids,
+                        user_id=self.user_id,
+                        auth_token=self.auth_token,
                     )
+
+                with concurrent.futures.ThreadPoolExecutor() as executor:
+                    future = executor.submit(asyncio.run, _load_with_context())
                     external_clients = future.result()
             else:
                 external_clients = loop.run_until_complete(
