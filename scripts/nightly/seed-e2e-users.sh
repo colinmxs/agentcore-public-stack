@@ -53,7 +53,6 @@ ensure_user() {
         aws cognito-idp admin-create-user \
             --user-pool-id "${user_pool_id}" \
             --username "${username}" \
-            --user-attributes Name=email,Value="${username}" Name=email_verified,Value=true \
             --message-action SUPPRESS \
             --region "${CDK_AWS_REGION}" \
             --no-cli-pager > /dev/null
