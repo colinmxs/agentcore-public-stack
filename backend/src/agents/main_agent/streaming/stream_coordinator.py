@@ -195,6 +195,23 @@ class StreamCoordinator:
                     # Don't yield this event to the client (will send final metadata before done)
                     continue
 
+                # If the agent paused on an OAuth interrupt, surface one
+                # `oauth_required` SSE event per pending interrupt before the
+                # stream closes. The frontend uses these to drive the consent
+                # popup and then POSTs interrupt responses to resume the turn.
+                # Done before the metadata branch so the events land between
+                # message_stop and the final metadata/done block. Persistence
+                # to session metadata happens inside the extractor so a refresh
+                # rediscovers the consent prompt.
+                if event.get("type") == "done":
+                    for sse in await self._extract_oauth_required_events(
+                        agent,
+                        session_id=session_id,
+                        user_id=user_id,
+                        main_agent_wrapper=main_agent_wrapper,
+                    ):
+                        yield sse
+
                 # Check if this is the "done" event - send final metadata before it
                 if event.get("type") == "done":
                     # Calculate end-to-end latency
@@ -529,6 +546,116 @@ class StreamCoordinator:
                     logger.info(f"💾 Saved stream error messages to session {session_id}")
             except Exception as persist_error:
                 logger.error(f"Failed to persist stream error to session: {persist_error}")
+
+    async def _extract_oauth_required_events(
+        self,
+        agent: Any,
+        session_id: Optional[str] = None,
+        user_id: Optional[str] = None,
+        triggering_message_id: Optional[str] = None,
+        main_agent_wrapper: Any = None,
+    ) -> List[str]:
+        """Yield one SSE-formatted `oauth_required` event per pending OAuth
+        interrupt on the agent, persisting each one to session metadata so
+        the frontend can rediscover them after a refresh.
+
+        The Strands `_interrupt_state` is populated when `OAuthConsentHook`
+        calls `event.interrupt(...)`. We look for interrupts whose `reason`
+        carries `type: "oauth_required"` and translate them into the SSE
+        shape the frontend already understands. Non-OAuth interrupts (other
+        approval gates added later) are ignored here so they can be handled
+        by their own SSE event types.
+
+        Also persists a ``PausedTurnSnapshot`` capturing the agent's
+        construction params, so a resume after refresh / cache eviction
+        rebuilds the same agent shape (matching tool registry) and lets
+        Strands restore ``_interrupt_state`` from AgentCore Memory.
+
+        Persistence is best-effort: a DynamoDB write failure logs but does
+        not break the live SSE flow.
+        """
+        from datetime import timedelta
+        from apis.shared.oauth.models import OAuthRequiredEvent
+        from apis.shared.sessions.metadata import add_pending_interrupt, set_paused_turn
+        from apis.shared.sessions.models import PausedTurnSnapshot, PendingInterrupt
+
+        interrupt_state = getattr(agent, "_interrupt_state", None)
+        if not interrupt_state or not getattr(interrupt_state, "activated", False):
+            return []
+
+        # Snapshot the turn-construction context once per pause, before the
+        # per-interrupt loop. Multiple OAuth interrupts in the same turn
+        # share one snapshot — they were all built against the same agent.
+        # TTL matches AgentCore Identity's consent window so stale snapshots
+        # don't pin storage and a too-late resume returns a clean 400.
+        snapshot_source = (
+            getattr(main_agent_wrapper, "_construction_snapshot", None) if main_agent_wrapper else None
+        )
+        if session_id and user_id and snapshot_source:
+            try:
+                now = datetime.now(timezone.utc)
+                snapshot = PausedTurnSnapshot(
+                    enabled_tools=snapshot_source.get("enabled_tools"),
+                    model_id=snapshot_source.get("model_id"),
+                    provider=snapshot_source.get("provider"),
+                    temperature=snapshot_source.get("temperature"),
+                    system_prompt=snapshot_source.get("system_prompt"),
+                    caching_enabled=snapshot_source.get("caching_enabled"),
+                    max_tokens=snapshot_source.get("max_tokens"),
+                    captured_at=now.isoformat(),
+                    expires_at=(now + timedelta(hours=1)).isoformat(),
+                )
+                await set_paused_turn(session_id, user_id, snapshot)
+            except Exception as e:
+                logger.error(
+                    "Failed to persist paused_turn snapshot for session %s: %s",
+                    session_id, e, exc_info=True,
+                )
+
+        events: List[str] = []
+        for interrupt in interrupt_state.interrupts.values():
+            reason = interrupt.reason or {}
+            if not isinstance(reason, dict) or reason.get("type") != "oauth_required":
+                continue
+            provider_id = reason.get("providerId")
+            authorization_url = reason.get("authorizationUrl")
+            if not provider_id or not authorization_url:
+                logger.warning(
+                    "OAuth interrupt missing providerId or authorizationUrl: id=%s",
+                    interrupt.id,
+                )
+                continue
+
+            # Persist the breadcrumb before yielding so a client that loads
+            # the session a moment later sees this interrupt. Only attempt
+            # when we have session/user context — preview/anonymous flows
+            # don't have a metadata record to write to.
+            if session_id and user_id:
+                try:
+                    await add_pending_interrupt(
+                        session_id=session_id,
+                        user_id=user_id,
+                        interrupt=PendingInterrupt(
+                            interrupt_id=interrupt.id,
+                            provider_id=provider_id,
+                            triggering_message_id=triggering_message_id,
+                            created_at=datetime.now(timezone.utc).isoformat(),
+                        ),
+                    )
+                except Exception as e:
+                    logger.error(
+                        "Failed to persist pending_interrupt %s: %s",
+                        interrupt.id, e, exc_info=True,
+                    )
+
+            events.append(
+                OAuthRequiredEvent(
+                    provider_id=provider_id,
+                    authorization_url=authorization_url,
+                    interrupt_id=interrupt.id,
+                ).to_sse_format()
+            )
+        return events
 
     def _format_sse_event(self, event: Dict[str, Any]) -> str:
         """
@@ -1090,149 +1217,39 @@ class StreamCoordinator:
             return None
 
     async def _update_session_metadata(self, session_id: str, user_id: str, message_id: int, agent: Any = None) -> None:
-        """
-        Update session-level metadata after each message
+        """Update per-turn session activity (lastMessageAt, messageCount, preferences).
 
-        This updates conversation-level tracking after each message:
-        - lastMessageAt: Timestamp of this message
-        - messageCount: Incremented by 1
-        - preferences: Model/temperature/tools/system_prompt_hash from agent config
-        - Auto-creates session metadata on first message
-
-        Args:
-            session_id: Session identifier
-            user_id: User identifier
-            message_id: Message ID that was just flushed
-            agent: Agent instance for extracting model preferences
+        Delegates to ``update_session_activity``, which uses targeted writes
+        so concurrent writers (title-gen, pending-interrupt persistence)
+        cannot be clobbered. Pre-create is handled at /invocations entry, so
+        no lazy-create branch is needed here.
         """
         try:
             import hashlib
 
-            from apis.shared.sessions.models import SessionMetadata, SessionPreferences
-            from apis.shared.sessions.metadata import get_session_metadata, store_session_metadata
+            from apis.shared.sessions.metadata import update_session_activity
 
-            logger.info(f"🔍 _update_session_metadata called for session {session_id}, message_id {message_id}")
-
-            # Get existing metadata or create new
-            existing = await get_session_metadata(session_id, user_id)
-
-            if existing:
-                logger.info(f"📄 Found existing metadata: messageCount={existing.message_count}, has_preferences={existing.preferences is not None}")
+            last_model = None
+            last_temperature = None
+            enabled_tools = None
+            system_prompt_hash = None
+            if agent and hasattr(agent, "model_config"):
+                last_model = agent.model_config.model_id
+                last_temperature = getattr(agent.model_config, "temperature", None)
+                enabled_tools = getattr(agent, "enabled_tools", None)
+                if hasattr(agent, "system_prompt") and agent.system_prompt:
+                    system_prompt_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]
             else:
-                logger.info(f"📄 No existing metadata found - creating new")
+                logger.warning("⚠️ Agent is None or missing model_config — skipping preference update")
 
-            # Calculate message count incrementally
-            # NOTE: We cannot query AgentCore Memory immediately after flush due to eventual consistency.
-            # The turn-based session manager calls create_message() then immediately calls list_messages(),
-            # but the newly created message is not yet available for reading (can take several seconds).
-            #
-            # Instead, we use incremental counting:
-            # - Each streaming turn creates 1 merged message in AgentCore Memory
-            # - We increment the count by 1 per turn
-            #
-            # This count represents "turns" (user-assistant exchanges), not individual message events.
-            # Tool use creates multiple content blocks within a single turn/message.
-            if not existing:
-                actual_message_count = 1
-                logger.info(f"📊 First turn in session - message_count: {actual_message_count}")
-            else:
-                actual_message_count = existing.message_count + 1
-                logger.info(f"📊 Incremental turn count: {existing.message_count} + 1 = {actual_message_count}")
-
-            now = datetime.now(timezone.utc).isoformat()
-
-            if not existing:
-                # First message - create session metadata
-                preferences = None
-                if agent and hasattr(agent, "model_config"):
-                    logger.info(f"📦 Agent has model_config: model_id={agent.model_config.model_id}")
-
-                    # Generate system prompt hash for tracking exact prompt version
-                    # This hash represents the FINAL rendered system prompt (after date injection, etc.)
-                    system_prompt_hash = None
-                    if hasattr(agent, "system_prompt") and agent.system_prompt:
-                        system_prompt_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]  # 16 char hash for uniqueness
-                        logger.debug(f"Generated system_prompt_hash: {system_prompt_hash}")
-
-                    # Extract enabled tools from agent
-                    enabled_tools = getattr(agent, "enabled_tools", None)
-
-                    preferences = SessionPreferences(
-                        last_model=agent.model_config.model_id,
-                        last_temperature=getattr(agent.model_config, "temperature", None),
-                        enabled_tools=enabled_tools,
-                        system_prompt_hash=system_prompt_hash,
-                    )
-                    logger.info(f"✨ Created new preferences: last_model={preferences.last_model}")
-                else:
-                    logger.warning(f"⚠️ Agent is None or missing model_config")
-
-                metadata = SessionMetadata(
-                    session_id=session_id,
-                    user_id=user_id,
-                    title="New Conversation",  # Will be updated by frontend
-                    status="active",
-                    created_at=now,
-                    last_message_at=now,
-                    message_count=actual_message_count,
-                    starred=False,
-                    tags=[],
-                    preferences=preferences,
-                )
-            else:
-                # Update existing - only update what changed
-                preferences = existing.preferences
-                if agent and hasattr(agent, "model_config"):
-                    logger.info(f"📦 Updating preferences with model_id={agent.model_config.model_id}")
-
-                    # Update preferences if model/temperature/tools/system_prompt changed
-                    prefs_dict = preferences.model_dump(by_alias=False) if preferences else {}
-                    logger.info(f"📝 Existing prefs_dict: {prefs_dict}")
-
-                    prefs_dict["last_model"] = agent.model_config.model_id
-                    prefs_dict["last_temperature"] = getattr(agent.model_config, "temperature", None)
-
-                    # Update enabled_tools from agent
-                    prefs_dict["enabled_tools"] = getattr(agent, "enabled_tools", None)
-
-                    # Update system_prompt_hash if system prompt changed
-                    # This allows tracking when the prompt was modified during a conversation
-                    if hasattr(agent, "system_prompt") and agent.system_prompt:
-                        new_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]
-                        # Only update if hash changed (prompt was modified)
-                        if prefs_dict.get("system_prompt_hash") != new_hash:
-                            logger.info(f"System prompt changed - updating hash from {prefs_dict.get('system_prompt_hash')} to {new_hash}")
-                            prefs_dict["system_prompt_hash"] = new_hash
-
-                    preferences = SessionPreferences(**prefs_dict)
-                    logger.info(f"✨ Updated preferences: last_model={preferences.last_model}")
-                else:
-                    logger.warning(f"⚠️ Agent is None or missing model_config - keeping existing preferences")
-
-                metadata = SessionMetadata(
-                    session_id=session_id,
-                    user_id=user_id,
-                    title=existing.title,
-                    status=existing.status,
-                    created_at=existing.created_at,
-                    last_message_at=now,
-                    message_count=actual_message_count,
-                    starred=existing.starred,
-                    tags=existing.tags,
-                    preferences=preferences,
-                )
-
-            # Store updated metadata (uses deep merge in storage layer)
-            await store_session_metadata(session_id=session_id, user_id=user_id, session_metadata=metadata)
-
-            logger.info(
-                f"✅ Updated session metadata - last_model: {metadata.preferences.last_model if metadata.preferences else 'None'}, message_count: {metadata.message_count}"
+            await update_session_activity(
+                session_id=session_id,
+                user_id=user_id,
+                last_model=last_model,
+                last_temperature=last_temperature,
+                enabled_tools=enabled_tools,
+                system_prompt_hash=system_prompt_hash,
             )
-
-            # Return message count for use as a fallback message_id
-            return metadata.message_count
-
         except Exception as e:
             logger.error(f"Failed to update session metadata: {e}", exc_info=True)
-            # Don't raise - metadata failures shouldn't break streaming
-            return None
+            # Don't raise — metadata failures shouldn't break streaming.

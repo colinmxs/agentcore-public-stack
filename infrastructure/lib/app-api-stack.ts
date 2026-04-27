@@ -445,6 +445,7 @@ export class AppApiStack extends cdk.Stack {
         DYNAMODB_API_KEYS_TABLE_NAME: apiKeysTableName,
         OAUTH_TOKEN_ENCRYPTION_KEY_ARN: oauthTokenEncryptionKeyArn,
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
+        DYNAMODB_OAUTH_PROVIDERS_TABLE_NAME: oauthProvidersTableName,
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsArn,
         DYNAMODB_USER_SETTINGS_TABLE_NAME: userSettingsTableName,
@@ -917,6 +918,49 @@ export class AppApiStack extends cdk.Stack {
         resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
       })
     );
+
+    // Admin CRUD for OAuth2 credential providers stored in AgentCore Identity.
+    // Provider-scoped actions are scoped to the default token vault; List
+    // requires a broader resource since it enumerates the vault itself.
+    // CreateTokenVault is required because the first CreateOauth2CredentialProvider
+    // call in a region implicitly provisions the `default` token vault.
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'AgentCoreCredentialProviderAdmin',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'bedrock-agentcore:CreateTokenVault',
+          'bedrock-agentcore:CreateOauth2CredentialProvider',
+          'bedrock-agentcore:UpdateOauth2CredentialProvider',
+          'bedrock-agentcore:DeleteOauth2CredentialProvider',
+          'bedrock-agentcore:GetOauth2CredentialProvider',
+          'bedrock-agentcore:ListOauth2CredentialProviders',
+        ],
+        resources: [
+          `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/default`,
+          `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/default/oauth2credentialprovider/*`,
+        ],
+      })
+    );
+
+    // Custom metrics for OAuth admin flows (e.g. ProviderOrphaned emitted
+    // by `_emit_orphan_metric` when a failed DB write + failed rollback
+    // leaves an AgentCore credential provider stranded). PutMetricData
+    // cannot be resource-scoped; we scope via the namespace condition.
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'OAuthAdminMetrics',
+        effect: iam.Effect.ALLOW,
+        actions: ['cloudwatch:PutMetricData'],
+        resources: ['*'],
+        conditions: {
+          StringEquals: {
+            'cloudwatch:namespace': 'Agentcore/OAuth',
+          },
+        },
+      })
+    );
+
     // Grant permissions for API Keys table (imported from Infrastructure Stack)
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({

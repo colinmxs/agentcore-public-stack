@@ -15,7 +15,6 @@ from apis.app_api.tools.models import (
     AddRemoveRolesRequest,
     AdminToolResponse,
     AdminToolListResponse,
-    SyncResult,
     ToolDefinition,
 )
 
@@ -130,9 +129,15 @@ async def admin_create_tool(
 
     try:
         created = await service.create_tool(tool, admin)
-        return AdminToolResponse.from_tool_definition(created)
     except ValueError as e:
         raise HTTPException(status_code=400, detail=str(e))
+
+    # Drop the all-tool-ids snapshot so the new tool is recognized by
+    # ToolAccessService on the very next chat turn in this process.
+    from apis.app_api.tools.freshness import invalidate as invalidate_freshness
+    invalidate_freshness(created.tool_id)
+
+    return AdminToolResponse.from_tool_definition(created)
 
 
 @router.put("/{tool_id}", response_model=AdminToolResponse)
@@ -177,6 +182,13 @@ async def admin_update_tool(
     if not updated:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found")
 
+    # Invalidate the freshness TTL entry so the next chat turn in this
+    # process sees the new updated_at immediately (no wait for the TTL
+    # to lapse). Other processes pick the change up within one TTL
+    # window via their own freshness reads.
+    from apis.app_api.tools.freshness import invalidate as invalidate_freshness
+    invalidate_freshness(tool_id)
+
     return AdminToolResponse.from_tool_definition(updated)
 
 
@@ -209,6 +221,9 @@ async def admin_delete_tool(
 
     if not deleted:
         raise HTTPException(status_code=404, detail=f"Tool '{tool_id}' not found")
+
+    from apis.app_api.tools.freshness import invalidate as invalidate_freshness
+    invalidate_freshness(tool_id)
 
     action = "deleted" if hard else "disabled"
     return {"message": f"Tool '{tool_id}' {action} successfully"}
@@ -343,35 +358,3 @@ async def remove_roles_from_tool(
         raise HTTPException(status_code=400, detail=str(e))
 
 
-# =============================================================================
-# Sync Endpoints
-# =============================================================================
-
-
-@router.post("/sync", response_model=SyncResult)
-async def sync_from_registry(
-    dry_run: bool = Query(True, description="If true, only report what would happen"),
-    admin: User = Depends(require_admin),
-):
-    """
-    Sync catalog from code registry.
-
-    Discovers tools from the backend tool registry and updates the catalog:
-    - Creates entries for new tools
-    - Marks orphaned tools as deprecated
-
-    Requires admin access.
-
-    Args:
-        dry_run: If true, only report changes without applying
-        admin: Authenticated admin user (injected)
-
-    Returns:
-        SyncResult with discovered, orphaned, and unchanged tools
-    """
-    logger.info("Admin syncing tool catalog")
-
-    service = get_tool_catalog_service()
-    result = await service.sync_catalog_from_registry(admin, dry_run=dry_run)
-
-    return result

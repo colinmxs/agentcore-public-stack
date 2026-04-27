@@ -19,7 +19,7 @@ import {
   heroShieldCheck,
 } from '@ng-icons/heroicons/outline';
 import { AdminToolService } from '../services/admin-tool.service';
-import { OAuthProvidersService } from '../../oauth-providers/services/oauth-providers.service';
+import { ConnectorsService } from '../../connectors/services/connectors.service';
 import {
   TOOL_CATEGORIES,
   TOOL_PROTOCOLS,
@@ -340,7 +340,7 @@ import {
             <div class="border border-emerald-200 dark:border-emerald-800 rounded-lg p-4 bg-emerald-50/50 dark:bg-emerald-900/20">
               <div class="flex items-center gap-2 mb-4">
                 <ng-icon name="heroLink" class="size-5 text-emerald-600 dark:text-emerald-400" />
-                <h3 class="text-lg font-semibold text-emerald-900 dark:text-emerald-100">User OAuth Connection</h3>
+                <h3 class="text-lg font-semibold text-emerald-900 dark:text-emerald-100">User OAuth Connector</h3>
               </div>
               <p class="text-sm text-gray-600 dark:text-gray-400 mb-4">
                 If this tool requires access to a user's external account (e.g., Google Workspace, Microsoft 365),
@@ -361,8 +361,8 @@ import {
                   }
                 </select>
                 <p class="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  Users must connect this provider before using the tool. Manage providers in
-                  <a routerLink="/admin/oauth-providers" class="text-emerald-600 hover:underline">OAuth Settings</a>.
+                  Users must connect this connector before using the tool. Manage connectors in
+                  <a routerLink="/admin/connectors" class="text-emerald-600 hover:underline">Connectors</a>.
                 </p>
               </div>
             </div>
@@ -568,7 +568,7 @@ export class ToolFormPage implements OnInit {
   private router = inject(Router);
   private route = inject(ActivatedRoute);
   private adminToolService = inject(AdminToolService);
-  private oauthProvidersService = inject(OAuthProvidersService);
+  private connectorsService = inject(ConnectorsService);
 
   readonly categories = TOOL_CATEGORIES;
   readonly protocols = TOOL_PROTOCOLS;
@@ -585,8 +585,8 @@ export class ToolFormPage implements OnInit {
   readonly isEditMode = computed(() => !!this.toolId());
   readonly selectedProtocol = signal<ToolProtocol>('local');
 
-  /** Available OAuth providers for dropdown */
-  readonly oauthProviders = computed(() => this.oauthProvidersService.getEnabledProviders());
+  /** Available connectors for dropdown */
+  readonly oauthProviders = computed(() => this.connectorsService.getEnabledConnectors());
 
   form: FormGroup = this.fb.group({
     toolId: ['', [Validators.required, Validators.pattern(/^[a-z][a-z0-9_]{2,49}$/)]],
