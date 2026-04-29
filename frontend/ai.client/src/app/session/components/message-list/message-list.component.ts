@@ -7,10 +7,15 @@ import { MessageMetadataBadgesComponent } from './components/message-metadata-ba
 import { CitationDisplayComponent } from '../citation-display/citation-display.component';
 import { PulsatingLoaderComponent } from '../../../components/pulsating-loader.component';
 import { OAuthConsentPromptComponent } from './components/oauth-consent-prompt/oauth-consent-prompt.component';
+import { ToolApprovalPromptComponent } from './components/tool-approval-prompt/tool-approval-prompt.component';
 import {
   OAuthConsentRequest,
   OAuthConsentService,
 } from '../../../services/oauth-consent/oauth-consent.service';
+import {
+  ToolApprovalRequest,
+  ToolApprovalService,
+} from '../../../services/tool-approval/tool-approval.service';
 
 @Component({
   selector: 'app-message-list',
@@ -21,6 +26,7 @@ import {
     CitationDisplayComponent,
     PulsatingLoaderComponent,
     OAuthConsentPromptComponent,
+    ToolApprovalPromptComponent,
   ],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.css',
@@ -40,6 +46,7 @@ export class MessageListComponent implements OnDestroy {
   embeddedMode = input<boolean>(false);
 
   private consentService = inject(OAuthConsentService);
+  private toolApprovalService = inject(ToolApprovalService);
 
   /** Pending consent prompts whose anchor message id isn't in the loaded
    *  message list — typically the case when an interrupt fires on a turn
@@ -50,6 +57,18 @@ export class MessageListComponent implements OnDestroy {
     const ids = new Set(this.messages().map((m) => m.id));
     return this.consentService.pending().filter((req) => !req.messageId || !ids.has(req.messageId));
   });
+
+  /** Pending tool-approval prompts, rendered at the end of the conversation.
+   *  Sourced from both live `tool_approval_required` SSE events during a
+   *  turn and the `PendingInterrupt(kind="tool_approval")` rows that
+   *  `MessageMapService.hydratePendingInterrupts` replays on session load,
+   *  so a mid-prompt refresh rehydrates the prompt rather than orphaning
+   *  it. We don't anchor next to the triggering assistant message (the way
+   *  OAuth prompts do) because the approval is for the *next* tool call,
+   *  not the assistant text that just streamed. */
+  protected pendingToolApprovals = computed<ToolApprovalRequest[]>(() =>
+    this.toolApprovalService.pending(),
+  );
 
   // Calculate the spacer height dynamically
   // This creates space at the bottom so user messages can scroll to the top
