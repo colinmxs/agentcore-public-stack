@@ -330,12 +330,19 @@ register_input = {k: v for k, v in register_input.items() if v}
 print(json.dumps(register_input))
 ")
 
+    # Write to a temp file — aws cli's file:///dev/stdin is unreliable across environments
+    local tmp_file
+    tmp_file=$(mktemp /tmp/task-def-XXXXXX.json)
+    echo "${new_task_def}" > "${tmp_file}"
+
     local new_task_def_arn
-    new_task_def_arn=$(echo "${new_task_def}" | aws ecs register-task-definition \
-        --cli-input-json file:///dev/stdin \
+    new_task_def_arn=$(aws ecs register-task-definition \
+        --cli-input-json "file://${tmp_file}" \
         --query "taskDefinition.taskDefinitionArn" \
         --output text \
         --region "${CDK_AWS_REGION}")
+
+    rm -f "${tmp_file}"
 
     log_info "  Registered new task definition: ${new_task_def_arn}"
 
