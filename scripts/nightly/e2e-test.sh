@@ -441,6 +441,14 @@ main() {
     log_info "Seeding E2E test users in Cognito User Pool..."
     bash "${SCRIPT_DIR}/seed-e2e-users.sh"
 
+    # --- Seed bootstrap data (models, tools, roles, quotas) ---
+    # The nightly stack deploys fresh empty DynamoDB tables. The e2e tests
+    # expect models, tools, and RBAC roles to exist. The bootstrap seed
+    # script is idempotent and resolves table names from SSM.
+    log_info "Seeding bootstrap data (models, tools, roles, quotas)..."
+    pip install boto3 --quiet 2>/dev/null || pip3 install boto3 --quiet 2>/dev/null || true
+    bash "${PROJECT_ROOT}/scripts/stack-bootstrap/seed.sh"
+
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"
 
