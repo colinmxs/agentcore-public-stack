@@ -502,6 +502,104 @@ def seed_system_admin_role(
     return result
 
 
+def seed_default_role(
+    table_name: str,
+    region: str,
+) -> SeedResult:
+    """Seed the default role with DEFINITION, MODEL_GRANT#*, and TOOL_GRANT#*.
+
+    The default role is the fallback for users who have no JWT role mappings.
+    Without it, regular users (e.g. Cognito users with no groups) get empty
+    permissions and cannot see any models or tools.
+    """
+    result = SeedResult(category="default_role")
+    session = boto3.Session(region_name=region)
+    dynamodb = session.resource("dynamodb")
+    table = dynamodb.Table(table_name)
+
+    role_id = "default"
+    pk = f"ROLE#{role_id}"
+
+    try:
+        existing = table.get_item(Key={"PK": pk, "SK": "DEFINITION"})
+        if "Item" in existing:
+            msg = "default role already exists — skipped"
+            logger.info(msg)
+            result.skipped = 1
+            result.details.append(msg)
+            return result
+    except ClientError as e:
+        msg = f"Failed to check existing default role: {e}"
+        logger.error(msg)
+        result.failed = 1
+        result.details.append(msg)
+        return result
+
+    now = datetime.now(timezone.utc).isoformat().replace("+00:00", "Z")
+
+    definition_item: dict[str, Any] = {
+        "PK": pk,
+        "SK": "DEFINITION",
+        "roleId": role_id,
+        "displayName": "Default",
+        "description": "Default role for all users. Grants access to all models and tools.",
+        "jwtRoleMappings": [],
+        "inheritsFrom": [],
+        "grantedTools": ["*"],
+        "grantedModels": ["*"],
+        "effectivePermissions": {
+            "tools": ["*"],
+            "models": ["*"],
+            "quotaTier": "default",
+        },
+        "priority": 1,
+        "isSystemRole": True,
+        "enabled": True,
+        "createdAt": now,
+        "updatedAt": now,
+        "createdBy": "bootstrap-seed",
+    }
+
+    tool_grant_item = {
+        "PK": pk,
+        "SK": "TOOL_GRANT#*",
+        "GSI2PK": "TOOL#*",
+        "GSI2SK": pk,
+        "roleId": role_id,
+        "displayName": "Default",
+        "enabled": True,
+    }
+
+    model_grant_item = {
+        "PK": pk,
+        "SK": "MODEL_GRANT#*",
+        "GSI3PK": "MODEL#*",
+        "GSI3SK": pk,
+        "roleId": role_id,
+        "displayName": "Default",
+        "enabled": True,
+    }
+
+    try:
+        client = session.client("dynamodb")
+        client.transact_write_items(
+            TransactItems=[
+                {"Put": {"TableName": table_name, "Item": _serialize(definition_item)}},
+                {"Put": {"TableName": table_name, "Item": _serialize(tool_grant_item)}},
+                {"Put": {"TableName": table_name, "Item": _serialize(model_grant_item)}},
+            ]
+        )
+        result.created = 1
+        result.details.append("default role created with TOOL_GRANT#* and MODEL_GRANT#*")
+    except ClientError as e:
+        msg = f"Failed to create default role: {e}"
+        logger.error(msg)
+        result.failed = 1
+        result.details.append(msg)
+
+    return result
+
+
 def seed_default_tools(
     table_name: str,
     region: str,
@@ -622,6 +720,9 @@ def main() -> None:
 
     # --- System admin role seeding ---
     results.append(seed_system_admin_role(table_name=app_roles_table, region=region))
+
+    # --- Default role seeding ---
+    results.append(seed_default_role(table_name=app_roles_table, region=region))
 
     # --- Tool seeding ---
     results.append(seed_default_tools(table_name=app_roles_table, region=region))
