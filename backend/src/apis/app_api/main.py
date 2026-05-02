@@ -60,6 +60,10 @@ app = FastAPI(
 )
 
 # Add CORS middleware - origins from CDK-provided CORS_ORIGINS env var
+# NOTE: `allow_credentials=False` is correct for the Bearer flow. Phase 6 BFF
+# cutover serves the SPA same-origin via CloudFront `/api/*` so cookies don't
+# need CORS — but if any cross-origin cookie path is added, this must flip to
+# `True` (and `allow_origins` must list explicit origins, not "*").
 _cors_origins = os.environ.get("CORS_ORIGINS", "").split(",")
 app.add_middleware(
     CORSMiddleware,
@@ -76,6 +80,29 @@ app.add_middleware(
 from apis.shared.middleware.agentcore_context import AgentCoreContextMiddleware
 app.add_middleware(AgentCoreContextMiddleware)
 logger.info("Added AgentCore context middleware")
+
+# BFF Token Handler middlewares (Phase 2 — dormant).
+#
+# These two are added unconditionally so a deploy of the Phase 1 CDK env vars
+# can flip the system on without a code redeploy. When the env vars are
+# absent (local dev, environments before Phase 1 lands), `BFFConfig.is_enabled()`
+# returns False and `SessionRefreshMiddleware` short-circuits before doing any
+# AWS calls; `CSRFMiddleware` only acts when a session has been resolved
+# upstream, so it's effectively a no-op in the dormant state too.
+#
+# Starlette `add_middleware` prepends, so the LAST-added middleware is
+# outermost. Request-side order is therefore the reverse of the call order
+# below:
+#   request:  SessionRefresh → CSRF → AgentCoreContext → CORS → router
+#   response: router → CORS → AgentCoreContext → CSRF → SessionRefresh
+# This is the order we need: SessionRefresh has to populate
+# `state.bff_session` before CSRF reads it.
+from apis.shared.middleware.csrf import CSRFMiddleware
+from apis.shared.middleware.session_refresh import SessionRefreshMiddleware
+
+app.add_middleware(CSRFMiddleware)
+app.add_middleware(SessionRefreshMiddleware)
+logger.info("Added BFF session-refresh + CSRF middlewares (dormant until cookie present)")
 
 
 # Import routers
