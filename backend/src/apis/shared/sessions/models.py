@@ -107,6 +107,12 @@ class PausedTurnSnapshot(BaseModel):
     caching_enabled: Optional[bool] = Field(default=None, alias="cachingEnabled")
     max_tokens: Optional[int] = Field(default=None, alias="maxTokens")
     agent_type: Optional[str] = Field(default=None, alias="agentType")
+    inference_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="inferenceParams",
+        description="Canonical inference param dict captured at pause. When present, "
+                    "supersedes the legacy temperature/max_tokens fields on resume."
+    )
     captured_at: str = Field(..., alias="capturedAt", description="ISO 8601 timestamp when the turn paused")
     expires_at: str = Field(..., alias="expiresAt", description="ISO 8601 timestamp after which the snapshot is no longer valid for resume")
 
@@ -116,7 +122,6 @@ class SessionPreferences(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
     last_model: Optional[str] = Field(default=None, alias="lastModel", description="Last model used in this session")
-    last_temperature: Optional[float] = Field(default=None, alias="lastTemperature", description="Last temperature setting used")
     enabled_tools: Optional[List[str]] = Field(default=None, alias="enabledTools", description="List of enabled tool names")
     selected_prompt_id: Optional[str] = Field(default=None, alias="selectedPromptId", description="ID of selected prompt template")
     custom_prompt_text: Optional[str] = Field(default=None, alias="customPromptText", description="Custom prompt text if used")
@@ -191,7 +196,6 @@ class UpdateSessionMetadataRequest(BaseModel):
     starred: Optional[bool] = Field(None, description="Whether session is starred")
     tags: Optional[List[str]] = Field(None, description="Custom tags")
     last_model: Optional[str] = Field(None, alias="lastModel", description="Last model used")
-    last_temperature: Optional[float] = Field(None, alias="lastTemperature", description="Last temperature setting")
     enabled_tools: Optional[List[str]] = Field(None, alias="enabledTools", description="Enabled tools list")
     selected_prompt_id: Optional[str] = Field(None, alias="selectedPromptId", description="Selected prompt ID")
     custom_prompt_text: Optional[str] = Field(None, alias="customPromptText", description="Custom prompt text")
