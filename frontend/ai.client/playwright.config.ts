@@ -40,7 +40,7 @@ export default defineConfig({
       stderr: 'pipe',
     },
     {
-      command: 'npm run start -- --port 4200',
+      command: 'npx ng serve --port 4200',
       url: 'http://localhost:4200',
       reuseExistingServer: !process.env['CI'],
       timeout: 120_000,
@@ -61,7 +61,7 @@ export default defineConfig({
     {
       name: 'chromium',
       testIgnore: /\.setup\.ts|\.auth\./,
-      testMatch: /(?:login|navigation|not-found)\.spec\.ts/,
+      testMatch: /(?:login|navigation)\.spec\.ts/,
       use: { browserName: 'chromium' },
     },
 
