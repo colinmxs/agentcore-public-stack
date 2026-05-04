@@ -252,20 +252,68 @@ class StreamCoordinator:
                         # Add end-to-end latency to metrics for consistency
                         final_metadata["metrics"]["latencyMs"] = int((stream_end_time - stream_start_time) * 1000)
 
-                        # Calculate and add cost to metadata if we have usage and agent info
+                        # Cost: sum the FINAL usage of each assistant message in
+                        # this turn and price it. We deliberately price each
+                        # message independently and sum, instead of pricing
+                        # the cumulative usage once, because Strands emits
+                        # multiple metadata events per message (intermediate
+                        # + cumulative) and the cumulative usage on the last
+                        # event already includes prior messages' input
+                        # tokens. Per-message pricing matches what gets
+                        # persisted (one C# record per assistant message).
                         if main_agent_wrapper and hasattr(main_agent_wrapper, "model_config"):
                             model_id = main_agent_wrapper.model_config.model_id
-                            usage_for_cost = accumulated_metadata.get("usage", {})
-                            logger.info(f"💰 Cost calculation: model_id={model_id}, usage={usage_for_cost}")
                             try:
-                                cost_result = await self._calculate_streaming_cost(model_id=model_id, usage=usage_for_cost)
-                                if cost_result is not None:
-                                    final_metadata["cost"] = cost_result
+                                turn_total = 0.0
+                                turn_input_cost = 0.0
+                                turn_output_cost = 0.0
+                                turn_cache_read_cost = 0.0
+                                turn_cache_write_cost = 0.0
+                                for msg_idx, msg_meta in enumerate(per_message_metadata):
+                                    msg_usage = msg_meta.get("usage") or {}
+                                    if not msg_usage:
+                                        continue
+                                    msg_cost = await self._calculate_streaming_cost(
+                                        model_id=model_id,
+                                        usage=msg_usage,
+                                    )
+                                    if msg_cost is None:
+                                        continue
+                                    turn_total += msg_cost.get("total", 0.0)
+                                    turn_input_cost += msg_cost.get("inputCost", 0.0)
+                                    turn_output_cost += msg_cost.get("outputCost", 0.0)
+                                    turn_cache_read_cost += msg_cost.get("cacheReadCost", 0.0)
+                                    turn_cache_write_cost += msg_cost.get("cacheWriteCost", 0.0)
                                     logger.info(
-                                        f"💰 Calculated streaming cost: ${cost_result['total']:.6f} (input=${cost_result['inputCost']:.6f}, output=${cost_result['outputCost']:.6f}) for {usage_for_cost.get('inputTokens', 0)} input, {usage_for_cost.get('outputTokens', 0)} output tokens"
+                                        f"💰 Per-message cost (msg_idx={msg_idx}): ${msg_cost['total']:.6f} "
+                                        f"for {msg_usage.get('inputTokens', 0)} input, {msg_usage.get('outputTokens', 0)} output tokens"
+                                    )
+                                if turn_total > 0:
+                                    final_metadata["cost"] = {
+                                        "total": turn_total,
+                                        "inputCost": turn_input_cost,
+                                        "outputCost": turn_output_cost,
+                                        "cacheReadCost": turn_cache_read_cost,
+                                        "cacheWriteCost": turn_cache_write_cost,
+                                    }
+                                    logger.info(
+                                        f"💰 Turn total cost: ${turn_total:.6f} across {len(per_message_metadata)} message(s)"
                                     )
                             except Exception as cost_error:
-                                logger.warning(f"Failed to calculate streaming cost: {cost_error}")
+                                logger.warning(f"Failed to calculate turn cost: {cost_error}")
+
+                            # Surface the model's context window so the
+                            # frontend session-cost badge can show "% of
+                            # context used" without an extra round-trip.
+                            try:
+                                from apis.shared.costs.pricing_config import get_model_by_model_id
+                                model_record = await get_model_by_model_id(model_id)
+                                if model_record is not None:
+                                    max_input_tokens = getattr(model_record, "max_input_tokens", None)
+                                    if max_input_tokens:
+                                        final_metadata["contextWindow"] = int(max_input_tokens)
+                            except Exception as ctx_err:
+                                logger.debug(f"Skipping contextWindow lookup: {ctx_err}")
 
                         # Log cache metrics for performance monitoring
                         self._log_cache_metrics(usage=final_metadata.get("usage", {}), session_id=session_id)
@@ -1132,12 +1180,27 @@ class StreamCoordinator:
             model_info = None
             pricing_snapshot = None
             cost = None
+            context_window: Optional[int] = None
 
             if agent and hasattr(agent, "model_config"):
                 model_id = agent.model_config.model_id
 
                 # Get pricing snapshot from managed models database
                 pricing_snapshot = await self._get_pricing_snapshot(model_id)
+
+                # Look up the model's max_input_tokens once so the bump of
+                # session-level aggregates (for the chat cost badge) has a
+                # context window value to persist alongside the latest
+                # turn's input token count.
+                try:
+                    from apis.shared.costs.pricing_config import get_model_by_model_id
+                    model_record = await get_model_by_model_id(model_id)
+                    if model_record is not None:
+                        max_input_tokens = getattr(model_record, "max_input_tokens", None)
+                        if max_input_tokens:
+                            context_window = int(max_input_tokens)
+                except Exception as ctx_err:
+                    logger.debug(f"Skipping contextWindow capture for storage: {ctx_err}")
 
                 # Extract provider from model config
                 provider = None
@@ -1169,14 +1232,20 @@ class StreamCoordinator:
 
             # Create MessageMetadata
             if token_usage or latency_metrics or model_info or citations:
-                message_metadata = MessageMetadata(
+                # contextWindow is passed as an extra field (MessageMetadata
+                # has extra="allow"); _bump_session_aggregates picks it up
+                # via model_extra to denormalize onto the session row.
+                metadata_kwargs: Dict[str, Any] = dict(
                     latency=latency_metrics,
                     token_usage=token_usage,
                     model_info=model_info,
                     attribution=attribution,
                     cost=cost,
-                    citations=citations,  # Include citations from RAG retrieval
+                    citations=citations,
                 )
+                if context_window is not None:
+                    metadata_kwargs["contextWindow"] = context_window
+                message_metadata = MessageMetadata(**metadata_kwargs)
 
                 # Store metadata
                 await store_message_metadata(session_id=session_id, user_id=user_id, message_id=message_id, message_metadata=message_metadata)
