@@ -290,11 +290,29 @@ print('')
 
     log_info "  Current BFF_POST_LOGIN_REDIRECT_URL: ${current_post_login:-<empty>}"
 
+    # Check current BFF_AUTH_CALLBACK_URL value
+    local current_callback_url
+    current_callback_url=$(echo "${task_def_json}" | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+for container in td.get('containerDefinitions', []):
+    for env in container.get('environment', []):
+        if env['name'] == 'BFF_AUTH_CALLBACK_URL':
+            print(env['value'])
+            sys.exit(0)
+print('')
+")
+
+    log_info "  Current BFF_AUTH_CALLBACK_URL: ${current_callback_url:-<empty>}"
+
     local needs_patch=false
     if ! echo "${current_cors}" | grep -qF "${frontend_url}"; then
         needs_patch=true
     fi
     if [ "${current_post_login}" != "${frontend_url}/" ]; then
+        needs_patch=true
+    fi
+    if [ "${current_callback_url}" != "${frontend_url}/api/auth/callback" ]; then
         needs_patch=true
     fi
 
@@ -530,6 +548,40 @@ main() {
     # their passwords to the expected values.
     log_info "Seeding E2E test users in Cognito User Pool..."
     bash "${SCRIPT_DIR}/seed-e2e-users.sh"
+
+    # --- Verify BFF auth configuration ---
+    # Smoke-test the BFF login redirect to confirm the patched env vars are
+    # active. The BFF's /auth/login should 302 to Cognito with a redirect_uri
+    # pointing at the CloudFront-fronted callback URL.
+    if [ -n "${alb_url}" ] && [ "${alb_url}" != "None" ]; then
+        log_info "Verifying BFF auth login redirect..."
+        local login_redirect
+        login_redirect=$(curl -s -o /dev/null -w "%{redirect_url}" \
+            "${alb_url}/auth/login" --max-time 10 || true)
+
+        if [ -n "${login_redirect}" ]; then
+            log_info "  BFF /auth/login redirects to: ${login_redirect:0:120}..."
+            if echo "${login_redirect}" | grep -qF "redirect_uri="; then
+                local actual_redirect_uri
+                actual_redirect_uri=$(echo "${login_redirect}" | python3 -c "
+import sys, urllib.parse
+url = sys.stdin.read().strip()
+parsed = urllib.parse.urlparse(url)
+params = urllib.parse.parse_qs(parsed.query)
+print(params.get('redirect_uri', [''])[0])
+")
+                log_info "  redirect_uri in authorize request: ${actual_redirect_uri}"
+                local expected_callback="${base_url}/api/auth/callback"
+                if [ "${actual_redirect_uri}" != "${expected_callback}" ]; then
+                    log_error "  MISMATCH! Expected: ${expected_callback}"
+                    log_error "  BFF_AUTH_CALLBACK_URL patch may not have taken effect."
+                    log_error "  This will cause token exchange failures after Cognito login."
+                fi
+            fi
+        else
+            log_warn "  Could not verify BFF login redirect (no redirect URL captured)"
+        fi
+    fi
 
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"
