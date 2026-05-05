@@ -437,10 +437,6 @@ main() {
     log_info "Patching Cognito app client with CloudFront callback URL..."
     patch_cognito_callback_urls "${base_url}"
 
-    # --- Seed E2E test users in Cognito ---
-    log_info "Seeding E2E test users in Cognito User Pool..."
-    bash "${SCRIPT_DIR}/seed-e2e-users.sh"
-
     # --- Seed bootstrap data (models, tools, roles, quotas) ---
     # The nightly stack deploys fresh empty DynamoDB tables. The e2e tests
     # expect models, tools, and RBAC roles to exist. The bootstrap seed
@@ -448,6 +444,46 @@ main() {
     log_info "Seeding bootstrap data (models, tools, roles, quotas)..."
     pip install boto3 --quiet 2>/dev/null || pip3 install boto3 --quiet 2>/dev/null || true
     bash "${PROJECT_ROOT}/scripts/stack-bootstrap/seed.sh"
+
+    # --- Complete first-boot (create initial admin via the API) ---
+    # The first-boot endpoint creates the admin user in Cognito, assigns the
+    # system_admin role, and marks the system as bootstrapped. Without this,
+    # the frontend redirects all users to the first-boot setup screen.
+    # This must run BEFORE seed-e2e-users.sh because seed-e2e-users is
+    # idempotent and will simply confirm the user that first-boot created.
+    log_info "Completing first-boot via App API..."
+    local alb_url
+    alb_url=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/network/alb-url" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
+
+    if [ -n "${alb_url}" ] && [ "${alb_url}" != "None" ]; then
+        local admin_email="${ADMIN_USERNAME}@e2e-nightly.local"
+        local first_boot_status
+        first_boot_status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${alb_url}/system/first-boot" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"${ADMIN_USERNAME}\", \"email\": \"${admin_email}\", \"password\": \"${ADMIN_PASSWORD}\"}" \
+            --max-time 30)
+
+        if [ "${first_boot_status}" = "200" ]; then
+            log_success "First-boot completed successfully"
+        elif [ "${first_boot_status}" = "409" ]; then
+            log_info "First-boot already completed — skipping"
+        else
+            log_warn "First-boot returned HTTP ${first_boot_status} — tests may fail on login"
+        fi
+    else
+        log_warn "Could not resolve ALB URL — skipping first-boot completion"
+    fi
+
+    # --- Seed E2E test users in Cognito ---
+    # Runs after first-boot so the admin user already exists in Cognito.
+    # seed-e2e-users is idempotent: it confirms existing users and sets
+    # their passwords to the expected values.
+    log_info "Seeding E2E test users in Cognito User Pool..."
+    bash "${SCRIPT_DIR}/seed-e2e-users.sh"
 
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"
