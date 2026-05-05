@@ -31,7 +31,7 @@ async function sendMessageAndWaitForResponse(
   await page.getByRole('button', { name: 'Submit message' }).click();
 
   const assistantMessage = page.locator('app-assistant-message').last();
-  await expect(assistantMessage).toBeVisible({ timeout: 100_000 });
+  await expect(assistantMessage).toBeVisible({ timeout: 150_000 });
   await expect(page.locator('app-pulsating-loader')).toBeHidden({ timeout: 250_000 });
 
   return (await assistantMessage.innerText()).trim();

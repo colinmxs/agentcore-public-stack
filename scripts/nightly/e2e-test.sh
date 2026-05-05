@@ -112,7 +112,7 @@ patch_cognito_callback_urls() {
 
     local client_id
     client_id=$(aws ssm get-parameter \
-        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/app-client-id" \
+        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/bff-app-client-id" \
         --query "Parameter.Value" --output text \
         --region "${CDK_AWS_REGION}")
 
