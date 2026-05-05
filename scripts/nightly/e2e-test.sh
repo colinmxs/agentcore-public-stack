@@ -100,7 +100,7 @@ get_base_url() {
 # ---------------------------------------------------------------------------
 patch_cognito_callback_urls() {
     local frontend_url="$1"
-    local callback_url="${frontend_url}/auth/callback"
+    local callback_url="${frontend_url}/api/auth/callback"
     local logout_url="${frontend_url}"
 
     # Fetch Cognito resource IDs from SSM
@@ -208,14 +208,20 @@ print(' '.join(scopes))
 }
 
 # ---------------------------------------------------------------------------
-# Patch App API ECS service CORS_ORIGINS to include the CloudFront URL
+# Patch App API ECS service env vars for the dynamic CloudFront URL
 # ---------------------------------------------------------------------------
 # The nightly stack has no custom domain, so the frontend is served from a
-# dynamic CloudFront URL that isn't known at CDK deploy time. The App API's
-# CORS_ORIGINS env var therefore doesn't include it, causing all cross-origin
-# API requests to fail. This function:
+# dynamic CloudFront URL that isn't known at CDK deploy time. This function
+# patches three env vars in the ECS task definition:
+#   - CORS_ORIGINS: append the CloudFront origin so cross-origin requests work
+#   - BFF_POST_LOGIN_REDIRECT_URL: set to the CloudFront URL so the OAuth
+#     callback redirects the browser to the actual frontend (not localhost)
+#   - BFF_AUTH_CALLBACK_URL: set to the CloudFront-fronted callback URL so
+#     the BFF sends the correct redirect_uri to Cognito's token endpoint
+#
+# Steps:
 #   1. Reads the current ECS task definition
-#   2. Appends the CloudFront origin to CORS_ORIGINS
+#   2. Patches CORS_ORIGINS, BFF_POST_LOGIN_REDIRECT_URL, BFF_AUTH_CALLBACK_URL
 #   3. Registers a new task definition revision
 #   4. Updates the ECS service to use it
 #   5. Waits for the service to stabilize
@@ -269,44 +275,84 @@ print('')
 
     log_info "  Current CORS_ORIGINS: ${current_cors:-<empty>}"
 
-    # Check if the frontend URL is already in CORS_ORIGINS
-    if echo "${current_cors}" | grep -qF "${frontend_url}"; then
-        log_info "  CloudFront origin already in CORS_ORIGINS — skipping patch"
+    # Check if all patches are already applied
+    local current_post_login
+    current_post_login=$(echo "${task_def_json}" | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+for container in td.get('containerDefinitions', []):
+    for env in container.get('environment', []):
+        if env['name'] == 'BFF_POST_LOGIN_REDIRECT_URL':
+            print(env['value'])
+            sys.exit(0)
+print('')
+")
+
+    log_info "  Current BFF_POST_LOGIN_REDIRECT_URL: ${current_post_login:-<empty>}"
+
+    local needs_patch=false
+    if ! echo "${current_cors}" | grep -qF "${frontend_url}"; then
+        needs_patch=true
+    fi
+    if [ "${current_post_login}" != "${frontend_url}/" ]; then
+        needs_patch=true
+    fi
+
+    if [ "${needs_patch}" = "false" ]; then
+        log_info "  All env vars already patched — skipping"
         return 0
     fi
 
     # Build new CORS_ORIGINS value
     local new_cors
-    if [ -n "${current_cors}" ]; then
+    if echo "${current_cors}" | grep -qF "${frontend_url}"; then
+        new_cors="${current_cors}"
+    elif [ -n "${current_cors}" ]; then
         new_cors="${current_cors},${frontend_url}"
     else
         new_cors="${frontend_url}"
     fi
 
-    log_info "  New CORS_ORIGINS: ${new_cors}"
+    # The BFF callback URL is fronted by CloudFront at /api/*
+    local new_callback_url="${frontend_url}/api/auth/callback"
+    local new_post_login_url="${frontend_url}/"
 
-    # Register a new task definition revision with updated CORS_ORIGINS
-    # We need to extract the relevant fields and update the environment variable
+    log_info "  New CORS_ORIGINS: ${new_cors}"
+    log_info "  New BFF_AUTH_CALLBACK_URL: ${new_callback_url}"
+    log_info "  New BFF_POST_LOGIN_REDIRECT_URL: ${new_post_login_url}"
+
+    # Register a new task definition revision with updated env vars
     local new_task_def
-    new_task_def=$(echo "${task_def_json}" | NEW_CORS="${new_cors}" python3 -c "
+    new_task_def=$(echo "${task_def_json}" | \
+        NEW_CORS="${new_cors}" \
+        NEW_CALLBACK_URL="${new_callback_url}" \
+        NEW_POST_LOGIN_URL="${new_post_login_url}" \
+        python3 -c "
 import sys, json, os
 
 td = json.load(sys.stdin)
 new_cors_value = os.environ['NEW_CORS']
+new_callback_url = os.environ['NEW_CALLBACK_URL']
+new_post_login_url = os.environ['NEW_POST_LOGIN_URL']
 
-# Update CORS_ORIGINS in container environment
+# Env vars to set/update
+patches = {
+    'CORS_ORIGINS': new_cors_value,
+    'BFF_AUTH_CALLBACK_URL': new_callback_url,
+    'BFF_POST_LOGIN_REDIRECT_URL': new_post_login_url,
+}
+
 for container in td.get('containerDefinitions', []):
-    found = False
-    for env in container.get('environment', []):
-        if env['name'] == 'CORS_ORIGINS':
-            env['value'] = new_cors_value
-            found = True
-            break
-    if not found:
-        container.setdefault('environment', []).append({
-            'name': 'CORS_ORIGINS',
-            'value': new_cors_value
-        })
+    env_list = container.setdefault('environment', [])
+    for name, value in patches.items():
+        found = False
+        for env in env_list:
+            if env['name'] == name:
+                env['value'] = value
+                found = True
+                break
+        if not found:
+            env_list.append({'name': name, 'value': value})
 
 # Build the register-task-definition input (only allowed fields)
 register_input = {
@@ -430,7 +476,7 @@ main() {
     log_info "Frontend responded with HTTP ${response_code}"
 
     # --- Patch App API CORS to allow requests from the CloudFront origin ---
-    log_info "Patching App API CORS origins to include CloudFront URL..."
+    log_info "Patching App API env vars (CORS, BFF redirect URLs) for CloudFront..."
     patch_app_api_cors "${base_url}"
 
     # --- Ensure Cognito allows the dynamic CloudFront callback URL ---
