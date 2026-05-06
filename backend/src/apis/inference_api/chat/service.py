@@ -3,10 +3,11 @@
 Contains business logic for chat operations, including agent creation and management.
 """
 
+import json
 import logging
 import hashlib
 import os
-from typing import Optional, List, Tuple
+from typing import Any, Dict, Optional, List, Tuple
 
 import boto3
 
@@ -37,16 +38,23 @@ def _hash_tools(tools: Optional[List[str]]) -> str:
     return hashlib.md5(tools_str.encode()).hexdigest()[:8]
 
 
+def _hash_inference_params(params: Optional[Dict[str, Any]]) -> str:
+    """Stable hash of an inference-params dict for the agent cache key."""
+    if not params:
+        return "none"
+    payload = json.dumps(params, sort_keys=True, default=str)
+    return hashlib.md5(payload.encode()).hexdigest()[:8]
+
+
 def _create_cache_key(
     session_id: str,
     user_id: Optional[str],
     enabled_tools: Optional[List[str]],
     model_id: Optional[str],
-    temperature: Optional[float],
+    inference_params: Optional[Dict[str, Any]],
     system_prompt: Optional[str],
     caching_enabled: Optional[bool],
     provider: Optional[str],
-    max_tokens: Optional[int],
     freshness_hash: str,
     agent_type: Optional[str],
 ) -> Tuple:
@@ -58,7 +66,6 @@ def _create_cache_key(
     admin edits a tool's config, the hash changes and the cache misses,
     so the next turn builds a fresh agent with the new config.
     """
-    # Hash the tools list for stable key
     tools_hash = _hash_tools(enabled_tools)
 
     # Hash system prompt if provided (can be very long)
@@ -71,11 +78,10 @@ def _create_cache_key(
         user_id or session_id,
         tools_hash,
         model_id or "default",
-        temperature or 0.0,
+        _hash_inference_params(inference_params),
         prompt_hash,
         caching_enabled or False,
         provider or "bedrock",
-        max_tokens or 0,
         freshness_hash,
         agent_type or "chat",
     )
@@ -86,6 +92,18 @@ def _create_cache_key(
 # This reduces initialization overhead for repeated requests
 _agent_cache: dict = {}
 _CACHE_MAX_SIZE = 100
+
+
+def _is_paused_on_interrupt(agent: BaseAgent) -> bool:
+    """Return True if the wrapped Strands agent is mid-interrupt.
+
+    Used by ``get_agent`` to decide whether to evict a stale paused agent
+    from the cache. ``getattr`` chains with defaults can never raise, so
+    no try/except is needed.
+    """
+    inner = getattr(agent, "agent", None)
+    state = getattr(inner, "_interrupt_state", None)
+    return bool(state is not None and getattr(state, "activated", False))
 
 
 async def get_agent(
@@ -100,6 +118,8 @@ async def get_agent(
     provider: Optional[str] = None,
     max_tokens: Optional[int] = None,
     agent_type: Optional[str] = None,
+    inference_params: Optional[Dict[str, Any]] = None,
+    is_resume: bool = False,
 ) -> BaseAgent:
     """
     Get or create agent instance with current configuration for session
@@ -114,16 +134,28 @@ async def get_agent(
         user_id: User identifier (defaults to session_id)
         enabled_tools: List of tool IDs to enable
         model_id: Model ID (provider-specific format)
-        temperature: Model temperature
+        temperature: Legacy. Folded into ``inference_params['temperature']``.
         system_prompt: System prompt text
         caching_enabled: Whether to enable prompt caching (Bedrock only)
         provider: LLM provider ("bedrock", "openai", or "gemini")
-        max_tokens: Maximum tokens to generate
+        max_tokens: Legacy. Folded into ``inference_params['max_tokens']``.
+        agent_type: Agent factory variant ("chat" or "skill")
+        inference_params: Canonical-name -> value map for inference params.
+            When provided, supersedes the legacy ``temperature``/``max_tokens``
+            kwargs (the explicit dict wins on key conflicts).
 
     Returns:
         BaseAgent subclass instance (cached or newly created)
     """
-    from apis.app_api.tools.freshness import get_freshness_hash
+    from apis.shared.tools.freshness import get_freshness_hash
+
+    # Merge legacy temperature/max_tokens into inference_params so the cache
+    # key and BaseAgent see the same canonical dict.
+    merged_params: Dict[str, Any] = dict(inference_params or {})
+    if temperature is not None:
+        merged_params.setdefault("temperature", temperature)
+    if max_tokens is not None:
+        merged_params.setdefault("max_tokens", max_tokens)
 
     freshness_hash = await get_freshness_hash(enabled_tools or [])
 
@@ -132,19 +164,34 @@ async def get_agent(
         user_id=user_id,
         enabled_tools=enabled_tools,
         model_id=model_id,
-        temperature=temperature,
+        inference_params=merged_params,
         system_prompt=system_prompt,
         caching_enabled=caching_enabled,
         provider=provider,
-        max_tokens=max_tokens,
         freshness_hash=freshness_hash,
         agent_type=agent_type,
     )
 
     # Check cache
     if cache_key in _agent_cache:
-        logger.debug("✅ Agent cache hit")
-        return _agent_cache[cache_key]
+        cached = _agent_cache[cache_key]
+        # Defense in depth: a non-resume request should never be served a
+        # paused agent. If we ever desync the cache key between the original
+        # turn and a resume (e.g. snapshot stores a normalized form of one
+        # of the params), the resume rebuilds under a new key while the
+        # paused agent stays in the original slot — and a later non-resume
+        # turn cache-hits to it. Strands then raises "must resume from
+        # interrupt with list of interruptResponse's". Discard and rebuild.
+        if not is_resume and _is_paused_on_interrupt(cached):
+            logger.warning(
+                "Cached agent is paused on an interrupt but request is not a resume; "
+                "evicting and rebuilding (session=%s user=%s)",
+                session_id, user_id,
+            )
+            del _agent_cache[cache_key]
+        else:
+            logger.debug("✅ Agent cache hit")
+            return cached
 
     # Cache miss - create new agent
     logger.debug("⚠️ Agent cache miss - creating new instance")
@@ -160,11 +207,10 @@ async def get_agent(
         auth_token=auth_token,
         enabled_tools=enabled_tools,
         model_id=model_id,
-        temperature=temperature,
         system_prompt=system_prompt,
         caching_enabled=caching_enabled,
         provider=provider,
-        max_tokens=max_tokens,
+        inference_params=merged_params,
     )
 
     # Stamp the type onto the construction snapshot so a paused turn can
@@ -281,7 +327,7 @@ async def generate_conversation_title(
             }
         }
 
-        logger.info(f"🎯 Generating title for session {session_id} (input length: {len(truncated_input)} chars)")
+        logger.info("🎯 Generating title (input length: %d chars)", len(truncated_input))
 
         # Call Bedrock Nova Micro
         response = bedrock_client.converse(
@@ -297,9 +343,9 @@ async def generate_conversation_title(
         # Enforce 50 character limit (just in case model exceeds)
         if len(title) > 50:
             title = title[:47] + "..."
-            logger.warning(f"Title exceeded 50 chars, truncated to: {title}")
+            logger.warning("Title exceeded 50 chars, truncated")
 
-        logger.info(f"✅ Generated title: '{title}' for session {session_id}")
+        logger.info("✅ Generated title successfully")
 
         # Targeted update — only writes the title attribute. The post-stream
         # update_session_activity write is also targeted and disjoint, so the
@@ -312,6 +358,6 @@ async def generate_conversation_title(
         # Title generation is nice-to-have. Leave the existing "New Conversation"
         # placeholder in place rather than writing a fallback; the row already
         # exists from the pre-create.
-        logger.error(f"Failed to generate title for session {session_id}: {e}", exc_info=True)
+        logger.error("Failed to generate title: %s", e, exc_info=True)
         return "New Conversation"
 

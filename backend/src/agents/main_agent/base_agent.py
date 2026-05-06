@@ -57,6 +57,7 @@ class BaseAgent(ABC):
         caching_enabled: Optional[bool] = None,
         provider: Optional[str] = None,
         max_tokens: Optional[int] = None,
+        inference_params: Optional[Dict[str, Any]] = None,
         skip_persistence: bool = False,
     ):
         """
@@ -68,11 +69,14 @@ class BaseAgent(ABC):
             auth_token: Raw OIDC token for forwarding to external MCP tools (optional)
             enabled_tools: List of tool IDs to enable. If None, all tools are enabled.
             model_id: Model ID to use (format depends on provider)
-            temperature: Model temperature (0.0 - 1.0)
+            temperature: Legacy. Folded into ``inference_params['temperature']`` if set.
             system_prompt: System prompt text
             caching_enabled: Whether to enable prompt caching (Bedrock only)
             provider: LLM provider ("bedrock", "openai", or "gemini")
-            max_tokens: Maximum tokens to generate (optional)
+            max_tokens: Legacy. Folded into ``inference_params['max_tokens']`` if set.
+            inference_params: Canonical-name -> value map for inference params
+                (temperature, top_p, top_k, max_tokens, thinking, ...). Wins over
+                the legacy ``temperature``/``max_tokens`` kwargs when both are set.
             skip_persistence: If True, don't persist messages (for preview sessions)
         """
         # Basic state
@@ -82,9 +86,20 @@ class BaseAgent(ABC):
         self.enabled_tools = enabled_tools
         self.agent = None
 
-        # Initialize model configuration
+        # Merge legacy temperature/max_tokens into the canonical dict. Explicit
+        # ``inference_params`` values win over the positional kwargs so callers
+        # migrating to the new shape get predictable precedence.
+        resolved_params: Dict[str, Any] = dict(inference_params or {})
+        if temperature is not None:
+            resolved_params.setdefault("temperature", temperature)
+        if max_tokens is not None:
+            resolved_params.setdefault("max_tokens", max_tokens)
+
         self.model_config = ModelConfig.from_params(
-            model_id=model_id, temperature=temperature, caching_enabled=caching_enabled, provider=provider, max_tokens=max_tokens
+            model_id=model_id,
+            caching_enabled=caching_enabled,
+            provider=provider,
+            inference_params=resolved_params,
         )
 
         # Frozen snapshot of agent-construction params, used when the turn
@@ -95,9 +110,8 @@ class BaseAgent(ABC):
             "enabled_tools": enabled_tools,
             "model_id": model_id,
             "provider": provider,
-            "temperature": temperature,
             "caching_enabled": caching_enabled,
-            "max_tokens": max_tokens,
+            "inference_params": dict(resolved_params),
         }
 
         # Load retry configuration from environment variables
@@ -112,9 +126,23 @@ class BaseAgent(ABC):
             self.prompt_builder = SystemPromptBuilder()
             self.system_prompt = self.prompt_builder.build(include_date=True)
 
-        # Capture the resolved system prompt — what we'd need to pass back to
-        # ``get_agent`` to land on the same cache key on resume.
-        self._construction_snapshot["system_prompt"] = self.system_prompt
+        # Snapshot the *unbuilt* system_prompt — i.e. the same value the
+        # caller passed to ``get_agent`` originally. The cache key hashes
+        # this raw value (see ``_create_cache_key``), so storing the built
+        # prompt here causes resume to land on a different cache slot than
+        # the original turn. That leaves the original (paused) agent stuck
+        # in the cache; a later non-resume turn cache-hits to it and
+        # Strands raises "must resume from interrupt with list of
+        # interruptResponse's" because _interrupt_state is still activated.
+        #
+        # Trade-off: if the cache evicts between pause and resume AND the
+        # original ``system_prompt`` was None, the rebuilt agent re-renders
+        # the date via ``include_date=True`` and may pick up *today's* date
+        # rather than the original turn's. Snapshot TTL is 1h, so this only
+        # matters across a midnight crossing. Resume conversation context is
+        # restored from AgentCore Memory regardless, so the model still sees
+        # prior turns; only the system-prompt date line shifts.
+        self._construction_snapshot["system_prompt"] = system_prompt
 
         # Initialize tool registry and filter
         self.tool_registry = create_default_registry()
@@ -177,7 +205,7 @@ class BaseAgent(ABC):
         try:
             import asyncio
 
-            from apis.app_api.tools.repository import get_tool_catalog_repository
+            from apis.shared.tools.repository import get_tool_catalog_repository
 
             repository = get_tool_catalog_repository()
             external_tool_ids = []
@@ -312,18 +340,6 @@ class BaseAgent(ABC):
                 self.user_id, provider_id
             )
 
-        async def mark_disconnected(provider_id: str) -> None:
-            # Persist a disconnect from the AfterToolCallEvent 401-retry
-            # path so subsequent requests (potentially on other replicas)
-            # also force a fresh consent.
-            from apis.shared.oauth.disconnect_repository import (
-                get_disconnect_repository,
-            )
-
-            await get_disconnect_repository().mark_disconnected(
-                self.user_id, provider_id
-            )
-
         return OAuthConsentHook(
             user_id=self.user_id,
             provider_lookup=provider_lookup,
@@ -331,7 +347,6 @@ class BaseAgent(ABC):
             provider_type_lookup=provider_type_lookup,
             custom_parameters_lookup=custom_parameters_lookup,
             disconnected_lookup=disconnected_lookup,
-            mark_disconnected=mark_disconnected,
         )
 
     def _build_filtered_tools(self) -> List:

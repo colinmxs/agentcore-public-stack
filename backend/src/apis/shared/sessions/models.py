@@ -107,6 +107,12 @@ class PausedTurnSnapshot(BaseModel):
     caching_enabled: Optional[bool] = Field(default=None, alias="cachingEnabled")
     max_tokens: Optional[int] = Field(default=None, alias="maxTokens")
     agent_type: Optional[str] = Field(default=None, alias="agentType")
+    inference_params: Optional[Dict[str, Any]] = Field(
+        default=None,
+        alias="inferenceParams",
+        description="Canonical inference param dict captured at pause. When present, "
+                    "supersedes the legacy temperature/max_tokens fields on resume."
+    )
     captured_at: str = Field(..., alias="capturedAt", description="ISO 8601 timestamp when the turn paused")
     expires_at: str = Field(..., alias="expiresAt", description="ISO 8601 timestamp after which the snapshot is no longer valid for resume")
 
@@ -116,7 +122,6 @@ class SessionPreferences(BaseModel):
 
     model_config = ConfigDict(populate_by_name=True, extra="allow")
     last_model: Optional[str] = Field(default=None, alias="lastModel", description="Last model used in this session")
-    last_temperature: Optional[float] = Field(default=None, alias="lastTemperature", description="Last temperature setting used")
     enabled_tools: Optional[List[str]] = Field(default=None, alias="enabledTools", description="List of enabled tool names")
     selected_prompt_id: Optional[str] = Field(default=None, alias="selectedPromptId", description="ID of selected prompt template")
     custom_prompt_text: Optional[str] = Field(default=None, alias="customPromptText", description="Custom prompt text if used")
@@ -181,6 +186,35 @@ class SessionMetadata(BaseModel):
         description="Agent-construction snapshot for a turn paused on OAuth consent; cleared on successful resume or when a new turn supersedes it",
     )
 
+    # Denormalized cost + context aggregates for the session-cost badge.
+    # Maintained by _bump_session_aggregates after each turn (write-time
+    # aggregation), and lazily backfilled on read for legacy sessions.
+    total_cost: Optional[float] = Field(
+        default=None,
+        alias="totalCost",
+        description="Running USD cost summed across all message metadata records in this session",
+    )
+    last_context_tokens: Optional[int] = Field(
+        default=None,
+        alias="lastContextTokens",
+        description="Input tokens consumed by the most recent turn (includes system prompt + tools)",
+    )
+    context_window: Optional[int] = Field(
+        default=None,
+        alias="contextWindow",
+        description="Model max input tokens at the time of the most recent turn",
+    )
+
+    # Cumulative count of turns rolled into a compaction summary across this
+    # session's lifetime. Lifted out of the nested `compaction` map at GET
+    # time so the frontend can rehydrate the end-of-conversation indicator
+    # without knowing the internal compaction-state shape.
+    total_summarized_turns: Optional[int] = Field(
+        default=None,
+        alias="totalSummarizedTurns",
+        description="Cumulative count of turns rolled into a compaction summary in this session",
+    )
+
 
 class UpdateSessionMetadataRequest(BaseModel):
     """Request body for updating session metadata"""
@@ -191,7 +225,6 @@ class UpdateSessionMetadataRequest(BaseModel):
     starred: Optional[bool] = Field(None, description="Whether session is starred")
     tags: Optional[List[str]] = Field(None, description="Custom tags")
     last_model: Optional[str] = Field(None, alias="lastModel", description="Last model used")
-    last_temperature: Optional[float] = Field(None, alias="lastTemperature", description="Last temperature setting")
     enabled_tools: Optional[List[str]] = Field(None, alias="enabledTools", description="Enabled tools list")
     selected_prompt_id: Optional[str] = Field(None, alias="selectedPromptId", description="Selected prompt ID")
     custom_prompt_text: Optional[str] = Field(None, alias="customPromptText", description="Custom prompt text")
@@ -214,6 +247,26 @@ class SessionMetadataResponse(BaseModel):
     preferences: Optional[SessionPreferences] = Field(None, description="Session preferences")
     deleted: Optional[bool] = Field(False, description="Whether session is soft-deleted")
     deleted_at: Optional[str] = Field(None, alias="deletedAt", description="ISO 8601 timestamp of deletion")
+    total_cost: Optional[float] = Field(
+        None,
+        alias="totalCost",
+        description="Running USD cost summed across all message metadata records in this session",
+    )
+    last_context_tokens: Optional[int] = Field(
+        None,
+        alias="lastContextTokens",
+        description="Input tokens consumed by the most recent turn",
+    )
+    context_window: Optional[int] = Field(
+        None,
+        alias="contextWindow",
+        description="Model max input tokens at the time of the most recent turn",
+    )
+    total_summarized_turns: Optional[int] = Field(
+        default=None,
+        alias="totalSummarizedTurns",
+        description="Cumulative count of turns rolled into a compaction summary in this session",
+    )
 
 
 class SessionsListResponse(BaseModel):

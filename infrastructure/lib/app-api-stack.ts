@@ -7,11 +7,7 @@ import * as dynamodb from "aws-cdk-lib/aws-dynamodb";
 import * as iam from "aws-cdk-lib/aws-iam";
 import * as ssm from "aws-cdk-lib/aws-ssm";
 import * as logs from "aws-cdk-lib/aws-logs";
-import * as lambda from "aws-cdk-lib/aws-lambda";
-import * as lambdaEventSources from "aws-cdk-lib/aws-lambda-event-sources";
-import * as sns from "aws-cdk-lib/aws-sns";
-import * as events from "aws-cdk-lib/aws-events";
-import * as targets from "aws-cdk-lib/aws-events-targets";
+
 import { Construct } from "constructs";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, buildCorsOrigins } from "./config";
 
@@ -334,9 +330,16 @@ export class AppApiStack extends cdk.Stack {
       this,
       `/${config.projectPrefix}/auth/cognito/user-pool-id`
     );
+    // Phase 7 retired the public PKCE SPA client; the BFF confidential
+    // client is the only one left. `COGNITO_APP_CLIENT_ID` is still wired
+    // because `get_current_user` (Bearer auth on `/chat/agent-stream`)
+    // needs *some* client_id to validate against — point it at the BFF
+    // client so any Bearer token minted via the BFF token-exchange path
+    // is accepted there too. The cookie-auth dependency uses
+    // `COGNITO_BFF_APP_CLIENT_ID` (same value) via its own validator.
     const cognitoAppClientId = ssm.StringParameter.valueForStringParameter(
       this,
-      `/${config.projectPrefix}/auth/cognito/app-client-id`
+      `/${config.projectPrefix}/auth/cognito/bff-app-client-id`
     );
     const cognitoIssuerUrl = ssm.StringParameter.valueForStringParameter(
       this,
@@ -345,6 +348,57 @@ export class AppApiStack extends cdk.Stack {
     const cognitoDomainUrl = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/auth/cognito/domain-url`
+    );
+
+    // ============================================================
+    // BFF Resources (imported from Infrastructure Stack)
+    // ============================================================
+    // Token Handler BFF: sessions table, cookie signing key, confidential
+    // Cognito client. See project_bff_migration memory for the rollout plan.
+    const bffSessionsTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/bff-sessions-table-name`
+    );
+    const bffSessionsTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/bff-sessions-table-arn`
+    );
+    const bffCookieSigningKeyArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/bff-cookie-signing-key-arn`
+    );
+    const cognitoBFFAppClientId = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/cognito/bff-app-client-id`
+    );
+    const cognitoBFFAppClientSecretArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/auth/cognito/bff-app-client-secret-arn`
+    );
+
+    // Voice WebSocket-ticket replay table + signing secret. Used by app-api
+    // to issue/verify single-use tickets on the SPA→app-api WS upgrade
+    // before relaying to the AgentCore Runtime upstream. App-api is the
+    // sole consumer of both resources.
+    const voiceTicketReplayTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/voice/ticket-replay-table-name`
+    );
+    const voiceTicketReplayTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/voice/ticket-replay-table-arn`
+    );
+    const voiceTicketSigningSecretArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/voice/ticket-signing-secret-arn`
+    );
+
+    // Inference API runtime endpoint URL — needed by both the existing
+    // converse proxy (currently broken in cloud due to a missing env var)
+    // and the upcoming chat SSE proxy in Phase 4 of the BFF migration.
+    const inferenceApiRuntimeEndpointUrl = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/inference-api/runtime-endpoint-url`
     );
 
     // ============================================================
@@ -476,6 +530,32 @@ export class AppApiStack extends cdk.Stack {
           this,
           `/${config.projectPrefix}/shares/shared-conversations-table-name`
         ),
+        // BFF Token Handler — wired in Phase 1, used starting Phase 2.
+        BFF_SESSIONS_TABLE_NAME: bffSessionsTableName,
+        BFF_COOKIE_SIGNING_KEY_ARN: bffCookieSigningKeyArn,
+        BFF_SESSION_TTL_SECONDS: '28800',
+        BFF_SESSION_REFRESH_LEEWAY_SECONDS: '60',
+        COGNITO_BFF_APP_CLIENT_ID: cognitoBFFAppClientId,
+        COGNITO_BFF_APP_CLIENT_SECRET_ARN: cognitoBFFAppClientSecretArn,
+        // Phase 3 BFF auth routes need the exact callback URL we registered
+        // with the Cognito BFF client. Mirrors infrastructure-stack.ts where
+        // the same value is pinned into the client's allowed callbackUrls.
+        // CloudFront fronts app-api at /api/* in prod, so the prod value
+        // includes that prefix; local dev hits the BFF directly on :8000.
+        BFF_AUTH_CALLBACK_URL: config.domainName
+          ? `https://${config.domainName}/api/auth/callback`
+          : 'http://localhost:8000/auth/callback',
+        BFF_POST_LOGIN_REDIRECT_URL: config.domainName
+          ? `https://${config.domainName}/`
+          : 'http://localhost:4200/',
+        // Inference API runtime endpoint — used by the converse proxy today
+        // and the chat SSE proxy added in Phase 4.
+        INFERENCE_API_URL: inferenceApiRuntimeEndpointUrl,
+        // Voice WS-upgrade ticket — see apis/shared/voice_ticket. Replay
+        // table is single-use jti tracking; signing secret is the HMAC key
+        // app-api fetches once at startup.
+        VOICE_TICKET_REPLAY_TABLE_NAME: voiceTicketReplayTableName,
+        VOICE_TICKET_SIGNING_SECRET_ARN: voiceTicketSigningSecretArn,
       },
       portMappings: [
         {
@@ -933,6 +1013,60 @@ export class AppApiStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
         resources: [`${oauthClientSecretsArn}*`], // Wildcard for random suffix
+      })
+    );
+
+    // BFF Token Handler — sessions table, cookie signing key, BFF client secret.
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BFFSessionsTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+        ],
+        resources: [bffSessionsTableArn],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'BFFCookieSigningKeyAccess',
+        effect: iam.Effect.ALLOW,
+        // GenerateDataKey at startup; Decrypt is reserved for future key rotation.
+        actions: ['kms:GenerateDataKey', 'kms:Decrypt', 'kms:DescribeKey'],
+        resources: [bffCookieSigningKeyArn],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'CognitoBFFAppClientSecretAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+        resources: [`${cognitoBFFAppClientSecretArn}*`], // Wildcard for random suffix
+      })
+    );
+
+    // Voice WebSocket-ticket — replay table (conditional puts for single-use
+    // jti) and signing secret (HMAC key fetched once at startup).
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'VoiceTicketReplayTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['dynamodb:PutItem', 'dynamodb:GetItem'],
+        resources: [voiceTicketReplayTableArn],
+      })
+    );
+
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'VoiceTicketSigningSecretAccess',
+        effect: iam.Effect.ALLOW,
+        actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+        resources: [`${voiceTicketSigningSecretArn}*`], // Wildcard for random suffix
       })
     );
 

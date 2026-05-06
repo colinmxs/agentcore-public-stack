@@ -2,7 +2,6 @@ import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
 import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
 import { ModelService } from './model.service';
-import { AuthService } from '../../../auth/auth.service';
 import { ConfigService } from '../../../services/config.service';
 import { ManagedModel } from '../../../admin/manage-models/models/managed-model.model';
 import { signal } from '@angular/core';
@@ -12,8 +11,8 @@ describe('ModelService', () => {
   let httpMock: HttpTestingController;
 
   const mockModels: ManagedModel[] = [
-    { id: 'm1', modelId: 'claude-haiku', modelName: 'Claude Haiku', provider: 'bedrock', providerName: 'Anthropic', inputModalities: ['TEXT'], outputModalities: ['TEXT'], maxInputTokens: 200000, maxOutputTokens: 4096, allowedAppRoles: [], availableToRoles: [], enabled: true, inputPricePerMillionTokens: 0.25, outputPricePerMillionTokens: 1.25, isReasoningModel: false, knowledgeCutoffDate: null, supportsCaching: true, isDefault: false },
-    { id: 'm2', modelId: 'claude-sonnet', modelName: 'Claude Sonnet', provider: 'bedrock', providerName: 'Anthropic', inputModalities: ['TEXT'], outputModalities: ['TEXT'], maxInputTokens: 200000, maxOutputTokens: 4096, allowedAppRoles: [], availableToRoles: [], enabled: true, inputPricePerMillionTokens: 3, outputPricePerMillionTokens: 15, isReasoningModel: false, knowledgeCutoffDate: null, supportsCaching: true, isDefault: true },
+    { id: 'm1', modelId: 'claude-haiku', modelName: 'Claude Haiku', provider: 'bedrock', providerName: 'Anthropic', inputModalities: ['TEXT'], outputModalities: ['TEXT'], maxInputTokens: 200000, maxOutputTokens: 4096, allowedAppRoles: [], availableToRoles: [], enabled: true, inputPricePerMillionTokens: 0.25, outputPricePerMillionTokens: 1.25, knowledgeCutoffDate: null, supportsCaching: true, isDefault: false },
+    { id: 'm2', modelId: 'claude-sonnet', modelName: 'Claude Sonnet', provider: 'bedrock', providerName: 'Anthropic', inputModalities: ['TEXT'], outputModalities: ['TEXT'], maxInputTokens: 200000, maxOutputTokens: 4096, allowedAppRoles: [], availableToRoles: [], enabled: true, inputPricePerMillionTokens: 3, outputPricePerMillionTokens: 15, knowledgeCutoffDate: null, supportsCaching: true, isDefault: true },
   ];
 
   const mockResponse = { models: mockModels, totalCount: 2 };
@@ -32,7 +31,6 @@ describe('ModelService', () => {
       imports: [HttpClientTestingModule],
       providers: [
         ModelService,
-        { provide: AuthService, useValue: { ensureAuthenticated: vi.fn().mockResolvedValue(undefined) } },
         { provide: ConfigService, useValue: { appApiUrl: signal('http://localhost:8000') } },
       ],
     });

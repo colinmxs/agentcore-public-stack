@@ -32,7 +32,7 @@ import boto3
 from fastapi import APIRouter, Depends, HTTPException, status
 from pydantic import BaseModel, Field
 
-from apis.shared.auth import User, get_current_user
+from apis.shared.auth import User, get_current_user_from_session
 from apis.shared.oauth.agentcore_identity import (
     CallbackUrlUnavailableError,
     WorkloadTokenUnavailableError,
@@ -106,7 +106,7 @@ def _visible_to_user(provider: OAuthProvider, user_role_ids: List[str]) -> bool:
 
 @router.get("/", response_model=UserConnectorListResponse)
 async def list_connectors(
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_session),
     provider_repo: OAuthProviderRepository = Depends(get_provider_repository),
     role_service: AppRoleService = Depends(get_app_role_service),
 ) -> UserConnectorListResponse:
@@ -203,7 +203,7 @@ async def _resolve_visible_provider(
 )
 async def initiate_consent(
     provider_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_session),
     provider_repo: OAuthProviderRepository = Depends(get_provider_repository),
     role_service: AppRoleService = Depends(get_app_role_service),
     disconnect_repo: OAuthDisconnectRepository = Depends(get_disconnect_repository),
@@ -228,8 +228,19 @@ async def initiate_consent(
             scopes=provider.scopes,
             user_id=current_user.user_id,
             force_authentication=force_auth,
+            # initiate_consent is by definition a "walk me through consent"
+            # path — the user clicked Connect/Reconnect after seeing they
+            # were not connected. For Google this means we must send
+            # `prompt=consent`, otherwise Google sees a previously-consented
+            # user, skips the consent screen, and re-issues an access_token
+            # WITHOUT a refresh_token. Vault then expires after ~1h and the
+            # user is back here. Decoupled from `force_auth` (which only
+            # toggles the SDK's vault-bypass) so the silent-refresh fast
+            # path elsewhere is unaffected.
             custom_parameters=custom_parameters_for(
-                provider.provider_type.value, provider.custom_parameters
+                provider.provider_type.value,
+                provider.custom_parameters,
+                force_authentication=True,
             ),
             # No custom_state: AgentCore appears to treat its presence as a
             # signal to start a fresh flow, never short-circuiting to the
@@ -271,7 +282,7 @@ async def initiate_consent(
 )
 async def connector_status(
     provider_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_session),
     provider_repo: OAuthProviderRepository = Depends(get_provider_repository),
     role_service: AppRoleService = Depends(get_app_role_service),
     disconnect_repo: OAuthDisconnectRepository = Depends(get_disconnect_repository),
@@ -331,7 +342,7 @@ async def connector_status(
 )
 async def complete_consent(
     body: CompleteConsentRequest,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_session),
     disconnect_repo: OAuthDisconnectRepository = Depends(get_disconnect_repository),
 ) -> CompleteConsentResponse:
     """Finalize an OAuth consent flow after the popup redirects home.
@@ -392,7 +403,7 @@ async def complete_consent(
 )
 async def disconnect_connector(
     provider_id: str,
-    current_user: User = Depends(get_current_user),
+    current_user: User = Depends(get_current_user_from_session),
     provider_repo: OAuthProviderRepository = Depends(get_provider_repository),
     role_service: AppRoleService = Depends(get_app_role_service),
     disconnect_repo: OAuthDisconnectRepository = Depends(get_disconnect_repository),

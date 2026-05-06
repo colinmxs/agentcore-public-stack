@@ -1,5 +1,7 @@
 """Task 10: Sessions metadata tests (moto DynamoDB)."""
 
+import math
+
 import pytest
 from apis.shared.sessions.models import SessionMetadata, MessageMetadata, TokenUsage, ModelInfo
 
@@ -247,7 +249,7 @@ class TestUpdateSessionActivity:
         assert before.message_count == 0
 
         applied = await update_session_activity(
-            session_id="s1", user_id="u1", last_model="claude-3", last_temperature=0.7,
+            session_id="s1", user_id="u1", last_model="claude-3",
         )
         assert applied is True
         after = await get_session_metadata("s1", "u1")
@@ -269,7 +271,7 @@ class TestUpdateSessionActivity:
         await ensure_session_metadata_exists("s1", "u1")
         await update_session_title("s1", "u1", "My Generated Title")
         await update_session_activity(
-            session_id="s1", user_id="u1", last_model="claude-3", last_temperature=0.5,
+            session_id="s1", user_id="u1", last_model="claude-3",
         )
         result = await get_session_metadata("s1", "u1")
         assert result.title == "My Generated Title"
@@ -320,12 +322,11 @@ class TestUpdateSessionActivity:
         await store_session_metadata("s1", "u1", seeded)
 
         await update_session_activity(
-            session_id="s1", user_id="u1", last_model="claude-3", last_temperature=0.5,
+            session_id="s1", user_id="u1", last_model="claude-3",
         )
         result = await get_session_metadata("s1", "u1")
         assert result.preferences.assistant_id == "asst-abc"
         assert result.preferences.last_model == "claude-3"
-        assert result.preferences.last_temperature == 0.5
 
     @pytest.mark.asyncio
     async def test_rotates_sk_to_new_timestamp(self, sessions_metadata_table):
@@ -672,3 +673,65 @@ class TestPausedTurnSnapshot:
         interrupts = await get_pending_interrupts("s1", "u1")
         assert len(interrupts) == 1
         assert interrupts[0].interrupt_id == "i1"
+
+
+class TestCoerceCostTotal:
+    """Normalize ``MessageMetadata.cost`` (float | dict | None) to a finite float total.
+
+    Regression tests for the cost-summary writer crash: the streaming path
+    builds a breakdown dict (``{"total": ..., "inputCost": ...}``), which
+    used to flow through ``Decimal(str(...))`` and raise
+    ``decimal.InvalidOperation``.
+    """
+
+    def test_dict_with_total_returns_total(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total({"total": 0.0105, "inputCost": 0.003}) == pytest.approx(0.0105)
+
+    def test_dict_without_total_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total({"inputCost": 0.003, "outputCost": 0.0075}) == 0.0
+
+    def test_dict_with_none_total_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total({"total": None}) == 0.0
+
+    def test_float_passthrough(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(0.42) == pytest.approx(0.42)
+
+    def test_int_passthrough(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(7) == 7.0
+
+    def test_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(0.0) == 0.0
+
+    def test_none_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(None) == 0.0
+
+    def test_nan_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(float("nan")) == 0.0
+
+    def test_inf_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total(float("inf")) == 0.0
+        assert _coerce_cost_total(float("-inf")) == 0.0
+
+    def test_non_numeric_returns_zero(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total("not-a-number") == 0.0
+        assert _coerce_cost_total(["list"]) == 0.0
+
+    def test_string_numeric_coerces(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        assert _coerce_cost_total("0.5") == pytest.approx(0.5)
+
+    def test_returns_finite_float(self):
+        from apis.shared.sessions.metadata import _coerce_cost_total
+        result = _coerce_cost_total({"total": 1.5})
+        assert isinstance(result, float)
+        assert math.isfinite(result)

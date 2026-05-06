@@ -29,10 +29,6 @@ export const routes: Routes = [
         loadComponent: () => import('./auth/login/login.page').then(m => m.LoginPage),
     },
     {
-        path: 'auth/callback',
-        loadComponent: () => import('./auth/callback/callback.page').then(m => m.CallbackPage),
-    },
-    {
         path: 'admin',
         loadComponent: () => import('./admin/admin.page').then(m => m.AdminPage),
         canActivate: [adminGuard],
@@ -240,5 +236,6 @@ export const routes: Routes = [
     {
         path: '**',
         loadComponent: () => import('./not-found/not-found.page').then(m => m.NotFoundPage),
+        canActivate: [authGuard],
     }
 ];

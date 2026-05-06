@@ -16,9 +16,11 @@ import {
 } from '../../../services/quota/quota-warning.service';
 import { OAuthConsentService } from '../../../services/oauth-consent/oauth-consent.service';
 import { ToolApprovalService } from '../../../services/tool-approval/tool-approval.service';
+import { CompactionSummaryService } from './compaction-summary.service';
 import type {
   OAuthRequiredEvent,
   ToolApprovalRequiredEvent,
+  CompactionEvent,
 } from '../../../shared/utils/stream-parser';
 import {
   processStreamEvent,
@@ -56,6 +58,7 @@ export class StreamParserService {
   private quotaWarningService = inject(QuotaWarningService);
   private oauthConsentService = inject(OAuthConsentService);
   private toolApprovalService = inject(ToolApprovalService);
+  private compactionSummary = inject(CompactionSummaryService);
 
   // =========================================================================
   // State Signals
@@ -321,6 +324,8 @@ export class StreamParserService {
           this.sessionId ?? undefined,
         );
       },
+
+      onCompaction: (data: CompactionEvent) => this.compactionSummary.recordLive(data),
 
       onToolApprovalRequired: (data: ToolApprovalRequiredEvent) => {
         const messages = this.allMessages();
@@ -664,6 +669,35 @@ export class StreamParserService {
 
     this.metadataSignal.set(data);
     this.updateLastCompletedMessageWithMetadata();
+
+    // Drive the session cost + context badge above the composer.
+    // Cost on the wire may be either a number (legacy) or a CostBreakdown
+    // object — extract the total either way (matches backend's Union shape).
+    const turnCost = typeof data.cost === 'number' ? data.cost : data.cost?.total ?? 0;
+    if (turnCost > 0) {
+      this.chatStateService.addTurnCost(turnCost);
+    }
+
+    // Only update the context badge from the *final* metadata event —
+    // the synthesized one the stream coordinator emits right before
+    // `done`. Strands fires a `metadata` event per LLM call within a
+    // turn; intermediate events carry per-call usage (sometimes with
+    // missing or zero cache fields) that would make the badge collapse
+    // mid-turn. The final event is the only one that carries
+    // `contextWindow`, so we use that as the gate.
+    //
+    // Sum all three usage buckets: `inputTokens` is uncached input
+    // only, `cacheReadInputTokens` is the cached prefix, and
+    // `cacheWriteInputTokens` is freshly-cached content. Together they
+    // represent true context-window occupancy.
+    const usage = data.usage;
+    if (data.contextWindow && usage && typeof usage.inputTokens === 'number') {
+      const totalContext =
+        usage.inputTokens +
+        (usage.cacheReadInputTokens ?? 0) +
+        (usage.cacheWriteInputTokens ?? 0);
+      this.chatStateService.setContext(totalContext, data.contextWindow);
+    }
   }
 
   private handleReasoning(data: { reasoningText?: string }): void {

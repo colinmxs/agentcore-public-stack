@@ -252,20 +252,68 @@ class StreamCoordinator:
                         # Add end-to-end latency to metrics for consistency
                         final_metadata["metrics"]["latencyMs"] = int((stream_end_time - stream_start_time) * 1000)
 
-                        # Calculate and add cost to metadata if we have usage and agent info
+                        # Cost: sum the FINAL usage of each assistant message in
+                        # this turn and price it. We deliberately price each
+                        # message independently and sum, instead of pricing
+                        # the cumulative usage once, because Strands emits
+                        # multiple metadata events per message (intermediate
+                        # + cumulative) and the cumulative usage on the last
+                        # event already includes prior messages' input
+                        # tokens. Per-message pricing matches what gets
+                        # persisted (one C# record per assistant message).
                         if main_agent_wrapper and hasattr(main_agent_wrapper, "model_config"):
                             model_id = main_agent_wrapper.model_config.model_id
-                            usage_for_cost = accumulated_metadata.get("usage", {})
-                            logger.info(f"💰 Cost calculation: model_id={model_id}, usage={usage_for_cost}")
                             try:
-                                cost_result = await self._calculate_streaming_cost(model_id=model_id, usage=usage_for_cost)
-                                if cost_result is not None:
-                                    final_metadata["cost"] = cost_result
+                                turn_total = 0.0
+                                turn_input_cost = 0.0
+                                turn_output_cost = 0.0
+                                turn_cache_read_cost = 0.0
+                                turn_cache_write_cost = 0.0
+                                for msg_idx, msg_meta in enumerate(per_message_metadata):
+                                    msg_usage = msg_meta.get("usage") or {}
+                                    if not msg_usage:
+                                        continue
+                                    msg_cost = await self._calculate_streaming_cost(
+                                        model_id=model_id,
+                                        usage=msg_usage,
+                                    )
+                                    if msg_cost is None:
+                                        continue
+                                    turn_total += msg_cost.get("total", 0.0)
+                                    turn_input_cost += msg_cost.get("inputCost", 0.0)
+                                    turn_output_cost += msg_cost.get("outputCost", 0.0)
+                                    turn_cache_read_cost += msg_cost.get("cacheReadCost", 0.0)
+                                    turn_cache_write_cost += msg_cost.get("cacheWriteCost", 0.0)
                                     logger.info(
-                                        f"💰 Calculated streaming cost: ${cost_result['total']:.6f} (input=${cost_result['inputCost']:.6f}, output=${cost_result['outputCost']:.6f}) for {usage_for_cost.get('inputTokens', 0)} input, {usage_for_cost.get('outputTokens', 0)} output tokens"
+                                        f"💰 Per-message cost (msg_idx={msg_idx}): ${msg_cost['total']:.6f} "
+                                        f"for {msg_usage.get('inputTokens', 0)} input, {msg_usage.get('outputTokens', 0)} output tokens"
+                                    )
+                                if turn_total > 0:
+                                    final_metadata["cost"] = {
+                                        "total": turn_total,
+                                        "inputCost": turn_input_cost,
+                                        "outputCost": turn_output_cost,
+                                        "cacheReadCost": turn_cache_read_cost,
+                                        "cacheWriteCost": turn_cache_write_cost,
+                                    }
+                                    logger.info(
+                                        f"💰 Turn total cost: ${turn_total:.6f} across {len(per_message_metadata)} message(s)"
                                     )
                             except Exception as cost_error:
-                                logger.warning(f"Failed to calculate streaming cost: {cost_error}")
+                                logger.warning(f"Failed to calculate turn cost: {cost_error}")
+
+                            # Surface the model's context window so the
+                            # frontend session-cost badge can show "% of
+                            # context used" without an extra round-trip.
+                            try:
+                                from apis.shared.costs.pricing_config import get_model_by_model_id
+                                model_record = await get_model_by_model_id(model_id)
+                                if model_record is not None:
+                                    max_input_tokens = getattr(model_record, "max_input_tokens", None)
+                                    if max_input_tokens:
+                                        final_metadata["contextWindow"] = int(max_input_tokens)
+                            except Exception as ctx_err:
+                                logger.debug(f"Skipping contextWindow lookup: {ctx_err}")
 
                         # Log cache metrics for performance monitoring
                         self._log_cache_metrics(usage=final_metadata.get("usage", {}), session_id=session_id)
@@ -273,6 +321,38 @@ class StreamCoordinator:
                         # Send final metadata event to client (before done event)
                         final_metadata_event = {"type": "metadata", "data": final_metadata}
                         yield self._format_sse_event(final_metadata_event)
+
+                    # Update compaction state after the final metadata event so
+                    # the badge updates first, then the divider drops in. If the
+                    # checkpoint advanced on this turn, emit a `compaction` SSE
+                    # so the frontend can place an inline "earlier messages
+                    # summarized" divider. Fires after metadata, before done.
+                    if hasattr(session_manager, "update_after_turn"):
+                        usage = accumulated_metadata.get("usage", {})
+                        total_input_tokens = (
+                            usage.get("inputTokens", 0)
+                            + usage.get("cacheReadInputTokens", 0)
+                            + usage.get("cacheWriteInputTokens", 0)
+                        )
+                        if total_input_tokens > 0:
+                            try:
+                                current_messages = getattr(agent, "messages", None)
+                                compaction_result = await session_manager.update_after_turn(
+                                    total_input_tokens,
+                                    current_messages=current_messages,
+                                )
+                                logger.info(f"   Compaction state updated: {total_input_tokens:,} input tokens")
+                                if compaction_result is not None:
+                                    compaction_payload = {
+                                        "type": "compaction",
+                                        "previousCheckpoint": compaction_result.previous_checkpoint,
+                                        "newCheckpoint": compaction_result.new_checkpoint,
+                                        "summarizedTurns": compaction_result.summarized_turns,
+                                        "inputTokens": compaction_result.input_tokens,
+                                    }
+                                    yield f"event: compaction\ndata: {json.dumps(compaction_payload)}\n\n"
+                            except Exception as e:
+                                logger.warning(f"Failed to update compaction state: {e}")
 
                 # Intercept legacy "error" events from stream_processor and convert to conversational format
                 # This ensures errors appear as assistant messages in the chat UI
@@ -493,22 +573,6 @@ class StreamCoordinator:
                 except Exception as e:
                     logger.error(f"Failed to store user displayText: {e}", exc_info=True)
 
-            # Update compaction state if session manager supports it
-            # This tracks input token usage and triggers compaction when threshold exceeded
-            if hasattr(session_manager, "update_after_turn"):
-                input_tokens = accumulated_metadata.get("usage", {}).get("inputTokens", 0)
-                # Also include cache tokens for accurate context size tracking
-                cache_read_tokens = accumulated_metadata.get("usage", {}).get("cacheReadInputTokens", 0)
-                cache_write_tokens = accumulated_metadata.get("usage", {}).get("cacheWriteInputTokens", 0)
-                total_input_tokens = input_tokens + cache_read_tokens + cache_write_tokens
-
-                if total_input_tokens > 0:
-                    try:
-                        await session_manager.update_after_turn(total_input_tokens)
-                        logger.info(f"   Compaction state updated: {total_input_tokens:,} input tokens")
-                    except Exception as e:
-                        logger.warning(f"Failed to update compaction state: {e}")
-
         except Exception as e:
             # Handle errors with emergency flush
             logger.error(f"Error in stream_response: {e}")
@@ -601,15 +665,17 @@ class StreamCoordinator:
 
         try:
             now = datetime.now(timezone.utc)
+            inference_params = snapshot_source.get("inference_params") or {}
             snapshot = PausedTurnSnapshot(
                 enabled_tools=snapshot_source.get("enabled_tools"),
                 model_id=snapshot_source.get("model_id"),
                 provider=snapshot_source.get("provider"),
-                temperature=snapshot_source.get("temperature"),
+                temperature=inference_params.get("temperature"),
                 system_prompt=snapshot_source.get("system_prompt"),
                 caching_enabled=snapshot_source.get("caching_enabled"),
-                max_tokens=snapshot_source.get("max_tokens"),
+                max_tokens=inference_params.get("max_tokens"),
                 agent_type=snapshot_source.get("agent_type"),
+                inference_params=dict(inference_params) if inference_params else None,
                 captured_at=now.isoformat(),
                 expires_at=(now + timedelta(hours=1)).isoformat(),
             )
@@ -1062,8 +1128,8 @@ class StreamCoordinator:
             citations: Optional list of citation dicts from RAG retrieval
         """
         try:
-            from apis.app_api.messages.models import Attribution, LatencyMetrics, MessageMetadata, ModelInfo, TokenUsage
-            from apis.app_api.sessions.services.metadata import store_message_metadata
+            from apis.shared.sessions.models import Attribution, LatencyMetrics, MessageMetadata, ModelInfo, TokenUsage
+            from apis.shared.sessions.metadata import store_message_metadata
 
             # Build TokenUsage if we have usage data
             token_usage = None
@@ -1130,12 +1196,27 @@ class StreamCoordinator:
             model_info = None
             pricing_snapshot = None
             cost = None
+            context_window: Optional[int] = None
 
             if agent and hasattr(agent, "model_config"):
                 model_id = agent.model_config.model_id
 
                 # Get pricing snapshot from managed models database
                 pricing_snapshot = await self._get_pricing_snapshot(model_id)
+
+                # Look up the model's max_input_tokens once so the bump of
+                # session-level aggregates (for the chat cost badge) has a
+                # context window value to persist alongside the latest
+                # turn's input token count.
+                try:
+                    from apis.shared.costs.pricing_config import get_model_by_model_id
+                    model_record = await get_model_by_model_id(model_id)
+                    if model_record is not None:
+                        max_input_tokens = getattr(model_record, "max_input_tokens", None)
+                        if max_input_tokens:
+                            context_window = int(max_input_tokens)
+                except Exception as ctx_err:
+                    logger.debug(f"Skipping contextWindow capture for storage: {ctx_err}")
 
                 # Extract provider from model config
                 provider = None
@@ -1167,14 +1248,20 @@ class StreamCoordinator:
 
             # Create MessageMetadata
             if token_usage or latency_metrics or model_info or citations:
-                message_metadata = MessageMetadata(
+                # contextWindow is passed as an extra field (MessageMetadata
+                # has extra="allow"); _bump_session_aggregates picks it up
+                # via model_extra to denormalize onto the session row.
+                metadata_kwargs: Dict[str, Any] = dict(
                     latency=latency_metrics,
                     token_usage=token_usage,
                     model_info=model_info,
                     attribution=attribution,
                     cost=cost,
-                    citations=citations,  # Include citations from RAG retrieval
+                    citations=citations,
                 )
+                if context_window is not None:
+                    metadata_kwargs["contextWindow"] = context_window
+                message_metadata = MessageMetadata(**metadata_kwargs)
 
                 # Store metadata
                 await store_message_metadata(session_id=session_id, user_id=user_id, message_id=message_id, message_metadata=message_metadata)
@@ -1241,8 +1328,8 @@ class StreamCoordinator:
             PricingSnapshot dict or None if model not found
         """
         try:
-            from apis.app_api.costs.pricing_config import create_pricing_snapshot
-            from apis.app_api.messages.models import PricingSnapshot
+            from apis.shared.costs.pricing_config import create_pricing_snapshot
+            from apis.shared.sessions.models import PricingSnapshot
 
             # Get pricing snapshot from managed models
             snapshot_dict = await create_pricing_snapshot(model_id)
@@ -1273,7 +1360,7 @@ class StreamCoordinator:
             return None
 
         try:
-            from apis.app_api.costs.calculator import CostCalculator
+            from apis.shared.costs.calculator import CostCalculator
 
             # Convert PricingSnapshot model to dict for calculator
             if hasattr(pricing, "model_dump"):
@@ -1349,12 +1436,10 @@ class StreamCoordinator:
             from apis.shared.sessions.metadata import update_session_activity
 
             last_model = None
-            last_temperature = None
             enabled_tools = None
             system_prompt_hash = None
             if agent and hasattr(agent, "model_config"):
                 last_model = agent.model_config.model_id
-                last_temperature = getattr(agent.model_config, "temperature", None)
                 enabled_tools = getattr(agent, "enabled_tools", None)
                 if hasattr(agent, "system_prompt") and agent.system_prompt:
                     system_prompt_hash = hashlib.md5(agent.system_prompt.encode()).hexdigest()[:16]
@@ -1365,7 +1450,6 @@ class StreamCoordinator:
                 session_id=session_id,
                 user_id=user_id,
                 last_model=last_model,
-                last_temperature=last_temperature,
                 enabled_tools=enabled_tools,
                 system_prompt_hash=system_prompt_hash,
             )

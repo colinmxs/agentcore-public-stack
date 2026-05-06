@@ -100,7 +100,7 @@ get_base_url() {
 # ---------------------------------------------------------------------------
 patch_cognito_callback_urls() {
     local frontend_url="$1"
-    local callback_url="${frontend_url}/auth/callback"
+    local callback_url="${frontend_url}/api/auth/callback"
     local logout_url="${frontend_url}"
 
     # Fetch Cognito resource IDs from SSM
@@ -112,7 +112,7 @@ patch_cognito_callback_urls() {
 
     local client_id
     client_id=$(aws ssm get-parameter \
-        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/app-client-id" \
+        --name "/${CDK_PROJECT_PREFIX}/auth/cognito/bff-app-client-id" \
         --query "Parameter.Value" --output text \
         --region "${CDK_AWS_REGION}")
 
@@ -208,14 +208,20 @@ print(' '.join(scopes))
 }
 
 # ---------------------------------------------------------------------------
-# Patch App API ECS service CORS_ORIGINS to include the CloudFront URL
+# Patch App API ECS service env vars for the dynamic CloudFront URL
 # ---------------------------------------------------------------------------
 # The nightly stack has no custom domain, so the frontend is served from a
-# dynamic CloudFront URL that isn't known at CDK deploy time. The App API's
-# CORS_ORIGINS env var therefore doesn't include it, causing all cross-origin
-# API requests to fail. This function:
+# dynamic CloudFront URL that isn't known at CDK deploy time. This function
+# patches three env vars in the ECS task definition:
+#   - CORS_ORIGINS: append the CloudFront origin so cross-origin requests work
+#   - BFF_POST_LOGIN_REDIRECT_URL: set to the CloudFront URL so the OAuth
+#     callback redirects the browser to the actual frontend (not localhost)
+#   - BFF_AUTH_CALLBACK_URL: set to the CloudFront-fronted callback URL so
+#     the BFF sends the correct redirect_uri to Cognito's token endpoint
+#
+# Steps:
 #   1. Reads the current ECS task definition
-#   2. Appends the CloudFront origin to CORS_ORIGINS
+#   2. Patches CORS_ORIGINS, BFF_POST_LOGIN_REDIRECT_URL, BFF_AUTH_CALLBACK_URL
 #   3. Registers a new task definition revision
 #   4. Updates the ECS service to use it
 #   5. Waits for the service to stabilize
@@ -269,44 +275,102 @@ print('')
 
     log_info "  Current CORS_ORIGINS: ${current_cors:-<empty>}"
 
-    # Check if the frontend URL is already in CORS_ORIGINS
-    if echo "${current_cors}" | grep -qF "${frontend_url}"; then
-        log_info "  CloudFront origin already in CORS_ORIGINS — skipping patch"
+    # Check if all patches are already applied
+    local current_post_login
+    current_post_login=$(echo "${task_def_json}" | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+for container in td.get('containerDefinitions', []):
+    for env in container.get('environment', []):
+        if env['name'] == 'BFF_POST_LOGIN_REDIRECT_URL':
+            print(env['value'])
+            sys.exit(0)
+print('')
+")
+
+    log_info "  Current BFF_POST_LOGIN_REDIRECT_URL: ${current_post_login:-<empty>}"
+
+    # Check current BFF_AUTH_CALLBACK_URL value
+    local current_callback_url
+    current_callback_url=$(echo "${task_def_json}" | python3 -c "
+import sys, json
+td = json.load(sys.stdin)
+for container in td.get('containerDefinitions', []):
+    for env in container.get('environment', []):
+        if env['name'] == 'BFF_AUTH_CALLBACK_URL':
+            print(env['value'])
+            sys.exit(0)
+print('')
+")
+
+    log_info "  Current BFF_AUTH_CALLBACK_URL: ${current_callback_url:-<empty>}"
+
+    local needs_patch=false
+    if ! echo "${current_cors}" | grep -qF "${frontend_url}"; then
+        needs_patch=true
+    fi
+    if [ "${current_post_login}" != "${frontend_url}/" ]; then
+        needs_patch=true
+    fi
+    if [ "${current_callback_url}" != "${frontend_url}/api/auth/callback" ]; then
+        needs_patch=true
+    fi
+
+    if [ "${needs_patch}" = "false" ]; then
+        log_info "  All env vars already patched — skipping"
         return 0
     fi
 
     # Build new CORS_ORIGINS value
     local new_cors
-    if [ -n "${current_cors}" ]; then
+    if echo "${current_cors}" | grep -qF "${frontend_url}"; then
+        new_cors="${current_cors}"
+    elif [ -n "${current_cors}" ]; then
         new_cors="${current_cors},${frontend_url}"
     else
         new_cors="${frontend_url}"
     fi
 
-    log_info "  New CORS_ORIGINS: ${new_cors}"
+    # The BFF callback URL is fronted by CloudFront at /api/*
+    local new_callback_url="${frontend_url}/api/auth/callback"
+    local new_post_login_url="${frontend_url}/"
 
-    # Register a new task definition revision with updated CORS_ORIGINS
-    # We need to extract the relevant fields and update the environment variable
+    log_info "  New CORS_ORIGINS: ${new_cors}"
+    log_info "  New BFF_AUTH_CALLBACK_URL: ${new_callback_url}"
+    log_info "  New BFF_POST_LOGIN_REDIRECT_URL: ${new_post_login_url}"
+
+    # Register a new task definition revision with updated env vars
     local new_task_def
-    new_task_def=$(echo "${task_def_json}" | NEW_CORS="${new_cors}" python3 -c "
+    new_task_def=$(echo "${task_def_json}" | \
+        NEW_CORS="${new_cors}" \
+        NEW_CALLBACK_URL="${new_callback_url}" \
+        NEW_POST_LOGIN_URL="${new_post_login_url}" \
+        python3 -c "
 import sys, json, os
 
 td = json.load(sys.stdin)
 new_cors_value = os.environ['NEW_CORS']
+new_callback_url = os.environ['NEW_CALLBACK_URL']
+new_post_login_url = os.environ['NEW_POST_LOGIN_URL']
 
-# Update CORS_ORIGINS in container environment
+# Env vars to set/update
+patches = {
+    'CORS_ORIGINS': new_cors_value,
+    'BFF_AUTH_CALLBACK_URL': new_callback_url,
+    'BFF_POST_LOGIN_REDIRECT_URL': new_post_login_url,
+}
+
 for container in td.get('containerDefinitions', []):
-    found = False
-    for env in container.get('environment', []):
-        if env['name'] == 'CORS_ORIGINS':
-            env['value'] = new_cors_value
-            found = True
-            break
-    if not found:
-        container.setdefault('environment', []).append({
-            'name': 'CORS_ORIGINS',
-            'value': new_cors_value
-        })
+    env_list = container.setdefault('environment', [])
+    for name, value in patches.items():
+        found = False
+        for env in env_list:
+            if env['name'] == name:
+                env['value'] = value
+                found = True
+                break
+        if not found:
+            env_list.append({'name': name, 'value': value})
 
 # Build the register-task-definition input (only allowed fields)
 register_input = {
@@ -430,16 +494,12 @@ main() {
     log_info "Frontend responded with HTTP ${response_code}"
 
     # --- Patch App API CORS to allow requests from the CloudFront origin ---
-    log_info "Patching App API CORS origins to include CloudFront URL..."
+    log_info "Patching App API env vars (CORS, BFF redirect URLs) for CloudFront..."
     patch_app_api_cors "${base_url}"
 
     # --- Ensure Cognito allows the dynamic CloudFront callback URL ---
     log_info "Patching Cognito app client with CloudFront callback URL..."
     patch_cognito_callback_urls "${base_url}"
-
-    # --- Seed E2E test users in Cognito ---
-    log_info "Seeding E2E test users in Cognito User Pool..."
-    bash "${SCRIPT_DIR}/seed-e2e-users.sh"
 
     # --- Seed bootstrap data (models, tools, roles, quotas) ---
     # The nightly stack deploys fresh empty DynamoDB tables. The e2e tests
@@ -448,6 +508,80 @@ main() {
     log_info "Seeding bootstrap data (models, tools, roles, quotas)..."
     pip install boto3 --quiet 2>/dev/null || pip3 install boto3 --quiet 2>/dev/null || true
     bash "${PROJECT_ROOT}/scripts/stack-bootstrap/seed.sh"
+
+    # --- Complete first-boot (create initial admin via the API) ---
+    # The first-boot endpoint creates the admin user in Cognito, assigns the
+    # system_admin role, and marks the system as bootstrapped. Without this,
+    # the frontend redirects all users to the first-boot setup screen.
+    # This must run BEFORE seed-e2e-users.sh because seed-e2e-users is
+    # idempotent and will simply confirm the user that first-boot created.
+    log_info "Completing first-boot via App API..."
+    local alb_url
+    alb_url=$(aws ssm get-parameter \
+        --name "/${CDK_PROJECT_PREFIX}/network/alb-url" \
+        --query "Parameter.Value" --output text \
+        --region "${CDK_AWS_REGION}" 2>/dev/null || true)
+
+    if [ -n "${alb_url}" ] && [ "${alb_url}" != "None" ]; then
+        local admin_email="${ADMIN_USERNAME}@e2e-nightly.local"
+        local first_boot_status
+        first_boot_status=$(curl -s -o /dev/null -w "%{http_code}" \
+            -X POST "${alb_url}/system/first-boot" \
+            -H "Content-Type: application/json" \
+            -d "{\"username\": \"${ADMIN_USERNAME}\", \"email\": \"${admin_email}\", \"password\": \"${ADMIN_PASSWORD}\"}" \
+            --max-time 30)
+
+        if [ "${first_boot_status}" = "200" ]; then
+            log_success "First-boot completed successfully"
+        elif [ "${first_boot_status}" = "409" ]; then
+            log_info "First-boot already completed — skipping"
+        else
+            log_warn "First-boot returned HTTP ${first_boot_status} — tests may fail on login"
+        fi
+    else
+        log_warn "Could not resolve ALB URL — skipping first-boot completion"
+    fi
+
+    # --- Seed E2E test users in Cognito ---
+    # Runs after first-boot so the admin user already exists in Cognito.
+    # seed-e2e-users is idempotent: it confirms existing users and sets
+    # their passwords to the expected values.
+    log_info "Seeding E2E test users in Cognito User Pool..."
+    bash "${SCRIPT_DIR}/seed-e2e-users.sh"
+
+    # --- Verify BFF auth configuration ---
+    # Smoke-test the BFF login redirect to confirm the patched env vars are
+    # active. The BFF's /auth/login should 302 to Cognito with a redirect_uri
+    # pointing at the CloudFront-fronted callback URL.
+    if [ -n "${alb_url}" ] && [ "${alb_url}" != "None" ]; then
+        log_info "Verifying BFF auth login redirect..."
+        local login_redirect
+        login_redirect=$(curl -s -o /dev/null -w "%{redirect_url}" \
+            "${alb_url}/auth/login" --max-time 10 || true)
+
+        if [ -n "${login_redirect}" ]; then
+            log_info "  BFF /auth/login redirects to: ${login_redirect:0:120}..."
+            if echo "${login_redirect}" | grep -qF "redirect_uri="; then
+                local actual_redirect_uri
+                actual_redirect_uri=$(echo "${login_redirect}" | python3 -c "
+import sys, urllib.parse
+url = sys.stdin.read().strip()
+parsed = urllib.parse.urlparse(url)
+params = urllib.parse.parse_qs(parsed.query)
+print(params.get('redirect_uri', [''])[0])
+")
+                log_info "  redirect_uri in authorize request: ${actual_redirect_uri}"
+                local expected_callback="${base_url}/api/auth/callback"
+                if [ "${actual_redirect_uri}" != "${expected_callback}" ]; then
+                    log_error "  MISMATCH! Expected: ${expected_callback}"
+                    log_error "  BFF_AUTH_CALLBACK_URL patch may not have taken effect."
+                    log_error "  This will cause token exchange failures after Cognito login."
+                fi
+            fi
+        else
+            log_warn "  Could not verify BFF login redirect (no redirect URL captured)"
+        fi
+    fi
 
     # --- Change to frontend directory ---
     cd "${FRONTEND_DIR}"

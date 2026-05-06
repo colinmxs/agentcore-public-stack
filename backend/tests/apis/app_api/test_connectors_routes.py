@@ -52,14 +52,16 @@ def _make_user(user_id: str) -> User:
 @pytest.fixture
 def app_for_user():
     """Build a minimal FastAPI app with the connectors router mounted and
-    the `get_current_user` dependency stubbed to a specific user.
-    Returns a factory so each test picks the caller's identity.
+    the cookie `get_current_user_from_session` dependency stubbed to a
+    specific user. Phase 7 collapsed the dual-auth surface to cookie-only;
+    the override key has to track that. Returns a factory so each test
+    picks the caller's identity.
     """
 
     def _build(user_id: str) -> FastAPI:
         app = FastAPI()
         app.include_router(routes.router)
-        app.dependency_overrides[routes.get_current_user] = lambda: _make_user(user_id)
+        app.dependency_overrides[routes.get_current_user_from_session] = lambda: _make_user(user_id)
         return app
 
     return _build
@@ -416,7 +418,14 @@ class TestForceReauthLifecycle:
             "access_type": "offline",
         }
 
-    def test_initiate_consent_forwards_google_access_type_offline(self, app_with_deps):
+    def test_initiate_consent_forwards_google_access_type_offline_and_prompt_consent(
+        self, app_with_deps
+    ):
+        # initiate_consent is a "walk me through consent" path, so for Google
+        # we always send `prompt=consent` (in addition to `access_type=offline`).
+        # Without it, Google sees a previously-consented user, skips the consent
+        # screen, and re-issues an access_token without a refresh_token —
+        # putting the user back in the hourly-reconsent loop.
         app, identity, _ = app_with_deps(
             "alice",
             provider=_make_provider(),
@@ -427,6 +436,7 @@ class TestForceReauthLifecycle:
         identity.get_token_for_user.assert_called_once()
         assert identity.get_token_for_user.call_args.kwargs["custom_parameters"] == {
             "access_type": "offline",
+            "prompt": "consent",
         }
 
     def test_admin_custom_parameters_merge_with_google_baseline(self, app_with_deps):

@@ -49,6 +49,7 @@ npx cdk deploy --all
 | `tool_use` / `tool_result` | Tool invocation and result |
 | `stream_error` | Conversational error |
 | `oauth_required` | External MCP tool needs user consent — payload `{providerId, authorizationUrl}`, one event per provider emitted after `message_stop` |
+| `compaction` | Backend rolled older turns into a summary on this turn — payload `{previousCheckpoint, newCheckpoint, summarizedTurns, inputTokens}`, emitted after the final `metadata` event so the badge updates first, before `done` |
 | `done` | Stream complete |
 
 ## Multi-Protocol Tool Architecture
@@ -65,6 +66,7 @@ npx cdk deploy --all
 - Backend route handlers define the API shape; frontend TypeScript interfaces must match
 - Breaking changes to an endpoint require updating both packages in the same PR
 - SSE event types are part of the contract — changes must be coordinated
+- `app_api`, `inference_api`, and `agents/` are independent consumers of `apis.shared`. They must never import from each other — only from `apis.shared`. If something is needed by more than one of them, move it to `apis.shared`. This is enforced by `tests/architecture/test_import_boundaries.py`.
 
 ## File Creation Rules
 
@@ -75,8 +77,7 @@ npx cdk deploy --all
 | New agent tool | `backend/src/agents/main_agent/tools/` + register in `__init__.py` |
 | New Angular page | `frontend/ai.client/src/app/<feature>/` |
 | New CDK stack | `infrastructure/lib/<stack-name>-stack.ts` |
-| Shared backend utils | `backend/src/apis/shared/` |
-| Shared backend middleware | `backend/src/apis/shared/middleware/` |
+| Shared backend code | `backend/src/apis/shared/<domain>/` |
 
 ### Inference API boundary
 

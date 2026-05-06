@@ -9,6 +9,7 @@ Architecture:
 
 import logging
 import json
+import math
 import os
 import base64
 from typing import Iterable, List, Optional, Tuple, Any, Dict
@@ -53,6 +54,29 @@ def _convert_decimal_to_float(obj: Any) -> Any:
         return [_convert_decimal_to_float(item) for item in obj]
     else:
         return obj
+
+
+def _coerce_cost_total(raw: Any) -> float:
+    """Normalize a ``MessageMetadata.cost`` value to a finite float total.
+
+    ``MessageMetadata.cost`` is ``Optional[Union[float, Dict[str, float]]]`` —
+    the streaming path stores a breakdown dict (``{"total": ..., "inputCost": ...}``)
+    while the legacy path stores a bare float. Downstream summary writers
+    only want the scalar total; passing the dict through caused
+    ``Decimal(str(...))`` to throw ``ConversionSyntax`` at the DynamoDB
+    boundary. NaN/inf and non-numeric values collapse to 0.0.
+    """
+    if isinstance(raw, dict):
+        raw = raw.get("total")
+    if raw is None:
+        return 0.0
+    try:
+        value = float(raw)
+    except (TypeError, ValueError):
+        return 0.0
+    if not math.isfinite(value):
+        return 0.0
+    return value
 
 
 
@@ -251,6 +275,16 @@ async def _store_message_metadata_cloud(
         logger.info(f"💾 Stored cost record in DynamoDB table {table_name}")
         logger.info(f"   Session: {session_id}, Message: {message_id}, SK: C#{timestamp}#{unique_id[:8]}...")
 
+        # Bump session-level aggregates (totalCost, lastContextTokens,
+        # contextWindow) for the session-cost badge. Best-effort — drift is
+        # repaired by lazy backfill on the next metadata read.
+        await _bump_session_aggregates(
+            session_id=session_id,
+            user_id=user_id,
+            message_metadata=message_metadata,
+            table=table,
+        )
+
         # Update pre-aggregated cost summary for fast quota checks
         # This is done asynchronously and non-blocking - failures don't affect the main flow
         await _update_cost_summary_async(
@@ -301,8 +335,10 @@ async def _update_cost_summary_async(
         import asyncio
         from datetime import datetime
 
-        # Extract cost and usage from metadata
-        cost = message_metadata.cost or 0.0
+        # Extract cost and usage from metadata. cost may be a breakdown dict
+        # ({"total": ..., "inputCost": ...}) on the streaming path or a bare
+        # float on the legacy path; the summary writer needs the scalar total.
+        cost = _coerce_cost_total(message_metadata.cost)
         token_usage = message_metadata.token_usage
 
         usage_delta = {}
@@ -342,8 +378,11 @@ async def _update_cost_summary_async(
 
                     logger.debug(f"🔍 Pricing dict: {pricing_dict}")
 
-                    input_price = pricing_dict.get("inputPricePerMtok", 0)
-                    cache_read_price = pricing_dict.get("cacheReadPricePerMtok", 0)
+                    # `or 0` (not `.get(..., 0)`) — managed-model rows can
+                    # store an explicit None for cache_read pricing, which
+                    # would otherwise propagate into arithmetic below.
+                    input_price = pricing_dict.get("inputPricePerMtok") or 0
+                    cache_read_price = pricing_dict.get("cacheReadPricePerMtok") or 0
 
                     # Calculate savings: what we would have paid vs what we actually paid
                     standard_cost = (cache_read_tokens / 1_000_000) * input_price
@@ -373,7 +412,7 @@ async def _update_cost_summary_async(
             date = now.strftime('%Y-%m-%d')
 
         # Use storage abstraction for the atomic update
-        from apis.app_api.storage import get_metadata_storage
+        from apis.shared.storage import get_metadata_storage
         storage = get_metadata_storage()
 
         await storage.update_user_cost_summary(
@@ -458,7 +497,7 @@ async def _update_system_rollups_async(
             logger.debug("System rollup table not configured, skipping rollup updates")
             return
 
-        from apis.app_api.storage.dynamodb_storage import DynamoDBStorage
+        from apis.shared.storage.dynamodb_storage import DynamoDBStorage
         storage = DynamoDBStorage()
 
         # Track active users using conditional writes
@@ -813,7 +852,6 @@ async def update_session_activity(
     user_id: str,
     *,
     last_model: Optional[str] = None,
-    last_temperature: Optional[float] = None,
     enabled_tools: Optional[List[str]] = None,
     system_prompt_hash: Optional[str] = None,
 ) -> bool:
@@ -882,8 +920,6 @@ async def update_session_activity(
         prefs_dict = existing_prefs.model_dump(by_alias=False, exclude_none=True)
         if last_model is not None:
             prefs_dict["last_model"] = last_model
-        if last_temperature is not None:
-            prefs_dict["last_temperature"] = last_temperature
         if enabled_tools is not None:
             prefs_dict["enabled_tools"] = enabled_tools
         if system_prompt_hash is not None:
@@ -975,6 +1011,171 @@ async def _get_session_by_gsi(session_id: str, user_id: str, table) -> Optional[
         return None
 
 
+
+
+async def _bump_session_aggregates(
+    session_id: str,
+    user_id: str,
+    message_metadata: MessageMetadata,
+    table,
+) -> None:
+    """Atomically update the session row's denormalized cost + context fields.
+
+    Powers the session-cost badge above the chat composer. Single
+    ``update_item`` call:
+
+      - ``ADD totalCost :c``  — concurrent-safe across overlapping turns.
+      - ``SET lastContextTokens :t, contextWindow :w`` — last-write-wins,
+        which is the right behavior for "most recent turn."
+
+    The session row's SK encodes ``lastMessageAt`` so we don't know it
+    directly; query the ``SessionLookupIndex`` GSI once to find it. Any
+    failure is swallowed — drift is repaired on the next metadata read by
+    ``_backfill_session_aggregates``.
+    """
+    try:
+        cost_value = _coerce_cost_total(message_metadata.cost)
+        token_usage = message_metadata.token_usage
+        # `input_tokens` from Bedrock is the *uncached* portion only — the
+        # cached prefix lives in `cache_read_input_tokens` and newly-cached
+        # tokens in `cache_write_input_tokens`. Sum all three so the badge
+        # reflects true context-window occupancy.
+        if token_usage:
+            input_tokens = (
+                (token_usage.input_tokens or 0)
+                + (token_usage.cache_read_input_tokens or 0)
+                + (token_usage.cache_write_input_tokens or 0)
+            )
+        else:
+            input_tokens = 0
+        context_window = getattr(message_metadata, "context_window", None)
+        # context_window may be tucked under model_extra (since
+        # MessageMetadata uses extra="allow") or absent entirely.
+        if context_window is None and isinstance(getattr(message_metadata, "model_extra", None), dict):
+            context_window = message_metadata.model_extra.get("contextWindow") \
+                or message_metadata.model_extra.get("context_window")
+
+        existing = await _get_session_by_gsi(session_id, user_id, table)
+        if not existing:
+            logger.debug("bump_session_aggregates: session %s not found, skipping", session_id)
+            return
+
+        sk = existing.get("SK")
+        if not sk:
+            return
+
+        update_parts_set = ["lastContextTokens = :t"]
+        values: Dict[str, Any] = {":c": Decimal(str(cost_value)), ":t": int(input_tokens)}
+
+        if context_window:
+            update_parts_set.append("contextWindow = :w")
+            values[":w"] = int(context_window)
+
+        update_expression = "ADD totalCost :c SET " + ", ".join(update_parts_set)
+
+        table.update_item(
+            Key={"PK": f"USER#{user_id}", "SK": sk},
+            UpdateExpression=update_expression,
+            ExpressionAttributeValues=values,
+        )
+        logger.debug(
+            "bumped session aggregates for %s: +$%.6f, lastContextTokens=%d",
+            session_id, cost_value, input_tokens,
+        )
+    except Exception as e:
+        # Non-fatal — lazy backfill compensates on next read.
+        logger.debug("bump_session_aggregates failed (will be backfilled on read): %s", e)
+
+
+async def _backfill_session_aggregates(
+    session_id: str,
+    user_id: str,
+    session_item: Dict[str, Any],
+    table,
+) -> None:
+    """One-shot backfill for legacy sessions missing denormalized aggregates.
+
+    Queries the ``SessionLookupIndex`` GSI for all ``C#`` cost records for
+    this session, sums their cost, and writes the totals back to the
+    session row. Mutates ``session_item`` in place so the caller's current
+    request sees the values. After this runs, subsequent reads are O(1).
+
+    Called from ``_get_session_metadata_cloud`` only when ``totalCost`` is
+    missing, so it executes at most once per legacy session.
+    """
+    try:
+        from boto3.dynamodb.conditions import Key
+
+        sk = session_item.get("SK")
+        if not sk:
+            return
+
+        # Sum cost across all C# records for this session.
+        total_cost = 0.0
+        last_context_tokens: Optional[int] = None
+        last_timestamp: Optional[str] = None
+
+        last_evaluated_key = None
+        while True:
+            query_kwargs = {
+                "IndexName": "SessionLookupIndex",
+                "KeyConditionExpression": (
+                    Key("GSI_PK").eq(f"SESSION#{session_id}")
+                    & Key("GSI_SK").begins_with("C#")
+                ),
+            }
+            if last_evaluated_key:
+                query_kwargs["ExclusiveStartKey"] = last_evaluated_key
+
+            response = table.query(**query_kwargs)
+            for rec in response.get("Items", []):
+                rec_float = _convert_decimal_to_float(rec)
+                if rec_float.get("userId") != user_id:
+                    continue
+                cost_raw = rec_float.get("cost")
+                total_cost += _coerce_cost_total(cost_raw)
+
+                # Pick up the most recent turn's context tokens. `inputTokens`
+                # alone is the uncached delta; sum with cache reads/writes to
+                # match true context-window occupancy.
+                token_usage = rec_float.get("tokenUsage") or {}
+                ts = rec_float.get("timestamp")
+                if ts and (last_timestamp is None or ts > last_timestamp):
+                    last_timestamp = ts
+                    last_context_tokens = int(
+                        (token_usage.get("inputTokens") or 0)
+                        + (token_usage.get("cacheReadInputTokens") or 0)
+                        + (token_usage.get("cacheWriteInputTokens") or 0)
+                    )
+
+            last_evaluated_key = response.get("LastEvaluatedKey")
+            if not last_evaluated_key:
+                break
+
+        # Write back to the session row (in place + persisted).
+        session_item["totalCost"] = total_cost
+        if last_context_tokens is not None:
+            session_item["lastContextTokens"] = last_context_tokens
+
+        update_parts = ["totalCost = :c"]
+        values: Dict[str, Any] = {":c": Decimal(str(total_cost))}
+        if last_context_tokens is not None:
+            update_parts.append("lastContextTokens = :t")
+            values[":t"] = int(last_context_tokens)
+
+        table.update_item(
+            Key={"PK": f"USER#{user_id}", "SK": sk},
+            UpdateExpression="SET " + ", ".join(update_parts),
+            ExpressionAttributeValues=values,
+        )
+        logger.info(
+            "Backfilled session aggregates for %s: totalCost=$%.6f, lastContextTokens=%s",
+            session_id, total_cost, last_context_tokens,
+        )
+    except Exception as e:
+        # Non-fatal — frontend just sees the un-aggregated state, badge
+        # stays hidden, and we'll try again on the next read.
+        logger.warning("backfill_session_aggregates failed for %s: %s", session_id, e)
 
 
 async def get_session_metadata(session_id: str, user_id: str) -> Optional[SessionMetadata]:
@@ -1159,6 +1360,17 @@ async def _get_session_metadata_cloud(
         # Convert Decimal to float for JSON serialization
         item = _convert_decimal_to_float(item)
 
+        # Lazy backfill of session-cost-badge aggregates for legacy
+        # sessions that pre-date write-time aggregation. One-shot per
+        # session — subsequent reads see the denormalized values directly.
+        if "totalCost" not in item:
+            await _backfill_session_aggregates(
+                session_id=session_id,
+                user_id=user_id,
+                session_item=item,
+                table=table,
+            )
+
         # Remove DynamoDB keys before validation
         for key in ['PK', 'SK', 'GSI_PK', 'GSI_SK']:
             item.pop(key, None)
@@ -1167,6 +1379,16 @@ async def _get_session_metadata_cloud(
         # re-emits don't surface as duplicate consent prompts.
         if "pendingInterrupts" in item:
             item["pendingInterrupts"] = _dedupe_interrupt_dicts(item["pendingInterrupts"])
+
+        # Lift the running compaction-summary turn count out of the nested
+        # `compaction` map so it shows up as a top-level field on the
+        # response model. Older sessions without compaction state simply
+        # leave the field unset.
+        compaction_data = item.get("compaction")
+        if isinstance(compaction_data, dict):
+            total = compaction_data.get("totalSummarizedTurns")
+            if total is not None:
+                item["totalSummarizedTurns"] = int(total)
 
         return SessionMetadata.model_validate(item)
 
