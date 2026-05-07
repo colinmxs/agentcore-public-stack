@@ -831,13 +831,21 @@ export class InferenceApiStack extends cdk.Stack {
       resources: [this.memory.attrMemoryArn],
     }));
 
-    // Grant Runtime permission to use Code Interpreter
+    // Grant Runtime permission to use the Custom Code Interpreter.
+    // Action list matches AWS's documented policy for Code Interpreter access
+    // (see docs.aws.amazon.com/bedrock-agentcore/latest/devguide/
+    // code-interpreter-getting-started.html). Scoped to this stack's Custom
+    // Code Interpreter only — we don't need account-wide discovery perms.
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'CodeInterpreterAccess',
       effect: iam.Effect.ALLOW,
       actions: [
+        'bedrock-agentcore:StartCodeInterpreterSession',
         'bedrock-agentcore:InvokeCodeInterpreter',
-        'bedrock-agentcore:CreateCodeInterpreterSession',
+        'bedrock-agentcore:StopCodeInterpreterSession',
+        'bedrock-agentcore:GetCodeInterpreter',
+        'bedrock-agentcore:GetCodeInterpreterSession',
+        'bedrock-agentcore:ListCodeInterpreterSessions',
       ],
       resources: [this.codeInterpreter.attrCodeInterpreterArn],
     }));
