@@ -386,9 +386,27 @@ export class InferenceApiStack extends cdk.Stack {
       ],
     }));
 
-    // S3 Assistants Documents Bucket permissions - NOT NEEDED by inference API
-    // Documents are only accessed during ingestion (Lambda function)
-    // Inference API only queries the vector store, not the raw documents
+    // S3 Assistants Documents Bucket permissions (READ-ONLY).
+    // The agent's spreadsheet_analysis tool downloads tabular KB files
+    // (CSV/XLSX) from this bucket to push into the Code Interpreter sandbox
+    // for analysis. Ingestion still happens via a separate Lambda; the
+    // runtime only needs read access.
+    const assistantsDocumentsBucketArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/rag/documents-bucket-arn`
+    );
+
+    runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
+      sid: 'AssistantsDocumentsBucketRead',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        's3:GetObject',
+        's3:GetObjectVersion',
+      ],
+      resources: [
+        `${assistantsDocumentsBucketArn}/*`,
+      ],
+    }));
 
     // DynamoDB User Files Table permissions (imported from Infrastructure Stack)
     const userFilesTableArn = ssm.StringParameter.valueForStringParameter(
@@ -985,6 +1003,15 @@ export class InferenceApiStack extends cdk.Stack {
         // S3 storage
         S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
         S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
+        // Assistants KB documents bucket — needed by the agent's spreadsheet
+        // analysis tool to download files from S3 before pushing them into
+        // the Code Interpreter sandbox. Imported from RagIngestionStack via
+        // SSM (same parameter app-api uses). Without this the agent fails
+        // with "S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME not configured".
+        S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/rag/documents-bucket-name`
+        ),
 
         // Authentication
         ENABLE_AUTHENTICATION: 'true',
