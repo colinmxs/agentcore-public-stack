@@ -11,19 +11,19 @@ from typing import Any, Dict, List, Optional
 import boto3
 from strands import tool
 
+from apis.shared.files.models import is_tabular_file
+
 logger = logging.getLogger(__name__)
-
-TABULAR_MIME_TYPES = {
-    "text/csv",
-    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
-}
-
-TABULAR_EXTENSIONS = {".csv", ".xlsx"}
 
 
 def _is_tabular_file(filename: str, content_type: str) -> bool:
-    ext = os.path.splitext(filename)[1].lower()
-    return content_type in TABULAR_MIME_TYPES or ext in TABULAR_EXTENSIONS
+    """Deprecated wrapper — use apis.shared.files.models.is_tabular_file.
+
+    Kept as a module-local name so existing callers in this file stay
+    readable; shares the canonical implementation that the inference-api
+    route uses when partitioning chat attachments (#206).
+    """
+    return is_tabular_file(filename, content_type)
 
 
 def make_list_spreadsheets_tool(

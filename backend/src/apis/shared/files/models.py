@@ -5,6 +5,7 @@ Pydantic models for file upload metadata, requests, and responses.
 Supports the pre-signed URL upload flow for S3.
 """
 
+import os
 from datetime import datetime, timezone
 from enum import Enum
 from typing import List, Optional
@@ -67,6 +68,56 @@ def get_file_format(mime_type: str) -> Optional[str]:
 def is_allowed_mime_type(mime_type: str) -> bool:
     """Check if MIME type is allowed for upload."""
     return mime_type in ALLOWED_MIME_TYPES
+
+
+# =============================================================================
+# Tabular File Detection
+# =============================================================================
+
+# Tabular files (CSV, XLSX) are routed to the spreadsheet analysis tools
+# (list_spreadsheets, analyze_spreadsheet) instead of being sent inline as
+# Bedrock document content blocks. Two reasons:
+#   1. XLSX files compress well on disk but expand dramatically when Bedrock
+#      parses them internally. A 1.4MB xlsx can exceed Bedrock's 4.5MB
+#      document-content limit and crash the turn with ValidationException
+#      (see #206).
+#   2. Even when under the limit, sending raw tabular bytes as a document
+#      block is wasteful — the model does pandas-quality aggregation poorly
+#      from text-rendered tables. analyze_spreadsheet runs real Python on
+#      the real file and is cheaper in tokens and more accurate.
+
+TABULAR_MIME_TYPES = frozenset({
+    "text/csv",
+    "application/vnd.ms-excel",
+    "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+})
+
+TABULAR_EXTENSIONS = frozenset({".csv", ".xls", ".xlsx"})
+
+
+def is_tabular_file(filename: str, mime_type: str) -> bool:
+    """Return True when the file should be handled by spreadsheet tools
+    rather than sent inline as a Bedrock document block.
+    """
+    if mime_type and mime_type.lower() in TABULAR_MIME_TYPES:
+        return True
+    if filename:
+        lower = filename.lower()
+        for ext in TABULAR_EXTENSIONS:
+            if lower.endswith(ext):
+                return True
+    return False
+
+
+# Bedrock's /ConverseStream imposes a 4.5MB hard limit on each document
+# content block's *internal* representation. Non-tabular formats (PDF, docx,
+# txt, md) don't inflate much, but we leave margin for per-request overhead
+# and for cumulative size across attachments. Rejecting inline files above
+# this threshold with a friendly message is better than a raw AWS
+# ValidationException mid-stream.
+INLINE_DOCUMENT_MAX_BYTES = int(
+    os.environ.get("INLINE_DOCUMENT_MAX_BYTES", 4 * 1024 * 1024)  # 4MB
+)
 
 
 # =============================================================================

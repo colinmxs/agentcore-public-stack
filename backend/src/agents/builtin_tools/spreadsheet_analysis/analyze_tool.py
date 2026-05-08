@@ -280,33 +280,51 @@ def make_analyze_tool(
     ) -> Dict[str, Any]:
         """Analyze a spreadsheet file using Python code in Code Interpreter.
 
-        Downloads the specified file and loads it into a sandboxed Python environment
-        for analysis. Use pandas, numpy, matplotlib, and seaborn.
+        Downloads the specified file and loads it into a sandboxed Python
+        environment for analysis. Use pandas, numpy, matplotlib, and seaborn.
 
-        File loading:
-        - XLSX files: converted to CSV in the sandbox.
-        - CSV files: available directly.
-        - The response always includes a schema snapshot with a ready-to-use
-          `load:` command that accounts for any leading metadata/header rows
-          (e.g., `pd.read_csv('file.csv', skiprows=3, low_memory=False)`).
-          **Use the `load:` command from the schema footer verbatim** — don't
-          guess `skiprows`. If the first call fails with a KeyError, the
-          error response includes the correct load command to use on the retry.
+        ⚠️  CRITICAL — filename vs. in-sandbox path
+        -------------------------------------------
+        The ``filename`` parameter names the **source** file (exactly as it
+        appears in the chat attachment or knowledge base, e.g.
+        ``"FY_27_Ledger.xlsx"``).
 
-        Best for: aggregations, filtering, trends, comparisons, statistics, charts.
-        For simple factual lookups, use the knowledge base search instead.
+        In the sandbox, XLSX files are pre-converted to CSV:
+            ``FY_27_Ledger.xlsx`` → loadable as ``FY_27_Ledger.csv``
+
+        So ``python_code`` must read the CSV form, even for an XLSX source:
+
+            filename:    "FY_27_Ledger.xlsx"      (source name)
+            python_code: pd.read_csv('FY_27_Ledger.csv', low_memory=False)
+                                         ^^^ .csv, not .xlsx
+
+        CSV files keep their name unchanged in the sandbox.
+
+        Handling leading metadata rows
+        ------------------------------
+        Some exports have metadata rows above the real header. The tool
+        response always includes a schema footer with a ready-to-use
+        ``load:`` command that accounts for this — e.g.
+        ``pd.read_csv('file.csv', skiprows=3, low_memory=False)``.
+        **On any retry, use that exact load line verbatim** instead of
+        guessing ``skiprows``.
+
+        Best for: aggregations, filtering, trends, comparisons, statistics,
+        charts. For simple factual lookups, use knowledge base search.
 
         Args:
-            filename: Name of the file to analyze (from list_spreadsheets results).
-            python_code: Python code to execute. Use the `load:` line from the
-                        schema footer to load the file — it already includes
-                        the correct skiprows and low_memory settings.
-                        Available libraries: pandas, numpy, matplotlib, seaborn, openpyxl.
+            filename: Source filename from list_spreadsheets results. Use
+                the original name (``.xlsx`` or ``.csv``), not the sandbox
+                form.
+            python_code: Python to execute. Load XLSX sources via
+                ``pd.read_csv('<stem>.csv', ...)``. Available libraries:
+                pandas, numpy, matplotlib, seaborn, openpyxl.
             output_filename: Optional PNG filename if generating a chart.
-                           Must end with .png. Example: "chart.png"
+                Must end with ``.png``. Example: ``"chart.png"``.
 
         Returns:
-            Analysis results as text (with schema footer), and optionally a chart image.
+            Analysis results as text (with a schema footer), and optionally
+            a chart image.
         """
         from bedrock_agentcore.tools.code_interpreter_client import CodeInterpreter
 
@@ -448,6 +466,25 @@ wb.close()
                 if result.get("isError", False):
                     error_msg = _clean_stderr(result.get("structuredContent", {}).get("stderr", ""))
                     error_text = f"❌ Code execution failed:\n```\n{error_msg}\n```"
+
+                    # Targeted hint for the most common wrong-filename error:
+                    # the model wrote `pd.read_csv('FY_27_Ledger.xlsx', ...)`
+                    # but in the sandbox the file lives as `FY_27_Ledger.csv`
+                    # (see docstring: XLSX sources are pre-converted). Naming
+                    # this out explicitly is much more effective than relying
+                    # on the model to infer it from the schema footer.
+                    if (
+                        is_xlsx
+                        and "FileNotFoundError" in error_msg
+                        and filename in error_msg
+                    ):
+                        error_text += (
+                            f"\n\n**Hint:** In the sandbox, the XLSX source "
+                            f"`{filename}` is loaded as `{csv_filename}`. "
+                            f"Retry with `pd.read_csv('{csv_filename}', "
+                            f"low_memory=False)`."
+                        )
+
                     if schema_preview:
                         # Drop the first_row dump on errors — the load line +
                         # column list is enough for the retry, first_row is
@@ -514,15 +551,39 @@ wb.close()
 
 
 def _find_file(filename: str, assistant_id: Optional[str], session_id: str) -> Optional[Dict[str, Any]]:
-    """Find a file by name in accessible sources. Returns file info or None."""
-    if assistant_id:
-        for f in _get_kb_files(assistant_id):
-            if f["filename"] == filename:
-                return f
+    """Find a file by name in accessible sources. Returns file info or None.
 
-    for f in _get_session_files(session_id):
-        if f["filename"] == filename:
+    Matches are tolerant to XLSX ↔ CSV aliasing: if the model asks for
+    ``foo.csv`` but only ``foo.xlsx`` exists (because the sandbox converts
+    XLSX → CSV and the model copied the sandbox name into the ``filename``
+    param on retry), we treat them as the same file. Prevents the common
+    round-trip loop where analyze_spreadsheet rejects a reasonable guess
+    and forces the model to call list_spreadsheets (#206).
+    """
+    candidates: list[Dict[str, Any]] = []
+    if assistant_id:
+        candidates.extend(_get_kb_files(assistant_id))
+    candidates.extend(_get_session_files(session_id))
+
+    target_lower = filename.lower()
+    target_stem, _ = os.path.splitext(target_lower)
+
+    # First pass: exact match (case-insensitive).
+    for f in candidates:
+        if f["filename"].lower() == target_lower:
             return f
+
+    # Second pass: same stem, tabular extension. Covers foo.csv -> foo.xlsx
+    # and foo.xlsx -> foo.csv. Only applies to tabular files so we don't
+    # accidentally alias foo.pdf to foo.docx.
+    from apis.shared.files.models import is_tabular_file
+
+    if target_stem and any(target_lower.endswith(ext) for ext in (".csv", ".xls", ".xlsx")):
+        for f in candidates:
+            cand_lower = f["filename"].lower()
+            cand_stem, _ = os.path.splitext(cand_lower)
+            if cand_stem == target_stem and is_tabular_file(f["filename"], f.get("content_type", "")):
+                return f
 
     return None
 
