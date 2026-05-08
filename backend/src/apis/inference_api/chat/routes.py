@@ -670,11 +670,25 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             try:
                 existing_metadata = await get_session_metadata(input_data.session_id, user_id)
                 if existing_metadata:
-                    # Update existing metadata with assistant_id in preferences
-                    prefs_dict = existing_metadata.preferences.model_dump(by_alias=False) if existing_metadata.preferences else {}
+                    # Update existing metadata: merge assistant_id into the
+                    # preferences sub-model. The top-level SessionMetadata has
+                    # no assistant_id field, so applying the update there
+                    # (previous behavior) silently did nothing under
+                    # extra="allow" and left preferences.assistant_id=None.
+                    # That broke the mid-session validation above on turn 2+
+                    # because the check relies on preferences.assistant_id to
+                    # recognize an already-attached assistant (#205).
+                    prefs_dict = (
+                        existing_metadata.preferences.model_dump(by_alias=False)
+                        if existing_metadata.preferences
+                        else {}
+                    )
                     prefs_dict["assistant_id"] = input_data.rag_assistant_id
+                    merged_preferences = SessionPreferences(**prefs_dict)
 
-                    updated_metadata = existing_metadata.model_copy(update={"assistant_id": input_data.rag_assistant_id})
+                    updated_metadata = existing_metadata.model_copy(
+                        update={"preferences": merged_preferences}
+                    )
 
                 else:
                     # Create new metadata with assistant_id in preferences
@@ -788,21 +802,14 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             # Supports multiple LLM providers: AWS Bedrock, OpenAI, and Google Gemini
             # Use augmented message and assistant system prompt if assistant RAG was applied
 
-            # Create context-bound spreadsheet analysis tools if enabled
-            # Resolve assistant_id: request param > session preferences (handles #205 workaround)
-            resolved_assistant_id = input_data.rag_assistant_id
-            if not resolved_assistant_id and not is_preview_session(input_data.session_id):
-                try:
-                    from apis.shared.sessions.metadata import get_session_metadata
-                    meta = await get_session_metadata(input_data.session_id, user_id)
-                    if meta and meta.preferences and meta.preferences.assistant_id:
-                        resolved_assistant_id = meta.preferences.assistant_id
-                except Exception:
-                    pass
-
+            # Spreadsheet tools scoped to the assistant's document corpus,
+            # when an assistant is attached to this request. The frontend
+            # keeps the assistant id in the URL for the whole session's
+            # lifetime, so we can trust `input_data.rag_assistant_id`
+            # directly; no preferences fallback needed.
             extra_tools = _build_spreadsheet_tools(
                 enabled_tools=input_data.enabled_tools,
-                assistant_id=resolved_assistant_id,
+                assistant_id=input_data.rag_assistant_id,
                 session_id=input_data.session_id,
                 user_id=user_id,
             )
