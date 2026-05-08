@@ -208,10 +208,20 @@ export class ConversationPage implements OnDestroy {
       const session = this.sessionConversation();
       const sessionAssistantId = session?.preferences?.assistantId;
       const currentSessionId = this.sessionId();
-      
+      const loadedAssistant = this.assistant();
+
       // Priority 1: URL query parameter (highest priority)
       if (queryAssistantId) {
-        // Validate: Can only attach to new sessions (no messages)
+        // No-op if this assistant is already loaded. This prevents the effect
+        // from erasing state after submitChatRequest() navigates to /s/:id while
+        // preserving ?assistantId=X — once addUserMessage() flips hasMessages()
+        // to true, the validation below would otherwise treat the still-present
+        // query param as an illegal mid-session attach (#205).
+        if (loadedAssistant?.assistantId === queryAssistantId) {
+          return;
+        }
+        // Validate: Can only attach a different assistant to a session that has
+        // no messages. Attaching mid-session is rejected.
         if (currentSessionId && this.hasMessages()) {
           this.assistantError.set('Assistants can only be attached to new sessions');
           this.assistant.set(null);
@@ -224,24 +234,51 @@ export class ConversationPage implements OnDestroy {
         });
         return;
       }
-      
+
       // Priority 2: Session preferences (fallback for existing sessions)
       if (sessionAssistantId && currentSessionId) {
+        // Skip if we've already loaded this assistant in-memory. The loaded
+        // signal is the authoritative in-session source once set; re-running
+        // loadAssistant on every metadata signal change is wasteful and risks
+        // a transient null state while the fetch is in flight.
+        if (loadedAssistant?.assistantId === sessionAssistantId) {
+          return;
+        }
         // Load from preferences - allow even if session has messages (persisted assistant)
         this.loadAssistant(sessionAssistantId, true).catch(error => {
           console.error('Failed to load assistant from session preferences:', error);
         });
         return;
       }
-      
-      // No assistant to load
-      this.assistant.set(null);
-      this.assistantError.set(null);
+
+      // No assistant to load — only clear if we don't have one already loaded
+      // for the current session. Otherwise we'd wipe the in-memory assistant
+      // on the first turn of a brand-new session, where the backend hasn't yet
+      // persisted preferences.assistantId and the URL param was cleared by the
+      // route subscription's queryParamsHandling.
+      if (!loadedAssistant || !currentSessionId) {
+        this.assistant.set(null);
+        this.assistantError.set(null);
+      }
     });
 
     // Subscribe to route parameter changes
     this.routeSubscription = this.route.paramMap.subscribe(async params => {
       const id = params.get('sessionId');
+      const previousId = this.sessionId();
+
+      // Cross-session navigation: drop the in-memory assistant before the
+      // new session's metadata loads. Without this, a stale assistant from
+      // session A would briefly apply to session B until the new
+      // preferences.assistantId (or lack thereof) propagates. We only clear
+      // on genuine session-to-session transitions — the null → X transition
+      // during first-turn navigation keeps the assistant loaded so RAG
+      // continues to apply to follow-up messages (#205).
+      if (id && previousId && id !== previousId) {
+        this.assistant.set(null);
+        this.assistantError.set(null);
+      }
+
       this.sessionId.set(id);
 
       // Clear stale cost/context badge state BEFORE the new session's
@@ -293,10 +330,17 @@ export class ConversationPage implements OnDestroy {
     // Use the effective session ID (route sessionId or staged sessionId)
     const sessionIdToUse = this.effectiveSessionId();
 
-    // Get assistantId from query param (priority 1) or session preferences (priority 2)
+    // Source the assistant id from the in-memory loaded assistant first.
+    // The URL query param is only present on the very first navigation and
+    // gets stripped once the session has messages; session preferences are
+    // only populated after the first turn is persisted and only visible once
+    // metadata is refetched. The loaded `assistant()` signal is the one
+    // source that survives every turn inside the component's lifetime, so
+    // RAG continues to apply on follow-up messages (#205).
+    const loadedAssistantId = this.assistant()?.assistantId;
     const queryAssistantId = this.assistantIdFromQuery();
     const sessionAssistantId = this.sessionConversation()?.preferences?.assistantId;
-    const assistantIdToUse = queryAssistantId || sessionAssistantId || undefined;
+    const assistantIdToUse = loadedAssistantId || queryAssistantId || sessionAssistantId || undefined;
 
     // Set loading state before submitting
     this.chatStateService.setChatLoading(true);
