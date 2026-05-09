@@ -30,6 +30,7 @@ Validates: Requirements 3.1, 3.2, 3.3, 3.4, 3.5, 3.6, 3.7, 3.8, 3.9, 3.10, 3.11
 from __future__ import annotations
 
 import asyncio
+import base64
 import secrets
 import time
 from typing import Any, Optional
@@ -82,6 +83,20 @@ class InstrumentedTable:
     Records call counts so preservation tests can assert "zero AWS calls"
     for dormant / no-cookie pass-through paths, and "exactly one get_item"
     for the refresh-storm coalescing contract.
+
+    `update_item` writes are classified into three kinds by inspecting the
+    `UpdateExpression`:
+      - `lock_acquire_calls`: cross-task refresh-lock acquisition (writes
+        `refresh_lock_owner` + `refresh_lock_until`, no token columns).
+      - `token_persist_calls`: token rotation write (sets
+        `cognito_access_token` etc., usually also REMOVE-ing the lock).
+      - `slide_calls`: sliding-renewal touch (writes only `last_seen_at`
+        and optionally `ttl`).
+    `update_item_calls` remains the total (sum) so existing assertions on
+    "any update_item issued" continue to hold. The injected side-effect is
+    applied only to the token-persist path so tests that simulate "DDB
+    throttled during persist" don't accidentally fail at the lock-acquire
+    write — that's a different code path with different recovery semantics.
     """
 
     def __init__(
@@ -96,6 +111,9 @@ class InstrumentedTable:
         self._update_item_side_effect = update_item_side_effect
         self.get_item_calls = 0
         self.update_item_calls = 0
+        self.lock_acquire_calls = 0
+        self.token_persist_calls = 0
+        self.slide_calls = 0
         self.put_item_calls = 0
         self.delete_item_calls = 0
 
@@ -110,10 +128,34 @@ class InstrumentedTable:
             return {}
         return {"Item": _record_to_item(self._record)}
 
+    @staticmethod
+    def _classify_update(update_expr: str) -> str:
+        """Classify which middleware path issued this update_item.
+
+        Token persist writes always set `cognito_access_token`. Pure lock
+        acquires write `refresh_lock_owner` without touching tokens. Slide
+        writes touch only `last_seen_at` (+ optionally `ttl`).
+        """
+        if "cognito_access_token" in update_expr:
+            return "token_persist"
+        if "refresh_lock_owner" in update_expr:
+            return "lock_acquire"
+        return "slide"
+
     def update_item(self, **kwargs: Any) -> dict:
         self.update_item_calls += 1
+        kind = self._classify_update(kwargs.get("UpdateExpression", ""))
+        if kind == "token_persist":
+            self.token_persist_calls += 1
+        elif kind == "lock_acquire":
+            self.lock_acquire_calls += 1
+        else:
+            self.slide_calls += 1
         self._sleep()
-        if self._update_item_side_effect is not None:
+        # Side-effect injection applies only to the token-persist path —
+        # tests that simulate "rotation persist exhausted" mean exactly
+        # that write, not the upstream lock-acquire.
+        if self._update_item_side_effect is not None and kind == "token_persist":
             raise self._update_item_side_effect
         return {}
 
@@ -791,19 +833,28 @@ async def test_3_5_refresh_storm_coalesces_to_single_initiate_auth() -> None:
 def test_3_6_get_default_codec_is_singleton_with_no_per_request_kms() -> None:
     """(3.6) Codec singleton.
 
-    `get_default_codec()` returns the same instance across calls; the
-    KMS `generate_data_key` call happens at most once per process.
-    """
-    kms_client = MagicMock()
-    kms_client.generate_data_key.return_value = {
-        "Plaintext": secrets.token_bytes(32),
-        "CiphertextBlob": b"wrapped-key-blob",
-    }
+    `get_default_codec()` returns the same instance across calls. The
+    *underlying* AWS calls — `secretsmanager:GetSecretValue` to fetch the
+    wrapped data key and `kms:Decrypt` to unwrap it — happen at most once
+    per process. Hot seal/unseal traffic must not re-fetch.
 
-    # Build a codec with an injected KMS client and install it as the
-    # process-wide default. Then call get_default_codec() many times and
-    # assert identity and KMS call count.
-    codec = CookieCodec(kms_key_arn="arn:aws:kms:fake-3.6", kms_client=kms_client)
+    (This contract held under the original `kms:GenerateDataKey`-per-process
+    design too; only the underlying AWS APIs changed when the codec was
+    moved to a shared wrapped data key for cross-task seal/unseal.)
+    """
+    plaintext_key = secrets.token_bytes(32)
+    wrapped_b64 = base64.b64encode(b"wrapped-blob:" + plaintext_key).decode("ascii")
+    sm_client = MagicMock()
+    sm_client.get_secret_value.return_value = {"SecretString": wrapped_b64}
+    kms_client = MagicMock()
+    kms_client.decrypt.return_value = {"Plaintext": plaintext_key}
+
+    codec = CookieCodec(
+        kms_key_arn="arn:aws:kms:fake-3.6",
+        data_key_secret_arn="arn:aws:secretsmanager:fake-3.6",
+        kms_client=kms_client,
+        secrets_manager_client=sm_client,
+    )
     cookie_module._set_default_codec_for_tests(codec)
 
     first = get_default_codec()
@@ -813,19 +864,28 @@ def test_3_6_get_default_codec_is_singleton_with_no_per_request_kms() -> None:
             "[3.6] get_default_codec() must return the same instance each call"
         )
 
-    # Exercise the codec many times — each seal/unseal round-trip must NOT
-    # generate a new data key.
     payload = CookiePayload(session_id="sess-3-6")
     for _ in range(20):
         sealed = first.seal(payload)
         roundtripped = first.unseal(sealed)
         assert roundtripped.session_id == "sess-3-6"
 
-    assert kms_client.generate_data_key.call_count <= 1, (
-        f"[3.6] KMS generate_data_key invoked "
-        f"{kms_client.generate_data_key.call_count} times — must be at most "
+    assert sm_client.get_secret_value.call_count <= 1, (
+        f"[3.6] Secrets Manager get_secret_value invoked "
+        f"{sm_client.get_secret_value.call_count} times — must be at most "
         "one per process."
     )
+    assert kms_client.decrypt.call_count <= 1, (
+        f"[3.6] KMS decrypt invoked {kms_client.decrypt.call_count} times "
+        "— must be at most one per process."
+    )
+    # Defense against blob substitution: KeyId must be pinned on Decrypt.
+    if kms_client.decrypt.call_count == 1:
+        kwargs = kms_client.decrypt.call_args.kwargs
+        assert kwargs.get("KeyId") == "arn:aws:kms:fake-3.6", (
+            "[3.6] kms:Decrypt must pin KeyId so a substituted blob wrapped "
+            "under a different CMK is rejected."
+        )
 
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -1075,10 +1135,12 @@ def test_3_10_rotation_persist_exhausts_invalidates_cache_and_clears_cookies() -
     _assert_clear_cookie_attrs(session_clears[0])
     _assert_clear_cookie_attrs(csrf_clears[0])
 
-    # Sanity: update_tokens was retried 3 times on rotation.
-    assert table.update_item_calls == 3, (
+    # Sanity: update_tokens was retried 3 times on rotation. Use the
+    # token_persist sub-counter so we measure persist attempts only,
+    # not the (also-incrementing) lock_acquire write that precedes them.
+    assert table.token_persist_calls == 3, (
         f"[3.10] rotation must retry update_tokens 3 times; got "
-        f"{table.update_item_calls}"
+        f"{table.token_persist_calls}"
     )
 
 
