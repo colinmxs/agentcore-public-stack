@@ -15,6 +15,7 @@ service — so ``FakeCodeInterpreter`` below is a hand-rolled stand-in.
 
 from __future__ import annotations
 
+import asyncio
 from dataclasses import dataclass, field
 from typing import Any, Callable
 from unittest.mock import patch
@@ -385,6 +386,11 @@ def file_sources():
         def test_it(file_sources):
             set_kb, set_session = file_sources
             set_session([{...}])
+
+    The helpers are ``async def`` (see #260 — sync boto3 was blocking
+    the event loop), so the patches install async side-effects. Returning
+    a plain list from an ``async def`` gives the callers an awaitable
+    they can ``await`` exactly like the real helpers.
     """
     kb_files: list[dict[str, Any]] = []
     session_files: list[dict[str, Any]] = []
@@ -395,22 +401,28 @@ def file_sources():
     def set_session(files):
         session_files[:] = list(files)
 
+    async def _kb_side_effect(_aid):
+        return list(kb_files)
+
+    async def _session_side_effect(_sid):
+        return list(session_files)
+
     patchers = [
         patch(
             "agents.builtin_tools.spreadsheet_analysis.analyze_tool._get_kb_files",
-            side_effect=lambda _aid: list(kb_files),
+            side_effect=_kb_side_effect,
         ),
         patch(
             "agents.builtin_tools.spreadsheet_analysis.analyze_tool._get_session_files",
-            side_effect=lambda _sid: list(session_files),
+            side_effect=_session_side_effect,
         ),
         patch(
             "agents.builtin_tools.spreadsheet_analysis.list_spreadsheets_tool._get_kb_files",
-            side_effect=lambda _aid: list(kb_files),
+            side_effect=_kb_side_effect,
         ),
         patch(
             "agents.builtin_tools.spreadsheet_analysis.list_spreadsheets_tool._get_session_files",
-            side_effect=lambda _sid: list(session_files),
+            side_effect=_session_side_effect,
         ),
     ]
     for p in patchers:
@@ -497,6 +509,11 @@ def call_analyze():
     """Shortcut for ``unwrap(tool)(**kwargs)`` — builds the analyze tool
     via the factory and invokes it in one go.
 
+    ``analyze_spreadsheet`` is ``async def`` (see #260) so we run the
+    returned coroutine to completion here; tests stay sync and assert
+    on the resolved result, keeping the call-site unchanged from the
+    pre-refactor shape.
+
         def test_it(call_analyze, ...):
             result = call_analyze(
                 filename="x.csv",
@@ -512,8 +529,8 @@ def call_analyze():
               assistant_id=None, session_id="s1", user_id="u1"):
         tool = make_analyze_tool(assistant_id, session_id, user_id)
         fn = _unwrap(tool)
-        return fn(filename=filename, python_code=python_code,
-                  output_filename=output_filename)
+        return asyncio.run(fn(filename=filename, python_code=python_code,
+                              output_filename=output_filename))
 
     return _call
 

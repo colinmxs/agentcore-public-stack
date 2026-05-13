@@ -6,6 +6,9 @@ the agent can invoke. Helper-level tests exercise the real boto3 /
 DynamoDB paths via moto so the query / filter / field-mapping logic is
 under test, not mocked out.
 
+After #260 the helpers and the tool itself are ``async def``; tests that
+invoke them are marked with ``@pytest.mark.asyncio`` and use ``await``.
+
 See #261.
 """
 
@@ -52,18 +55,19 @@ class TestIsTabularFile:
 
 
 def _call_tool(tool) -> dict:
-    """Invoke a Strands-decorated tool and unwrap the result.
+    """Invoke a Strands-decorated async tool and unwrap the result.
 
-    ``@tool`` returns a wrapper object; depending on the Strands version
-    it may be callable directly or expose an ``invoke``/``__call__`` path.
-    For unit tests we can usually just call it.
+    ``@tool`` returns a wrapper that exposes the original coroutine
+    function via ``__wrapped__``. We ``await`` it from the test, which
+    must be marked ``@pytest.mark.asyncio``.
     """
     fn = getattr(tool, "__wrapped__", None) or tool
     return fn()
 
 
 class TestMakeListSpreadsheetsTool:
-    def test_empty_state_returns_helpful_message(self, file_sources):
+    @pytest.mark.asyncio
+    async def test_empty_state_returns_helpful_message(self, file_sources):
         set_kb, set_session = file_sources
         set_kb([])
         set_session([])
@@ -71,7 +75,7 @@ class TestMakeListSpreadsheetsTool:
         tool = make_list_spreadsheets_tool(
             assistant_id="ast-1", session_id="s1", user_id="u1"
         )
-        result = _call_tool(tool)
+        result = await _call_tool(tool)
 
         assert result["status"] == "success"
         text = result["content"][0]["text"]
@@ -80,7 +84,8 @@ class TestMakeListSpreadsheetsTool:
         # doesn't loop on an empty list.
         assert "files" not in result
 
-    def test_kb_and_session_files_merged(self, file_sources, file_factories):
+    @pytest.mark.asyncio
+    async def test_kb_and_session_files_merged(self, file_sources, file_factories):
         set_kb, set_session = file_sources
         set_kb([file_factories["kb_xlsx"]("Budget.xlsx")])
         set_session([file_factories["session_csv"]("notes.csv")])
@@ -88,7 +93,7 @@ class TestMakeListSpreadsheetsTool:
         tool = make_list_spreadsheets_tool(
             assistant_id="ast-1", session_id="s1", user_id="u1"
         )
-        result = _call_tool(tool)
+        result = await _call_tool(tool)
 
         assert result["status"] == "success"
         filenames = [f["filename"] for f in result["files"]]
@@ -100,7 +105,8 @@ class TestMakeListSpreadsheetsTool:
         assert "notes.csv" in text
         assert "chat_attachment" in text
 
-    def test_no_assistant_skips_kb_call(self, file_sources):
+    @pytest.mark.asyncio
+    async def test_no_assistant_skips_kb_call(self, file_sources):
         """Without an assistant_id, KB files aren't queried — locks in the
         conditional branch so we don't regress and start spamming DynamoDB
         on non-assistant chats.
@@ -109,7 +115,7 @@ class TestMakeListSpreadsheetsTool:
 
         kb_calls = []
 
-        def _track(_aid):
+        async def _track(_aid):
             kb_calls.append(_aid)
             return []
 
@@ -122,11 +128,12 @@ class TestMakeListSpreadsheetsTool:
             tool = make_list_spreadsheets_tool(
                 assistant_id=None, session_id="s1", user_id="u1"
             )
-            _call_tool(tool)
+            await _call_tool(tool)
 
         assert kb_calls == [], "KB lookup should be skipped when assistant_id is None"
 
-    def test_size_formatted_in_kb(self, file_sources, file_factories):
+    @pytest.mark.asyncio
+    async def test_size_formatted_in_kb(self, file_sources, file_factories):
         """Files are rendered with their size in KB for the preview text.
         Pinning this so the formatter change doesn't silently regress.
         """
@@ -137,7 +144,7 @@ class TestMakeListSpreadsheetsTool:
         tool = make_list_spreadsheets_tool(
             assistant_id=None, session_id="s1", user_id="u1"
         )
-        result = _call_tool(tool)
+        result = await _call_tool(tool)
         text = result["content"][0]["text"]
         # 2560 bytes → 3 KB with the current round-to-nearest formatter.
         assert "3 KB" in text or "2 KB" in text  # allow either rounding
@@ -158,46 +165,53 @@ class TestGetKbFilesDynamoDB:
     ``table.query`` was called, but didn't actually check the schema
     (attribute names, key-condition expression) matches what production
     writes. Moto does.
+
+    ``_get_kb_files`` is ``async def`` (see #260) so each test awaits it.
     """
 
-    def test_no_table_env_returns_empty(self, monkeypatch):
+    @pytest.mark.asyncio
+    async def test_no_table_env_returns_empty(self, monkeypatch):
         """Helper bails out cleanly when the env var isn't set at all,
         rather than crashing on a missing table.
         """
         monkeypatch.delenv("DYNAMODB_ASSISTANTS_TABLE_NAME", raising=False)
-        assert _get_kb_files("ast-1") == []
+        assert await _get_kb_files("ast-1") == []
 
-    def test_completed_tabular_file_included(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_completed_tabular_file_included(self, assistants_table, seed_kb_doc):
         seed_kb_doc(
             assistant_id="ast-1",
             filename="Budget.xlsx",
             content_type=XLSX_MIME,
             size_bytes=1024,
         )
-        files = _get_kb_files("ast-1")
+        files = await _get_kb_files("ast-1")
         assert len(files) == 1
         assert files[0]["filename"] == "Budget.xlsx"
         assert files[0]["source"] == "knowledge_base"
         assert files[0]["size_bytes"] == 1024
 
-    def test_non_tabular_file_filtered_out(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_non_tabular_file_filtered_out(self, assistants_table, seed_kb_doc):
         seed_kb_doc(
             assistant_id="ast-1",
             filename="report.pdf",
             content_type="application/pdf",
         )
-        assert _get_kb_files("ast-1") == []
+        assert await _get_kb_files("ast-1") == []
 
-    def test_incomplete_status_filtered_out(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_incomplete_status_filtered_out(self, assistants_table, seed_kb_doc):
         seed_kb_doc(
             assistant_id="ast-1",
             filename="Pending.xlsx",
             content_type=XLSX_MIME,
             status="processing",  # not "complete"
         )
-        assert _get_kb_files("ast-1") == []
+        assert await _get_kb_files("ast-1") == []
 
-    def test_mixed_statuses_filters_correctly(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_mixed_statuses_filters_correctly(self, assistants_table, seed_kb_doc):
         seed_kb_doc(assistant_id="ast-1", filename="done.csv",
                     content_type="text/csv", status="complete")
         seed_kb_doc(assistant_id="ast-1", filename="broken.csv",
@@ -205,11 +219,12 @@ class TestGetKbFilesDynamoDB:
         seed_kb_doc(assistant_id="ast-1", filename="notes.txt",
                     content_type="text/plain", status="complete")
 
-        files = _get_kb_files("ast-1")
+        files = await _get_kb_files("ast-1")
         assert len(files) == 1
         assert files[0]["filename"] == "done.csv"
 
-    def test_isolates_by_assistant_id(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_isolates_by_assistant_id(self, assistants_table, seed_kb_doc):
         """The ``PK = AST#<id>`` key condition partitions by assistant.
         Documents under a different assistant must not leak through.
         """
@@ -218,10 +233,11 @@ class TestGetKbFilesDynamoDB:
         seed_kb_doc(assistant_id="ast-other", filename="theirs.csv",
                     content_type="text/csv")
 
-        files = _get_kb_files("ast-1")
+        files = await _get_kb_files("ast-1")
         assert [f["filename"] for f in files] == ["mine.csv"]
 
-    def test_dynamodb_exception_returns_empty(
+    @pytest.mark.asyncio
+    async def test_dynamodb_exception_returns_empty(
         self, aws_mocked, monkeypatch, caplog
     ):
         """Graceful degradation: a query failure shouldn't crash the
@@ -234,7 +250,7 @@ class TestGetKbFilesDynamoDB:
 
         monkeypatch.setenv("DYNAMODB_ASSISTANTS_TABLE_NAME", "nonexistent-table")
         with caplog.at_level(logging.ERROR):
-            files = _get_kb_files("ast-1")
+            files = await _get_kb_files("ast-1")
         assert files == []
         # Verify we actually hit the exception branch — passing solely
         # because the early-return fired would be a silent regression
@@ -246,7 +262,8 @@ class TestGetKbFilesDynamoDB:
             for record in caplog.records
         ), f"expected error log, got: {[r.getMessage() for r in caplog.records]}"
 
-    def test_legacy_snake_case_fields_supported(self, assistants_table, seed_kb_doc):
+    @pytest.mark.asyncio
+    async def test_legacy_snake_case_fields_supported(self, assistants_table, seed_kb_doc):
         """The repo stores camelCase but some legacy items use snake_case
         aliases. Both must work.
         """
@@ -257,22 +274,23 @@ class TestGetKbFilesDynamoDB:
             size_bytes=500,
             use_snake_case=True,
         )
-        files = _get_kb_files("ast-1")
+        files = await _get_kb_files("ast-1")
         assert len(files) == 1
         assert files[0]["filename"] == "legacy.xlsx"
         assert files[0]["size_bytes"] == 500
 
 
 # ---------------------------------------------------------------------------
-# _get_session_files — async repo with sync-in-async dance, via moto
+# _get_session_files — async repo, via moto
 # ---------------------------------------------------------------------------
 
 
 class TestGetSessionFiles:
-    """Real repository queries against the moto-backed files table. The
-    sync-in-async dance inside ``_get_session_files`` is exercised
-    end-to-end so #260's refactor can be validated as a drop-in
-    replacement.
+    """Real repository queries against the moto-backed files table.
+
+    After #260, ``_get_session_files`` awaits the repository directly
+    instead of running ``asyncio.run`` inside a thread-pool. These
+    tests exercise the straightened-out async path end-to-end.
     """
 
     @pytest.mark.asyncio
@@ -292,19 +310,21 @@ class TestGetSessionFiles:
             filename="data.csv", mime_type="text/csv",
         )
 
-        files = _get_session_files("s1")
+        files = await _get_session_files("s1")
         filenames = {f["filename"] for f in files}
         assert filenames == {"Budget.xlsx", "data.csv"}
         assert "README.md" not in filenames
 
-    def test_empty_session_returns_empty(self, file_repository):
+    @pytest.mark.asyncio
+    async def test_empty_session_returns_empty(self, file_repository):
         # No files seeded — list_session_files returns [].
-        assert _get_session_files("s1") == []
+        assert await _get_session_files("s1") == []
 
-    def test_missing_table_env_returns_empty(self, aws_mocked, monkeypatch, caplog):
+    @pytest.mark.asyncio
+    async def test_missing_table_env_returns_empty(self, aws_mocked, monkeypatch, caplog):
         """Pointing the repo at a table that doesn't exist exercises the
-        exception path inside the sync-in-async helper. Tool should
-        return an empty list, not crash.
+        exception path inside the async helper. Tool should return an
+        empty list, not crash.
 
         Uses ``caplog`` to confirm the error was actually logged —
         otherwise this test could regress silently if a future refactor
@@ -313,9 +333,16 @@ class TestGetSessionFiles:
         """
         import logging
 
+        # Reset the module-level singleton so the new env var is picked
+        # up on the next ``get_file_upload_repository()`` call — otherwise
+        # we inherit the repo bound to whatever table name another test
+        # happened to set first.
+        import apis.shared.files.repository as repo_module
+        monkeypatch.setattr(repo_module, "_repository_instance", None)
         monkeypatch.setenv("DYNAMODB_USER_FILES_TABLE_NAME", "no-such-table")
+
         with caplog.at_level(logging.ERROR):
-            files = _get_session_files("s1")
+            files = await _get_session_files("s1")
         assert files == []
         assert any(
             "ResourceNotFoundException" in record.getMessage()
@@ -334,7 +361,7 @@ class TestGetSessionFiles:
             session_id="s1", upload_id="u-1",
             filename="Q1.csv", mime_type="text/csv",
         )
-        files = _get_session_files("s1")
+        files = await _get_session_files("s1")
         assert files[0].keys() >= {
             "filename", "source", "content_type", "size_bytes",
             "document_id", "s3_key", "s3_bucket",
@@ -357,5 +384,5 @@ class TestGetSessionFiles:
             filename="b.csv", mime_type="text/csv",
         )
 
-        files = _get_session_files("s1")
+        files = await _get_session_files("s1")
         assert [f["filename"] for f in files] == ["a.csv"]

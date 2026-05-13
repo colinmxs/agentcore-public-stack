@@ -359,7 +359,7 @@ def _build_attachment_guidance(
     return "\n\n".join(parts)
 
 
-def _build_tabular_inventory(
+async def _build_tabular_inventory(
     session_id: str,
     assistant_id: str | None,
     enabled_tools: list | None,
@@ -403,8 +403,8 @@ def _build_tabular_inventory(
     files: list[dict] = []
     try:
         if assistant_id:
-            files.extend(_get_kb_files(assistant_id))
-        files.extend(_get_session_files(session_id))
+            files.extend(await _get_kb_files(assistant_id))
+        files.extend(await _get_session_files(session_id))
     except Exception:
         logger.warning("Failed to enumerate tabular files for inventory", exc_info=True)
         return ""
@@ -1106,7 +1106,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             # When multiple spreadsheets are visible, ship the full inventory
             # up front so the agent can disambiguate intentionally instead of
             # silently picking whichever file the vector search ranked first.
-            tabular_inventory = _build_tabular_inventory(
+            tabular_inventory = await _build_tabular_inventory(
                 session_id=input_data.session_id,
                 assistant_id=input_data.rag_assistant_id,
                 enabled_tools=input_data.enabled_tools,
