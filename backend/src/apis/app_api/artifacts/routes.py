@@ -3,15 +3,23 @@
 import logging
 from datetime import datetime, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, status
+from fastapi import APIRouter, Depends, HTTPException, Query, status
 
 from apis.shared.auth import User, get_current_user_from_session
 
-from .models import RenderTokenRequest, RenderTokenResponse
+from .models import (
+    ArtifactListResponse,
+    ArtifactSummary,
+    RenderTokenRequest,
+    RenderTokenResponse,
+)
 from .service import (
+    ArtifactListService,
     ArtifactNotFoundError,
+    ArtifactQueryError,
     RenderTokenConfigError,
     RenderTokenService,
+    get_artifact_list_service,
     get_render_token_service,
 )
 
@@ -55,4 +63,43 @@ async def mint_render_token(
     return RenderTokenResponse(
         url=url,
         expires_at=datetime.fromtimestamp(exp, tz=timezone.utc).isoformat(),
+    )
+
+
+@router.get("", response_model=ArtifactListResponse)
+async def list_session_artifacts(
+    session_id: str = Query(..., description="Chat session id to list artifacts for"),
+    user: User = Depends(get_current_user_from_session),
+    service: ArtifactListService = Depends(get_artifact_list_service),
+) -> ArtifactListResponse:
+    """List the current HEAD of every artifact created in a chat session.
+
+    Used by the SPA to hydrate artifact cards on session load (live
+    creation is delivered separately via the `artifact` SSE event). Each
+    row is re-checked against the authenticated user, so a borrowed
+    session id cannot enumerate another user's artifacts. An unknown or
+    artifact-free session is a normal empty list, not a 404.
+    """
+    try:
+        rows = service.list_for_session(
+            user_id=user.user_id, session_id=session_id
+        )
+    except RenderTokenConfigError:
+        logger.exception("artifact list service misconfigured")
+        raise HTTPException(
+            status.HTTP_500_INTERNAL_SERVER_ERROR,
+            "Artifact listing is unavailable",
+        )
+    except ArtifactQueryError:
+        # Feature is configured fine — the backing query just failed
+        # (throttle/timeout/transient). Retryable, so signal 503 rather
+        # than masquerading as a 500 misconfiguration.
+        logger.exception("artifact list query failed")
+        raise HTTPException(
+            status.HTTP_503_SERVICE_UNAVAILABLE,
+            "Artifact listing is temporarily unavailable",
+        )
+
+    return ArtifactListResponse(
+        artifacts=[ArtifactSummary(**row) for row in rows]
     )
