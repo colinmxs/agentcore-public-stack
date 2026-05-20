@@ -137,6 +137,13 @@ function extractSsmReads(source: string): Set<string> {
 
 /**
  * Read all stack source files and return maps of reads and writes.
+ *
+ * After the Phase 2 lift, stacks delegate resource creation to
+ * reusable constructs under `constructs/`. We follow the relative
+ * imports each stack file declares from `./constructs/...` and union
+ * the reads + writes of those construct files into the importing
+ * stack's tally — so an SSM parameter published from a construct
+ * still attributes to the stack that uses the construct.
  */
 function analyseStacks(): {
   reads: Map<string, Set<string>>;
@@ -147,12 +154,75 @@ function analyseStacks(): {
 
   for (const [file, label] of Object.entries(STACK_FILES)) {
     const filePath = path.join(LIB_DIR, file);
-    const source = fs.readFileSync(filePath, 'utf-8');
-    reads.set(label, extractSsmReads(source));
-    writes.set(label, extractSsmWrites(source));
+    const stackSource = fs.readFileSync(filePath, 'utf-8');
+
+    const aggregatedReads = new Set<string>();
+    const aggregatedWrites = new Set<string>();
+
+    const sources = [stackSource, ...readImportedConstructFiles(stackSource)];
+    for (const src of sources) {
+      for (const r of extractSsmReads(src)) aggregatedReads.add(r);
+      for (const w of extractSsmWrites(src)) aggregatedWrites.add(w);
+    }
+
+    reads.set(label, aggregatedReads);
+    writes.set(label, aggregatedWrites);
   }
 
   return { reads, writes };
+}
+
+/**
+ * Pull the source text of every construct module imported (transitively)
+ * from a stack file via a `./constructs/...` relative path.
+ */
+function readImportedConstructFiles(stackSource: string): string[] {
+  const visited = new Set<string>();
+  const queue: string[] = [];
+  const out: string[] = [];
+
+  for (const m of stackSource.matchAll(
+    /from\s+['"](\.\/constructs\/[^'"]+)['"]/g,
+  )) {
+    queue.push(m[1]);
+  }
+
+  while (queue.length > 0) {
+    const rel = queue.shift()!;
+    const abs = resolveTsImport(LIB_DIR, rel);
+    if (!abs || visited.has(abs)) continue;
+    visited.add(abs);
+
+    const src = fs.readFileSync(abs, 'utf-8');
+    out.push(src);
+
+    // Follow further `./` or `../` imports inside the construct file
+    // (relative to the construct file's own directory).
+    const constructDir = path.dirname(abs);
+    for (const m of src.matchAll(/from\s+['"](\.[^'"]+)['"]/g)) {
+      const nestedAbs = resolveTsImport(constructDir, m[1]);
+      if (nestedAbs && nestedAbs.startsWith(LIB_DIR)) {
+        const relToLib = path.relative(LIB_DIR, nestedAbs);
+        // Normalize back to a `./constructs/...`-style key for dedup
+        const normalized = `./${relToLib}`.replace(/\\/g, '/');
+        if (!visited.has(nestedAbs)) {
+          queue.push(normalized);
+        }
+      }
+    }
+  }
+
+  return out;
+}
+
+/** Resolve a `./` or `../` TS import to an absolute file path. */
+function resolveTsImport(fromDir: string, rel: string): string | null {
+  const base = path.resolve(fromDir, rel);
+  const candidates = [`${base}.ts`, path.join(base, 'index.ts')];
+  for (const c of candidates) {
+    if (fs.existsSync(c)) return c;
+  }
+  return null;
 }
 
 /**
