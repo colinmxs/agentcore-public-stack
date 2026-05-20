@@ -6,8 +6,9 @@ import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
-import { AppConfig, applyStandardTags, getResourceName } from './config';
+import { AppConfig, applyStandardTags } from './config';
 import { FineTuningDataConstruct } from './constructs/fine-tuning/fine-tuning-data-construct';
+import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
 
 export interface SageMakerFineTuningStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -16,10 +17,15 @@ export interface SageMakerFineTuningStackProps extends cdk.StackProps {
 /**
  * SageMaker Fine-Tuning Stack — optional ML training infrastructure.
  *
- * As of the Phase 2 lift, the data resources (jobs table, access table,
- * data bucket) live in `constructs/fine-tuning/fine-tuning-data-construct.ts`.
- * The IAM execution role + security group compute half is still inline
- * here; it moves to a Backend construct in Task 9.
+ * As of the Phase 2 lift, both halves of this stack live in
+ * constructs:
+ *
+ *   - FineTuningDataConstruct          (data — DDB tables, S3 bucket)
+ *   - SageMakerExecutionRoleConstruct  (compute — IAM role, SG)
+ *
+ * The stack itself is a thin assembly that resolves the network
+ * imports SSM tokens (kept inline because the security group needs
+ * the imported VPC) and then composes the constructs.
  *
  * Reads from SSM:
  *   /{prefix}/network/{vpc-id, vpc-cidr, private-subnet-ids,
@@ -45,9 +51,7 @@ export class SageMakerFineTuningStack extends cdk.Stack {
 
     applyStandardTags(this, config);
 
-    // ============================================================
-    // Network imports (used by the SageMaker security group + role)
-    // ============================================================
+    // Network imports
     const vpcId = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/network/vpc-id`,
@@ -72,109 +76,22 @@ export class SageMakerFineTuningStack extends cdk.Stack {
       privateSubnetIds: cdk.Fn.split(',', privateSubnetIdsString),
     });
 
-    // ============================================================
-    // Data resources (lifted into FineTuningDataConstruct)
-    // ============================================================
+    // Data resources
     const data = new FineTuningDataConstruct(this, 'Data', { config });
     this.fineTuningJobsTable = data.jobsTable;
     this.fineTuningAccessTable = data.accessTable;
     this.fineTuningDataBucket = data.dataBucket;
 
-    // ============================================================
-    // SageMaker Execution Role (compute — moves to Backend in Task 9)
-    // ============================================================
-    this.sagemakerExecutionRole = new iam.Role(this, 'SageMakerExecutionRole', {
-      roleName: getResourceName(config, 'sagemaker-exec-role'),
-      assumedBy: new iam.ServicePrincipal('sagemaker.amazonaws.com'),
-      description:
-        'Execution role assumed by SageMaker training and transform jobs',
+    // Compute resources
+    const role = new SageMakerExecutionRoleConstruct(this, 'ExecutionRole', {
+      config,
+      dataBucket: data.dataBucket,
+      jobsTable: data.jobsTable,
+      vpc,
+      privateSubnetIdsString,
     });
-
-    this.fineTuningDataBucket.grantReadWrite(this.sagemakerExecutionRole);
-
-    this.sagemakerExecutionRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'FineTuningJobsProgressWrite',
-        effect: iam.Effect.ALLOW,
-        actions: ['dynamodb:UpdateItem'],
-        resources: [this.fineTuningJobsTable.tableArn],
-      }),
-    );
-
-    this.sagemakerExecutionRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'VpcNetworkingForTraining',
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'ec2:DescribeSubnets',
-          'ec2:DescribeSecurityGroups',
-          'ec2:DescribeNetworkInterfaces',
-          'ec2:DescribeVpcs',
-          'ec2:DescribeDhcpOptions',
-          'ec2:CreateNetworkInterface',
-          'ec2:CreateNetworkInterfacePermission',
-          'ec2:DeleteNetworkInterface',
-        ],
-        resources: ['*'],
-      }),
-    );
-
-    this.sagemakerExecutionRole.addToPolicy(
-      new iam.PolicyStatement({
-        sid: 'CloudWatchLogsForTraining',
-        effect: iam.Effect.ALLOW,
-        actions: [
-          'logs:CreateLogGroup',
-          'logs:CreateLogStream',
-          'logs:PutLogEvents',
-        ],
-        resources: [
-          `arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/sagemaker/*`,
-        ],
-      }),
-    );
-
-    // ============================================================
-    // SageMaker Security Group (compute — moves to Backend in Task 9)
-    // ============================================================
-    this.sagemakerSecurityGroup = new ec2.SecurityGroup(
-      this,
-      'SageMakerSecurityGroup',
-      {
-        vpc,
-        securityGroupName: getResourceName(config, 'sagemaker-sg'),
-        description:
-          'Security group for SageMaker training jobs - outbound HTTPS only',
-        allowAllOutbound: false,
-      },
-    );
-
-    this.sagemakerSecurityGroup.addEgressRule(
-      ec2.Peer.anyIpv4(),
-      ec2.Port.tcp(443),
-      'Allow outbound HTTPS for AWS service access and model downloads',
-    );
-
-    new ssm.StringParameter(this, 'SageMakerExecutionRoleArnParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/sagemaker-execution-role-arn`,
-      stringValue: this.sagemakerExecutionRole.roleArn,
-      description: 'SageMaker execution role ARN for training jobs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'SageMakerSecurityGroupIdParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/sagemaker-security-group-id`,
-      stringValue: this.sagemakerSecurityGroup.securityGroupId,
-      description: 'SageMaker training jobs security group ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'PrivateSubnetIdsParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/private-subnet-ids`,
-      stringValue: privateSubnetIdsString,
-      description: 'Private subnet IDs for SageMaker training jobs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    this.sagemakerExecutionRole = role.executionRole;
+    this.sagemakerSecurityGroup = role.securityGroup;
 
     // ============================================================
     // CloudFormation Outputs
