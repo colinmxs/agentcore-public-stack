@@ -10,6 +10,7 @@ import * as logs from "aws-cdk-lib/aws-logs";
 
 import { Construct } from "constructs";
 import { AppConfig, getResourceName, applyStandardTags, getRemovalPolicy, buildCorsOrigins } from "./config";
+import { AssistantsTableConstruct } from "./constructs/data/assistants-table-construct";
 
 export interface AppApiStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -108,58 +109,11 @@ export class AppApiStack extends cdk.Stack {
     // Owner Status Index GSI_PK (String) GSI_SK (String)
     // Visibility Status Index GSI2_PK (String) GSI2_SK (String)
     // ============================================================
-    const assistantsTable = new dynamodb.Table(this, "AssistantsTable", {
-      tableName: getResourceName(config, "assistants"),
-      partitionKey: {
-        name: "PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      billingMode: dynamodb.BillingMode.PAY_PER_REQUEST,
-      pointInTimeRecovery: true,
-      removalPolicy: getRemovalPolicy(config),
-      encryption: dynamodb.TableEncryption.AWS_MANAGED,
-    });
-
-    assistantsTable.addGlobalSecondaryIndex({
-      indexName: "OwnerStatusIndex",
-      partitionKey: {
-        name: "GSI_PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI_SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-    });
-
-    assistantsTable.addGlobalSecondaryIndex({
-      indexName: "VisibilityStatusIndex",
-      partitionKey: {
-        name: "GSI2_PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI2_SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-    });
-
-    assistantsTable.addGlobalSecondaryIndex({
-      indexName: "SharedWithIndex",
-      partitionKey: {
-        name: "GSI3_PK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      sortKey: {
-        name: "GSI3_SK",
-        type: dynamodb.AttributeType.STRING,
-      },
-      projectionType: dynamodb.ProjectionType.ALL,
-    });
+    const assistantsTable = new AssistantsTableConstruct(
+      this,
+      'AssistantsTableConstruct',
+      { config },
+    ).table;
 
     // Note: RAG resources (documents bucket, vector bucket, vector index, ingestion Lambda)
     // are created in RagIngestionStack and imported via SSM parameters.
