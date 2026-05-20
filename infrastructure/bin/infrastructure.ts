@@ -7,6 +7,8 @@ import { InferenceApiStack } from '../lib/inference-api-stack';
 import { GatewayStack } from '../lib/gateway-stack';
 import { RagIngestionStack } from '../lib/rag-ingestion-stack';
 import { SageMakerFineTuningStack } from '../lib/sagemaker-fine-tuning-stack';
+import { ArtifactsStack } from '../lib/artifacts-stack';
+import { McpSandboxStack } from '../lib/mcp-sandbox-stack';
 import { loadConfig, getStackEnv } from '../lib/config';
 
 const app = new cdk.App();
@@ -22,6 +24,32 @@ new InfrastructureStack(app, 'InfrastructureStack', {
   description: `${config.projectPrefix} Infrastructure Stack - Shared Network Resources`,
   stackName: `${config.projectPrefix}-InfrastructureStack`,
 });
+
+// Artifacts Stack - iframe-isolated artifact rendering (deploy AFTER Infrastructure,
+// BEFORE Inference API / App API / Frontend, which read its SSM exports).
+// Parallel-safe with RAG Ingestion and Fine-Tuning.
+if (config.artifacts.enabled) {
+  new ArtifactsStack(app, 'ArtifactsStack', {
+    config,
+    env,
+    description: `${config.projectPrefix} Artifacts Stack - DDB, S3, CloudFront + Lambda render service`,
+    stackName: `${config.projectPrefix}-ArtifactsStack`,
+  });
+}
+
+// MCP Sandbox Stack - S3 + CloudFront + Route53 serving the MCP Apps
+// sandbox-proxy shell at mcp-sandbox.{domain}. PR #1 of the MCP Apps host
+// renderer initiative; deploy tier 1, parallel-safe with Artifacts / RAG /
+// Gateway / Fine-Tuning (reads no cross-stack SSM). Inert until the SPA
+// wiring (PR #4) and MCP_APPS_HOST_ENABLED (PR #7) land.
+if (config.mcpSandbox.enabled) {
+  new McpSandboxStack(app, 'McpSandboxStack', {
+    config,
+    env,
+    description: `${config.projectPrefix} MCP Sandbox Stack - S3, CloudFront, Route53 (MCP Apps proxy origin)`,
+    stackName: `${config.projectPrefix}-McpSandboxStack`,
+  });
+}
 
 // Frontend Stack - S3 + CloudFront + Route53
 if (config.frontend.enabled) {

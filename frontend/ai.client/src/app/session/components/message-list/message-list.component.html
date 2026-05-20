@@ -19,7 +19,10 @@
                 <app-assistant-message class="min-w-0 block" [message]="message" [isStreaming]="message.id === streamingMessageId()"></app-assistant-message>
             </div>
             <div class="mt-1 flex justify-start">
-                <app-message-actions [message]="message"></app-message-actions>
+                <app-message-actions
+                  [message]="message"
+                  [canContinue]="canContinueFor(message.id)"
+                  (continueRequested)="continueRequested.emit()"></app-message-actions>
             </div>
             <div class="invisible mt-1 flex flex-wrap items-center gap-2 opacity-0 transition-opacity duration-200 group-hover:visible group-hover:opacity-100 group-focus-within:visible group-focus-within:opacity-100" aria-live="polite" aria-atomic="true">
                 @if (message.metadata) {
@@ -30,6 +33,25 @@
                 }
             </div>
         </div>
+    }
+
+    <!-- Artifacts produced by this turn, anchored to their final
+         assistant message via producedByMessageIndex. Renders both live
+         (the `artifact` SSE event carries the index) and after a session
+         reload (the list endpoint persists it on the HEAD row). -->
+    @let messageArtifacts = artifactsForMessageId(message.id);
+    @if (messageArtifacts.length > 0) {
+      <section
+        class="flex flex-col gap-2"
+        aria-label="Artifacts from this response"
+      >
+        @for (
+          artifact of messageArtifacts;
+          track artifact.artifactId + '#' + artifact.version
+        ) {
+          <app-artifact-card [artifact]="artifact" />
+        }
+      </section>
     }
 
   }
@@ -45,6 +67,24 @@
     />
   }
 
+  <!-- Fallback strip for artifacts that can't be anchored to a loaded
+       message: legacy rows written before linkage existed, or an index
+       pointing outside the currently paginated page. Anchored artifacts
+       render inline after their producing message (see the @for above). -->
+  @if (hasOrphanArtifacts()) {
+    <section
+      class="mt-3 flex flex-col gap-2"
+      aria-label="Artifacts created in this conversation"
+    >
+      @for (
+        artifact of orphanArtifacts();
+        track artifact.artifactId + '#' + artifact.version
+      ) {
+        <app-artifact-card [artifact]="artifact" />
+      }
+    </section>
+  }
+
   <!-- OAuth consent prompts not anchored to a loaded message — usually
        hydrated from session metadata after a refresh, when the partial
        assistant message wasn't persisted. -->
@@ -52,6 +92,21 @@
     <div class="flex justify-start">
       <app-oauth-consent-prompt [request]="request" />
     </div>
+  }
+
+  <!-- Static historical cards for app-initiated tool calls (PR #6,
+       Option A). The PR #5 broker is in-memory, so on reload the live
+       tool_use/tool_result are gone; these replay them as a read-only
+       record at the end of the conversation. -->
+  @if (hasMcpAppCards()) {
+    <section
+      class="mt-3 flex flex-col gap-2"
+      aria-label="Tool calls run by embedded apps in this conversation"
+    >
+      @for (card of mcpAppCards(); track card.cardId) {
+        <app-mcp-app-card [card]="card" />
+      }
+    </section>
   }
 
   <!-- Per-tool approval prompts (catalog-flagged needs_approval). Tied to
@@ -85,4 +140,7 @@
       class="pointer-events-none">
     </div>
   }
+
+  <!-- Fixed-position slide-over; renders only when an artifact is open. -->
+  <app-artifact-panel />
 </div>

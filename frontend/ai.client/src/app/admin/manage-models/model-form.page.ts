@@ -37,6 +37,12 @@ interface ParamRowGroup {
   supported: FormControl<boolean>;
   min: FormControl<number | null>;
   max: FormControl<number | null>;
+  /**
+   * Selectable subset for `kind: 'select'` params (e.g. `effort`). `null`
+   * on numeric/toggle rows. The per-model effort tier difference lives
+   * here as data, mirroring `ModelParamSpec.allowed` on the backend.
+   */
+  allowed: FormControl<(string | number)[] | null>;
   defaultValue: FormControl<number | boolean | string | null>;
   locked: FormControl<boolean>;
 }
@@ -75,6 +81,17 @@ function paramRowBoundsValidator(group: AbstractControl): ValidationErrors | nul
   if (typeof def === 'number') {
     if (typeof min === 'number' && def < min) errors['defaultBelowMin'] = true;
     if (typeof max === 'number' && def > max) errors['defaultAboveMax'] = true;
+  }
+  // Enum rows (`kind: 'select'`, e.g. effort) carry an `allowed` array
+  // instead of min/max. The model must support at least one level, and the
+  // default has to be one of them. Mirrors `ModelParamSpec._check_bounds`.
+  const allowed = group.get('allowed')?.value;
+  if (Array.isArray(allowed)) {
+    if (allowed.length === 0) {
+      errors['allowedEmpty'] = true;
+    } else if (def !== null && def !== undefined && def !== '' && !allowed.includes(def)) {
+      errors['defaultNotAllowed'] = true;
+    }
   }
   return Object.keys(errors).length > 0 ? errors : null;
 }
@@ -127,6 +144,58 @@ function thinkingInvariantsValidator(array: AbstractControl): ValidationErrors |
   // Merge with any pre-existing per-row bounds errors so both are visible.
   const merged = { ...(thinkingRow.errors ?? {}), ...errors };
   thinkingRow.setErrors(Object.keys(merged).length > 0 ? merged : null);
+  return null;
+}
+
+/**
+ * FormArray-level validator pinning the `max_tokens` row to the model's
+ * declared output ceiling. The model-level `maxOutputTokens` control is a
+ * sibling of this FormArray (reached via `array.parent`) — neither the
+ * `max` bound nor the `default` the runtime sends may exceed what the
+ * model can physically produce.
+ *
+ * Errors land on the `max_tokens` row so the inline markup surfaces them
+ * next to the per-row bounds errors. Mirrored on the backend by
+ * `_max_tokens_within_ceiling` on `ManagedModelCreate`/`ManagedModelUpdate`.
+ */
+function maxTokensCeilingValidator(array: AbstractControl): ValidationErrors | null {
+  if (!(array instanceof FormArray)) return null;
+  let maxTokensRow: FormGroup | undefined;
+  for (const row of array.controls as FormGroup[]) {
+    if (row.get('key')?.value === 'max_tokens') {
+      maxTokensRow = row;
+      break;
+    }
+  }
+  if (!maxTokensRow) return null;
+
+  // Recompute only the two ceiling keys each pass, preserving the per-row
+  // bounds errors paramRowBoundsValidator sets independently.
+  const rewrite = (extra: Record<string, true>): void => {
+    const existing = { ...(maxTokensRow!.errors ?? {}) };
+    delete existing['maxTokensMaxAboveCeiling'];
+    delete existing['maxTokensDefaultAboveCeiling'];
+    const merged = { ...existing, ...extra };
+    maxTokensRow!.setErrors(Object.keys(merged).length > 0 ? merged : null);
+  };
+
+  if (!maxTokensRow.get('supported')?.value) {
+    rewrite({});
+    return null;
+  }
+
+  const ceiling = array.parent?.get('maxOutputTokens')?.value;
+  if (typeof ceiling !== 'number' || !Number.isFinite(ceiling) || ceiling < 1) {
+    rewrite({});
+    return null;
+  }
+
+  const errors: Record<string, true> = {};
+  const max = maxTokensRow.get('max')?.value;
+  const def = maxTokensRow.get('defaultValue')?.value;
+  if (typeof max === 'number' && max > ceiling) errors['maxTokensMaxAboveCeiling'] = true;
+  if (typeof def === 'number' && def > ceiling) errors['maxTokensDefaultAboveCeiling'] = true;
+  rewrite(errors);
   return null;
 }
 
@@ -217,7 +286,7 @@ export class ModelFormPage implements OnInit {
     knowledgeCutoffDate: this.fb.control<string | null>(null),
     supportsCaching: this.fb.control(false, { nonNullable: true }),
     inferenceParams: this.fb.array<FormGroup<ParamRowGroup>>([], {
-      validators: [thinkingInvariantsValidator],
+      validators: [thinkingInvariantsValidator, maxTokensCeilingValidator],
     }),
     customInferenceParams: this.fb.array<FormGroup<CustomParamRowGroup>>([]),
   });
@@ -307,6 +376,12 @@ export class ModelFormPage implements OnInit {
     this.modelForm.controls.provider.valueChanges.subscribe(provider => {
       this.rebuildInferenceParamRows(provider);
     });
+
+    // Keep the max_tokens row pinned to the model's output ceiling: pre-fill
+    // it on a fresh model and re-check the cap whenever the ceiling changes.
+    this.modelForm.controls.maxOutputTokens.valueChanges.subscribe(() => {
+      this.syncMaxTokensCeiling();
+    });
   }
 
   /**
@@ -354,6 +429,7 @@ export class ModelFormPage implements OnInit {
           supported: fromExisting.supported,
           min: fromExisting.min ?? row.controls.min.value,
           max: fromExisting.max ?? row.controls.max.value,
+          allowed: fromExisting.allowed ?? row.controls.allowed.value,
           defaultValue: fromExisting.default ?? null,
           locked: fromExisting.locked,
         });
@@ -397,6 +473,7 @@ export class ModelFormPage implements OnInit {
           supported: spec.supported,
           min: spec.min ?? row.controls.min.value,
           max: spec.max ?? row.controls.max.value,
+          allowed: spec.allowed ?? row.controls.allowed.value,
           defaultValue: spec.default ?? null,
           locked: spec.locked,
         });
@@ -422,6 +499,37 @@ export class ModelFormPage implements OnInit {
         }
       });
     }
+
+    this.syncMaxTokensCeiling();
+  }
+
+  /**
+   * Pin the `max_tokens` inference-param row to the model's declared output
+   * ceiling. Pre-fills the row's Max and Default from `maxOutputTokens` so a
+   * fresh model defaults to "request the full ceiling" — but only while
+   * those fields are untouched and weren't loaded from a persisted record,
+   * so deliberate admin edits and saved specs win. Always re-validates the
+   * array so the ceiling cap re-checks when only the model-level field
+   * changed (a sibling value change doesn't re-run the array validator on
+   * its own).
+   */
+  private syncMaxTokensCeiling(): void {
+    const idx = this.inferenceParamRows().findIndex(m => m.key === 'max_tokens');
+    if (idx < 0) return;
+    const row = this.paramRowGroup(idx);
+    const ceiling = this.modelForm.controls.maxOutputTokens.value;
+    const loaded = this.loadedKnownKeys.has('max_tokens');
+
+    if (!loaded && typeof ceiling === 'number' && Number.isFinite(ceiling) && ceiling >= 1) {
+      if (row.controls.max.pristine) {
+        row.controls.max.setValue(ceiling, { emitEvent: false });
+      }
+      if (row.controls.defaultValue.pristine) {
+        row.controls.defaultValue.setValue(ceiling, { emitEvent: false });
+      }
+    }
+
+    this.modelForm.controls.inferenceParams.updateValueAndValidity();
   }
 
   private buildCustomParamRow(key: string, seed: ModelParamSpec | null): FormGroup<CustomParamRowGroup> {
@@ -431,6 +539,9 @@ export class ModelFormPage implements OnInit {
         supported: this.fb.control(seed?.supported ?? true, { nonNullable: true }),
         min: this.fb.control<number | null>(seed?.min ?? null),
         max: this.fb.control<number | null>(seed?.max ?? null),
+        // Custom rows have no catalog kind, so they're never enum-select;
+        // round-trip a persisted `allowed` if one was stored, else null.
+        allowed: this.fb.control<(string | number)[] | null>(seed?.allowed ?? null),
         defaultValue: this.fb.control<number | boolean | string | null>(seed?.default ?? null),
         locked: this.fb.control(seed?.locked ?? false, { nonNullable: true }),
       },
@@ -486,6 +597,11 @@ export class ModelFormPage implements OnInit {
     const providerBounds = meta.defaults?.[provider];
     const seedMin = seed?.min ?? providerBounds?.min ?? meta.defaultMin ?? null;
     const seedMax = seed?.max ?? providerBounds?.max ?? meta.defaultMax ?? null;
+    // Enum-select rows (e.g. effort) carry an `allowed` subset instead of
+    // min/max. Empty array on a fresh row marks it as "select kind" for the
+    // validator/template and forces the admin to opt into levels explicitly.
+    const seedAllowed: (string | number)[] | null =
+      meta.kind === 'select' ? (seed?.allowed ?? []) : null;
     return this.fb.group<ParamRowGroup>(
       {
         // Catalog key is fixed for known rows — no validators, just a read-only
@@ -494,6 +610,7 @@ export class ModelFormPage implements OnInit {
         supported: this.fb.control(seed?.supported ?? false, { nonNullable: true }),
         min: this.fb.control<number | null>(seedMin),
         max: this.fb.control<number | null>(seedMax),
+        allowed: this.fb.control<(string | number)[] | null>(seedAllowed),
         defaultValue: this.fb.control<number | boolean | string | null>(seed?.default ?? null),
         locked: this.fb.control(seed?.locked ?? false, { nonNullable: true }),
       },
@@ -507,6 +624,7 @@ export class ModelFormPage implements OnInit {
       supported: v.supported,
       min: v.min,
       max: v.max,
+      allowed: v.allowed,
       default: v.defaultValue,
       locked: v.locked,
     };
@@ -580,7 +698,49 @@ export class ModelFormPage implements OnInit {
     if (row.errors['thinkingBudgetNotNumeric']) {
       out.push('Thinking budget must be a number — clear the value to disable, or enter an integer ≥ 1024.');
     }
+    if (row.errors['maxTokensMaxAboveCeiling'] || row.errors['maxTokensDefaultAboveCeiling']) {
+      const ceiling = this.modelForm.controls.maxOutputTokens.value;
+      if (row.errors['maxTokensMaxAboveCeiling']) {
+        out.push(`Max must be ≤ the model's Max Output Tokens (${ceiling}).`);
+      }
+      if (row.errors['maxTokensDefaultAboveCeiling']) {
+        out.push(`Default must be ≤ the model's Max Output Tokens (${ceiling}).`);
+      }
+    }
+    if (row.errors['allowedEmpty']) {
+      out.push('Select at least one level this model supports.');
+    }
+    if (row.errors['defaultNotAllowed']) {
+      out.push('Default must be one of the selected levels.');
+    }
     return out;
+  }
+
+  /**
+   * Whether `value` is in the enum-select row's `allowed` subset. Backs the
+   * per-level checkboxes for `kind: 'select'` params (e.g. effort).
+   */
+  isParamAllowed(index: number, value: string): boolean {
+    return (this.paramRowGroup(index).controls.allowed.value ?? []).includes(value);
+  }
+
+  /**
+   * Toggle a level in the enum-select row's `allowed` subset. Clears the
+   * row default if the level backing it was just removed so the
+   * default-in-allowed invariant can't be left stale.
+   */
+  toggleParamAllowed(index: number, value: string): void {
+    const row = this.paramRowGroup(index);
+    const current = row.controls.allowed.value ?? [];
+    const next = current.includes(value)
+      ? current.filter(v => v !== value)
+      : [...current, value];
+    row.controls.allowed.setValue(next);
+    row.controls.allowed.markAsDirty();
+    if (row.controls.defaultValue.value != null && !next.includes(row.controls.defaultValue.value as string)) {
+      row.controls.defaultValue.setValue(null);
+    }
+    row.controls.allowed.updateValueAndValidity();
   }
 
   /**

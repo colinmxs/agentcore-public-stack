@@ -11,10 +11,11 @@ import asyncio
 import json
 import logging
 import os
+import time
 from typing import AsyncGenerator, Union
 
 from fastapi import APIRouter, Depends, HTTPException, status
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse, StreamingResponse
 
 from agents.main_agent.core.model_config import KNOWN_CANONICAL_PARAMS
 from agents.main_agent.session.session_factory import SessionFactory
@@ -40,6 +41,12 @@ from apis.shared.rbac.service import get_app_role_service
 from apis.shared.sessions.metadata import ensure_session_metadata_exists
 from apis.shared.user_settings.repository import UserSettingsRepository
 
+from .app_context_dispatch import (
+    AppContextUpdateError,
+    dispatch_app_context_update,
+    merge_and_clear_pending_context,
+)
+from .app_tool_dispatch import AppToolCallError, dispatch_app_tool_call
 from .models import FileContent, InvocationRequest
 from .service import generate_conversation_title, get_agent
 
@@ -81,6 +88,23 @@ def _sanitize_log(value: object) -> str:
     }
     control_map[127] = "?"
     return text.translate(control_map)
+
+
+def _as_int_or_none(value: object) -> int | None:
+    """Coerce a numeric inference-param value to int for safety comparisons.
+
+    Inference params arrive untyped (``Dict[str, Any]`` from JSON), so an
+    integer bound can show up as a float (e.g. ``8192.0``). Returns ``None``
+    for bool / non-numeric values (including a ``thinking`` value an admin
+    pasted as a raw SDK dict) so callers skip the check rather than crash.
+    """
+    if isinstance(value, bool):
+        return None
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float):
+        return int(value)
+    return None
 
 
 async def _find_managed_model(model_id: str | None):
@@ -173,6 +197,19 @@ def _merge_inference_params(
                 merged[name] = spec.default
             continue
 
+        # Enum params (e.g. `effort`): the override must be a member of the
+        # admin-declared `allowed` set; an out-of-domain value falls back to
+        # the default rather than erroring mid-stream. Mirrors the numeric
+        # clamp below, and the per-model `allowed` differences (Sonnet 4.6
+        # vs Opus 4.7) stay data, not code.
+        if spec.allowed is not None:
+            req = request_params.get(name)
+            if req is not None and req in spec.allowed:
+                merged[name] = req
+            elif spec.default is not None:
+                merged[name] = spec.default
+            continue
+
         if name in request_params and request_params[name] is not None:
             value = request_params[name]
             if isinstance(value, (int, float)):
@@ -208,15 +245,12 @@ def _merge_inference_params(
     # both are set and inconsistent, drop `thinking` so the response still
     # streams instead of erroring out — the user just doesn't get a
     # reasoning trace this turn. Logged so the gap is visible in metrics.
-    thinking = merged.get("thinking")
-    max_tokens = merged.get("max_tokens")
-    if (
-        isinstance(thinking, int)
-        and not isinstance(thinking, bool)
-        and isinstance(max_tokens, int)
-        and not isinstance(max_tokens, bool)
-        and thinking >= max_tokens
-    ):
+    # Coerce before comparing: both values can arrive as floats (untyped
+    # Dict[str, Any] from JSON), and an `isinstance(..., int)` gate would
+    # silently skip the check on float input and let the bad request through.
+    thinking = _as_int_or_none(merged.get("thinking"))
+    max_tokens = _as_int_or_none(merged.get("max_tokens"))
+    if thinking is not None and max_tokens is not None and thinking >= max_tokens:
         logger.warning(
             "Dropping thinking budget %d for model %s — not less than max_tokens %d",
             thinking,
@@ -292,6 +326,41 @@ def _build_spreadsheet_tools(
         tools.append(make_analyze_tool(assistant_id, session_id, user_id))
 
     logger.info(f"Created {len(tools)} spreadsheet analysis tools (assistant={assistant_id})")
+    return tools
+
+
+# ============================================================
+# Artifact Authoring Tool Injection
+# ============================================================
+
+ARTIFACT_TOOL_IDS = {"create_artifact", "update_artifact"}
+
+
+def _build_artifact_tools(
+    enabled_tools: list | None,
+    session_id: str,
+    user_id: str,
+) -> list:
+    """Create context-bound artifact authoring tools if enabled by the user."""
+    if not enabled_tools:
+        return []
+
+    requested = ARTIFACT_TOOL_IDS.intersection(enabled_tools)
+    if not requested:
+        return []
+
+    from agents.builtin_tools.artifacts import (
+        make_create_artifact_tool,
+        make_update_artifact_tool,
+    )
+
+    tools = []
+    if "create_artifact" in requested:
+        tools.append(make_create_artifact_tool(session_id, user_id))
+    if "update_artifact" in requested:
+        tools.append(make_update_artifact_tool(session_id, user_id))
+
+    logger.info(f"Created {len(tools)} artifact authoring tools")
     return tools
 
 
@@ -569,8 +638,24 @@ async def stream_conversational_message(
 
 @router.get("/ping")
 async def ping():
-    """Health check endpoint (required by AgentCore Runtime)"""
-    return {"status": "healthy", "version": os.environ.get("APP_VERSION", "unknown")}
+    """Health check endpoint (required by AgentCore Runtime).
+
+    AgentCore's idle reaper requires ``time_of_last_update`` (int epoch
+    seconds) alongside ``status``. When the field is absent the platform
+    reaps the microVM at ``idleRuntimeSessionTimeout`` even mid-stream,
+    regardless of the reported status (bedrock-agentcore-sdk-python#471).
+
+    We do not run the SDK's async-task busy tracking here (that's the
+    deferred ``async_mode`` work), so we cannot report ``HealthyBusy``.
+    Returning a fresh timestamp on every ping keeps the session alive
+    while the runtime data plane is polling us, which is the documented
+    mitigation for the silent mid-generation reap.
+    """
+    return {
+        "status": "Healthy",
+        "time_of_last_update": int(time.time()),
+        "version": os.environ.get("APP_VERSION", "unknown"),
+    }
 
 
 @router.post("/invocations")
@@ -594,10 +679,106 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     # they bypass quota, file resolution, and RAG augmentation because those
     # already ran on the original turn that got paused.
     is_resume = bool(input_data.interrupt_responses)
+    # A "Continue" after a max_tokens truncation. Like resume, it bypasses
+    # quota / RAG / file resolution and does NOT clear the turn state; unlike
+    # resume there is no interrupt to validate — the agent is rebuilt from the
+    # resent params and re-entered with an empty prompt (assistant-prefill).
+    is_continuation = bool(input_data.continue_truncated)
     logger.info(
-        "Invocation request received (resume=%s)" % is_resume
+        "Invocation request received (resume=%s, continue_truncated=%s)" % (is_resume, is_continuation)
     )
     logger.info("Message received")
+
+    # App-initiated tools/call (MCP Apps PR #5). Like resume/continuation it
+    # bypasses quota / RAG / file resolution / title — there is no model
+    # turn. We rebuild the conversation agent (so the MCP client session +
+    # auth are wired exactly as for a model-driven call), dispatch the one
+    # named tool, publish synthesized tool_use/tool_result into the thread
+    # via the per-session broker, and return the CallToolResult as JSON for
+    # app-api to relay back to the iframe. Inert behind the host flag (the
+    # UIToolCatalog is empty, so dispatch rejects every call as not
+    # app-visible).
+    if input_data.app_tool_call is not None:
+        atc = input_data.app_tool_call
+        try:
+            request_inference_params = dict(input_data.inference_params or {})
+            caching_enabled, inference_params = await _resolve_model_settings(
+                model_id=input_data.model_id,
+                explicit_caching_enabled=input_data.caching_enabled,
+                request_inference_params=request_inference_params,
+            )
+            agent = await get_agent(
+                session_id=input_data.session_id,
+                user_id=user_id,
+                auth_token=auth_token,
+                enabled_tools=input_data.enabled_tools,
+                model_id=input_data.model_id,
+                system_prompt=input_data.system_prompt,
+                caching_enabled=caching_enabled,
+                provider=input_data.provider,
+                inference_params=inference_params,
+                agent_type=input_data.agent_type,
+                is_resume=False,
+            )
+            payload = await dispatch_app_tool_call(
+                agent,
+                session_id=input_data.session_id,
+                user_id=user_id,
+                tool_use_id=atc.tool_use_id,
+                tool_name=atc.tool_name,
+                arguments=atc.arguments,
+            )
+            return JSONResponse(payload)
+        except AppToolCallError as e:
+            return JSONResponse({"error": e.message}, status_code=e.code)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.error("app tools/call invocation failed", exc_info=True)
+            return JSONResponse({"error": "Internal error"}, status_code=500)
+
+    # App-pushed model context (MCP Apps PR #6, `ui/update-model-context`).
+    # Like app_tool_call it bypasses quota / RAG / file resolution / title
+    # and runs NO model turn — we rebuild the conversation agent (so the
+    # same cached `agent.state` is reused) and stash the payload under
+    # `mcp_apps.context[resource_uri]`. The next real user turn merges and
+    # clears it. Inert behind the host flag (no live App ever calls this).
+    if input_data.app_context_update is not None:
+        acu = input_data.app_context_update
+        try:
+            request_inference_params = dict(input_data.inference_params or {})
+            caching_enabled, inference_params = await _resolve_model_settings(
+                model_id=input_data.model_id,
+                explicit_caching_enabled=input_data.caching_enabled,
+                request_inference_params=request_inference_params,
+            )
+            agent = await get_agent(
+                session_id=input_data.session_id,
+                user_id=user_id,
+                auth_token=auth_token,
+                enabled_tools=input_data.enabled_tools,
+                model_id=input_data.model_id,
+                system_prompt=input_data.system_prompt,
+                caching_enabled=caching_enabled,
+                provider=input_data.provider,
+                inference_params=inference_params,
+                agent_type=input_data.agent_type,
+                is_resume=False,
+            )
+            payload = dispatch_app_context_update(
+                agent,
+                resource_uri=acu.resource_uri,
+                content=acu.content,
+                structured_content=acu.structured_content,
+            )
+            return JSONResponse(payload)
+        except AppContextUpdateError as e:
+            return JSONResponse({"error": e.message}, status_code=e.code)
+        except HTTPException:
+            raise
+        except Exception:
+            logger.error("app context update invocation failed", exc_info=True)
+            return JSONResponse({"error": "Internal error"}, status_code=500)
 
     if input_data.enabled_tools:
         logger.info(f"Enabled tools ({len(input_data.enabled_tools)})")
@@ -662,13 +843,24 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     # later (mistaken) resume request pick up against a turn the user
     # already moved past.
     is_new_session = False
-    if not is_resume:
+    if not is_resume and not is_continuation:
         is_new_session = await ensure_session_metadata_exists(input_data.session_id, user_id)
         try:
             from apis.shared.sessions.metadata import clear_paused_turn
             await clear_paused_turn(input_data.session_id, user_id)
         except Exception as e:
             logger.error("Failed to clear stale paused_turn on new turn: %s", e, exc_info=True)
+
+    # Invalidate any prior max_tokens "Continue" marker on every new model
+    # turn that isn't an interrupt-resume — both a fresh turn and a
+    # continuation supersede it. If a continuation itself re-truncates, the
+    # stream_coordinator intercept re-sets the marker.
+    if not is_resume:
+        try:
+            from apis.shared.sessions.metadata import clear_truncated_turn
+            await clear_truncated_turn(input_data.session_id, user_id)
+        except Exception as e:
+            logger.error("Failed to clear stale truncated_turn on new turn: %s", e, exc_info=True)
 
     # First turn → kick off title generation concurrently with the stream.
     # Runs as a background task so it doesn't add latency to TTFT. The
@@ -686,7 +878,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
     # Check quota if enforcement is enabled
     quota_warning_event = None
     quota_exceeded_event = None
-    if is_quota_enforcement_enabled() and not is_resume:
+    if is_quota_enforcement_enabled() and not is_resume and not is_continuation:
         try:
             quota_checker = get_quota_checker()
             quota_result = await quota_checker.check_quota(user=current_user, session_id=input_data.session_id)
@@ -745,7 +937,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         "Invocation request - processing with assistant context"
     )
 
-    if input_data.rag_assistant_id and not is_resume:
+    if input_data.rag_assistant_id and not is_resume and not is_continuation:
         # Local imports to avoid circular dependency
         from apis.shared.assistants.rag_service import (
             augment_prompt_with_context,
@@ -1079,6 +1271,10 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 assistant_id=input_data.rag_assistant_id,
                 session_id=input_data.session_id,
                 user_id=user_id,
+            ) + _build_artifact_tools(
+                enabled_tools=input_data.enabled_tools,
+                session_id=input_data.session_id,
+                user_id=user_id,
             )
 
             agent = await get_agent(
@@ -1177,6 +1373,18 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             if tabular_inventory:
                 final_message = f"{final_message}\n\n{tabular_inventory}"
 
+            # MCP Apps PR #6: drain any context an embedded App pushed via
+            # `ui/update-model-context` since the last turn and prepend it
+            # to this turn only. Skipped on resume/continuation (Strands
+            # ignores `final_message` there) so a pending update survives
+            # until the next real user turn instead of being silently
+            # cleared. Kept out of persisted history via the
+            # `original_message` path below (cache-prefix-safe).
+            if not is_resume and not is_continuation:
+                pending_ctx_block = merge_and_clear_pending_context(agent)
+                if pending_ctx_block:
+                    final_message = f"{pending_ctx_block}\n\n{final_message}"
+
             message_will_be_modified = (
                 final_message != input_data.message  # RAG augmentation / attachment guidance / inventory
                 or bool(files_to_send)               # File attachments
@@ -1198,6 +1406,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
                 citations=citations_for_storage if citations_for_storage else None,
                 original_message=input_data.message if message_will_be_modified else None,
                 interrupt_responses=interrupt_responses_payload,
+                continue_truncated=is_continuation,
             ):
                 yield event
 

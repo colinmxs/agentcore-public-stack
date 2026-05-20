@@ -11,9 +11,12 @@ import {
   validateQuotaExceededEvent,
   validateConversationalStreamError,
   validateCitation,
+  validateArtifactEvent,
+  validateUiResourceEvent,
   processStreamEvent,
   createStreamLineParser,
   inferContentBlockType,
+  extractStreamingStringField,
   parseToolResultContent,
   StreamParserCallbacks
 } from './stream-parser-core';
@@ -370,6 +373,99 @@ describe('stream-parser-core', () => {
     });
   });
 
+  describe('validateArtifactEvent', () => {
+    const valid = {
+      type: 'artifact',
+      artifactId: 'art-1',
+      version: 1,
+      title: 'Sales Dashboard',
+      contentType: 'text/html; charset=utf-8',
+      sessionId: 'sess-9',
+      updatedAt: '2026-05-15T12:00:05+00:00',
+      action: 'created'
+    };
+
+    it('should return true for a valid created artifact', () => {
+      expect(validateArtifactEvent(valid)).toBe(true);
+    });
+
+    it('should return true for an updated artifact (version > 1)', () => {
+      expect(validateArtifactEvent({ ...valid, version: 4, action: 'updated' })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateArtifactEvent(null)).toBe(false);
+      expect(validateArtifactEvent(undefined)).toBe(false);
+    });
+
+    it('should return false when type is not "artifact"', () => {
+      expect(validateArtifactEvent({ ...valid, type: 'compaction' })).toBe(false);
+    });
+
+    it('should return false for empty artifactId', () => {
+      expect(validateArtifactEvent({ ...valid, artifactId: '' })).toBe(false);
+    });
+
+    it('should return false for version < 1 or non-integer', () => {
+      expect(validateArtifactEvent({ ...valid, version: 0 })).toBe(false);
+      expect(validateArtifactEvent({ ...valid, version: 1.5 })).toBe(false);
+    });
+
+    it('should return false for an unknown action', () => {
+      expect(validateArtifactEvent({ ...valid, action: 'deleted' })).toBe(false);
+    });
+
+    it('should return false for missing fields', () => {
+      expect(validateArtifactEvent({ type: 'artifact', artifactId: 'art-1' })).toBe(false);
+    });
+  });
+
+  describe('validateUiResourceEvent', () => {
+    const valid = {
+      type: 'ui_resource',
+      toolUseId: 'tu-1',
+      resourceUri: 'ui://srv/widget',
+      html: '<h1>hi</h1>',
+      mimeType: 'text/html;profile=mcp-app',
+      csp: { connectDomains: ['https://api.test'] },
+      permissions: { clipboardWrite: {} },
+      sandboxOrigin: 'https://mcp-sandbox.example.com'
+    };
+
+    it('should return true for a valid ui_resource event', () => {
+      expect(validateUiResourceEvent(valid)).toBe(true);
+    });
+
+    it('should accept empty html and empty sandboxOrigin', () => {
+      expect(validateUiResourceEvent({ ...valid, html: '', sandboxOrigin: '' })).toBe(true);
+    });
+
+    it('should return false for null/undefined', () => {
+      expect(validateUiResourceEvent(null)).toBe(false);
+      expect(validateUiResourceEvent(undefined)).toBe(false);
+    });
+
+    it('should return false when type is wrong', () => {
+      expect(validateUiResourceEvent({ ...valid, type: 'artifact' })).toBe(false);
+    });
+
+    it('should return false for empty toolUseId or resourceUri', () => {
+      expect(validateUiResourceEvent({ ...valid, toolUseId: '' })).toBe(false);
+      expect(validateUiResourceEvent({ ...valid, resourceUri: '' })).toBe(false);
+    });
+
+    it('should return false when csp/permissions are not objects', () => {
+      expect(validateUiResourceEvent({ ...valid, csp: null })).toBe(false);
+      expect(validateUiResourceEvent({ ...valid, permissions: 'x' })).toBe(false);
+    });
+
+    it('should return false for missing fields', () => {
+      expect(
+        validateUiResourceEvent({ type: 'ui_resource', toolUseId: 'tu-1' }),
+      ).toBe(false);
+    });
+  });
+
   describe('processStreamEvent', () => {
     let callbacks: StreamParserCallbacks;
 
@@ -386,6 +482,8 @@ describe('stream-parser-core', () => {
         onQuotaExceeded: vi.fn(),
         onStreamError: vi.fn(),
         onCitation: vi.fn(),
+        onArtifact: vi.fn(),
+        onUiResource: vi.fn(),
         onParseError: vi.fn(),
         onDone: vi.fn(),
         onError: vi.fn(),
@@ -437,6 +535,46 @@ describe('stream-parser-core', () => {
     it('should ignore unknown event types', () => {
       processStreamEvent('unknown_event', {}, callbacks);
       expect(callbacks.onParseError).not.toHaveBeenCalled();
+    });
+
+    it('should call onArtifact for a valid artifact event', () => {
+      const data = {
+        type: 'artifact',
+        artifactId: 'art-1',
+        version: 2,
+        title: 'Report',
+        contentType: 'text/html; charset=utf-8',
+        sessionId: 'sess-9',
+        updatedAt: '2026-05-15T12:00:05+00:00',
+        action: 'updated'
+      };
+      processStreamEvent('artifact', data, callbacks);
+      expect(callbacks.onArtifact).toHaveBeenCalledWith(data);
+    });
+
+    it('should call onParseError for an invalid artifact event', () => {
+      processStreamEvent('artifact', { type: 'artifact', artifactId: '' }, callbacks);
+      expect(callbacks.onParseError).toHaveBeenCalledWith('artifact: invalid data structure');
+    });
+
+    it('should call onUiResource for a valid ui_resource event', () => {
+      const data = {
+        type: 'ui_resource',
+        toolUseId: 'tu-1',
+        resourceUri: 'ui://srv/widget',
+        html: '<main>app</main>',
+        mimeType: 'text/html;profile=mcp-app',
+        csp: {},
+        permissions: {},
+        sandboxOrigin: ''
+      };
+      processStreamEvent('ui_resource', data, callbacks);
+      expect(callbacks.onUiResource).toHaveBeenCalledWith(data);
+    });
+
+    it('should call onParseError for an invalid ui_resource event', () => {
+      processStreamEvent('ui_resource', { type: 'ui_resource', toolUseId: '' }, callbacks);
+      expect(callbacks.onParseError).toHaveBeenCalledWith('ui_resource: invalid data structure');
     });
   });
 
@@ -507,6 +645,65 @@ describe('stream-parser-core', () => {
     it('should return text by default', () => {
       expect(inferContentBlockType({ contentBlockIndex: 0, text: 'hello' })).toBe('text');
       expect(inferContentBlockType({ contentBlockIndex: 0 })).toBe('text');
+    });
+  });
+
+  describe('extractStreamingStringField', () => {
+    it('returns null when input is empty', () => {
+      expect(extractStreamingStringField('', 'content')).toBeNull();
+    });
+
+    it('returns null when the field has not started streaming', () => {
+      expect(extractStreamingStringField('{"title":"Hi"', 'content')).toBeNull();
+      expect(extractStreamingStringField('{"title":"Hi","content"', 'content')).toBeNull();
+      expect(extractStreamingStringField('{"title":"Hi","content":', 'content')).toBeNull();
+    });
+
+    it('returns the partial value while the string is still open', () => {
+      expect(
+        extractStreamingStringField('{"title":"Hi","content":"<!DOCTYPE htm', 'content'),
+      ).toBe('<!DOCTYPE htm');
+    });
+
+    it('returns the full value once the closing quote arrives', () => {
+      expect(
+        extractStreamingStringField('{"content":"<h1>Hello</h1>","x":1}', 'content'),
+      ).toBe('<h1>Hello</h1>');
+    });
+
+    it('decodes JSON string escapes', () => {
+      expect(
+        extractStreamingStringField('{"content":"line1\\nline2\\t\\"q\\"\\\\","', 'content'),
+      ).toBe('line1\nline2\t"q"\\');
+    });
+
+    it('decodes unicode escapes', () => {
+      expect(extractStreamingStringField('{"content":"\\u00e9\\u4e2d', 'content')).toBe(
+        'é中',
+      );
+    });
+
+    it('drops a dangling backslash that has not finished streaming', () => {
+      expect(extractStreamingStringField('{"content":"abc\\', 'content')).toBe('abc');
+    });
+
+    it('drops an incomplete unicode escape', () => {
+      expect(extractStreamingStringField('{"content":"abc\\u00e', 'content')).toBe('abc');
+    });
+
+    it('does not match a different field with a shared prefix', () => {
+      // `content_type` must not be mistaken for `content`
+      expect(
+        extractStreamingStringField('{"content_type":"text/html","content":"body', 'content'),
+      ).toBe('body');
+    });
+
+    it('tolerates whitespace between key, colon, and value', () => {
+      expect(extractStreamingStringField('{"content"  :  "hi', 'content')).toBe('hi');
+    });
+
+    it('returns empty string for an empty completed value', () => {
+      expect(extractStreamingStringField('{"content":""}', 'content')).toBe('');
     });
   });
 

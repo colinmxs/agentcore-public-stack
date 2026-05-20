@@ -1,0 +1,50 @@
+<!DOCTYPE html>
+<!--
+  MCP Apps host renderer — Sandbox Proxy shell (OUTER iframe)
+
+  PR #1 (origin + shell) + PR #4 (proxy.js protocol) of
+  docs/kaizen/scoping/mcp-apps-host-renderer.md.
+
+  This is the static shell served at mcp-sandbox.{domain}/proxy.html. It is
+  the OUTER half of the spec's "Sandbox Proxy pattern" for web hosts:
+
+    ai.client (SPA)
+      └─ <iframe src="https://mcp-sandbox.{domain}/proxy.html">   ← THIS FILE
+           └─ <iframe srcdoc="...">  inner content frame (created by proxy.js)
+
+  Why two iframes: this outer page is a stable cross-origin boundary against
+  the host page, so the INNER (null-origin, no allow-same-origin) frame
+  never grants the MCP App access to the SPA origin (cookies / localStorage
+  / app API). proxy.js gives the inner frame the strict per-resource CSP
+  composed from `_meta.ui.csp` (carried on the `ui_resource` SSE event).
+
+  proxy.js (PR #4) implements the sandbox-proxy half of the JSON-RPC-2.0
+  postMessage protocol: it announces readiness, receives the resource, loads
+  the View under a composed CSP, and forwards messages host<->View with
+  per-frame nonce auth. Until PR #7 flips MCP_APPS_HOST_ENABLED nothing in
+  the SPA points at this page, so deploying this stack is inert.
+
+  CSP NOTE: the security-critical control for this PR is the response
+  `Content-Security-Policy: frame-ancestors <SPA origin only>` stamped by the
+  CloudFront ResponseHeadersPolicy in mcp-sandbox-stack.ts — that is what
+  prevents any site other than the SPA from embedding this proxy. This
+  document loads no inline scripts/styles so the served CSP can stay
+  `script-src 'self'` with no `'unsafe-inline'`.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="referrer" content="no-referrer" />
+    <title>MCP Apps Sandbox Proxy</title>
+  </head>
+  <body>
+    <!--
+      The inner content frame is created at runtime by proxy.js (via srcdoc),
+      not declared here: its srcdoc / sandbox / CSP / allow are derived
+      per-resource from the `ui_resource` SSE event the host relays in the
+      `ui/notifications/sandbox-resource-ready` message.
+    -->
+    <script src="proxy.js"></script>
+  </body>
+</html>

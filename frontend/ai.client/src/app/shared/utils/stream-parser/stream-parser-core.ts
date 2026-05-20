@@ -39,6 +39,8 @@ import type {
   OAuthRequiredEvent,
   ToolApprovalRequiredEvent,
   CompactionEvent,
+  ArtifactEvent,
+  UiResourceEvent,
   ToolProgress,
 } from './stream-parser-types';
 import type { MetadataEvent } from '../../../session/services/models/content-types';
@@ -86,6 +88,15 @@ export interface StreamParserCallbacks {
 
   // Compaction (backend rolled older turns into a summary on this turn)
   onCompaction?: (data: CompactionEvent) => void;
+
+  // Artifact created/updated this turn (existence signal; content is
+  // fetched out-of-band via a render token + sandboxed iframe)
+  onArtifact?: (data: ArtifactEvent) => void;
+
+  // MCP App UI resource for a tool result (SEP-1865). Inline event,
+  // correlated to its tool-use block by toolUseId; carries the HTML to
+  // render in the sandbox-proxy iframe.
+  onUiResource?: (data: UiResourceEvent) => void;
 
   // Error handling
   onError?: (data: StreamErrorEvent | ConversationalStreamErrorEvent | string) => void;
@@ -394,6 +405,62 @@ export function validateCompactionEvent(data: unknown): data is CompactionEvent 
 }
 
 /**
+ * Validate ArtifactEvent structure
+ */
+export function validateArtifactEvent(data: unknown): data is ArtifactEvent {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+
+  const event = data as Partial<ArtifactEvent>;
+
+  return (
+    event.type === 'artifact' &&
+    typeof event.artifactId === 'string' &&
+    event.artifactId.length > 0 &&
+    typeof event.version === 'number' &&
+    Number.isInteger(event.version) &&
+    event.version >= 1 &&
+    typeof event.title === 'string' &&
+    typeof event.contentType === 'string' &&
+    typeof event.sessionId === 'string' &&
+    typeof event.updatedAt === 'string' &&
+    (event.action === 'created' || event.action === 'updated')
+  );
+}
+
+/**
+ * Validate UiResourceEvent structure (SEP-1865 MCP App, PR #3 wire shape).
+ *
+ * `html` may legitimately be empty only in degenerate cases; we require it
+ * to be a string but not non-empty so a future server that streams an
+ * empty shell still round-trips. `csp`/`permissions` are objects;
+ * `sandboxOrigin` may be '' until the sandbox stack is deployed.
+ */
+export function validateUiResourceEvent(data: unknown): data is UiResourceEvent {
+  if (!data || typeof data !== 'object') {
+    return false;
+  }
+
+  const event = data as Partial<UiResourceEvent>;
+
+  return (
+    event.type === 'ui_resource' &&
+    typeof event.toolUseId === 'string' &&
+    event.toolUseId.length > 0 &&
+    typeof event.resourceUri === 'string' &&
+    event.resourceUri.length > 0 &&
+    typeof event.html === 'string' &&
+    typeof event.mimeType === 'string' &&
+    typeof event.sandboxOrigin === 'string' &&
+    typeof event.csp === 'object' &&
+    event.csp !== null &&
+    typeof event.permissions === 'object' &&
+    event.permissions !== null
+  );
+}
+
+/**
  * Validate Citation structure
  */
 export function validateCitation(data: unknown): data is Citation {
@@ -582,6 +649,22 @@ export function processStreamEvent(
         }
         break;
 
+      case 'artifact':
+        if (validateArtifactEvent(data)) {
+          callbacks.onArtifact?.(data);
+        } else {
+          callbacks.onParseError?.('artifact: invalid data structure');
+        }
+        break;
+
+      case 'ui_resource':
+        if (validateUiResourceEvent(data)) {
+          callbacks.onUiResource?.(data);
+        } else {
+          callbacks.onParseError?.('ui_resource: invalid data structure');
+        }
+        break;
+
       default:
         // Ignore unknown events (ping, etc.)
         break;
@@ -693,6 +776,120 @@ export function inferContentBlockType(
     return 'tool_use';
   }
   return 'text';
+}
+
+/**
+ * Best-effort extraction of a single string field's value from an incomplete
+ * JSON object that is still streaming in (e.g. a tool call's `input` arriving
+ * as `input_json_delta` chunks).
+ *
+ * Returns the decoded string value so far — even when the closing quote has
+ * not yet arrived — so callers can render live "generating" feedback. Returns
+ * `null` if the field's string value has not started streaming yet.
+ *
+ * Never throws: malformed / truncated input yields the portion decoded so far.
+ * Only string-valued fields are handled (non-string values return `null`).
+ *
+ * @param partialJson Accumulated (possibly incomplete) JSON text
+ * @param field       Top-level field name to extract (e.g. "content")
+ */
+export function extractStreamingStringField(
+  partialJson: string,
+  field: string,
+): string | null {
+  if (!partialJson) {
+    return null;
+  }
+
+  // Locate `"field" : "` allowing JSON-permitted whitespace. Escaping the
+  // field name keeps this safe even though callers pass simple identifiers.
+  const escapedField = field.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const opener = new RegExp(`"${escapedField}"\\s*:\\s*"`);
+  const match = opener.exec(partialJson);
+  if (!match) {
+    return null;
+  }
+
+  let i = match.index + match[0].length;
+  let result = '';
+
+  while (i < partialJson.length) {
+    const ch = partialJson[i];
+
+    if (ch === '"') {
+      // Unescaped closing quote -> value is complete.
+      return result;
+    }
+
+    if (ch === '\\') {
+      // Need at least one more char to know the escape; if it hasn't
+      // streamed yet, drop the dangling backslash and return what we have.
+      if (i + 1 >= partialJson.length) {
+        return result;
+      }
+      const esc = partialJson[i + 1];
+      switch (esc) {
+        case '"':
+          result += '"';
+          i += 2;
+          break;
+        case '\\':
+          result += '\\';
+          i += 2;
+          break;
+        case '/':
+          result += '/';
+          i += 2;
+          break;
+        case 'b':
+          result += '\b';
+          i += 2;
+          break;
+        case 'f':
+          result += '\f';
+          i += 2;
+          break;
+        case 'n':
+          result += '\n';
+          i += 2;
+          break;
+        case 'r':
+          result += '\r';
+          i += 2;
+          break;
+        case 't':
+          result += '\t';
+          i += 2;
+          break;
+        case 'u': {
+          // Need 4 hex digits; if the buffer cuts off mid-sequence, drop
+          // the incomplete escape and return the decoded prefix.
+          if (i + 6 > partialJson.length) {
+            return result;
+          }
+          const hex = partialJson.slice(i + 2, i + 6);
+          if (!/^[0-9a-fA-F]{4}$/.test(hex)) {
+            return result;
+          }
+          result += String.fromCharCode(parseInt(hex, 16));
+          i += 6;
+          break;
+        }
+        default:
+          // Invalid escape — emit the char literally and move on.
+          result += esc;
+          i += 2;
+          break;
+      }
+      continue;
+    }
+
+    result += ch;
+    i += 1;
+  }
+
+  // Buffer exhausted before the closing quote — value still streaming.
+  return result;
 }
 
 /**

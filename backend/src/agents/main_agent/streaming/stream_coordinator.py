@@ -66,7 +66,25 @@ class StreamCoordinator:
 
         # Track timing for latency metrics
         stream_start_time = time.time()
+        # Wall-clock turn start as a tz-aware datetime. Used post-turn to
+        # tell which artifacts (HEAD.updated_at) were touched *this* turn
+        # vs. carried over from earlier turns in the same session.
+        turn_start_dt = datetime.now(timezone.utc)
         first_token_time: Optional[float] = None
+
+        # Set when a create_artifact / update_artifact tool call is seen
+        # this turn — the only turns that need the post-turn artifacts
+        # query + `artifact` SSE emit. Normal turns pay nothing.
+        artifact_tool_invoked = False
+
+        # MCP Apps (PR #3): toolUseId -> tool name, learned from tool_use /
+        # content_block_start events so a later tool_result can be matched
+        # back to its catalog `_meta.ui`. `ui_resource_emitted` dedupes the
+        # `ui_resource` SSE per toolUseId (a tool result can surface twice —
+        # once via the lifecycle path, once via the tool path). Both stay
+        # empty and unused unless AGENTCORE_MCP_APPS_HOST_ENABLED=true.
+        ui_tool_use_names: Dict[str, str] = {}
+        ui_resource_emitted: set[str] = set()
 
         # Accumulate metadata from stream
         accumulated_metadata: Dict[str, Any] = {"usage": {}, "metrics": {}}
@@ -83,6 +101,30 @@ class StreamCoordinator:
         # and represents the number of messages that existed BEFORE this stream
         initial_message_count = self._get_initial_message_count(session_manager)
         logger.info(f"📊 Initial message count before streaming: {initial_message_count}")
+
+        # MCP Apps PR #5: subscribe this conversation stream to the
+        # app-initiated tool-event broker so a `tools/call` proxied from an
+        # embedded MCP App surfaces as a tool_use/tool_result card in the
+        # live thread (and any buffered while no stream was active flush
+        # in here). Inert + zero-cost unless the host flag is on; removed
+        # in the method-level `finally` so a dropped stream can't leak.
+        app_event_queue = None
+        try:
+            from agents.main_agent.integrations.mcp_apps import (
+                is_mcp_apps_host_enabled,
+            )
+
+            if is_mcp_apps_host_enabled():
+                from apis.shared.mcp_apps.broker import (
+                    get_app_tool_event_broker,
+                )
+
+                app_event_queue = get_app_tool_event_broker().add_subscriber(
+                    session_id
+                )
+        except Exception as e:  # noqa: BLE001 - never block the stream
+            logger.warning("MCP Apps broker subscribe failed: %s", e)
+            app_event_queue = None
 
         try:
             # Get raw agent stream
@@ -125,6 +167,37 @@ class StreamCoordinator:
                                 # Also update global first_token_time for the first message (backward compatibility)
                                 if current_assistant_message_index == 0 and first_token_time is None:
                                     first_token_time = per_message_metadata[0]["first_token_time"]
+
+                # Note whether the agent invoked an artifact authoring
+                # tool this turn. Gates the post-turn artifacts query so
+                # only artifact turns pay for it.
+                if not artifact_tool_invoked and event.get("type") == "tool_use":
+                    tool_name = (
+                        event.get("data", {}).get("tool_use", {}).get("name")
+                    )
+                    if tool_name in ("create_artifact", "update_artifact"):
+                        artifact_tool_invoked = True
+
+                # MCP Apps (PR #3): remember toolUseId -> tool name so a
+                # later tool_result can be matched to its catalog `_meta.ui`.
+                # Captured from both event flavors that carry the pairing:
+                # the `tool_use` event (data.tool_use) and the
+                # `content_block_start` of a tool-use block (data.toolUse).
+                etype = event.get("type")
+                if etype == "tool_use":
+                    td = event.get("data", {}).get("tool_use", {})
+                    tn = td.get("name")
+                    tuid = td.get("tool_use_id") or td.get("toolUseId")
+                    if tn and tuid:
+                        ui_tool_use_names[tuid] = tn
+                elif etype == "content_block_start":
+                    bd = event.get("data", {})
+                    if bd.get("type") == "tool_use":
+                        tu = bd.get("toolUse", {})
+                        tn = tu.get("name")
+                        tuid = tu.get("toolUseId") or tu.get("tool_use_id")
+                        if tn and tuid:
+                            ui_tool_use_names[tuid] = tn
 
                 # Track when assistant messages end
                 if event.get("type") == "message_stop":
@@ -377,6 +450,34 @@ class StreamCoordinator:
                             except Exception as e:
                                 logger.warning(f"Failed to update compaction state: {e}")
 
+                # Emit one `artifact` SSE per artifact created/updated this
+                # turn. Placed after the compaction emit (so it lands with
+                # the other post-message_stop side-channel events) and
+                # before `done`. Best-effort: a lookup failure logs and is
+                # swallowed so it never breaks the live stream.
+                if event.get("type") == "done" and artifact_tool_invoked:
+                    # Anchor every artifact touched this turn to the turn's
+                    # final assistant message. `done` lands after the last
+                    # `message_stop`, so current_assistant_message_index is
+                    # final here; this is the same odd-position index the
+                    # post-loop block uses for per-message metadata
+                    # (assistant_message_ids[-1]), which the messages
+                    # endpoint re-derives as `idx` on reload.
+                    produced_by_message_index = (
+                        initial_message_count
+                        + 2 * current_assistant_message_index
+                        + 1
+                        if current_assistant_message_index >= 0
+                        else None
+                    )
+                    for sse in await self._extract_artifact_events(
+                        session_id=session_id,
+                        user_id=user_id,
+                        turn_start=turn_start_dt,
+                        produced_by_message_index=produced_by_message_index,
+                    ):
+                        yield sse
+
                 # Intercept legacy "error" events from stream_processor and convert to conversational format
                 # This ensures errors appear as assistant messages in the chat UI
                 if event.get("type") == "error":
@@ -399,42 +500,86 @@ class StreamCoordinator:
                         code=error_code, error=synthetic_error, session_id=session_id, recoverable=error_data.get("recoverable", False)
                     )
 
-                    # Emit message events so error appears in chat
-                    yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
-                    yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
-                    yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': conv_error_event.message})}\n\n"
-                    yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
-                    yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
-                    yield conv_error_event.to_sse_format()
-                    yield "event: done\ndata: {}\n\n"
+                    if error_code == ErrorCode.MAX_TOKENS:
+                        # No verbose assistant bubble for truncation. The model
+                        # stream already emitted its own message_stop
+                        # (stopReason max_tokens) for the partial, so do NOT
+                        # emit a second synthetic message_stop here — a
+                        # duplicate with no active builder flips the client
+                        # parser into an error state and drops the
+                        # stream_error below. Just emit the stream_error
+                        # signal (frontend shows the inline "response length
+                        # limit reached" notice + Continue on the partial) and
+                        # done; `done` finalizes any still-open builder.
+                        yield conv_error_event.to_sse_format()
+                        # Durable marker so the Continue affordance survives a
+                        # page refresh (the partial itself is already in
+                        # AgentCore Memory). Best-effort; never blocks the
+                        # stream. Cleared at the start of the next non-resume
+                        # turn (see invocations route).
+                        try:
+                            from apis.shared.sessions.metadata import set_truncated_turn
+                            await set_truncated_turn(session_id, user_id)
+                        except Exception as marker_err:
+                            logger.error(
+                                "max_tokens: failed to persist truncated_turn marker for session %s: %s",
+                                session_id, marker_err, exc_info=True,
+                            )
+                        yield "event: done\ndata: {}\n\n"
+                    else:
+                        # Other errors still surface as a conversational
+                        # assistant message in the chat.
+                        yield f'event: message_start\ndata: {{"role": "assistant"}}\n\n'
+                        yield f'event: content_block_start\ndata: {{"contentBlockIndex": 0, "type": "text"}}\n\n'
+                        yield f"event: content_block_delta\ndata: {json.dumps({'contentBlockIndex': 0, 'type': 'text', 'text': conv_error_event.message})}\n\n"
+                        yield f'event: content_block_stop\ndata: {{"contentBlockIndex": 0}}\n\n'
+                        yield f'event: message_stop\ndata: {{"stopReason": "error"}}\n\n'
+                        yield conv_error_event.to_sse_format()
+                        yield "event: done\ndata: {}\n\n"
 
-                    # Persist error messages to session
-                    try:
-                        from strands.types.content import Message
-                        from strands.types.session import SessionMessage
+                    # Persist error messages to session.
+                    #
+                    # SKIP for max_tokens: Strands already appended the recovered
+                    # partial assistant turn to agent.messages and the
+                    # MessageAddedEvent hook persisted it to AgentCore Memory
+                    # before the exception propagated; the user turn was
+                    # persisted at turn start by the normal hook. Re-persisting
+                    # here would duplicate the user turn and add a SECOND
+                    # consecutive assistant message, breaking Bedrock role
+                    # alternation for the follow-up "Continue" turn. The error
+                    # explanation stays a live-only UI affordance for this turn.
+                    if error_code == ErrorCode.MAX_TOKENS:
+                        logger.info(
+                            f"max_tokens: skipping error re-persist for session {session_id} "
+                            f"(Strands already committed the recovered partial turn)"
+                        )
+                    else:
+                        try:
+                            from strands.types.content import Message
+                            from strands.types.session import SessionMessage
 
-                        from agents.main_agent.session.session_factory import SessionFactory
+                            from agents.main_agent.session.session_factory import SessionFactory
 
-                        persist_session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
+                            persist_session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
 
-                        # Extract user text from prompt (can be string or ContentBlock list)
-                        if isinstance(prompt, str):
-                            user_text = prompt
-                        else:
-                            # Extract text from ContentBlock list
-                            user_text = " ".join(block.get("text", "") for block in prompt if isinstance(block, dict) and "text" in block)
+                            # Extract user text from prompt (can be string or ContentBlock list)
+                            if isinstance(prompt, str):
+                                user_text = prompt
+                            else:
+                                # Extract text from ContentBlock list
+                                user_text = " ".join(block.get("text", "") for block in prompt if isinstance(block, dict) and "text" in block)
 
-                        user_msg: Message = {"role": "user", "content": [{"text": user_text}]}
-                        assistant_msg: Message = {"role": "assistant", "content": [{"text": conv_error_event.message}]}
+                            user_msg: Message = {"role": "user", "content": [{"text": user_text}]}
+                            assistant_msg: Message = {"role": "assistant", "content": [{"text": conv_error_event.message}]}
 
-                        if hasattr(persist_session_manager, "base_manager") and hasattr(persist_session_manager.base_manager, "create_message"):
-                            user_session_msg = SessionMessage.from_message(user_msg, 0)
-                            assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
-                            persist_session_manager.base_manager.create_message(session_id, "default", user_session_msg)
-                            persist_session_manager.base_manager.create_message(session_id, "default", assistant_session_msg)
-                            logger.info(f"💾 Saved intercepted error messages to session {session_id}")
-                    except Exception as persist_error:
-                        logger.error(f"Failed to persist intercepted error to session: {persist_error}")
+                            if hasattr(persist_session_manager, "base_manager") and hasattr(persist_session_manager.base_manager, "create_message"):
+                                user_session_msg = SessionMessage.from_message(user_msg, 0)
+                                assistant_session_msg = SessionMessage.from_message(assistant_msg, 1)
+                                persist_session_manager.base_manager.create_message(session_id, "default", user_session_msg)
+                                persist_session_manager.base_manager.create_message(session_id, "default", assistant_session_msg)
+                                logger.info(f"💾 Saved intercepted error messages to session {session_id}")
+                        except Exception as persist_error:
+                            logger.error(f"Failed to persist intercepted error to session: {persist_error}")
 
                     # Skip the original error event and exit the loop - we've handled the error
                     return
@@ -442,6 +587,34 @@ class StreamCoordinator:
                 # Format as SSE event and yield (including done event after metadata)
                 sse_event = self._format_sse_event(event)
                 yield sse_event
+
+                # MCP Apps PR #5: interleave any app-initiated tool events
+                # (a `tools/call` proxied from an embedded App, dispatched
+                # out-of-band on /mcp-apps/proxy-call) into the live thread.
+                # Non-blocking drain — never waits on the agent stream.
+                if app_event_queue is not None:
+                    from apis.shared.mcp_apps.broker import (
+                        get_app_tool_event_broker,
+                    )
+
+                    for app_ev in get_app_tool_event_broker().drain(
+                        app_event_queue
+                    ):
+                        yield self._format_sse_event(app_ev)
+
+                # MCP Apps (PR #3): if this tool_result belongs to a
+                # UI-bearing tool, fetch its `ui://` resource via
+                # `resources/read` and emit a `ui_resource` SSE right after
+                # the tool_result it correlates to (toolUseId ties them).
+                # Inert + zero-cost unless the host flag is on; best-effort
+                # so a fetch failure never breaks the live stream.
+                if event.get("type") == "tool_result":
+                    for sse in await self._extract_ui_resource_events(
+                        event,
+                        ui_tool_use_names,
+                        ui_resource_emitted,
+                    ):
+                        yield sse
 
             # Calculate end-to-end latency (fallback if done event wasn't received)
             stream_end_time = time.time()
@@ -645,6 +818,23 @@ class StreamCoordinator:
                     logger.info(f"💾 Saved stream error messages to session {session_id}")
             except Exception as persist_error:
                 logger.error(f"Failed to persist stream error to session: {persist_error}")
+        finally:
+            # MCP Apps PR #5: always release the broker subscription —
+            # covers normal completion, the in-loop error `return`, and
+            # the except path, so a dropped stream never leaks a queue.
+            if app_event_queue is not None:
+                try:
+                    from apis.shared.mcp_apps.broker import (
+                        get_app_tool_event_broker,
+                    )
+
+                    get_app_tool_event_broker().remove_subscriber(
+                        session_id, app_event_queue
+                    )
+                except Exception:  # noqa: BLE001
+                    logger.warning(
+                        "MCP Apps broker unsubscribe failed", exc_info=True
+                    )
 
     async def _persist_paused_turn_snapshot(
         self,
@@ -864,6 +1054,148 @@ class StreamCoordinator:
                 ).to_sse_format()
             )
         return events
+
+    async def _extract_artifact_events(
+        self,
+        session_id: Optional[str],
+        user_id: Optional[str],
+        turn_start: datetime,
+        produced_by_message_index: Optional[int] = None,
+    ) -> List[str]:
+        """Yield one SSE-formatted `artifact` event per artifact whose
+        HEAD was created or updated during this turn.
+
+        Identifies "this turn" by `updated_at >= turn_start` rather than
+        parsing the tool result text: it reflects exactly what was
+        persisted, handles multiple artifacts in one turn, and ignores
+        artifacts carried over from earlier turns in the same session. A
+        row with an unparseable `updated_at` is included (the artifact
+        tool ran this turn and the SPA dedupes by id+version anyway).
+
+        Best-effort: any failure (artifacts not configured for this env,
+        DynamoDB error) logs and returns [] — never breaks the stream.
+        """
+        if not (session_id and user_id):
+            return []
+        try:
+            from agents.builtin_tools.artifacts.service import (
+                ArtifactConfigError,
+                list_session_artifacts,
+                set_produced_by_message_index,
+            )
+
+            rows = await asyncio.to_thread(
+                list_session_artifacts, user_id, session_id
+            )
+        except ArtifactConfigError:
+            return []
+        except Exception as e:
+            logger.warning("Failed to list session artifacts: %s", e)
+            return []
+
+        events: List[str] = []
+        for row in rows:
+            updated_at = row.get("updated_at") or ""
+            try:
+                touched = datetime.fromisoformat(updated_at) >= turn_start
+            except (ValueError, TypeError):
+                touched = True
+            if not touched:
+                continue
+            artifact_id = row.get("artifact_id", "")
+            version = int(row.get("version", 0))
+            if produced_by_message_index is not None and artifact_id:
+                try:
+                    await asyncio.to_thread(
+                        set_produced_by_message_index,
+                        user_id,
+                        artifact_id,
+                        version,
+                        produced_by_message_index,
+                    )
+                except Exception as e:  # noqa: BLE001 - best-effort linkage
+                    logger.warning(
+                        "Failed to stamp produced_by_message_index "
+                        "(artifact=%s): %s",
+                        artifact_id,
+                        e,
+                    )
+            payload = {
+                "type": "artifact",
+                "artifactId": artifact_id,
+                "version": version,
+                "title": row.get("title", ""),
+                "contentType": row.get(
+                    "content_type", "text/html; charset=utf-8"
+                ),
+                "sessionId": session_id,
+                "updatedAt": updated_at,
+                "action": "created" if version == 1 else "updated",
+                "producedByMessageIndex": produced_by_message_index,
+            }
+            events.append(
+                f"event: artifact\ndata: {json.dumps(payload)}\n\n"
+            )
+        return events
+
+    async def _extract_ui_resource_events(
+        self,
+        event: Dict[str, Any],
+        tool_use_names: Dict[str, str],
+        emitted: set,
+    ) -> List[str]:
+        """Yield a `ui_resource` SSE for a tool_result that ships an MCP App.
+
+        PR #3 of the MCP Apps host-renderer initiative
+        (`docs/kaizen/scoping/mcp-apps-host-renderer.md`). When the host flag
+        is on and this tool_result's tool declared a `ui://` resource in its
+        `tools/list` `_meta.ui` (recorded in the catalog by PR #2), fetch that
+        resource via the spec-mandated `resources/read` against the same MCP
+        client that surfaced the tool, and emit a single
+
+            `{type, toolUseId, resourceUri, html, mimeType, csp, permissions}`
+
+        event with the HTML inlined (so the frontend needs no MCP client).
+        The blocking `resources/read` runs in a worker thread so the live
+        stream is not stalled.
+
+        Inert and zero-cost when `AGENTCORE_MCP_APPS_HOST_ENABLED` is false.
+        Best-effort: deduped per toolUseId, and any failure logs and returns
+        [] — it never breaks the stream.
+        """
+        from agents.main_agent.integrations.mcp_apps import (
+            fetch_ui_resource,
+            is_mcp_apps_host_enabled,
+        )
+
+        if not is_mcp_apps_host_enabled():
+            return []
+
+        try:
+            tool_result = event.get("data", {}).get("tool_result", {})
+            if not isinstance(tool_result, dict):
+                return []
+            tool_use_id = tool_result.get("toolUseId") or tool_result.get(
+                "tool_use_id"
+            )
+            if not tool_use_id or tool_use_id in emitted:
+                return []
+
+            tool_name = tool_use_names.get(tool_use_id)
+            if not tool_name:
+                return []
+
+            payload = await asyncio.to_thread(
+                fetch_ui_resource, tool_name, tool_use_id
+            )
+            if payload is None:
+                return []
+
+            emitted.add(tool_use_id)
+            return [f"event: ui_resource\ndata: {json.dumps(payload)}\n\n"]
+        except Exception as e:  # noqa: BLE001 - best-effort side channel
+            logger.warning("Failed to emit ui_resource event: %s", e)
+            return []
 
     def _format_sse_event(self, event: Dict[str, Any]) -> str:
         """

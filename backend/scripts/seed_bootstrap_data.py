@@ -207,6 +207,26 @@ CLAUDE_CHAT_SUPPORTED_PARAMS: dict[str, Any] = {
 }
 
 
+# Sonnet 4.6 adds the `effort` knob (adaptive-thinking depth + overall token
+# spend). The per-model `allowed` set is the whole point of the design —
+# it's data, not code, so Opus 4.7 (which also gets `xhigh`/`max`) is just a
+# different array on a different record. Ordered low->high so future clamping
+# degrades gracefully. NOTE: Anthropic's published docs additionally list
+# `max` for Sonnet 4.6; this seeds the narrower low/medium/high set — widen
+# the array here if you want `max` exposed on this model.
+CLAUDE_SONNET_46_SUPPORTED_PARAMS: dict[str, Any] = {
+    "params": {
+        **CLAUDE_CHAT_SUPPORTED_PARAMS["params"],
+        "effort": {
+            "supported": True,
+            "allowed": ["low", "medium", "high"],
+            "default": "high",
+            "locked": False,
+        },
+    }
+}
+
+
 # Default Bedrock models to seed
 DEFAULT_MODELS: list[dict[str, Any]] = [
     {
@@ -241,7 +261,7 @@ DEFAULT_MODELS: list[dict[str, Any]] = [
         "cacheReadPricePerMillionTokens": Decimal("0.30"),
         "supportsCaching": True,
         "isDefault": False,
-        "supportedParams": CLAUDE_CHAT_SUPPORTED_PARAMS,
+        "supportedParams": CLAUDE_SONNET_46_SUPPORTED_PARAMS,
     },
     {
         "modelId": "amazon.nova-2-sonic-v1:0",
@@ -388,6 +408,26 @@ DEFAULT_TOOLS: list[dict[str, Any]] = [
         "protocol": "local",
         "enabledByDefault": False,
         "isPublic": False,
+        "forwardAuthToken": False,
+    },
+    {
+        "toolId": "create_artifact",
+        "displayName": "Create Artifact",
+        "description": "Save standalone HTML or Markdown documents as versioned artifacts the user can open and iterate on.",
+        "category": "document",
+        "protocol": "local",
+        "enabledByDefault": True,
+        "isPublic": True,
+        "forwardAuthToken": False,
+    },
+    {
+        "toolId": "update_artifact",
+        "displayName": "Update Artifact",
+        "description": "Replace an existing artifact's content, creating a new immutable version.",
+        "category": "document",
+        "protocol": "local",
+        "enabledByDefault": True,
+        "isPublic": True,
         "forwardAuthToken": False,
     },
 ]

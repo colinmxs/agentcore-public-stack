@@ -34,6 +34,8 @@ const STACK_FILES: Record<string, string> = {
   'rag-ingestion-stack.ts': 'RagIngestionStack',
   'gateway-stack.ts': 'GatewayStack',
   'sagemaker-fine-tuning-stack.ts': 'SageMakerFineTuningStack',
+  'artifacts-stack.ts': 'ArtifactsStack',
+  'mcp-sandbox-stack.ts': 'McpSandboxStack',
   'inference-api-stack.ts': 'InferenceApiStack',
   'app-api-stack.ts': 'AppApiStack',
   'frontend-stack.ts': 'FrontendStack',
@@ -57,6 +59,11 @@ const DEPLOYMENT_TIERS: Record<string, number> = {
   RagIngestionStack: 1,
   GatewayStack: 1,
   SageMakerFineTuningStack: 1,
+  ArtifactsStack: 1,
+  // Reads no cross-stack SSM (cert from config, hosted zone via lookup);
+  // writes only its own /mcp-sandbox/origin. Parallel-safe with the other
+  // tier-1 stacks.
+  McpSandboxStack: 1,
   InferenceApiStack: 2,
   AppApiStack: 3,
   FrontendStack: 4,

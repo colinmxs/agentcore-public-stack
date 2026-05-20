@@ -170,6 +170,7 @@ from apis.app_api.costs.routes import router as costs_router
 from apis.app_api.chat.routes import router as chat_router
 from apis.app_api.chat.converse_routes import router as converse_router
 from apis.app_api.chat.proxy_routes import router as bff_chat_proxy_router
+from apis.app_api.mcp_apps.routes import router as mcp_apps_router
 from apis.app_api.memory.routes import router as memory_router
 from apis.app_api.tools.routes import router as tools_router
 from apis.app_api.files.routes import router as files_router
@@ -181,6 +182,7 @@ from apis.app_api.connectors.routes import router as connectors_router
 from apis.app_api.system.routes import router as system_router
 from apis.app_api.shares.routes import conversations_share_router, shares_router, shared_view_router
 from apis.app_api.voice import router as voice_router
+from apis.app_api.user_menu_links.routes import router as user_menu_links_router
 
 # Include routers
 app.include_router(health_router)
@@ -198,6 +200,7 @@ app.include_router(costs_router)
 app.include_router(chat_router)  # Application-specific chat endpoints
 app.include_router(converse_router)  # Proxies to Inference API for cost accounting
 app.include_router(bff_chat_proxy_router)  # Cookie-authenticated SSE proxy (Phase 4, dormant until SPA cutover)
+app.include_router(mcp_apps_router)  # MCP Apps app-initiated tools/call proxy (PR #5; inert until host flag on)
 app.include_router(memory_router)  # AgentCore Memory access endpoints
 app.include_router(tools_router)  # Tool discovery and permissions
 app.include_router(files_router)  # File upload via pre-signed URLs
@@ -207,12 +210,21 @@ app.include_router(conversations_share_router)  # Share conversations endpoints
 app.include_router(shares_router)  # Share management (update, revoke, export)
 app.include_router(shared_view_router)  # Shared conversation read-only view
 app.include_router(voice_router)  # Cookie-authenticated WS proxy for Nova Sonic voice mode (#211)
+app.include_router(user_menu_links_router)  # Public read of admin-managed user-menu links
 
 # Conditionally register fine-tuning routes
 if os.environ.get("FINE_TUNING_ENABLED", "false").lower() == "true":
     from apis.app_api.fine_tuning.routes import router as fine_tuning_router
     app.include_router(fine_tuning_router)
     logger.info("Fine-tuning routes enabled")
+
+# Conditionally register artifact render-token routes. Infra only sets
+# the secret ARN when the artifacts feature is enabled for the
+# environment, so its presence is the enablement signal.
+if os.environ.get("ARTIFACTS_RENDER_TOKEN_SECRET_ARN"):
+    from apis.app_api.artifacts.routes import router as artifacts_router
+    app.include_router(artifacts_router)
+    logger.info("Artifact render-token routes enabled")
 
 # Mount static file directories for serving generated content
 # These are created by tools (visualization, code interpreter, etc.)

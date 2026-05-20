@@ -47,8 +47,7 @@ interface RoleFormGroup {
     class: 'block',
   },
   template: `
-    <div class="min-h-dvh">
-      <div class="mx-auto max-w-4xl px-4 py-8 sm:px-6 lg:px-8">
+    <div class="max-w-4xl">
         <!-- Back Button -->
         <button
           (click)="goBack()"
@@ -73,7 +72,7 @@ interface RoleFormGroup {
           <div class="flex items-center justify-center h-64">
             <div class="flex flex-col items-center gap-4">
               <div
-                class="animate-spin rounded-full size-12 border-4 border-gray-300 dark:border-gray-600 border-t-blue-600"
+                class="animate-spin rounded-full size-12 border-4 border-gray-300 dark:border-gray-600 border-t-blue-600 dark:border-t-blue-400"
               ></div>
               <p class="text-sm text-gray-500 dark:text-gray-400">
                 Loading role...
@@ -396,7 +395,6 @@ interface RoleFormGroup {
             </div>
           </form>
         }
-      </div>
     </div>
   `,
 })

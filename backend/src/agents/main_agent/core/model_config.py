@@ -30,6 +30,11 @@ _BEDROCK_PARAM_MAP: Dict[str, str] = {
     "top_k": "additional_request_fields.top_k",
     "max_tokens": "max_tokens",
     "thinking": "additional_request_fields.thinking",
+    # `effort` is Anthropic's top-level `output_config.effort`. It isn't on
+    # the Bedrock Converse standard shape either, so it rides through
+    # `additionalModelRequestFields` like `thinking`/`top_k`. Soft guidance
+    # for thinking depth on adaptive models; also tunes overall token spend.
+    "effort": "additional_request_fields.output_config.effort",
 }
 
 _OPENAI_PARAM_MAP: Dict[str, str] = {
@@ -52,6 +57,13 @@ _GEMINI_PARAM_MAP: Dict[str, str] = {
 # them. Suppression happens in `_apply_canonical_params` before dispatch.
 _THINKING_INCOMPATIBLE = {"temperature", "top_p", "top_k"}
 
+# Canonical params whose provider-native value must be a plain int. JSON- and
+# DynamoDB-sourced inference params arrive untyped (Dict[str, Any]) and can be
+# a float (e.g. 100000.0); the Bedrock Converse SDK rejects a float maxTokens
+# with a hard boto3 validation error. Coerce at this single translation
+# chokepoint. `thinking` is excluded — `_shape_thinking_value` already int()s it.
+_INTEGER_CANONICAL_PARAMS: frozenset[str] = frozenset({"max_tokens", "top_k"})
+
 # Union of every canonical key we know how to translate. Used by the request
 # merge step to gate user-supplied keys against an allow-list — admins can
 # constrain known params with `supportedParams`, but users shouldn't be able
@@ -71,19 +83,49 @@ def _set_nested(target: Dict[str, Any], dotted_path: str, value: Any) -> None:
     cursor[keys[-1]] = value
 
 
-def _shape_thinking_value(provider_label: str, value: Any) -> Any:
+# Bedrock model-id substrings whose Anthropic models require (Opus 4.7) or
+# recommend (Opus 4.6, Sonnet 4.6, Mythos) adaptive thinking. On these,
+# `{type: "enabled", budget_tokens: N}` is rejected (4.7) or deprecated; the
+# shape is `{type: "adaptive"}` and depth is governed by the `effort` param.
+# Substring match — real ids are inference-profile-prefixed and date-stamped
+# (e.g. `us.anthropic.claude-opus-4-7-20XXXXXX-v1:0`). Unknown ids fall back
+# to the legacy enabled shape, which is the safe default for older models.
+_BEDROCK_ADAPTIVE_THINKING_MARKERS = (
+    "claude-opus-4-7",
+    "claude-opus-4-6",
+    "claude-sonnet-4-6",
+    "claude-mythos",
+)
+
+
+def _bedrock_uses_adaptive_thinking(model_id: Optional[str]) -> bool:
+    """True when the Bedrock model id requires/recommends adaptive thinking."""
+    mid = (model_id or "").lower()
+    return any(marker in mid for marker in _BEDROCK_ADAPTIVE_THINKING_MARKERS)
+
+
+def _shape_thinking_value(
+    provider_label: str, value: Any, model_id: Optional[str] = None
+) -> Any:
     """Wrap a canonical ``thinking`` value into the provider-native object.
 
     The canonical value is an ``int`` budget (>= 1024), or falsy / 0 to disable.
-    Anthropic on Bedrock requires ``{type, budget_tokens}``; Gemini wants
-    ``{thinking_budget}``. Anything that's already a dict (admin pasting raw
-    SDK shape) is passed through verbatim.
+    On Bedrock, older Anthropic models take ``{type: "enabled", budget_tokens}``;
+    Opus 4.6/4.7 and Sonnet 4.6 require ``{type: "adaptive"}`` instead (Opus 4.7
+    rejects ``enabled`` with a 400). For adaptive models the int budget only
+    signals "thinking on" — depth is controlled by the separate ``effort``
+    param — and we set ``display: "summarized"`` so the reasoning trace the
+    UI renders isn't blank (Opus 4.7 defaults ``display`` to ``"omitted"``).
+    Gemini wants ``{thinking_budget}``. Anything that's already a dict (admin
+    pasting raw SDK shape) is passed through verbatim.
     """
     if isinstance(value, dict):
         return value
     if not value:
         return None
     if provider_label == "bedrock":
+        if _bedrock_uses_adaptive_thinking(model_id):
+            return {"type": "adaptive", "display": "summarized"}
         return {"type": "enabled", "budget_tokens": int(value)}
     if provider_label == "gemini":
         return {"thinking_budget": int(value)}
@@ -95,6 +137,7 @@ def _apply_canonical_params(
     canonical_params: Dict[str, Any],
     provider_map: Dict[str, str],
     provider_label: str,
+    model_id: Optional[str] = None,
 ) -> None:
     """Translate canonical inference params into provider-native shape.
 
@@ -125,10 +168,16 @@ def _apply_canonical_params(
             )
             continue
         if name == "thinking":
-            shaped = _shape_thinking_value(provider_label, value)
+            shaped = _shape_thinking_value(provider_label, value, model_id)
             if shaped is None:
                 continue
             value = shaped
+        elif (
+            name in _INTEGER_CANONICAL_PARAMS
+            and isinstance(value, (int, float))
+            and not isinstance(value, bool)
+        ):
+            value = int(value)
         _set_nested(target, native_path, value)
 
 
@@ -227,7 +276,9 @@ class ModelConfig:
     def to_bedrock_config(self) -> Dict[str, Any]:
         """Convert to BedrockModel kwargs, translating canonical inference params."""
         config: Dict[str, Any] = {"model_id": self.model_id}
-        _apply_canonical_params(config, self.inference_params, _BEDROCK_PARAM_MAP, "bedrock")
+        _apply_canonical_params(
+            config, self.inference_params, _BEDROCK_PARAM_MAP, "bedrock", self.model_id
+        )
 
         # Bedrock prompt caching is intentionally deferred. The previous SDK
         # blocker — strands PR #1438, which fixed `cachePoint` blocks landing
@@ -256,7 +307,9 @@ class ModelConfig:
     def to_openai_config(self) -> Dict[str, Any]:
         """Convert to OpenAIModel kwargs, translating canonical inference params."""
         params: Dict[str, Any] = {}
-        _apply_canonical_params(params, self.inference_params, _OPENAI_PARAM_MAP, "openai")
+        _apply_canonical_params(
+            params, self.inference_params, _OPENAI_PARAM_MAP, "openai", self.model_id
+        )
         config: Dict[str, Any] = {"model_id": self.model_id}
         if params:
             config["params"] = params
@@ -265,7 +318,9 @@ class ModelConfig:
     def to_gemini_config(self) -> Dict[str, Any]:
         """Convert to GeminiModel kwargs, translating canonical inference params."""
         params: Dict[str, Any] = {}
-        _apply_canonical_params(params, self.inference_params, _GEMINI_PARAM_MAP, "gemini")
+        _apply_canonical_params(
+            params, self.inference_params, _GEMINI_PARAM_MAP, "gemini", self.model_id
+        )
         config: Dict[str, Any] = {"model_id": self.model_id}
         if params:
             config["params"] = params

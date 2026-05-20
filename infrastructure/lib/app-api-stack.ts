@@ -314,6 +314,14 @@ export class AppApiStack extends cdk.Stack {
       this,
       `/${config.projectPrefix}/auth/auth-providers-table-arn`
     );
+    const userMenuLinksTableName = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/admin/user-menu-links-table-name`
+    );
+    const userMenuLinksTableArn = ssm.StringParameter.valueForStringParameter(
+      this,
+      `/${config.projectPrefix}/admin/user-menu-links-table-arn`
+    );
     const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
       this,
       `/${config.projectPrefix}/auth/auth-provider-secrets-arn`
@@ -332,10 +340,8 @@ export class AppApiStack extends cdk.Stack {
     );
     // Phase 7 retired the public PKCE SPA client; the BFF confidential
     // client is the only one left. `COGNITO_APP_CLIENT_ID` is still wired
-    // because `get_current_user` (Bearer auth on `/chat/agent-stream`)
-    // needs *some* client_id to validate against — point it at the BFF
-    // client so any Bearer token minted via the BFF token-exchange path
-    // is accepted there too. The cookie-auth dependency uses
+    // because `CognitoIdentityProviderService` (federated OIDC IdP
+    // management) reads it. The cookie-auth dependency uses
     // `COGNITO_BFF_APP_CLIENT_ID` (same value) via its own validator.
     const cognitoAppClientId = ssm.StringParameter.valueForStringParameter(
       this,
@@ -524,6 +530,7 @@ export class AppApiStack extends cdk.Stack {
         DYNAMODB_AUTH_PROVIDERS_TABLE_NAME: authProvidersTableName,
         AUTH_PROVIDER_SECRETS_ARN: authProviderSecretsArn,
         DYNAMODB_USER_SETTINGS_TABLE_NAME: userSettingsTableName,
+        DYNAMODB_USER_MENU_LINKS_TABLE_NAME: userMenuLinksTableName,
         // Cognito configuration (imported from Infrastructure Stack)
         COGNITO_USER_POOL_ID: cognitoUserPoolId,
         COGNITO_APP_CLIENT_ID: cognitoAppClientId,
@@ -941,6 +948,87 @@ export class AppApiStack extends cdk.Stack {
       })
     );
 
+    // ============================================================
+    // Artifacts integration
+    // ============================================================
+    // App-api owns the user-facing artifact endpoints (list, get, share)
+    // and mints short-lived render-token JWTs that authorize the iframe to
+    // load a specific artifact version. The agent runtime in inference-api
+    // is the writer of new versions; app-api here is the user-facing reader
+    // plus token minter. Gated on `config.artifacts.enabled` so app-api
+    // remains deployable when the artifacts feature is off.
+    if (config.artifacts.enabled) {
+      const artifactsBucketName = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/bucket-name`
+      );
+      const artifactsBucketArn = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/bucket-arn`
+      );
+      const artifactsTableName = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/table-name`
+      );
+      const artifactsTableArn = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/table-arn`
+      );
+      const artifactsOrigin = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/origin`
+      );
+      const artifactRenderTokenSecretArn = ssm.StringParameter.valueForStringParameter(
+        this,
+        `/${config.projectPrefix}/artifacts/render-token-key-arn`
+      );
+
+      taskDefinition.taskRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          sid: 'ArtifactsBucketReadWrite',
+          effect: iam.Effect.ALLOW,
+          actions: [
+            's3:GetObject',
+            's3:PutObject',
+            's3:PutObjectTagging',
+            's3:ListBucket',
+            // No DeleteObject — soft-delete via object tag + bucket lifecycle.
+          ],
+          resources: [artifactsBucketArn, `${artifactsBucketArn}/*`],
+        })
+      );
+
+      taskDefinition.taskRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          sid: 'ArtifactsTableReadWrite',
+          effect: iam.Effect.ALLOW,
+          actions: [
+            'dynamodb:GetItem',
+            'dynamodb:PutItem',
+            'dynamodb:UpdateItem',
+            'dynamodb:Query',
+            'dynamodb:BatchGetItem',
+          ],
+          resources: [artifactsTableArn, `${artifactsTableArn}/index/*`],
+        })
+      );
+
+      taskDefinition.taskRole.addToPrincipalPolicy(
+        new iam.PolicyStatement({
+          sid: 'ArtifactRenderTokenSecretRead',
+          effect: iam.Effect.ALLOW,
+          actions: ['secretsmanager:GetSecretValue', 'secretsmanager:DescribeSecret'],
+          // Wildcard suffix matches the random-suffix actual ARN.
+          resources: [`${artifactRenderTokenSecretArn}*`],
+        })
+      );
+
+      container.addEnvironment('S3_ARTIFACTS_BUCKET_NAME', artifactsBucketName);
+      container.addEnvironment('DYNAMODB_ARTIFACTS_TABLE_NAME', artifactsTableName);
+      container.addEnvironment('ARTIFACTS_ORIGIN', artifactsOrigin);
+      container.addEnvironment('ARTIFACTS_RENDER_TOKEN_SECRET_ARN', artifactRenderTokenSecretArn);
+    }
+
     // Grant Bedrock permissions for title generation (Nova Micro)
     taskDefinition.taskRole.addToPrincipalPolicy(
       new iam.PolicyStatement({
@@ -1250,6 +1338,22 @@ export class AppApiStack extends cdk.Stack {
         effect: iam.Effect.ALLOW,
         actions: ['secretsmanager:GetSecretValue', 'secretsmanager:PutSecretValue', 'secretsmanager:DescribeSecret'],
         resources: [`${authProviderSecretsArn}*`], // Wildcard for random suffix
+      })
+    );
+
+    // Grant CRUD on the user-menu links table (admin-managed)
+    taskDefinition.taskRole.addToPrincipalPolicy(
+      new iam.PolicyStatement({
+        sid: 'UserMenuLinksTableAccess',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'dynamodb:GetItem',
+          'dynamodb:PutItem',
+          'dynamodb:UpdateItem',
+          'dynamodb:DeleteItem',
+          'dynamodb:Query',
+        ],
+        resources: [userMenuLinksTableArn],
       })
     );
 

@@ -8,7 +8,7 @@
 **An open-source, production-ready Generative AI platform for institutions**
 *Built by Boise State University, designed for everyone.*
 
-[![Release](https://img.shields.io/badge/Release-v1.0.0--beta.26-6366f1?style=flat&logo=github&logoColor=white)](RELEASE_NOTES.md)
+[![Release](https://img.shields.io/badge/Release-v1.0.0--beta.27-6366f1?style=flat&logo=github&logoColor=white)](RELEASE_NOTES.md)
 [![Nightly](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/nightly.yml/badge.svg)](https://github.com/Boise-State-Development/agentcore-public-stack/actions/workflows/nightly.yml)
 
 ![Python](https://img.shields.io/badge/Python-3.13+-3776AB?style=flat&logo=python&logoColor=white)
@@ -204,6 +204,7 @@ The fastest path to production is the **GitHub Actions pipeline**, which automat
 |-----------|-------------|---------|
 | Networking | VPC, ALB, Security Groups | Isolated network with load balancing |
 | Fine-Tuning *(optional)* | SageMaker, S3, DynamoDB | Model training, batch inference, artifact storage |
+| Artifacts *(optional)* | DynamoDB, S3, CloudFront, Lambda | Iframe-isolated rendering for agent-generated HTML/code artifacts |
 | RAG Ingestion | Lambda, S3 | Document ingestion for retrieval-augmented generation |
 | Inference API | Bedrock Agentcore | Agent orchestration with Bedrock |
 | App API | ECS Fargate | Authentication, admin, session management |
@@ -248,7 +249,8 @@ agentcore-public-stack/
 │       └── services/               # State management
 ├── infrastructure/                  # AWS CDK stacks
 │   └── lib/                         # Infra, App API, Inference API, Frontend,
-│                                    # Gateway, RAG Ingestion, SageMaker Fine-Tuning
+│                                    # Gateway, RAG Ingestion, SageMaker Fine-Tuning,
+│                                    # Artifacts
 └── .github/
     ├── workflows/                   # CI/CD pipelines
     └── docs/deploy/                 # Deployment guides
@@ -260,7 +262,7 @@ agentcore-public-stack/
 
 See [RELEASE_NOTES.md](RELEASE_NOTES.md) for the full changelog, including new features, bug fixes, platform upgrades, and deployment notes for each release.
 
-**Current release:** v1.0.0-beta.26
+**Current release:** v1.0.0-beta.27
 
 ---
 

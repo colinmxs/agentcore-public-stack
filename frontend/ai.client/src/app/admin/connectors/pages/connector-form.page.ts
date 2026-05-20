@@ -103,8 +103,7 @@ const ICON_ACCEPTED_MIME_TYPES = [
   ],
   host: { class: 'block' },
   template: `
-    <div class="min-h-dvh">
-      <div class="mx-auto max-w-3xl px-4 py-8 sm:px-6 lg:px-8">
+    <div class="max-w-3xl">
         <button
           type="button"
           (click)="goBack()"
@@ -126,7 +125,7 @@ const ICON_ACCEPTED_MIME_TYPES = [
         @if (loading()) {
           <div class="flex h-64 items-center justify-center">
             <div class="flex flex-col items-center gap-4">
-              <div class="size-12 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600 dark:border-gray-600"></div>
+              <div class="size-12 animate-spin rounded-full border-4 border-gray-300 border-t-blue-600 dark:border-t-blue-400 dark:border-gray-600"></div>
               <p class="text-sm/6 text-gray-500 dark:text-gray-400">Loading connector...</p>
             </div>
           </div>
@@ -572,7 +571,6 @@ const ICON_ACCEPTED_MIME_TYPES = [
             </div>
           </form>
         }
-      </div>
     </div>
   `,
 })

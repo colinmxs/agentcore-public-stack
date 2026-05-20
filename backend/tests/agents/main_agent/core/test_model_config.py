@@ -180,6 +180,109 @@ class TestToBedrockConfig:
         assert result["temperature"] == 0.5
         assert result["top_p"] == 0.8
 
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "us.anthropic.claude-opus-4-7-20260115-v1:0",
+            "us.anthropic.claude-opus-4-6",
+            "us.anthropic.claude-sonnet-4-6",
+            "claude-mythos-preview",
+        ],
+    )
+    def test_bedrock_thinking_uses_adaptive_shape_on_newer_models(self, model_id):
+        """Opus 4.6/4.7, Sonnet 4.6 and Mythos require/recommend adaptive
+        thinking. Opus 4.7 rejects `{type:"enabled"}` with a 400, so the
+        int budget only signals "on" and the shape is `{type:"adaptive"}`.
+        `display:"summarized"` keeps the reasoning trace from going blank
+        (Opus 4.7 defaults display to "omitted")."""
+        cfg = ModelConfig(model_id=model_id, inference_params={"thinking": 4096})
+        result = cfg.to_bedrock_config()
+
+        assert result["additional_request_fields"]["thinking"] == {
+            "type": "adaptive",
+            "display": "summarized",
+        }
+        assert "budget_tokens" not in result["additional_request_fields"]["thinking"]
+
+    @pytest.mark.parametrize(
+        "model_id",
+        [
+            "us.anthropic.claude-sonnet-4-5-20250101-v1:0",
+            "claude-3-opus",
+            "us.anthropic.claude-haiku-4-5-20251001-v1:0",
+        ],
+    )
+    def test_bedrock_thinking_keeps_legacy_enabled_shape_on_older_models(self, model_id):
+        """Older models (Sonnet 4.5, Claude 3, Haiku 4.5) still take the
+        legacy `{type:"enabled", budget_tokens:N}` shape — unchanged."""
+        cfg = ModelConfig(model_id=model_id, inference_params={"thinking": 4096})
+        result = cfg.to_bedrock_config()
+
+        assert result["additional_request_fields"]["thinking"] == {
+            "type": "enabled",
+            "budget_tokens": 4096,
+        }
+
+    def test_bedrock_adaptive_thinking_still_suppresses_sampling_params(self):
+        """Anthropic rejects temperature/top_p/top_k while extended thinking
+        is on regardless of mode — suppression still fires for adaptive."""
+        cfg = ModelConfig(
+            model_id="us.anthropic.claude-opus-4-7-20260115-v1:0",
+            inference_params={"thinking": 2048, "temperature": 0.7, "top_p": 0.9},
+        )
+        result = cfg.to_bedrock_config()
+
+        assert "temperature" not in result
+        assert "top_p" not in result
+        assert result["additional_request_fields"]["thinking"]["type"] == "adaptive"
+
+    def test_bedrock_effort_maps_to_output_config(self):
+        """`effort` rides through additional_request_fields as Anthropic's
+        top-level `output_config.effort` — not a Converse standard field."""
+        cfg = ModelConfig(
+            model_id="us.anthropic.claude-opus-4-7-20260115-v1:0",
+            inference_params={"effort": "xhigh"},
+        )
+        result = cfg.to_bedrock_config()
+
+        assert result["additional_request_fields"]["output_config"]["effort"] == "xhigh"
+        assert "effort" not in result
+        assert "output_config" not in result
+
+    def test_bedrock_effort_and_adaptive_thinking_coexist(self):
+        """effort and adaptive thinking are independent knobs — both land
+        under additional_request_fields together."""
+        cfg = ModelConfig(
+            model_id="us.anthropic.claude-opus-4-7-20260115-v1:0",
+            inference_params={"thinking": 2048, "effort": "high"},
+        )
+        result = cfg.to_bedrock_config()
+
+        arf = result["additional_request_fields"]
+        assert arf["thinking"] == {"type": "adaptive", "display": "summarized"}
+        assert arf["output_config"]["effort"] == "high"
+
+    def test_bedrock_config_coerces_float_max_tokens_to_int(self):
+        """JSON-sourced inference params can carry a float (100000.0); the
+        Bedrock SDK rejects a float maxTokens, so it must be coerced to int."""
+        cfg = ModelConfig(inference_params={"max_tokens": 100000.0, "top_k": 40.0})
+        result = cfg.to_bedrock_config()
+
+        assert result["max_tokens"] == 100000
+        assert isinstance(result["max_tokens"], int)
+        assert result["additional_request_fields"]["top_k"] == 40
+        assert isinstance(result["additional_request_fields"]["top_k"], int)
+
+    def test_gemini_config_coerces_float_max_tokens_to_int(self):
+        """Coercion applies across providers — Gemini max_output_tokens too."""
+        cfg = ModelConfig(
+            model_id="gemini-pro", inference_params={"max_tokens": 2048.0}
+        )
+        result = cfg.to_gemini_config()
+
+        assert result["params"]["max_output_tokens"] == 2048
+        assert isinstance(result["params"]["max_output_tokens"], int)
+
     def test_bedrock_config_drops_unknown_canonical_param(self):
         """Provider translation table silently drops keys it doesn't know."""
         cfg = ModelConfig(inference_params={"reasoning_effort": "high"})

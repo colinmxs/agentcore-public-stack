@@ -38,6 +38,7 @@ export {
   processStreamEvent,
   createStreamLineParser,
   inferContentBlockType,
+  extractStreamingStringField,
   parseToolResultContent,
   type StreamParserCallbacks,
 } from './stream-parser-core';
@@ -58,6 +59,8 @@ export {
   validateOAuthRequiredEvent,
   validateToolApprovalRequiredEvent,
   validateCompactionEvent,
+  validateArtifactEvent,
+  validateUiResourceEvent,
 } from './stream-parser-core';
 
 // Types
@@ -80,6 +83,10 @@ export type {
   OAuthRequiredEvent,
   ToolApprovalRequiredEvent,
   CompactionEvent,
+  ArtifactEvent,
+  UiResourceEvent,
+  McpUiCsp,
+  McpUiPermissions,
   StreamEventType,
   StreamEventData,
   ParsedStreamEvent,

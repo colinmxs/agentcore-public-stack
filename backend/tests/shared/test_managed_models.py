@@ -92,3 +92,89 @@ class TestManagedModels:
         from apis.shared.models.managed_models import create_managed_model
         model = await create_managed_model(_make_model_data("gpt4", provider="openai"))
         assert model.supports_caching is False
+
+
+class TestMaxTokensCeiling:
+    """max_tokens spec must not exceed the model's declared output ceiling."""
+
+    def test_default_above_ceiling_rejected(self):
+        # Default 8192 is within the (absent) row bounds but exceeds the
+        # model's 4096 ceiling — only the cross-field rule should fire.
+        with pytest.raises(Exception):
+            _make_model_data(
+                maxOutputTokens=4096,
+                supportedParams={"params": {"max_tokens": {"supported": True, "default": 8192}}},
+            )
+
+    def test_max_above_ceiling_rejected(self):
+        with pytest.raises(Exception):
+            _make_model_data(
+                maxOutputTokens=4096,
+                supportedParams={"params": {"max_tokens": {"supported": True, "max": 8192}}},
+            )
+
+    def test_within_ceiling_ok(self):
+        m = _make_model_data(
+            maxOutputTokens=8192,
+            supportedParams={"params": {"max_tokens": {"supported": True, "max": 8192, "default": 8192}}},
+        )
+        assert m.max_output_tokens == 8192
+
+    def test_unsupported_row_not_ceiling_checked(self):
+        m = _make_model_data(
+            maxOutputTokens=4096,
+            supportedParams={"params": {"max_tokens": {"supported": False, "max": 999999, "default": 999999}}},
+        )
+        assert m.max_output_tokens == 4096
+
+    def test_update_payload_enforced(self):
+        from apis.shared.models.models import ManagedModelUpdate
+        with pytest.raises(Exception):
+            ManagedModelUpdate(
+                maxOutputTokens=4096,
+                supportedParams={"params": {"max_tokens": {"supported": True, "default": 8192}}},
+            )
+
+
+class TestEffortAllowed:
+    """Enum params carry an `allowed` set; `default` must be a member.
+
+    This is the per-model representation of the effort-tier difference
+    (Sonnet 4.6 vs Opus 4.7) — data, not model-family branching in code.
+    """
+
+    def test_default_in_allowed_ok(self):
+        m = _make_model_data(
+            supportedParams={"params": {"effort": {
+                "supported": True, "allowed": ["low", "medium", "high"], "default": "high",
+            }}},
+        )
+        spec = m.supported_params.params["effort"]
+        assert spec.allowed == ["low", "medium", "high"]
+        assert spec.default == "high"
+
+    def test_default_not_in_allowed_rejected(self):
+        with pytest.raises(Exception):
+            _make_model_data(
+                supportedParams={"params": {"effort": {
+                    "supported": True, "allowed": ["low", "medium", "high"], "default": "xhigh",
+                }}},
+            )
+
+    def test_empty_allowed_rejected(self):
+        with pytest.raises(Exception):
+            _make_model_data(
+                supportedParams={"params": {"effort": {
+                    "supported": True, "allowed": [], "default": None,
+                }}},
+            )
+
+    def test_allowed_without_default_ok(self):
+        # No default is valid — runtime sends nothing, model uses its own
+        # API default (effort "high").
+        m = _make_model_data(
+            supportedParams={"params": {"effort": {
+                "supported": True, "allowed": ["low", "medium", "high", "xhigh", "max"],
+            }}},
+        )
+        assert m.supported_params.params["effort"].default is None

@@ -49,6 +49,14 @@ class EnvVars:
     # --- Gateway ---
     GATEWAY_MCP_ENABLED = "AGENTCORE_GATEWAY_MCP_ENABLED"
 
+    # --- MCP Apps (host renderer initiative) ---
+    MCP_APPS_HOST_ENABLED = "AGENTCORE_MCP_APPS_HOST_ENABLED"
+    # Origin of the sandbox-proxy (proxy.html) the SPA frames an MCP App in.
+    # Deploy pipeline sources it from SSM /{projectPrefix}/mcp-sandbox/origin
+    # (published by the PR #1 CDK stack). Surfaced to the SPA on the
+    # `ui_resource` SSE event so the frontend needs no separate config fetch.
+    MCP_APPS_SANDBOX_ORIGIN = "AGENTCORE_MCP_APPS_SANDBOX_ORIGIN"
+
     # --- Frontend ---
     FRONTEND_URL = "FRONTEND_URL"
 
@@ -103,6 +111,19 @@ class Defaults:
 
     # --- Gateway ---
     GATEWAY_MCP_ENABLED = True
+
+    # --- MCP Apps (host renderer initiative) ---
+    # Gates the entire MCP Apps host surface. Flipped on in PR #7 of
+    # docs/kaizen/scoping/mcp-apps-host-renderer.md (the full #1–#6 chain
+    # landed first). Set AGENTCORE_MCP_APPS_HOST_ENABLED=false to opt a
+    # given environment back out.
+    MCP_APPS_HOST_ENABLED = True
+    # Empty unless the mcp-sandbox stack is deployed: the inference-api CDK
+    # stack wires `/{prefix}/mcp-sandbox/origin` into this env only when
+    # `config.mcpSandbox.enabled` (conditional-SSM, mirrors artifacts).
+    # An empty origin keeps the surface dormant — the SPA has no proxy
+    # origin to frame an App in even with the host flag on.
+    MCP_APPS_SANDBOX_ORIGIN = ""
 
     # --- Voice Agent ---
     NOVA_SONIC_MODEL_ID = "amazon.nova-2-sonic-v1:0"

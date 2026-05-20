@@ -35,7 +35,6 @@ from apis.shared.models.managed_models import (
     update_managed_model,
     delete_managed_model,
 )
-from apis.shared.rbac.system_admin import require_system_admin
 
 logger = logging.getLogger(__name__)
 
@@ -612,7 +611,7 @@ async def delete_managed_model_endpoint(
 @router.post("/managed-models/{model_id}/sync-roles", response_model=ManagedModel)
 async def sync_model_roles(
     model_id: str,
-    admin_user: User = Depends(require_system_admin),
+    admin_user: User = Depends(require_admin),
 ):
     """
     Sync a model's allowedAppRoles with the AppRole system.
@@ -726,6 +725,11 @@ router.include_router(oauth_admin_router)
 from .auth_providers.routes import router as auth_providers_router
 
 router.include_router(auth_providers_router)
+
+# ========== Include User Menu Links Admin Subrouter ==========
+from .user_menu_links.routes import router as user_menu_links_admin_router
+
+router.include_router(user_menu_links_admin_router)
 
 # ========== Include Fine-Tuning Admin Subrouter (conditional) ==========
 if os.environ.get("FINE_TUNING_ENABLED", "false").lower() == "true":

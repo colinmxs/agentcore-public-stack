@@ -29,6 +29,49 @@ class InterruptResponseEntry(BaseModel):
     response: Any = None
 
 
+class AppToolCallEntry(BaseModel):
+    """An app-initiated `tools/call` proxied from an embedded MCP App.
+
+    MCP Apps PR #5. The iframe's JSON-RPC `tools/call` is relayed by
+    app-api to `/invocations` with this directive. When set, the route
+    does NOT run a model turn: it dispatches the single named tool against
+    the conversation's live MCP client (rebuilding the agent like a resume
+    so the client session/auth are wired identically), then returns the
+    `CallToolResult` and publishes synthesized `tool_use`/`tool_result`
+    into the conversation thread via the per-session event broker.
+
+    `tool_use_id` is the originating MCP App's tool-use id; proxied calls
+    inherit that conversation/iframe binding for provenance.
+    """
+
+    tool_use_id: str
+    tool_name: str
+    arguments: Dict[str, Any] = {}
+
+
+class AppContextUpdateEntry(BaseModel):
+    """App-supplied model context pushed via `ui/update-model-context`.
+
+    MCP Apps PR #6. The embedded App's JSON-RPC `ui/update-model-context`
+    is relayed by app-api to `/invocations` with this directive. Like
+    `app_tool_call` it runs NO model turn — it stashes the payload on the
+    conversation agent's Strands `agent.state` under
+    `mcp_apps.context[resource_uri]`. The next real user turn merges any
+    pending entries into that turn's prompt and clears them.
+
+    `resource_uri` is the bound MCP App resource (`ui://...`) and is the
+    dedupe key: the host keeps only the last update per resource between
+    turns (spec: "if multiple updates are received before the next user
+    message, Host SHOULD only send the last"). `content` /
+    `structured_content` mirror the spec's `ui/update-model-context`
+    params; at least one is set.
+    """
+
+    resource_uri: str
+    content: Optional[List[Dict[str, Any]]] = None
+    structured_content: Optional[Dict[str, Any]] = None
+
+
 class InvocationRequest(BaseModel):
     """Input for /invocations endpoint with multi-provider support"""
 
@@ -57,10 +100,24 @@ class InvocationRequest(BaseModel):
     # new one. `message` is ignored in that case — the original prompt is
     # already in the agent's interrupt context.
     interrupt_responses: Optional[List[InterruptResponseEntry]] = None
+    # When true, this is a "Continue" after a max_tokens truncation. Like a
+    # resume, `message` is ignored: instead of synthesizing a new user turn,
+    # the agent re-enters the loop with an empty prompt so the model
+    # continues the truncated assistant message already in restored history
+    # (assistant-prefill). Bypasses quota / RAG / file resolution like resume.
+    continue_truncated: Optional[bool] = None
     # Selects which agent factory variant builds the turn. Defaults to "chat"
     # (MainAgent / ChatAgent) when omitted, so existing clients are unaffected.
     # Pass "skill" to route through SkillAgent's progressive skill disclosure.
     agent_type: Optional[str] = None
+    # When set, this invocation is an app-initiated tools/call proxied from
+    # an embedded MCP App (PR #5). `message` is ignored; no model turn runs.
+    app_tool_call: Optional[AppToolCallEntry] = None
+    # When set, this invocation pushes app-supplied model context onto the
+    # conversation agent's state (PR #6, `ui/update-model-context`).
+    # `message` is ignored; no model turn runs. The context is merged into
+    # (and cleared before) the next real user turn's prompt.
+    app_context_update: Optional[AppContextUpdateEntry] = None
 
 
 class InvocationResponse(BaseModel):

@@ -6,6 +6,7 @@ import { ChatStateService } from './chat-state.service';
 import { v4 as uuidv4 } from 'uuid';
 import {
   ErrorService,
+  ErrorCode,
   StreamErrorEvent,
   ConversationalStreamError,
 } from '../../../services/error/error.service';
@@ -17,15 +18,20 @@ import {
 import { OAuthConsentService } from '../../../services/oauth-consent/oauth-consent.service';
 import { ToolApprovalService } from '../../../services/tool-approval/tool-approval.service';
 import { CompactionSummaryService } from './compaction-summary.service';
+import { ArtifactStateService } from '../artifacts/artifact-state.service';
+import { McpAppStateService } from '../mcp-apps/mcp-app-state.service';
 import type {
   OAuthRequiredEvent,
   ToolApprovalRequiredEvent,
   CompactionEvent,
+  ArtifactEvent,
+  UiResourceEvent,
 } from '../../../shared/utils/stream-parser';
 import {
   processStreamEvent,
   createStreamLineParser,
   inferContentBlockType,
+  extractStreamingStringField,
   parseToolResultContent,
   type StreamParserCallbacks,
   type ContentBlockBuilder,
@@ -49,6 +55,12 @@ enum StreamState {
 // Re-export ToolProgress for backwards compatibility
 export type { ToolProgress };
 
+/**
+ * Tools whose `content` input is a long document worth surfacing live (as a
+ * "generating…" preview) while the model is still streaming the tool call.
+ */
+const STREAMING_CONTENT_TOOLS = new Set(['create_artifact', 'update_artifact']);
+
 @Injectable({
   providedIn: 'root',
 })
@@ -59,6 +71,8 @@ export class StreamParserService {
   private oauthConsentService = inject(OAuthConsentService);
   private toolApprovalService = inject(ToolApprovalService);
   private compactionSummary = inject(CompactionSummaryService);
+  private artifactState = inject(ArtifactStateService);
+  private mcpAppState = inject(McpAppStateService);
 
   // =========================================================================
   // State Signals
@@ -207,8 +221,14 @@ export class StreamParserService {
     // Check if we should process this event
     // oauth_required arrives after message_stop/done by design (see CLAUDE.md SSE
     // table) — allow it through even when the stream state is Completed.
+    // stream_error is a terminal signal that likewise arrives after
+    // message_stop (e.g. max_tokens truncation) and must never be dropped by
+    // state gating, or recovery affordances (Continue) silently disappear.
     const isAlwaysAllowedEvent =
-      event === 'message_start' || event === 'error' || event === 'oauth_required';
+      event === 'message_start' ||
+      event === 'error' ||
+      event === 'oauth_required' ||
+      event === 'stream_error';
     if (!isAlwaysAllowedEvent && !this.shouldProcessEvent()) {
       return;
     }
@@ -327,6 +347,31 @@ export class StreamParserService {
 
       onCompaction: (data: CompactionEvent) => this.compactionSummary.recordLive(data),
 
+      onArtifact: (data: ArtifactEvent) => {
+        // Same post-message_stop timing as oauth_required: the producing
+        // assistant message is the last assistant message in the list.
+        // Anchor live placement to its concrete id — the numeric index
+        // only lines up after a reload (it counts the memory tool
+        // messages the folded client message doesn't have).
+        const messages = this.allMessages();
+        let lastAssistantId: string | undefined;
+        for (let i = messages.length - 1; i >= 0; i--) {
+          if (messages[i].role === 'assistant') {
+            lastAssistantId = messages[i].id;
+            break;
+          }
+        }
+        this.artifactState.recordLive(data, lastAssistantId);
+      },
+
+      onUiResource: (data: UiResourceEvent) => {
+        // Inline event (arrives right after its tool_result, mid-stream),
+        // unlike the post-message_stop side channels above — just record
+        // it keyed by toolUseId. The tool-use renderer picks it up
+        // reactively and swaps in the MCP App frame.
+        this.mcpAppState.recordLive(data);
+      },
+
       onToolApprovalRequired: (data: ToolApprovalRequiredEvent) => {
         const messages = this.allMessages();
         let lastAssistantId: string | undefined;
@@ -348,8 +393,19 @@ export class StreamParserService {
       },
 
       onError: (data) => this.handleError(data),
-      onStreamError: (data) =>
-        this.errorService.handleConversationalStreamError(data as ConversationalStreamError),
+      onStreamError: (data) => {
+        const streamError = data as ConversationalStreamError;
+        this.errorService.handleConversationalStreamError(streamError);
+        // A max_tokens truncation is recoverable: Strands already persisted
+        // the partial assistant turn, so the user can continue from it.
+        // Surface the "Continue" affordance on the last assistant message.
+        const isMaxTokens =
+          streamError.code === ErrorCode.MAX_TOKENS ||
+          streamError.metadata?.['error_kind'] === 'max_tokens';
+        if (isMaxTokens) {
+          this.chatStateService.setLastTurnContinuable(true);
+        }
+      },
 
       onParseError: (message) => this.setError(message),
     };
@@ -379,6 +435,10 @@ export class StreamParserService {
 
     // Clear stopReason in ChatStateService
     this.chatStateService.setStopReason(null);
+
+    // A new assistant turn is streaming — retire any stale "Continue"
+    // affordance from a previous max_tokens truncation.
+    this.chatStateService.setLastTurnContinuable(false);
 
     // Compute predictable message ID
     const completedCount = this.completedMessages().length;
@@ -962,6 +1022,21 @@ export class StreamParserService {
 
       if (builder.status) {
         toolUseData['status'] = builder.status;
+      }
+
+      // While an artifact tool is still streaming (no result yet), surface the
+      // partially-generated `content` so the UI can show live progress. The
+      // full tool-input JSON is incomplete during this window, so JSON.parse
+      // above yields {} — we extract the in-flight value directly instead.
+      if (
+        !builder.result &&
+        builder.toolName &&
+        STREAMING_CONTENT_TOOLS.has(builder.toolName)
+      ) {
+        const streaming = extractStreamingStringField(inputStr, 'content');
+        if (streaming) {
+          toolUseData['streamingContent'] = streaming;
+        }
       }
 
       return {

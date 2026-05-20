@@ -15,6 +15,12 @@ import { UserService } from '../auth/user.service';
 import { ChatHttpService } from './services/chat/chat-http.service';
 import { StreamParserService } from './services/chat/stream-parser.service';
 import { CompactionSummaryService } from './services/chat/compaction-summary.service';
+import { ArtifactStateService } from './services/artifacts/artifact-state.service';
+import { ArtifactHttpService } from './services/artifacts/artifact-http.service';
+import { McpAppStateService } from './services/mcp-apps/mcp-app-state.service';
+import { McpAppCardStateService } from './services/mcp-apps/mcp-app-card-state.service';
+import { McpAppCardHttpService } from './services/mcp-apps/mcp-app-card-http.service';
+import { McpAppConsentService } from './services/mcp-apps/mcp-app-consent.service';
 import { Dialog } from '@angular/cdk/dialog';
 import { AssistantService } from '../assistants/services/assistant.service';
 import { Assistant } from '../assistants/models/assistant.model';
@@ -44,6 +50,12 @@ export class ConversationPage implements OnDestroy {
   private chatHttpService = inject(ChatHttpService);
   private streamParserService = inject(StreamParserService);
   private compactionSummary = inject(CompactionSummaryService);
+  private artifactState = inject(ArtifactStateService);
+  private mcpAppState = inject(McpAppStateService);
+  private mcpAppCardState = inject(McpAppCardStateService);
+  private mcpAppCardHttp = inject(McpAppCardHttpService);
+  private mcpAppConsent = inject(McpAppConsentService);
+  private artifactHttp = inject(ArtifactHttpService);
   private assistantService = inject(AssistantService);
   private router = inject(Router);
   private dialog = inject(Dialog);
@@ -185,6 +197,14 @@ export class ConversationPage implements OnDestroy {
         lastContextTokens: session.lastContextTokens,
         contextWindow: session.contextWindow,
       });
+      // Refresh-survival for the max_tokens "Continue" affordance: the
+      // truncated partial is already in restored history; this flag is the
+      // missing piece. Only set true here — the route-change reset clears
+      // it (cross-session safety) and the live stream_error path owns the
+      // in-turn signal, so we never clobber a live true with stale metadata.
+      if (session.lastTurnContinuable) {
+        this.chatStateService.setLastTurnContinuable(true);
+      }
     });
 
     // Hydrate the compaction summary indicator from persisted session
@@ -278,11 +298,32 @@ export class ConversationPage implements OnDestroy {
       // flash on the badge while the new metadata is in flight.
       this.chatStateService.seedSessionAggregates({});
 
+      // Retire any prior session's "Continue" affordance before the new
+      // session's metadata lands; the seed effect re-sets it from
+      // metadata.lastTurnContinuable when applicable.
+      this.chatStateService.setLastTurnContinuable(false);
+
       // Compaction summary is session-scoped — clear before loading the
       // next session's metadata so the previous session's totals don't
       // bleed in. The hydration effect above will reseed from
       // currentSession.totalSummarizedTurns once the metadata fetch lands.
       this.compactionSummary.reset();
+
+      // Artifacts are session-scoped — clear before the next session
+      // loads so a prior session's cards don't bleed in, then re-hydrate
+      // from the app-api list endpoint below.
+      this.artifactState.reset();
+
+      // MCP App frames persist for the conversation's lifetime per the
+      // scoping doc; teardown is on conversation change. No re-hydration:
+      // the inline `ui_resource` event only arrives live during a stream.
+      this.mcpAppState.reset();
+
+      // Option A (PR #6): app-initiated tool cards DO re-hydrate (the
+      // broker is in-memory). Any open consent prompt for the prior
+      // conversation is dropped fail-closed.
+      this.mcpAppCardState.reset();
+      this.mcpAppConsent.reset();
 
       if (id) {
         // Update the messages signal reference (this triggers reactivity)
@@ -300,6 +341,13 @@ export class ConversationPage implements OnDestroy {
         } catch (error) {
           console.error('Failed to load messages for session:', id, error);
         }
+
+        // Re-hydrate artifact cards for this session so they survive a
+        // refresh / deep link. Best-effort and non-blocking: a 404 (the
+        // artifacts feature is off for this environment) or any network
+        // error just means no cards — never disrupt the session.
+        this.hydrateArtifacts(id);
+        this.hydrateMcpAppCards(id);
       } else {
         // No session selected, clear the session metadata
         this.sessionService.setSessionMetadataId(null);
@@ -316,6 +364,45 @@ export class ConversationPage implements OnDestroy {
   ngOnDestroy() {
     this.routeSubscription?.unsubscribe();
     this.queryParamSubscription?.unsubscribe();
+  }
+
+  /**
+   * Best-effort: pull the session's artifacts and seed the registry so
+   * cards render on load. `seedFromHydration` is non-clobbering, so a
+   * slow response that lands after a live `artifact` event won't undo a
+   * newer version. A guard re-checks the active session because the
+   * fetch is async and the user may have navigated away.
+   */
+  private hydrateArtifacts(sessionId: string): void {
+    this.artifactHttp
+      .listSessionArtifacts(sessionId)
+      .then(artifacts => {
+        if (artifacts.length && this.sessionId() === sessionId) {
+          this.artifactState.seedFromHydration(artifacts);
+        }
+      })
+      .catch(() => {
+        // Feature disabled (404) or transient error — no cards, no noise.
+      });
+  }
+
+  /**
+   * Best-effort: pull persisted app-initiated tool cards and seed the
+   * registry so they survive a reload (the PR #5 broker is in-memory).
+   * Mirrors {@link hydrateArtifacts}: non-clobbering, session-guarded,
+   * silent on 404 (MCP Apps host flag off) or transient error.
+   */
+  private hydrateMcpAppCards(sessionId: string): void {
+    this.mcpAppCardHttp
+      .listSessionCards(sessionId)
+      .then(cards => {
+        if (cards.length && this.sessionId() === sessionId) {
+          this.mcpAppCardState.seedFromHydration(cards);
+        }
+      })
+      .catch(() => {
+        // Feature disabled (404) or transient error — no cards, no noise.
+      });
   }
 
   onMessageSubmitted(message: { content: string, timestamp: Date, fileUploadIds?: string[] }) {
@@ -349,6 +436,23 @@ export class ConversationPage implements OnDestroy {
     if (this.stagedSessionId()) {
       this.stagedSessionId.set(null);
     }
+  }
+
+  /**
+   * "Continue" affordance on a max_tokens-truncated assistant message.
+   * NOT a new user turn: it resumes the truncated assistant message via the
+   * continuation path (no visible user bubble, empty prompt) so the model
+   * picks up where it stopped instead of re-answering the original request.
+   */
+  onContinueRequested() {
+    const sessionIdToUse = this.effectiveSessionId();
+    const assistantIdToUse =
+      this.assistantIdFromQuery() || this.assistant()?.assistantId || undefined;
+    this.chatRequestService
+      .continueTruncatedTurn(sessionIdToUse, assistantIdToUse)
+      .catch((error) => {
+        console.error('Error continuing truncated turn:', error);
+      });
   }
 
   /**

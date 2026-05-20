@@ -1,6 +1,7 @@
-import { Component, computed, input, signal, effect, OnDestroy, inject, PLATFORM_ID } from '@angular/core';
+import { Component, computed, input, output, signal, effect, OnDestroy, inject, PLATFORM_ID } from '@angular/core';
 import { isPlatformBrowser } from '@angular/common';
 import { Message } from '../../services/models/message.model';
+import type { Artifact } from '../../services/artifacts/artifact.model';
 import { UserMessageComponent } from './components/user-message.component';
 import { AssistantMessageComponent } from './components/assistant-message.component';
 import { MessageMetadataBadgesComponent } from './components/message-metadata-badges.component';
@@ -10,6 +11,11 @@ import { PulsatingLoaderComponent } from '../../../components/pulsating-loader.c
 import { OAuthConsentPromptComponent } from './components/oauth-consent-prompt/oauth-consent-prompt.component';
 import { ToolApprovalPromptComponent } from './components/tool-approval-prompt/tool-approval-prompt.component';
 import { CompactionSummaryComponent } from './components/compaction-summary/compaction-summary.component';
+import { ArtifactCardComponent } from './components/artifact/artifact-card.component';
+import { ArtifactPanelComponent } from './components/artifact/artifact-panel.component';
+import { ArtifactStateService } from '../../services/artifacts/artifact-state.service';
+import { McpAppCardComponent } from './components/mcp-app-card/mcp-app-card.component';
+import { McpAppCardStateService } from '../../services/mcp-apps/mcp-app-card-state.service';
 import {
   OAuthConsentRequest,
   OAuthConsentService,
@@ -19,6 +25,7 @@ import {
   ToolApprovalService,
 } from '../../../services/tool-approval/tool-approval.service';
 import { CompactionSummaryService } from '../../services/chat/compaction-summary.service';
+import { ChatStateService } from '../../services/chat/chat-state.service';
 
 @Component({
   selector: 'app-message-list',
@@ -32,6 +39,9 @@ import { CompactionSummaryService } from '../../services/chat/compaction-summary
     OAuthConsentPromptComponent,
     ToolApprovalPromptComponent,
     CompactionSummaryComponent,
+    ArtifactCardComponent,
+    ArtifactPanelComponent,
+    McpAppCardComponent,
   ],
   templateUrl: './message-list.component.html',
   styleUrl: './message-list.component.css',
@@ -50,9 +60,113 @@ export class MessageListComponent implements OnDestroy {
   streamingMessageId = input<string | null>(null);
   embeddedMode = input<boolean>(false);
 
+  /** Bubbled up when the user clicks "Continue" on a max_tokens-truncated
+   *  assistant message. The page reuses the normal submit path with a
+   *  canned prompt. */
+  continueRequested = output<void>();
+
   private consentService = inject(OAuthConsentService);
   private toolApprovalService = inject(ToolApprovalService);
   private compactionSummary = inject(CompactionSummaryService);
+  private artifactState = inject(ArtifactStateService);
+  private mcpAppCardState = inject(McpAppCardStateService);
+  private chatStateService = inject(ChatStateService);
+
+  /** Persisted app-initiated tool cards, hydrated on reload (PR #6). */
+  protected mcpAppCards = this.mcpAppCardState.cards;
+  protected hasMcpAppCards = this.mcpAppCardState.hasCards;
+
+  /** Only the final message of a recoverable max_tokens turn gets the
+   *  "Continue" affordance. Live-only state, never shown while a new
+   *  response is streaming. */
+  private readonly lastMessageId = computed<string | null>(() => {
+    const m = this.messages();
+    return m.length ? m[m.length - 1].id : null;
+  });
+
+  protected canContinueFor(messageId: string): boolean {
+    return (
+      this.chatStateService.lastTurnContinuable() &&
+      !this.isChatLoading() &&
+      messageId === this.lastMessageId()
+    );
+  }
+
+  /** Session artifacts, newest first. Anchored ones render inline after
+   *  their producing assistant message (`producedByMessageIndex` matches
+   *  the `msg-{sessionId}-{index}` id); the rest fall back to the
+   *  end-of-conversation strip. */
+  protected artifacts = this.artifactState.artifacts;
+
+  /** Trailing 0-based index from a `msg-{sessionId}-{index}` id. Splits
+   *  on the last `-` so a session id containing dashes is irrelevant.
+   *  Null for any id that doesn't end in an integer. */
+  private parseMessageIndex(id: string): number | null {
+    const dash = id.lastIndexOf('-');
+    if (dash < 0) return null;
+    const n = Number(id.slice(dash + 1));
+    return Number.isInteger(n) ? n : null;
+  }
+
+  /** The message index an artifact anchors to. Live events carry a
+   *  concrete producing message id (stable as later turns append);
+   *  reload hydration only has the AgentCore-Memory numeric index, which
+   *  is exact there. Prefer the live id, fall back to the index. */
+  private resolveArtifactIndex(a: Artifact): number | null {
+    if (a.producedByMessageId) {
+      const live = this.parseMessageIndex(a.producedByMessageId);
+      if (live !== null) return live;
+    }
+    return a.producedByMessageIndex ?? null;
+  }
+
+  private readonly loadedMessageIndices = computed<ReadonlySet<number>>(() => {
+    const s = new Set<number>();
+    for (const m of this.messages()) {
+      const n = this.parseMessageIndex(m.id);
+      if (n !== null) s.add(n);
+    }
+    return s;
+  });
+
+  /** artifacts grouped by the message index that produced them, limited
+   *  to indices that are actually in the loaded (possibly paginated)
+   *  message list. */
+  private readonly artifactsByMessageIndex = computed<
+    ReadonlyMap<number, Artifact[]>
+  >(() => {
+    const loaded = this.loadedMessageIndices();
+    const map = new Map<number, Artifact[]>();
+    for (const a of this.artifacts()) {
+      const idx = this.resolveArtifactIndex(a);
+      if (idx == null || !loaded.has(idx)) continue;
+      const list = map.get(idx);
+      if (list) list.push(a);
+      else map.set(idx, [a]);
+    }
+    return map;
+  });
+
+  /** Artifacts with no usable anchor (legacy rows written before linkage,
+   *  or an index pointing outside the loaded page) — keep them visible in
+   *  the end-of-conversation strip so nothing silently disappears. */
+  protected readonly orphanArtifacts = computed<Artifact[]>(() => {
+    const loaded = this.loadedMessageIndices();
+    return this.artifacts().filter((a) => {
+      const idx = this.resolveArtifactIndex(a);
+      return idx == null || !loaded.has(idx);
+    });
+  });
+
+  protected readonly hasOrphanArtifacts = computed(
+    () => this.orphanArtifacts().length > 0,
+  );
+
+  protected artifactsForMessageId(id: string): Artifact[] {
+    const n = this.parseMessageIndex(id);
+    if (n === null) return [];
+    return this.artifactsByMessageIndex().get(n) ?? [];
+  }
 
   /** Single end-of-conversation compaction summary inputs. Sourced from
    *  live SSE events plus session-metadata hydration on load. The fade-in
