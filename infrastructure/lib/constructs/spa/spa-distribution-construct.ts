@@ -96,10 +96,9 @@ export class SpaDistributionConstruct extends Construct {
       enableAcceptEncodingBrotli: true,
     });
 
-    const artifactsOrigin =
-      config.artifacts.enabled && config.domainName
-        ? `https://artifacts.${config.domainName}`
-        : undefined;
+    const artifactsOrigin = config.domainName
+      ? `https://artifacts.${config.domainName}`
+      : undefined;
 
     const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
       this,

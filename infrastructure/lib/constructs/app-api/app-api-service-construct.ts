@@ -909,10 +909,8 @@ export class AppApiServiceConstruct extends Construct {
     // and mints short-lived render-token JWTs that authorize the iframe to
     // load a specific artifact version. The agent runtime in inference-api
     // is the writer of new versions; app-api here is the user-facing reader
-    // plus token minter. Gated on `config.artifacts.enabled` so app-api
-    // remains deployable when the artifacts feature is off.
-    if (config.artifacts.enabled) {
-      const artifactsBucketName = ssm.StringParameter.valueForStringParameter(
+    // Artifacts: app-api is the user-facing reader plus token minter.
+    const artifactsBucketName = ssm.StringParameter.valueForStringParameter(
         this,
         `/${config.projectPrefix}/artifacts/bucket-name`
       );
@@ -977,11 +975,10 @@ export class AppApiServiceConstruct extends Construct {
         })
       );
 
-      container.addEnvironment('S3_ARTIFACTS_BUCKET_NAME', artifactsBucketName);
-      container.addEnvironment('DYNAMODB_ARTIFACTS_TABLE_NAME', artifactsTableName);
-      container.addEnvironment('ARTIFACTS_ORIGIN', artifactsOrigin);
-      container.addEnvironment('ARTIFACTS_RENDER_TOKEN_SECRET_ARN', artifactRenderTokenSecretArn);
-    }
+    container.addEnvironment('S3_ARTIFACTS_BUCKET_NAME', artifactsBucketName);
+    container.addEnvironment('DYNAMODB_ARTIFACTS_TABLE_NAME', artifactsTableName);
+    container.addEnvironment('ARTIFACTS_ORIGIN', artifactsOrigin);
+    container.addEnvironment('ARTIFACTS_RENDER_TOKEN_SECRET_ARN', artifactRenderTokenSecretArn);
 
     // Grant Bedrock permissions for title generation (Nova Micro)
     taskDefinition.taskRole.addToPrincipalPolicy(
@@ -1380,9 +1377,8 @@ export class AppApiServiceConstruct extends Construct {
     // Default: fine-tuning disabled
     container.addEnvironment('FINE_TUNING_ENABLED', 'false');
 
-    if (config.fineTuning.enabled) {
-      // Import resource identifiers from SageMakerFineTuningStack via SSM
-      const ftJobsTableName = ssm.StringParameter.valueForStringParameter(
+    // Fine-tuning: import resource identifiers from SageMakerFineTuningStack via SSM
+    const ftJobsTableName = ssm.StringParameter.valueForStringParameter(
         this, `/${config.projectPrefix}/fine-tuning/jobs-table-name`
       );
       const ftJobsTableArn = ssm.StringParameter.valueForStringParameter(
@@ -1506,7 +1502,6 @@ export class AppApiServiceConstruct extends Construct {
           ],
         })
       );
-    }
 
     // Grant permissions for AgentCore Memory (imported from InferenceApiStack)
     const memoryArn = ssm.StringParameter.valueForStringParameter(

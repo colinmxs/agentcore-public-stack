@@ -165,28 +165,28 @@ export class PlatformStack extends cdk.Stack {
   public readonly mcpSandboxDistribution: cloudfront.IDistribution;
   public readonly mcpSandboxProxyOrigin: string;
 
-  // ── Artifacts (gated)
-  public readonly artifactsContentBucket?: s3.IBucket;
-  public readonly artifactsTable?: dynamodb.ITable;
-  public readonly artifactRenderTokenSecret?: secretsmanager.ISecret;
+  // ── Artifacts
+  public readonly artifactsContentBucket: s3.IBucket;
+  public readonly artifactsTable: dynamodb.ITable;
+  public readonly artifactRenderTokenSecret: secretsmanager.ISecret;
   /**
    * The CSP `frame-ancestors` source list resolved for the artifacts
    * iframe origin (space-separated). Forwarded to BackendStack so the
    * render Lambda's `FRAME_ANCESTOR_ORIGIN` env var stays byte-
    * identical with the CloudFront response-headers-policy.
    */
-  public readonly artifactsFrameAncestors?: string;
+  public readonly artifactsFrameAncestors: string;
 
-  // ── Fine-tuning (gated)
-  public readonly fineTuningJobsTable?: dynamodb.ITable;
-  public readonly fineTuningAccessTable?: dynamodb.ITable;
-  public readonly fineTuningDataBucket?: s3.IBucket;
+  // ── Fine-tuning
+  public readonly fineTuningJobsTable: dynamodb.ITable;
+  public readonly fineTuningAccessTable: dynamodb.ITable;
+  public readonly fineTuningDataBucket: s3.IBucket;
 
   // ── Internal handles for the two-step wiring methods
   private readonly _config: AppConfig;
   private readonly _spaBucketConstruct: SpaBucketConstruct;
   private readonly _mcpSandboxBucketConstruct: McpSandboxBucketConstruct;
-  private readonly _artifactsDataConstruct?: ArtifactsDataConstruct;
+  private readonly _artifactsDataConstruct: ArtifactsDataConstruct;
   private _spaDistributionConstruct?: SpaDistributionConstruct;
   private _artifactsDistributionConstruct?: ArtifactsDistributionConstruct;
 
@@ -255,14 +255,12 @@ export class PlatformStack extends cdk.Stack {
     this.bffAppClientSecret = cognitoConstruct.bffAppClientSecret;
     this.cognitoDomain = cognitoConstruct.cognitoDomain;
 
-    if (config.artifacts.enabled) {
-      const artifactRenderToken = new ArtifactRenderTokenSecretConstruct(
-        this,
-        'ArtifactRenderToken',
-        { config },
-      );
-      this.artifactRenderTokenSecret = artifactRenderToken.secret;
-    }
+    const artifactRenderToken = new ArtifactRenderTokenSecretConstruct(
+      this,
+      'ArtifactRenderToken',
+      { config },
+    );
+    this.artifactRenderTokenSecret = artifactRenderToken.secret;
 
     // ============================================================
     // Data tables
@@ -324,38 +322,34 @@ export class PlatformStack extends cdk.Stack {
     this.ragVectorIndex = ragData.vectorIndex;
 
     // ============================================================
-    // Fine-tuning data (gated)
+    // Fine-tuning data
     // ============================================================
-    if (config.fineTuning.enabled) {
-      const fineTuningData = new FineTuningDataConstruct(
-        this,
-        'FineTuningData',
-        { config },
-      );
-      this.fineTuningJobsTable = fineTuningData.jobsTable;
-      this.fineTuningAccessTable = fineTuningData.accessTable;
-      this.fineTuningDataBucket = fineTuningData.dataBucket;
-    }
+    const fineTuningData = new FineTuningDataConstruct(
+      this,
+      'FineTuningData',
+      { config },
+    );
+    this.fineTuningJobsTable = fineTuningData.jobsTable;
+    this.fineTuningAccessTable = fineTuningData.accessTable;
+    this.fineTuningDataBucket = fineTuningData.dataBucket;
 
     // ============================================================
-    // Artifacts data (gated; distribution wired in later via
+    // Artifacts data (distribution wired in later via
     // `wireArtifactsDistribution`)
     // ============================================================
-    if (config.artifacts.enabled) {
-      this._artifactsDataConstruct = new ArtifactsDataConstruct(
-        this,
-        'ArtifactsData',
-        { config },
-      );
-      this.artifactsContentBucket = this._artifactsDataConstruct.bucket;
-      this.artifactsTable = this._artifactsDataConstruct.table;
+    this._artifactsDataConstruct = new ArtifactsDataConstruct(
+      this,
+      'ArtifactsData',
+      { config },
+    );
+    this.artifactsContentBucket = this._artifactsDataConstruct.bucket;
+    this.artifactsTable = this._artifactsDataConstruct.table;
 
-      const domainName = config.domainName!;
-      this.artifactsFrameAncestors = [
-        `https://${domainName}`,
-        ...config.artifacts.extraFrameAncestors,
-      ].join(' ');
-    }
+    const artifactsDomainName = config.domainName!;
+    this.artifactsFrameAncestors = [
+      `https://${artifactsDomainName}`,
+      ...config.artifacts.extraFrameAncestors,
+    ].join(' ');
 
     // ============================================================
     // MCP sandbox edge (always-on; bucket+dist; deployment is wired
@@ -454,11 +448,8 @@ export class PlatformStack extends cdk.Stack {
   public wireArtifactsDistribution(
     renderFunctionUrl: lambda.IFunctionUrl,
   ): cloudfront.IDistribution | undefined {
-    if (
-      !this._config.artifacts.enabled ||
-      this._artifactsDistributionConstruct
-    ) {
-      return this._artifactsDistributionConstruct?.distribution;
+    if (this._artifactsDistributionConstruct) {
+      return this._artifactsDistributionConstruct.distribution;
     }
 
     this._artifactsDistributionConstruct = new ArtifactsDistributionConstruct(

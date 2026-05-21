@@ -96,38 +96,34 @@ export class BackendStack extends cdk.Stack {
     );
 
     // ============================================================
-    // Artifact Render Lambda (gated)
+    // Artifact Render Lambda
     // ============================================================
-    if (config.artifacts.enabled) {
-      const renderLambda = new ArtifactRenderLambdaConstruct(
-        this,
-        'ArtifactRender',
-        {
-          config,
-          artifactsTable: platform.artifactsTable!,
-          artifactsBucket: platform.artifactsContentBucket!,
-          frameAncestors: platform.artifactsFrameAncestors!,
-        },
-      );
-
-      // Wire the render Lambda's Function URL back to Platform so
-      // the artifacts CloudFront distribution can use it as its origin.
-      platform.wireArtifactsDistribution(renderLambda.functionUrl);
-    }
-
-    // ============================================================
-    // SageMaker Fine-Tuning IAM (gated)
-    // ============================================================
-    if (config.fineTuning.enabled) {
-      new SageMakerExecutionRoleConstruct(this, 'FineTuning', {
+    const renderLambda = new ArtifactRenderLambdaConstruct(
+      this,
+      'ArtifactRender',
+      {
         config,
-        dataBucket: platform.fineTuningDataBucket!,
-        jobsTable: platform.fineTuningJobsTable!,
-        vpc: platform.vpc,
-        privateSubnetIdsString: platform.vpc.privateSubnets
-          .map((s) => s.subnetId)
-          .join(','),
-      });
-    }
+        artifactsTable: platform.artifactsTable,
+        artifactsBucket: platform.artifactsContentBucket,
+        frameAncestors: platform.artifactsFrameAncestors,
+      },
+    );
+
+    // Wire the render Lambda's Function URL back to Platform so
+    // the artifacts CloudFront distribution can use it as its origin.
+    platform.wireArtifactsDistribution(renderLambda.functionUrl);
+
+    // ============================================================
+    // SageMaker Fine-Tuning IAM
+    // ============================================================
+    new SageMakerExecutionRoleConstruct(this, 'FineTuning', {
+      config,
+      dataBucket: platform.fineTuningDataBucket,
+      jobsTable: platform.fineTuningJobsTable,
+      vpc: platform.vpc,
+      privateSubnetIdsString: platform.vpc.privateSubnets
+        .map((s) => s.subnetId)
+        .join(','),
+    });
   }
 }

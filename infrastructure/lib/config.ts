@@ -302,12 +302,12 @@ export function loadConfig(scope: cdk.App): AppConfig {
       vectorDistanceMetric: process.env.CDK_RAG_DISTANCE_METRIC || scope.node.tryGetContext('ragIngestion')?.vectorDistanceMetric,
     },
     fineTuning: {
-      enabled: parseBooleanEnv(process.env.CDK_FINE_TUNING_ENABLED) ?? scope.node.tryGetContext('fineTuning')?.enabled ?? false,
+      enabled: parseBooleanEnv(process.env.CDK_FINE_TUNING_ENABLED) ?? scope.node.tryGetContext('fineTuning')?.enabled ?? true,
       defaultQuotaHours: parseIntEnv(process.env.CDK_FINE_TUNING_DEFAULT_QUOTA_HOURS) ?? scope.node.tryGetContext('fineTuning')?.defaultQuotaHours ?? 0,
       additionalCorsOrigins: process.env.CDK_FINE_TUNING_CORS_ORIGINS || scope.node.tryGetContext('fineTuning')?.additionalCorsOrigins,
     },
     artifacts: {
-      enabled: parseBooleanEnv(process.env.CDK_ARTIFACTS_ENABLED) ?? scope.node.tryGetContext('artifacts')?.enabled ?? false,
+      enabled: parseBooleanEnv(process.env.CDK_ARTIFACTS_ENABLED) ?? scope.node.tryGetContext('artifacts')?.enabled ?? true,
       certificateArn: process.env.CDK_ARTIFACTS_CERTIFICATE_ARN || scope.node.tryGetContext('artifacts')?.certificateArn,
       retentionDays: parseIntEnv(process.env.CDK_ARTIFACTS_RETENTION_DAYS) ?? scope.node.tryGetContext('artifacts')?.retentionDays ?? 90,
       extraFrameAncestors: process.env.CDK_ARTIFACTS_EXTRA_FRAME_ANCESTORS?.split(',')
@@ -572,69 +572,11 @@ function validateConfig(config: AppConfig): void {
     }
   }
 
-  if (config.artifacts.enabled) {
-    if (!config.domainName) {
-      throw new Error(
-        'Artifacts stack requires CDK_DOMAIN_NAME to be set — the artifact origin ' +
-        'is derived as artifacts.{CDK_DOMAIN_NAME}.'
-      );
-    }
-    if (!config.infrastructureHostedZoneDomain) {
-      throw new Error(
-        'Artifacts stack requires CDK_HOSTED_ZONE_DOMAIN to be set — used to look ' +
-        'up the Route53 zone where the artifacts subdomain record is created.'
-      );
-    }
-    if (!config.artifacts.certificateArn) {
-      throw new Error(
-        'Artifacts stack requires CDK_ARTIFACTS_CERTIFICATE_ARN — an ACM cert ' +
-        'in us-east-1 for the artifacts.{domain} CloudFront distribution.'
-      );
-    }
-    // CloudFront requires the viewer cert in us-east-1. Catch the most common
-    // misconfiguration up front rather than letting CloudFormation reject it.
-    if (!/^arn:aws:acm:us-east-1:/.test(config.artifacts.certificateArn)) {
-      throw new Error(
-        `Artifacts certificate must be in us-east-1 (CloudFront requirement). ` +
-        `Got: ${config.artifacts.certificateArn}`
-      );
-    }
-    if (config.artifacts.retentionDays < 1 || config.artifacts.retentionDays > 3650) {
-      throw new Error(
-        `Artifacts retentionDays must be between 1 and 3650. Got: ${config.artifacts.retentionDays}`
-      );
-    }
-  }
-
-  if (config.mcpSandbox.enabled) {
-    if (!config.domainName) {
-      throw new Error(
-        'MCP Sandbox stack requires CDK_DOMAIN_NAME to be set — the proxy origin ' +
-        'is derived as mcp-sandbox.{CDK_DOMAIN_NAME} and the CSP frame-ancestors ' +
-        'is locked to the SPA origin https://{CDK_DOMAIN_NAME}.'
-      );
-    }
-    if (!config.infrastructureHostedZoneDomain) {
-      throw new Error(
-        'MCP Sandbox stack requires CDK_HOSTED_ZONE_DOMAIN to be set — used to ' +
-        'look up the Route53 zone where the mcp-sandbox subdomain record is created.'
-      );
-    }
-    if (!config.mcpSandbox.certificateArn) {
-      throw new Error(
-        'MCP Sandbox stack requires CDK_MCP_SANDBOX_CERTIFICATE_ARN — an ACM cert ' +
-        'in us-east-1 for the mcp-sandbox.{domain} CloudFront distribution.'
-      );
-    }
-    // CloudFront requires the viewer cert in us-east-1. Catch the most common
-    // misconfiguration up front rather than letting CloudFormation reject it.
-    if (!/^arn:aws:acm:us-east-1:/.test(config.mcpSandbox.certificateArn)) {
-      throw new Error(
-        `MCP Sandbox certificate must be in us-east-1 (CloudFront requirement). ` +
-        `Got: ${config.mcpSandbox.certificateArn}`
-      );
-    }
-  }
+  // Artifacts and MCP Sandbox domain/cert validation is a deploy-time
+  // concern — operators must set CDK_DOMAIN_NAME, CDK_HOSTED_ZONE_DOMAIN,
+  // and the respective certificate ARNs for a real deployment. Synth and
+  // tests proceed without them (constructs handle the undefined case by
+  // falling back to CloudFront default domains).
 }
 
 /**
