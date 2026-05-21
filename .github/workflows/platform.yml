@@ -1,0 +1,27 @@
+name: Platform Stack
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'infrastructure/lib/platform-stack.ts'
+      - 'infrastructure/lib/constructs/**'
+      - 'infrastructure/lib/config.ts'
+      - 'infrastructure/bin/infrastructure.ts'
+      - 'scripts/platform/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  deploy:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/configure-aws-credentials
+
+      - name: Deploy PlatformStack
+        run: bash scripts/platform/deploy.sh

@@ -1,0 +1,47 @@
+name: Frontend Deploy
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'frontend/**'
+      - 'scripts/frontend/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Build SPA
+        run: bash scripts/frontend/build.sh
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/ai.client/dist/ai.client/
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/configure-aws-credentials
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: frontend-dist
+          path: frontend/ai.client/dist/ai.client/
+
+      - name: Sync to S3 and invalidate CloudFront
+        run: bash scripts/frontend/deploy.sh

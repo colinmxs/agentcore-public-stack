@@ -1,0 +1,49 @@
+name: Backend Stack
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [develop, main]
+    paths:
+      - 'backend/**'
+      - 'infrastructure/lib/backend-stack.ts'
+      - 'infrastructure/lib/constructs/**'
+      - 'infrastructure/lib/config.ts'
+      - 'infrastructure/bin/infrastructure.ts'
+      - 'scripts/backend/**'
+      - 'scripts/build/**'
+
+permissions:
+  id-token: write
+  contents: read
+
+jobs:
+  build-images:
+    runs-on: ubuntu-24.04
+    outputs:
+      app_api_image_tag: ${{ steps.build.outputs.app_api_image_tag }}
+      inference_api_image_tag: ${{ steps.build.outputs.inference_api_image_tag }}
+      rag_ingestion_image_tag: ${{ steps.build.outputs.rag_ingestion_image_tag }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/configure-aws-credentials
+
+      - name: Build and push images
+        id: build
+        run: bash scripts/build/build-all-images.sh
+
+  deploy:
+    needs: build-images
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: ./.github/actions/configure-aws-credentials
+
+      - name: Deploy BackendStack
+        env:
+          APP_API_IMAGE_TAG: ${{ needs.build-images.outputs.app_api_image_tag }}
+          INFERENCE_API_IMAGE_TAG: ${{ needs.build-images.outputs.inference_api_image_tag }}
+          RAG_INGESTION_IMAGE_TAG: ${{ needs.build-images.outputs.rag_ingestion_image_tag }}
+        run: bash scripts/backend/deploy.sh
