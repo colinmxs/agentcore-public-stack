@@ -1,114 +1,46 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
-import { InfrastructureStack } from '../lib/infrastructure-stack';
-import { FrontendStack } from '../lib/frontend-stack';
-import { AppApiStack } from '../lib/app-api-stack';
-import { InferenceApiStack } from '../lib/inference-api-stack';
-import { GatewayStack } from '../lib/gateway-stack';
-import { RagIngestionStack } from '../lib/rag-ingestion-stack';
-import { SageMakerFineTuningStack } from '../lib/sagemaker-fine-tuning-stack';
-import { ArtifactsStack } from '../lib/artifacts-stack';
-import { McpSandboxStack } from '../lib/mcp-sandbox-stack';
+import * as ssm from 'aws-cdk-lib/aws-ssm';
+
+import { PlatformStack } from '../lib/platform-stack';
+import { BackendStack } from '../lib/backend-stack';
 import { loadConfig, getStackEnv } from '../lib/config';
 
 const app = new cdk.App();
 
-// Load configuration from cdk.context.json
+// Load configuration from cdk.context.json / env vars
 const config = loadConfig(app);
 const env = getStackEnv(config);
 
-// Infrastructure Stack - VPC + ALB + ECS Cluster (DEPLOY FIRST)
-new InfrastructureStack(app, 'InfrastructureStack', {
+// ============================================================
+// PlatformStack — every non-compute resource
+// ============================================================
+const platform = new PlatformStack(app, 'PlatformStack', {
   config,
   env,
-  description: `${config.projectPrefix} Infrastructure Stack - Shared Network Resources`,
-  stackName: `${config.projectPrefix}-InfrastructureStack`,
+  description: `${config.projectPrefix} Platform Stack - VPC, ALB, DynamoDB, S3, Cognito, CloudFront`,
+  stackName: `${config.projectPrefix}-PlatformStack`,
 });
 
-// Artifacts Stack - iframe-isolated artifact rendering (deploy AFTER Infrastructure,
-// BEFORE Inference API / App API / Frontend, which read its SSM exports).
-// Parallel-safe with RAG Ingestion and Fine-Tuning.
-if (config.artifacts.enabled) {
-  new ArtifactsStack(app, 'ArtifactsStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} Artifacts Stack - DDB, S3, CloudFront + Lambda render service`,
-    stackName: `${config.projectPrefix}-ArtifactsStack`,
-  });
-}
+// The SPA CloudFront distribution needs the ALB URL (published by
+// Platform's own AlbDnsConstruct) as the /api/* origin. Since both
+// the publisher and consumer are in the same stack, we resolve the
+// SSM token inline.
+const appApiUrl = ssm.StringParameter.valueForStringParameter(
+  platform,
+  `/${config.projectPrefix}/network/alb-url`,
+);
+platform.wireSpaDistribution(appApiUrl);
 
-// MCP Sandbox Stack - S3 + CloudFront + Route53 serving the MCP Apps
-// sandbox-proxy shell at mcp-sandbox.{domain}. PR #1 of the MCP Apps host
-// renderer initiative; deploy tier 1, parallel-safe with Artifacts / RAG /
-// Gateway / Fine-Tuning (reads no cross-stack SSM). Inert until the SPA
-// wiring (PR #4) and MCP_APPS_HOST_ENABLED (PR #7) land.
-if (config.mcpSandbox.enabled) {
-  new McpSandboxStack(app, 'McpSandboxStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} MCP Sandbox Stack - S3, CloudFront, Route53 (MCP Apps proxy origin)`,
-    stackName: `${config.projectPrefix}-McpSandboxStack`,
-  });
-}
-
-// Frontend Stack - S3 + CloudFront + Route53
-if (config.frontend.enabled) {
-  new FrontendStack(app, 'FrontendStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} Frontend Stack - S3, CloudFront, and Route53`,
-    stackName: `${config.projectPrefix}-FrontendStack`,
-  });
-}
-
-// App API Stack - Fargate + Database
-if (config.appApi.enabled) {
-  new AppApiStack(app, 'AppApiStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} App API Stack - Fargate and Database`,
-    stackName: `${config.projectPrefix}-AppApiStack`,
-  });
-}
-
-// Inference API Stack - Fargate for AI Workloads
-if (config.inferenceApi.enabled) {
-  new InferenceApiStack(app, 'InferenceApiStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} Inference API Stack - Fargate for AI Workloads`,
-    stackName: `${config.projectPrefix}-InferenceApiStack`,
-  });
-}
-
-// Gateway Stack - Bedrock AgentCore Gateway with MCP Tools
-if (config.gateway.enabled) {
-  new GatewayStack(app, 'GatewayStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} Gateway Stack - Bedrock AgentCore Gateway with MCP Tools`,
-    stackName: `${config.projectPrefix}-GatewayStack`,
-  });
-}
-
-// RAG Ingestion Stack - Independent RAG Pipeline
-if (config.ragIngestion.enabled) {
-  new RagIngestionStack(app, 'RagIngestionStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} RAG Ingestion Stack - Independent RAG Pipeline`,
-    stackName: `${config.projectPrefix}-RagIngestionStack`,
-  });
-}
-
-// SageMaker Fine-Tuning Stack - Optional ML Training Infrastructure
-if (config.fineTuning.enabled) {
-  new SageMakerFineTuningStack(app, 'SageMakerFineTuningStack', {
-    config,
-    env,
-    description: `${config.projectPrefix} SageMaker Fine-Tuning Stack - DynamoDB Tables, IAM Roles, Networking`,
-    stackName: `${config.projectPrefix}-SageMakerFineTuningStack`,
-  });
-}
+// ============================================================
+// BackendStack — all compute (Fargate, AgentCore, Lambdas)
+// ============================================================
+new BackendStack(app, 'BackendStack', {
+  config,
+  env,
+  platform,
+  description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Gateway, Lambdas`,
+  stackName: `${config.projectPrefix}-BackendStack`,
+});
 
 app.synth();

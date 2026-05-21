@@ -39,6 +39,8 @@ const STACK_FILES: Record<string, string> = {
   'inference-api-stack.ts': 'InferenceApiStack',
   'app-api-stack.ts': 'AppApiStack',
   'frontend-stack.ts': 'FrontendStack',
+  'platform-stack.ts': 'PlatformStack',
+  'backend-stack.ts': 'BackendStack',
 };
 
 /**
@@ -56,6 +58,7 @@ const STACK_FILES: Record<string, string> = {
  */
 const DEPLOYMENT_TIERS: Record<string, number> = {
   InfrastructureStack: 0,
+  PlatformStack: 0,
   RagIngestionStack: 1,
   GatewayStack: 1,
   SageMakerFineTuningStack: 1,
@@ -65,6 +68,7 @@ const DEPLOYMENT_TIERS: Record<string, number> = {
   // tier-1 stacks.
   McpSandboxStack: 1,
   InferenceApiStack: 2,
+  BackendStack: 2,
   AppApiStack: 3,
   FrontendStack: 4,
 };

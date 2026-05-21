@@ -5,7 +5,6 @@ import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
@@ -134,12 +133,13 @@ export class RagIngestionLambdaConstruct extends Construct {
       }),
     );
 
-    // S3 event subscription — process new objects under `assistants/`
-    documentsBucket.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(this.lambda),
-      { prefix: 'assistants/' },
-    );
+    // NOTE: S3 event notification is NOT wired here when the construct
+    // lives in a different stack from the bucket (cross-stack S3
+    // notifications create a circular dependency in CDK). The parent
+    // stack that owns the bucket must call
+    // `bucket.addEventNotification(...)` with this Lambda as the
+    // destination. When both live in the same stack (legacy
+    // RagIngestionStack), the notification is wired by the stack itself.
 
     new ssm.StringParameter(this, 'IngestionLambdaArnParameter', {
       parameterName: `/${config.projectPrefix}/rag/ingestion-lambda-arn`,
