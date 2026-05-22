@@ -6,6 +6,8 @@ import * as route53 from 'aws-cdk-lib/aws-route53';
 import * as route53Targets from 'aws-cdk-lib/aws-route53-targets';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as fs from 'fs';
+import * as path from 'path';
 import { Construct } from 'constructs';
 
 import { AppConfig, getResourceName } from '../../config';
@@ -42,23 +44,41 @@ export function buildMcpSandboxFrameAncestors(
 }
 
 /**
- * Assemble the Content-Security-Policy served with `proxy.html`.
- *
- * `frame-ancestors` is the security-critical directive (who may embed
- * the proxy — the SPA only). The rest is deny-by-default hardening for
- * the inert PR #1 shell.
- *
- * Exported for direct unit testing.
+ * The full JS string literal in `assets/mcp-sandbox/csp-function.js` that
+ * we substitute at synth time. Matching the *quoted* literal (not the
+ * inner identifier) lets us replace it with `JSON.stringify(value)`,
+ * which handles quote-escaping correctly for any `frame-ancestors` source
+ * list — including `'none'` (which would otherwise produce `''none''`,
+ * a JS syntax error).
  */
-export function buildMcpSandboxProxyCsp(frameAncestors: string): string {
-  return [
-    `default-src 'none'`,
-    `script-src 'self'`,
-    `frame-src 'self'`,
-    `frame-ancestors ${frameAncestors}`,
-    `base-uri 'none'`,
-    `form-action 'none'`,
-  ].join('; ');
+const FRAME_ANCESTORS_PLACEHOLDER_LITERAL = "'__INJECT_FRAME_ANCESTORS__'";
+
+/**
+ * Load the dynamic-CSP CloudFront Function source and inject the real
+ * `frame-ancestors` source list as a properly-escaped JS string literal.
+ * Asserts the placeholder is present exactly once so a future refactor
+ * that loses the marker fails loudly at synth, not at edge runtime.
+ *
+ * Exported for unit testing.
+ */
+export function loadMcpSandboxCspFunctionCode(frameAncestors: string): string {
+  const filePath = path.resolve(
+    __dirname,
+    '..',
+    '..',
+    '..',
+    'assets',
+    'mcp-sandbox',
+    'csp-function.js',
+  );
+  const source = fs.readFileSync(filePath, 'utf8');
+  const occurrences = source.split(FRAME_ANCESTORS_PLACEHOLDER_LITERAL).length - 1;
+  if (occurrences !== 1) {
+    throw new Error(
+      `Expected exactly one occurrence of ${FRAME_ANCESTORS_PLACEHOLDER_LITERAL} in csp-function.js, found ${occurrences}. Did the marker get renamed or duplicated?`,
+    );
+  }
+  return source.replace(FRAME_ANCESTORS_PLACEHOLDER_LITERAL, JSON.stringify(frameAncestors));
 }
 
 /**
@@ -119,7 +139,6 @@ export class McpSandboxDistributionConstruct extends Construct {
       domainName,
       config.mcpSandbox.extraFrameAncestors,
     );
-    const proxyCsp = buildMcpSandboxProxyCsp(frameAncestors);
 
     const responseHeadersPolicy = new cloudfront.ResponseHeadersPolicy(
       this,
@@ -130,15 +149,11 @@ export class McpSandboxDistributionConstruct extends Construct {
           'mcp-sandbox-headers',
         ),
         comment:
-          'CSP (frame-ancestors = SPA origin only) + security headers for the MCP Apps sandbox proxy',
+          'HSTS + Referrer-Policy + X-Content-Type-Options for MCP Apps sandbox proxy. CSP via dynamic CloudFront Function.',
         securityHeadersBehavior: {
-          contentSecurityPolicy: {
-            contentSecurityPolicy: proxyCsp,
-            override: true,
-          },
           contentTypeOptions: { override: true },
-          // NOT setting frameOptions — frame-ancestors above is the
-          // CSP-native equivalent and is what gets enforced cross-browser.
+          // NOT setting frameOptions — frame-ancestors in the dynamic CSP
+          // is the modern equivalent and the control we care about.
           referrerPolicy: {
             referrerPolicy: cloudfront.HeadersReferrerPolicy.NO_REFERRER,
             override: true,
@@ -151,6 +166,16 @@ export class McpSandboxDistributionConstruct extends Construct {
         },
       },
     );
+
+    // Dynamic-CSP CloudFront Function. Composes per-resource CSP from
+    // the `?csp=` query param the SPA appends when framing proxy.html.
+    const cspFunctionCode = loadMcpSandboxCspFunctionCode(frameAncestors);
+    const cspFunction = new cloudfront.Function(this, 'McpSandboxCspFunction', {
+      functionName: getResourceName(config, 'mcp-sandbox-csp'),
+      comment: 'Composes per-resource CSP header from ?csp= query (mirrors ext-apps basic-host/serve.ts).',
+      runtime: cloudfront.FunctionRuntime.JS_2_0,
+      code: cloudfront.FunctionCode.fromInline(cspFunctionCode),
+    });
 
     const cachePolicy = new cloudfront.CachePolicy(
       this,
@@ -181,6 +206,12 @@ export class McpSandboxDistributionConstruct extends Construct {
         allowedMethods: cloudfront.AllowedMethods.ALLOW_GET_HEAD,
         cachedMethods: cloudfront.CachedMethods.CACHE_GET_HEAD,
         compress: true,
+        functionAssociations: [
+          {
+            function: cspFunction,
+            eventType: cloudfront.FunctionEventType.VIEWER_RESPONSE,
+          },
+        ],
       },
       priceClass: cloudfront.PriceClass.PRICE_CLASS_100,
       httpVersion: cloudfront.HttpVersion.HTTP2_AND_3,

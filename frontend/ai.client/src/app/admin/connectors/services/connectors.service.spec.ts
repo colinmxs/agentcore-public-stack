@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from 'vitest';
 import { TestBed } from '@angular/core/testing';
-import { HttpClientTestingModule, HttpTestingController } from '@angular/common/http/testing';
+import { HttpTestingController, provideHttpClientTesting } from '@angular/common/http/testing';
+import { provideHttpClient } from '@angular/common/http';
 import { signal } from '@angular/core';
 import { ConnectorsService } from './connectors.service';
 import { ConfigService } from '../../../services/config.service';
@@ -11,8 +12,9 @@ describe('ConnectorsService', () => {
   beforeEach(() => {
     TestBed.resetTestingModule();
     TestBed.configureTestingModule({
-      imports: [HttpClientTestingModule],
       providers: [
+        provideHttpClient(),
+        provideHttpClientTesting(),
         ConnectorsService,
         { provide: ConfigService, useValue: { appApiUrl: signal('http://localhost:8000') } },
       ],
@@ -72,5 +74,27 @@ describe('ConnectorsService', () => {
       httpMock.expectOne('http://localhost:8000/admin/oauth-providers/1').flush(null);
     });
     await promise;
+  });
+
+  it('should fetch file-source adapters without key translation', async () => {
+    const mockResponse = {
+      adapters: [
+        {
+          key: 'google-drive',
+          displayName: 'Google Drive',
+          icon: 'google-drive',
+          compatibleProviderTypes: ['google'],
+          requiredScopes: ['https://www.googleapis.com/auth/drive.readonly'],
+        },
+      ],
+    };
+    const promise = service.fetchFileSourceAdapters();
+    await vi.waitFor(() => {
+      httpMock
+        .expectOne('http://localhost:8000/admin/file-source-adapters/')
+        .flush(mockResponse);
+    });
+    // The endpoint already serializes camelCase — response passes through as-is.
+    expect(await promise).toEqual(mockResponse);
   });
 });
