@@ -35,12 +35,20 @@ platform.wireSpaDistribution(appApiUrl);
 // ============================================================
 // BackendStack — all compute (Fargate, AgentCore, Lambdas)
 // ============================================================
-new BackendStack(app, 'BackendStack', {
+const backend = new BackendStack(app, 'BackendStack', {
   config,
   env,
   platform,
   description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Gateway, Lambdas`,
   stackName: `${config.projectPrefix}-BackendStack`,
 });
+
+// Wire the artifacts CloudFront distribution AFTER both stacks are
+// constructed. This avoids a circular CDK dependency (Platform needs
+// Backend's render Lambda Function URL; Backend needs Platform's RAG
+// bucket). The distribution lives in Platform but its origin is in Backend.
+if (backend.artifactRenderFunctionUrl) {
+  platform.wireArtifactsDistribution(backend.artifactRenderFunctionUrl);
+}
 
 app.synth();

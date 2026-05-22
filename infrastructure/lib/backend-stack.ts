@@ -39,6 +39,9 @@ export interface BackendStackProps extends cdk.StackProps {
  *   - `config.fineTuning.enabled` → SageMakerExecutionRoleConstruct
  */
 export class BackendStack extends cdk.Stack {
+  /** Exposed so bin/infrastructure.ts can wire the artifacts distribution. */
+  public readonly artifactRenderFunctionUrl?: import('aws-cdk-lib/aws-lambda').IFunctionUrl;
+
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
@@ -109,9 +112,11 @@ export class BackendStack extends cdk.Stack {
       },
     );
 
-    // Wire the render Lambda's Function URL back to Platform so
-    // the artifacts CloudFront distribution can use it as its origin.
-    platform.wireArtifactsDistribution(renderLambda.functionUrl);
+    // NOTE: The artifacts CloudFront distribution wiring
+    // (platform.wireArtifactsDistribution) is called from
+    // bin/infrastructure.ts AFTER both stacks are constructed,
+    // to avoid a circular CDK dependency.
+    this.artifactRenderFunctionUrl = renderLambda.functionUrl;
 
     // ============================================================
     // SageMaker Fine-Tuning IAM
