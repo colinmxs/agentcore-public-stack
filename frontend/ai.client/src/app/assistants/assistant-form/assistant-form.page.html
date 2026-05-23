@@ -258,19 +258,31 @@
                   <p class="mb-2 text-xs/5 text-gray-500 dark:text-gray-400">Import from a connector</p>
                   <div class="flex flex-wrap gap-2">
                     @for (source of fileSources(); track source.providerId) {
+                      @let busy = connectingProviderId() === source.providerId;
                       <button
                         type="button"
-                        (click)="openFileSourceBrowser(source)"
-                        class="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-3 py-1.5 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
+                        (click)="openOrConnect(source)"
+                        [disabled]="busy"
+                        class="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-3 py-1.5 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-200 dark:hover:bg-gray-700"
                       >
-                        @if (source.iconData) {
-                          <img [src]="source.iconData" alt="" class="size-4 shrink-0 object-contain" />
+                        @if (busy && connectPhase() === 'initiating') {
+                          <div class="size-4 shrink-0 animate-spin rounded-full border-2 border-gray-300 border-t-blue-600 dark:border-gray-600 dark:border-t-blue-400"></div>
+                          Starting…
+                        } @else if (busy && connectPhase() === 'awaiting') {
+                          <ng-icon name="heroArrowPath" class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
+                          Awaiting consent
                         } @else {
-                          <ng-icon name="heroLink" class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
-                        }
-                        {{ source.displayName }}
-                        @if (source.connected) {
-                          <span class="size-1.5 shrink-0 rounded-full bg-emerald-500" title="Connected"></span>
+                          @if (source.iconData) {
+                            <img [src]="source.iconData" alt="" class="size-4 shrink-0 object-contain" />
+                          } @else {
+                            <ng-icon name="heroLink" class="size-4 shrink-0 text-gray-400" aria-hidden="true" />
+                          }
+                          @if (source.connected) {
+                            {{ source.displayName }}
+                            <span class="size-1.5 shrink-0 rounded-full bg-emerald-500" title="Connected"></span>
+                          } @else {
+                            Connect to {{ source.displayName }}
+                          }
                         }
                       </button>
                     }

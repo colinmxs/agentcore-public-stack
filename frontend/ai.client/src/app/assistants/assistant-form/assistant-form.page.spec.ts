@@ -8,6 +8,8 @@ import { AssistantFormPage } from './assistant-form.page';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService } from '../services/document.service';
 import { FileSourceService } from '../services/file-source.service';
+import { UserConnectorsService } from '../../settings/connectors/services/user-connectors.service';
+import { OAuthConsentService } from '../../services/oauth-consent/oauth-consent.service';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
 import { ThemeService } from '../../components/topnav/components/theme-toggle/theme.service';
 
@@ -35,6 +37,18 @@ describe('AssistantFormPage', () => {
     listFileSources: vi.fn().mockResolvedValue([]),
   };
 
+  const mockUserConnectorsService = {
+    initiateConsent: vi.fn(),
+  };
+
+  const mockOAuthConsentService = {
+    completion: signal<unknown>(null),
+    inFlightProviders: signal(new Set<string>()),
+    requestConsent: vi.fn(),
+    openConsentPopup: vi.fn().mockResolvedValue(true),
+    acknowledgeCompletion: vi.fn(),
+  };
+
   const mockSidenavService = {
     hide: vi.fn(),
     show: vi.fn(),
@@ -59,6 +73,8 @@ describe('AssistantFormPage', () => {
         { provide: AssistantService, useValue: mockAssistantService },
         { provide: DocumentService, useValue: mockDocumentService },
         { provide: FileSourceService, useValue: mockFileSourceService },
+        { provide: UserConnectorsService, useValue: mockUserConnectorsService },
+        { provide: OAuthConsentService, useValue: mockOAuthConsentService },
         { provide: SidenavService, useValue: mockSidenavService },
         { provide: ThemeService, useValue: mockThemeService },
         { provide: Dialog, useValue: mockDialog },

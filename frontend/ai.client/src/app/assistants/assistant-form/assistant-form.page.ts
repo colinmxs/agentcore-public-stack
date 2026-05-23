@@ -4,6 +4,7 @@ import {
   inject,
   signal,
   computed,
+  effect,
   OnInit,
   OnDestroy,
 } from '@angular/core';
@@ -24,6 +25,7 @@ import { AssistantPreviewComponent } from './components/assistant-preview.compon
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
   heroArrowLeft,
+  heroArrowPath,
   heroChevronRight,
   heroFaceSmile,
   heroLink,
@@ -47,6 +49,8 @@ import {
 } from '../components/file-source-browser-dialog.component';
 import { FileSourceService } from '../services/file-source.service';
 import { FileSourceConnector } from '../models/file-source.model';
+import { UserConnectorsService } from '../../settings/connectors/services/user-connectors.service';
+import { OAuthConsentService } from '../../services/oauth-consent/oauth-consent.service';
 import { ToastService } from '../../services/toast/toast.service';
 
 @Component({
@@ -66,6 +70,7 @@ import { ToastService } from '../../services/toast/toast.service';
   providers: [
     provideIcons({
       heroArrowLeft,
+      heroArrowPath,
       heroChevronRight,
       heroFaceSmile,
       heroLink,
@@ -83,6 +88,8 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   private assistantService = inject(AssistantService);
   private documentService = inject(DocumentService);
   private fileSourceService = inject(FileSourceService);
+  private readonly connectorsService = inject(UserConnectorsService);
+  private readonly consentService = inject(OAuthConsentService);
   readonly sidenavService = inject(SidenavService);
   private readonly themeService = inject(ThemeService);
   private readonly dialog = inject(Dialog);
@@ -120,6 +127,10 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   /** Connectors the user can import documents from, surfaced as buttons. */
   readonly fileSources = signal<FileSourceConnector[]>([]);
 
+  /** Provider whose consent popup is in flight from an editor connector button. */
+  readonly connectingProviderId = signal<string | null>(null);
+  readonly connectPhase = signal<'initiating' | 'awaiting' | null>(null);
+
   /**
    * True once at least one document exists, is uploading, or is still
    * loading. Drives swapping the full drop zone for a compact "Add files"
@@ -154,6 +165,41 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   get starters(): FormArray {
     return this.form.get('starters') as FormArray;
+  }
+
+  constructor() {
+    // Resolve the OAuth consent popup for a connector kicked off from an
+    // editor button. Mirrors the file-source browser dialog's effect so the
+    // editor can drive the flow without opening the modal first.
+    effect(() => {
+      const completion = this.consentService.completion();
+      if (!completion || !completion.providerId) {
+        return;
+      }
+      const connecting = this.connectingProviderId();
+      if (completion.providerId !== connecting) {
+        return;
+      }
+      this.consentService.acknowledgeCompletion();
+      this.connectingProviderId.set(null);
+      this.connectPhase.set(null);
+      if (completion.status === 'success') {
+        void this.afterConnect(connecting);
+      } else {
+        this.toast.error(completion.error ?? 'Could not connect the file source.');
+      }
+    });
+
+    // If the user closes the popup without finishing, the consent service
+    // drops the provider from `inFlightProviders` — reset the button state.
+    effect(() => {
+      const inFlight = this.consentService.inFlightProviders();
+      const connecting = this.connectingProviderId();
+      if (connecting && this.connectPhase() === 'awaiting' && !inFlight.has(connecting)) {
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -417,6 +463,67 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       this.fileSources.set(await this.fileSourceService.listFileSources());
     } catch {
       this.fileSources.set([]);
+    }
+  }
+
+  /**
+   * Click handler for an editor connector button: browse when the source is
+   * already connected; otherwise kick off the OAuth consent flow in place so
+   * the user doesn't have to open the modal just to connect.
+   */
+  async openOrConnect(source: FileSourceConnector): Promise<void> {
+    if (source.connected) {
+      await this.openFileSourceBrowser(source);
+      return;
+    }
+    await this.connectFileSource(source);
+  }
+
+  /**
+   * Start the OAuth consent popup for a not-yet-connected file source. On
+   * success the browser modal opens automatically — see the completion
+   * effect → `afterConnect`. Mirrors the dialog's `connect()` path.
+   */
+  private async connectFileSource(source: FileSourceConnector): Promise<void> {
+    this.connectingProviderId.set(source.providerId);
+    this.connectPhase.set('initiating');
+    try {
+      const result = await this.connectorsService.initiateConsent(source.providerId);
+      if (result.connected) {
+        // Already connected upstream — skip the popup and go straight to browse.
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+        await this.afterConnect(source.providerId);
+        return;
+      }
+      if (!result.authorizationUrl) {
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+        this.toast.error('Unexpected response from the server.');
+        return;
+      }
+      this.consentService.requestConsent(source.providerId, result.authorizationUrl);
+      void this.consentService.openConsentPopup(source.providerId);
+      this.connectPhase.set('awaiting');
+    } catch (error) {
+      this.connectingProviderId.set(null);
+      this.connectPhase.set(null);
+      const message =
+        error instanceof Error ? error.message : 'Could not start the connect flow.';
+      this.toast.error(message);
+    }
+  }
+
+  /**
+   * After a successful consent, refresh the file-source list (so the
+   * connector now reports `connected: true`) and open the browser modal
+   * straight into it so the user can pick files without a second click.
+   */
+  private async afterConnect(providerId: string): Promise<void> {
+    await this.loadFileSources();
+    const updated = this.fileSources().find((s) => s.providerId === providerId);
+    if (updated?.connected) {
+      await this.openFileSourceBrowser(updated);
     }
   }
 
