@@ -28,6 +28,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.CDK_AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Build and push images
         id: build
@@ -40,6 +45,11 @@ jobs:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.CDK_AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Deploy BackendStack
         env:
