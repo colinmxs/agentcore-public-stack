@@ -14,23 +14,48 @@ on:
       - 'scripts/build/**'
 
 permissions:
-  id-token: write
   contents: read
+
+env:
+  CDK_REQUIRE_APPROVAL: never
+  LOAD_ENV_QUIET: true
+
+concurrency:
+  group: backend-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build-images:
+    name: Build Docker Images
     runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
     outputs:
       app_api_image_tag: ${{ steps.build.outputs.app_api_image_tag }}
       inference_api_image_tag: ${{ steps.build.outputs.inference_api_image_tag }}
       rag_ingestion_image_tag: ${{ steps.build.outputs.rag_ingestion_image_tag }}
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/configure-aws-credentials
         with:
-          aws-region: ${{ vars.CDK_AWS_REGION || 'us-west-2' }}
-          aws-role-arn: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
@@ -39,21 +64,45 @@ jobs:
         run: bash scripts/build/build-all-images.sh
 
   deploy:
+    name: Deploy BackendStack
     needs: build-images
     runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
+      CDK_CORS_ORIGINS: ${{ vars.CDK_CORS_ORIGINS }}
+      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
+      CDK_ALB_SUBDOMAIN: ${{ vars.CDK_ALB_SUBDOMAIN }}
+      CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
+      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
+      CDK_ARTIFACTS_CERTIFICATE_ARN: ${{ vars.CDK_ARTIFACTS_CERTIFICATE_ARN }}
+      CDK_FRONTEND_CERTIFICATE_ARN: ${{ vars.CDK_FRONTEND_CERTIFICATE_ARN }}
+      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
+      CDK_COGNITO_DOMAIN_PREFIX: ${{ vars.CDK_COGNITO_DOMAIN_PREFIX }}
+      APP_API_IMAGE_TAG: ${{ needs.build-images.outputs.app_api_image_tag }}
+      INFERENCE_API_IMAGE_TAG: ${{ needs.build-images.outputs.inference_api_image_tag }}
+      RAG_INGESTION_IMAGE_TAG: ${{ needs.build-images.outputs.rag_ingestion_image_tag }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/configure-aws-credentials
         with:
-          aws-region: ${{ vars.CDK_AWS_REGION || 'us-west-2' }}
-          aws-role-arn: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
       - name: Deploy BackendStack
-        env:
-          APP_API_IMAGE_TAG: ${{ needs.build-images.outputs.app_api_image_tag }}
-          INFERENCE_API_IMAGE_TAG: ${{ needs.build-images.outputs.inference_api_image_tag }}
-          RAG_INGESTION_IMAGE_TAG: ${{ needs.build-images.outputs.rag_ingestion_image_tag }}
         run: bash scripts/backend/deploy.sh

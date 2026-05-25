@@ -9,11 +9,18 @@ on:
       - 'scripts/frontend/**'
 
 permissions:
-  id-token: write
   contents: read
+
+env:
+  LOAD_ENV_QUIET: true
+
+concurrency:
+  group: frontend-${{ github.ref }}
+  cancel-in-progress: false
 
 jobs:
   build:
+    name: Build SPA
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -31,15 +38,31 @@ jobs:
           path: frontend/ai.client/dist/ai.client/
 
   deploy:
+    name: Deploy to S3 + CloudFront
     needs: build
     runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
     steps:
       - uses: actions/checkout@v4
 
       - uses: ./.github/actions/configure-aws-credentials
         with:
-          aws-region: ${{ vars.CDK_AWS_REGION || 'us-west-2' }}
-          aws-role-arn: ${{ vars.AWS_ROLE_ARN || secrets.AWS_ROLE_ARN }}
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
