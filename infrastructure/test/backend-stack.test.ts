@@ -168,8 +168,8 @@ describe('BackendStack', () => {
       template.resourceCountIs('AWS::S3::Bucket', 0);
     });
 
-    it('creates zero CloudFront distributions', () => {
-      template.resourceCountIs('AWS::CloudFront::Distribution', 0);
+    it('creates the artifacts CloudFront distribution (render Lambda origin)', () => {
+      template.resourceCountIs('AWS::CloudFront::Distribution', 1);
     });
   });
 

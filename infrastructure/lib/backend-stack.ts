@@ -11,6 +11,7 @@ import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-con
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
 import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
 import { ArtifactRenderLambdaConstruct } from './constructs/artifacts/artifact-render-lambda-construct';
+import { ArtifactsDistributionConstruct } from './constructs/artifacts/artifacts-distribution-construct';
 import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
 
 // Platform typed imports (explicit prop passing)
@@ -99,8 +100,11 @@ export class BackendStack extends cdk.Stack {
     );
 
     // ============================================================
-    // Artifact Render Lambda
+    // Artifact Render Lambda + CloudFront Distribution
     // ============================================================
+    // Both live in Backend because the distribution's origin IS the
+    // Lambda — putting the distribution in Platform would create a
+    // Platform → Backend dependency cycle.
     const renderLambda = new ArtifactRenderLambdaConstruct(
       this,
       'ArtifactRender',
@@ -111,12 +115,15 @@ export class BackendStack extends cdk.Stack {
         frameAncestors: platform.artifactsFrameAncestors,
       },
     );
-
-    // NOTE: The artifacts CloudFront distribution wiring
-    // (platform.wireArtifactsDistribution) is called from
-    // bin/infrastructure.ts AFTER both stacks are constructed,
-    // to avoid a circular CDK dependency.
     this.artifactRenderFunctionUrl = renderLambda.functionUrl;
+
+    // Artifacts CloudFront distribution — serves the render Lambda
+    // behind a custom domain with strict CSP headers.
+    new ArtifactsDistributionConstruct(this, 'ArtifactsDistribution', {
+      config,
+      renderFunctionUrl: renderLambda.functionUrl,
+      frameAncestors: platform.artifactsFrameAncestors,
+    });
 
     // ============================================================
     // SageMaker Fine-Tuning IAM

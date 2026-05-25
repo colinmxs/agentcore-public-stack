@@ -48,7 +48,7 @@ const backend = new BackendStack(app, 'BackendStack', {
 // Backend's render Lambda Function URL; Backend needs Platform's RAG
 // bucket). The distribution lives in Platform but its origin is in Backend.
 if (backend.artifactRenderFunctionUrl) {
-  platform.wireArtifactsDistribution(backend.artifactRenderFunctionUrl);
+  // Artifacts distribution lives in BackendStack now (no cycle)
 }
 
 app.synth();

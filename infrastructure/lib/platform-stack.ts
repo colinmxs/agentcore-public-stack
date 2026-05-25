@@ -43,7 +43,6 @@ import { RagDataConstruct } from './constructs/rag/rag-data-construct';
 
 // Artifacts (data + distribution; render Lambda lives in Backend)
 import { ArtifactsDataConstruct } from './constructs/artifacts/artifacts-data-construct';
-import { ArtifactsDistributionConstruct } from './constructs/artifacts/artifacts-distribution-construct';
 
 // MCP sandbox (S3 + CloudFront — Platform edge surface)
 import { McpSandboxBucketConstruct } from './constructs/mcp-sandbox/mcp-sandbox-bucket-construct';
@@ -59,8 +58,6 @@ import { RagCorsUpdaterConstruct } from './constructs/spa/rag-cors-updater-const
 
 // Zones
 import { AlbDnsConstruct } from './constructs/zones/alb-dns-construct';
-
-import * as lambda from 'aws-cdk-lib/aws-lambda';
 
 export interface PlatformStackProps extends cdk.StackProps {
   config: AppConfig;
@@ -90,17 +87,9 @@ export interface PlatformStackProps extends cdk.StackProps {
  *
  * The render Lambda lives in BackendStack (compute) and consumes
  * `artifactsContentBucket` + `artifactsTable` + `artifactRenderTokenSecret`
- * via typed prop passing.
- *
- * The artifacts CloudFront distribution needs the render Lambda's
- * Function URL as its origin. To keep the dependency direction
- * one-way (Backend → Platform) the distribution is parked behind a
- * `wireArtifactsDistribution(renderFunctionUrl)` method that
- * BackendStack calls **after** it has constructed the render Lambda
- * and forwarded the resulting Function URL back to Platform.
- *
- * The same two-step pattern wires the McpSandbox distribution and the
- * RAG-CORS updater (which depends on the SPA distribution domain).
+ * via typed prop passing. The artifacts CloudFront distribution also
+ * lives in BackendStack (its origin is the render Lambda Function URL,
+ * so it must be in the same stack to avoid a circular dependency).
  */
 export class PlatformStack extends cdk.Stack {
   // ── Network
@@ -188,7 +177,6 @@ export class PlatformStack extends cdk.Stack {
   private readonly _mcpSandboxBucketConstruct: McpSandboxBucketConstruct;
   private readonly _artifactsDataConstruct: ArtifactsDataConstruct;
   private _spaDistributionConstruct?: SpaDistributionConstruct;
-  private _artifactsDistributionConstruct?: ArtifactsDistributionConstruct;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -436,32 +424,5 @@ export class PlatformStack extends cdk.Stack {
       config: this._config,
       frontendUrl,
     });
-  }
-
-  /**
-   * Wire the artifacts CloudFront distribution. Backend constructs
-   * the render Lambda and passes the resulting Function URL back so
-   * the distribution can use it as its origin.
-   *
-   * No-op when artifacts is disabled.
-   */
-  public wireArtifactsDistribution(
-    renderFunctionUrl: lambda.IFunctionUrl,
-  ): cloudfront.IDistribution | undefined {
-    if (this._artifactsDistributionConstruct) {
-      return this._artifactsDistributionConstruct.distribution;
-    }
-
-    this._artifactsDistributionConstruct = new ArtifactsDistributionConstruct(
-      this,
-      'ArtifactsDistribution',
-      {
-        config: this._config,
-        renderFunctionUrl,
-        frameAncestors: this.artifactsFrameAncestors!,
-      },
-    );
-
-    return this._artifactsDistributionConstruct.distribution;
   }
 }
