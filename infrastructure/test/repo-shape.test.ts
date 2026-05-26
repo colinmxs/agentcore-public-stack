@@ -207,11 +207,15 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs['deploy-backend']).toBeDefined();
       expect(wf.jobs['deploy-frontend']).toBeDefined();
       // deploy-backend waits on the three per-image build jobs;
-      // each of those needs deploy-platform, so the platform → backend
-      // ordering is preserved transitively.
-      expect(wf.jobs['build-app-api'].needs).toBe('deploy-platform');
-      expect(wf.jobs['build-inference-api'].needs).toBe('deploy-platform');
-      expect(wf.jobs['build-rag-ingestion'].needs).toBe('deploy-platform');
+      // each of those needs deploy-platform AND test-backend, so the
+      // platform → backend ordering is preserved transitively, and
+      // python tests gate the docker builds.
+      expect(wf.jobs['build-app-api'].needs).toContain('deploy-platform');
+      expect(wf.jobs['build-app-api'].needs).toContain('test-backend');
+      expect(wf.jobs['build-inference-api'].needs).toContain('deploy-platform');
+      expect(wf.jobs['build-inference-api'].needs).toContain('test-backend');
+      expect(wf.jobs['build-rag-ingestion'].needs).toContain('deploy-platform');
+      expect(wf.jobs['build-rag-ingestion'].needs).toContain('test-backend');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-app-api');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-inference-api');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-rag-ingestion');
