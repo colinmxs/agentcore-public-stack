@@ -15,10 +15,8 @@ source "${PROJECT_ROOT}/scripts/common/load-env.sh"
 
 cd "${PROJECT_ROOT}/infrastructure"
 
-# Ensure dependencies are installed
-if [ ! -d "node_modules" ]; then
-    npm ci --prefer-offline
-fi
+# Install/refresh CDK npm deps via the centralised install script.
+"${PROJECT_ROOT}/scripts/cdk/install.sh"
 
 # Build context parameters from exported env vars
 CDK_CONTEXT_PARAMS=$(build_cdk_context_params)
