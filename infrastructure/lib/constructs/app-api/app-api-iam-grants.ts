@@ -61,6 +61,14 @@ export interface AppApiIamGrantsProps {
   userFilesTableArn: string;
   ragAssistantsTableArn: string;
   ragDocumentsBucketArn: string;
+  /**
+   * AgentCore Memory ARN. Passed in directly (not read from SSM)
+   * because the AgentCore Memory is created by a sibling construct
+   * inside the same BackendStack — `valueForStringParameter` here
+   * would resolve before the Memory exists, deadlocking on first
+   * deploy.
+   */
+  agentCoreMemoryArn: string;
 }
 
 /**
@@ -326,8 +334,11 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   );
 
   // ── AgentCore Memory ──
-  const memoryArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/inference-api/memory-arn`);
+  // Memory ARN is passed in directly from the InferenceApi sibling
+  // construct (same stack) rather than read from SSM. Reading SSM
+  // here would chicken-and-egg on first deploy because both publisher
+  // and consumer live in BackendStack.
+  const memoryArn = props.agentCoreMemoryArn;
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
       sid: 'AgentCoreMemoryAccess',

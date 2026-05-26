@@ -95,8 +95,27 @@ export interface AppApiSsmParams {
   workloadIdentityName: string;
 }
 
+/**
+ * Same-stack values that App API needs from sibling BackendStack
+ * constructs. Passed in directly rather than read from SSM because
+ * `valueForStringParameter` would deadlock on first deploy: CFN
+ * resolves SSM template parameters before any of the stack's
+ * resources are created, so reading a parameter that this same
+ * stack publishes is unsatisfiable.
+ */
+export interface AppApiBackendOverrides {
+  /** AgentCore Memory ID (from InferenceAgentCoreConstruct.memory.attrMemoryId). */
+  memoryId: string;
+  /** AgentCore Runtime endpoint URL (from InferenceAgentCoreConstruct.runtimeEndpointUrl). */
+  inferenceApiRuntimeEndpointUrl: string;
+}
+
 /** Resolve all SSM parameters the App API construct needs. */
-export function resolveAppApiSsmParams(scope: Construct, prefix: string): AppApiSsmParams {
+export function resolveAppApiSsmParams(
+  scope: Construct,
+  prefix: string,
+  overrides: AppApiBackendOverrides,
+): AppApiSsmParams {
   const p = (path: string) => ssm.StringParameter.valueForStringParameter(scope, `/${prefix}/${path}`);
   return {
     vpcId: p('network/vpc-id'),
@@ -156,7 +175,7 @@ export function resolveAppApiSsmParams(scope: Construct, prefix: string): AppApi
     voiceTicketReplayTableName: p('voice/ticket-replay-table-name'),
     voiceTicketReplayTableArn: p('voice/ticket-replay-table-arn'),
     voiceTicketSigningSecretArn: p('voice/ticket-signing-secret-arn'),
-    inferenceApiRuntimeEndpointUrl: p('inference-api/runtime-endpoint-url'),
+    inferenceApiRuntimeEndpointUrl: overrides.inferenceApiRuntimeEndpointUrl,
     userFilesBucketName: p('user-file-uploads/bucket-name'),
     userFilesBucketArn: p('user-file-uploads/bucket-arn'),
     userFilesTableName: p('user-file-uploads/table-name'),
@@ -167,7 +186,7 @@ export function resolveAppApiSsmParams(scope: Construct, prefix: string): AppApi
     ragVectorIndexName: p('rag/vector-index-name'),
     ragAssistantsTableArn: p('rag/assistants-table-arn'),
     ragDocumentsBucketArn: p('rag/documents-bucket-arn'),
-    memoryId: p('inference-api/memory-id'),
+    memoryId: overrides.memoryId,
     workloadIdentityName: p('oauth/platform-workload-identity-name'),
   };
 }

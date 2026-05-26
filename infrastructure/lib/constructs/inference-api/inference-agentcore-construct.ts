@@ -38,6 +38,13 @@ export class InferenceAgentCoreConstruct extends Construct {
   public readonly codeInterpreter: bedrock.CfnCodeInterpreterCustom;
   public readonly browser: bedrock.CfnBrowserCustom;
   public readonly runtime: bedrock.CfnRuntime;
+  /**
+   * Full Bedrock AgentCore Runtime endpoint URL. Exposed so other
+   * BackendStack constructs (notably the App API) can wire it via
+   * direct construct refs instead of round-tripping through SSM,
+   * which would chicken-and-egg on a same-stack first deploy.
+   */
+  public readonly runtimeEndpointUrl: string;
 
   constructor(scope: Construct, id: string, props: InferenceAgentCoreConstructProps) {
     super(scope, id);
@@ -666,6 +673,7 @@ export class InferenceAgentCoreConstruct extends Construct {
       'https://bedrock-agentcore.${AWS::Region}.amazonaws.com/runtimes/${RuntimeArn}',
       { RuntimeArn: this.runtime.attrAgentRuntimeArn }
     );
+    this.runtimeEndpointUrl = runtimeEndpointUrl;
 
     new ssm.StringParameter(this, 'InferenceApiRuntimeEndpointUrlParameter', {
       parameterName: `/${config.projectPrefix}/inference-api/runtime-endpoint-url`,

@@ -51,6 +51,16 @@ export class BackendStack extends cdk.Stack {
     applyStandardTags(this, config);
 
     // ============================================================
+    // Inference API — AgentCore Runtime + Memory + Tools
+    //
+    // Constructed before App API so we can pass the AgentCore Memory
+    // ARN directly into App API's task-role IAM grants. App API used
+    // to read this ARN from SSM, which deadlocked on first deploy
+    // because both writer and reader live in BackendStack.
+    // ============================================================
+    const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', { config });
+
+    // ============================================================
     // App API Fargate service (the largest single construct)
     // ============================================================
     // The construct still reads some values from SSM (table names,
@@ -60,12 +70,12 @@ export class BackendStack extends cdk.Stack {
     // Platform props via SSM reads inside the construct — these will
     // be replaced with direct typed prop passing in a follow-up
     // optimization pass.
-    new AppApiServiceConstruct(this, 'AppApi', { config });
-
-    // ============================================================
-    // Inference API — AgentCore Runtime + Memory + Tools
-    // ============================================================
-    new InferenceAgentCoreConstruct(this, 'InferenceApi', { config });
+    new AppApiServiceConstruct(this, 'AppApi', {
+      config,
+      agentCoreMemoryArn: inferenceApi.memory.attrMemoryArn,
+      agentCoreMemoryId: inferenceApi.memory.attrMemoryId,
+      inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,
+    });
 
     // ============================================================
     // AgentCore Gateway

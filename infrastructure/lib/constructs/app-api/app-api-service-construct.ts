@@ -14,6 +14,23 @@ import { grantAppApiPermissions } from './app-api-iam-grants';
 
 export interface AppApiServiceConstructProps {
   config: AppConfig;
+  /**
+   * AgentCore Memory ARN. Sourced directly from the sibling
+   * InferenceAgentCoreConstruct in BackendStack, not from SSM,
+   * because publisher and consumer share a stack.
+   */
+  agentCoreMemoryArn: string;
+  /**
+   * AgentCore Memory ID. Same-stack ref via InferenceAgentCoreConstruct;
+   * used as the App API container's `MEMORY_ID` env var.
+   */
+  agentCoreMemoryId: string;
+  /**
+   * Bedrock AgentCore Runtime endpoint URL. Same-stack ref via
+   * InferenceAgentCoreConstruct; used as the App API container's
+   * `INFERENCE_API_URL` env var.
+   */
+  inferenceApiRuntimeEndpointUrl: string;
 }
 
 /**
@@ -41,7 +58,10 @@ export class AppApiServiceConstruct extends Construct {
     const { config } = props;
 
     // ── Resolve all SSM parameters ──
-    const params = resolveAppApiSsmParams(this, config.projectPrefix);
+    const params = resolveAppApiSsmParams(this, config.projectPrefix, {
+      memoryId: props.agentCoreMemoryId,
+      inferenceApiRuntimeEndpointUrl: props.inferenceApiRuntimeEndpointUrl,
+    });
 
     // ── Import network resources ──
     const vpc = ec2.Vpc.fromVpcAttributes(this, 'ImportedVpc', {
@@ -193,6 +213,7 @@ export class AppApiServiceConstruct extends Construct {
       userFilesTableArn: params.userFilesTableArn,
       ragAssistantsTableArn: params.ragAssistantsTableArn,
       ragDocumentsBucketArn: params.ragDocumentsBucketArn,
+      agentCoreMemoryArn: props.agentCoreMemoryArn,
     });
 
     // ── Target group ──
