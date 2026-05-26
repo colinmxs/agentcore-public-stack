@@ -82,7 +82,28 @@ log "Computing content hash..."
 TAG="$(bash "$COMPUTE_HASH" "${HASH_ARGS[@]}")"
 log "Content hash: $TAG"
 
-# 2. Does ECR already have an image with this tag?
+# 2. Ensure the ECR repository exists. CDK only IMPORTS these repos
+# (via ecr.Repository.fromRepositoryName), so they must be provisioned
+# out-of-band. We follow the same pattern as scripts/common/promote-ecr-image.sh:
+# describe-then-create with scanOnPush, AES256, and the standard tags.
+if ! aws ecr describe-repositories \
+        --region "$AWS_REGION" \
+        --repository-names "$REPO_NAME" \
+        --output text \
+        --query 'repositories[0].repositoryName' \
+        >/dev/null 2>&1; then
+    log "Creating ECR repository: $REPO_NAME"
+    aws ecr create-repository \
+        --region "$AWS_REGION" \
+        --repository-name "$REPO_NAME" \
+        --image-scanning-configuration scanOnPush=true \
+        --encryption-configuration encryptionType=AES256 \
+        --tags "Key=Project,Value=${CDK_PROJECT_PREFIX:-${REPO_NAME%%-*}}" \
+               "Key=ManagedBy,Value=GitHubActions" \
+        --no-cli-pager >/dev/null
+fi
+
+# 3. Does ECR already have an image with this tag?
 if aws ecr describe-images \
         --region "$AWS_REGION" \
         --repository-name "$REPO_NAME" \
@@ -97,11 +118,11 @@ fi
 
 log "Image $REPO_NAME:$TAG not in ECR — building and pushing."
 
-# 3. Log in to ECR (idempotent — re-running just refreshes the auth token).
+# 4. Log in to ECR (idempotent — re-running just refreshes the auth token).
 aws ecr get-login-password --region "$AWS_REGION" \
     | docker login --username AWS --password-stdin "$REGISTRY" >&2
 
-# 4. Build. The Dockerfile pattern in this repo expects to run from the
+# 5. Build. The Dockerfile pattern in this repo expects to run from the
 # repo root with the dockerfile referenced relatively (paths inside the
 # Dockerfile are repo-rooted COPY directives like `COPY backend/src ...`).
 REPO_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
@@ -113,7 +134,7 @@ if [[ -n "$PLATFORM" ]]; then
 fi
 docker build "${BUILD_ARGS[@]}" . >&2
 
-# 5. Push.
+# 6. Push.
 docker push "$ECR_REPO:$TAG" >&2
 
 log "Pushed $ECR_REPO:$TAG"

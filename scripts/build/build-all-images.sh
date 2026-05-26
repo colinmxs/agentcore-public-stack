@@ -17,14 +17,14 @@
 # build pipeline and the CDK deploy stay in sync without a separate
 # push-to-ecr step.
 #
-# Required env:
-#   CDK_PROJECT_PREFIX       (e.g., ai-sbmt-api)
-#   CDK_AWS_REGION or AWS_REGION
-#   CDK_AWS_ACCOUNT or AWS_ACCOUNT_ID
+# Required env (resolved by scripts/common/load-env.sh):
+#   CDK_PROJECT_PREFIX
+#   CDK_AWS_REGION
+#   CDK_AWS_ACCOUNT
 #
 # Optional env:
-#   GITHUB_OUTPUT            set by GitHub Actions; if absent we
-#                            still print the tags to stdout.
+#   GITHUB_OUTPUT   set by GitHub Actions; if absent we still log
+#                   the tags but the workflow can't pick them up.
 #============================================================
 set -euo pipefail
 
@@ -32,28 +32,24 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "${SCRIPT_DIR}/../.." && pwd)"
 BUILD_AND_PUSH="${SCRIPT_DIR}/build-and-push-if-changed.sh"
 
-# Resolve env (accepting both CDK_ and bare AWS_ variants).
-PREFIX="${CDK_PROJECT_PREFIX:-}"
-REGION="${CDK_AWS_REGION:-${AWS_REGION:-}}"
-ACCOUNT="${CDK_AWS_ACCOUNT:-${AWS_ACCOUNT_ID:-}}"
+# Source common utilities (exports CDK_* vars, validates config,
+# provides log_info / log_warn / log_error / log_success helpers).
+source "${PROJECT_ROOT}/scripts/common/load-env.sh"
 
-[[ -n "$PREFIX"  ]] || { echo "CDK_PROJECT_PREFIX required" >&2; exit 2; }
-[[ -n "$REGION"  ]] || { echo "AWS_REGION (or CDK_AWS_REGION) required" >&2; exit 2; }
-[[ -n "$ACCOUNT" ]] || { echo "AWS_ACCOUNT_ID (or CDK_AWS_ACCOUNT) required" >&2; exit 2; }
+# build-and-push-if-changed.sh expects the AWS region under AWS_REGION
+# (it's a stand-alone tool, agnostic to CDK_*); export it so the
+# subprocess sees it.
+export AWS_REGION="${CDK_AWS_REGION}"
 
-export AWS_REGION="$REGION"
-
-REGISTRY="${ACCOUNT}.dkr.ecr.${REGION}.amazonaws.com"
-
-log() { echo "==> $*"; }
+REGISTRY="${CDK_AWS_ACCOUNT}.dkr.ecr.${CDK_AWS_REGION}.amazonaws.com"
 
 # ---------------------------------------------------------------
 # Per-service definitions.
 #
-# Each service spec is: name | dockerfile | manifests (comma) | platform | output-key
-# Inference API runs on arm64 (cost-optimized AgentCore Runtime), so we
-# pass --platform linux/arm64. The others build the host architecture
-# (x86_64 on standard GitHub runners).
+# Each spec lists the inputs to hash and the platform to build for.
+# Inference API runs on arm64 (cost-optimized AgentCore Runtime), so
+# its --platform is linux/arm64. The others build the host
+# architecture (x86_64 on standard GitHub runners).
 # ---------------------------------------------------------------
 declare -A APP_API=(
     [dockerfile]="backend/Dockerfile.app-api"
@@ -61,7 +57,7 @@ declare -A APP_API=(
     [manifests]="backend/pyproject.toml,backend/uv.lock"
     [platform]=""
     [out_key]="app_api_image_tag"
-    [ssm_key]="/${PREFIX}/app-api/image-tag"
+    [ssm_key]="/${CDK_PROJECT_PREFIX}/app-api/image-tag"
 )
 declare -A INFERENCE_API=(
     [dockerfile]="backend/Dockerfile.inference-api"
@@ -69,7 +65,7 @@ declare -A INFERENCE_API=(
     [manifests]="backend/pyproject.toml,backend/uv.lock"
     [platform]="linux/arm64"
     [out_key]="inference_api_image_tag"
-    [ssm_key]="/${PREFIX}/inference-api/image-tag"
+    [ssm_key]="/${CDK_PROJECT_PREFIX}/inference-api/image-tag"
 )
 declare -A RAG_INGESTION=(
     [dockerfile]="backend/Dockerfile.rag-ingestion"
@@ -77,14 +73,14 @@ declare -A RAG_INGESTION=(
     [manifests]="backend/src/apis/app_api/documents/ingestion/requirements.lock"
     [platform]=""
     [out_key]="rag_ingestion_image_tag"
-    [ssm_key]="/${PREFIX}/rag-ingestion/image-tag"
+    [ssm_key]="/${CDK_PROJECT_PREFIX}/rag-ingestion/image-tag"
 )
 
 build_one() {
     local service="$1"
     local -n spec="$2"
 
-    local repo="${REGISTRY}/${PREFIX}-${service}"
+    local repo="${REGISTRY}/${CDK_PROJECT_PREFIX}-${service}"
 
     # Build the manifest flag list from the comma-separated string.
     local manifest_args=()
@@ -109,7 +105,7 @@ build_one() {
             --ecr-repository "$repo"
     )"
 
-    log "${service}: ${tag}"
+    log_info "${service}: ${tag}"
 
     # Publish to GITHUB_OUTPUT for the workflow to consume.
     if [[ -n "${GITHUB_OUTPUT:-}" ]]; then
@@ -118,22 +114,24 @@ build_one() {
 
     # Publish to SSM so the CDK constructs that read the tag at synth
     # time pick up the freshly-built image. `put-parameter --overwrite`
-    # is idempotent.
+    # is idempotent. Note: per the devops gotcha, --overwrite cannot be
+    # combined with --tags for an existing parameter, so we don't pass
+    # --tags here.
     aws ssm put-parameter \
-        --region "$REGION" \
+        --region "${CDK_AWS_REGION}" \
         --name "${spec[ssm_key]}" \
         --value "$tag" \
         --type String \
         --overwrite \
         --no-cli-pager >/dev/null
-    log "${service}: SSM ${spec[ssm_key]} = ${tag}"
+    log_info "${service}: SSM ${spec[ssm_key]} = ${tag}"
 }
 
 cd "$PROJECT_ROOT"
 
-log "Project: $PREFIX  Region: $REGION  Account: $ACCOUNT"
+log_info "Building all backend Docker images..."
 build_one app-api        APP_API
 build_one inference-api  INFERENCE_API
 build_one rag-ingestion  RAG_INGESTION
 
-log "All images built / verified."
+log_info "All images built / verified."
