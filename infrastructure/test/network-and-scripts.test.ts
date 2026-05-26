@@ -365,9 +365,4 @@ describe('Deploy scripts', () => {
     const content = fs.readFileSync(path.join(SCRIPTS_ROOT, 'frontend', 'deploy.sh'), 'utf-8');
     expect(content).toContain('aws cloudfront create-invalidation');
   });
-
-  it('scripts/backend/deploy.sh passes image tags as context', () => {
-    const content = fs.readFileSync(path.join(SCRIPTS_ROOT, 'backend', 'deploy.sh'), 'utf-8');
-    expect(content).toContain('appApiImageTag');
-  });
 });

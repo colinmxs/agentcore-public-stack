@@ -35,9 +35,6 @@ export interface BackendStackProps extends cdk.StackProps {
  * auto-generates the underlying CFN exports / Fn::ImportValue from
  * the typed cross-stack references.
  *
- * Two retained feature flags:
- *   - `config.artifacts.enabled`  → ArtifactRenderLambdaConstruct
- *   - `config.fineTuning.enabled` → SageMakerExecutionRoleConstruct
  */
 export class BackendStack extends cdk.Stack {
   /** Exposed so bin/infrastructure.ts can wire the artifacts distribution. */

@@ -15,17 +15,6 @@ fi
 
 CDK_CONTEXT_PARAMS=$(build_cdk_context_params)
 
-# Add image tag context params if provided
-if [ -n "${APP_API_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context appApiImageTag=\"${APP_API_IMAGE_TAG}\""
-fi
-if [ -n "${INFERENCE_API_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context inferenceApiImageTag=\"${INFERENCE_API_IMAGE_TAG}\""
-fi
-if [ -n "${RAG_INGESTION_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context ragIngestionImageTag=\"${RAG_INGESTION_IMAGE_TAG}\""
-fi
-
 log_info "Synthesizing BackendStack..."
 eval npx cdk synth "${CDK_PROJECT_PREFIX}-BackendStack" \
     ${CDK_CONTEXT_PARAMS}

@@ -87,9 +87,6 @@ jobs:
       CDK_FRONTEND_CERTIFICATE_ARN: ${{ vars.CDK_FRONTEND_CERTIFICATE_ARN }}
       CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
       CDK_COGNITO_DOMAIN_PREFIX: ${{ vars.CDK_COGNITO_DOMAIN_PREFIX }}
-      APP_API_IMAGE_TAG: ${{ needs.build-images.outputs.app_api_image_tag }}
-      INFERENCE_API_IMAGE_TAG: ${{ needs.build-images.outputs.inference_api_image_tag }}
-      RAG_INGESTION_IMAGE_TAG: ${{ needs.build-images.outputs.rag_ingestion_image_tag }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}

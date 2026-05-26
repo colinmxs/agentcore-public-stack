@@ -384,22 +384,16 @@ export class InferenceAgentCoreConstruct extends Construct {
         // MCP Apps sandbox-proxy origin (PR #7 of
         // docs/kaizen/scoping/mcp-apps-host-renderer.md). The agent emits
         // it on the `ui_resource` SSE event as `sandboxOrigin` — the
-        // cross-origin shell the SPA frames a hosted App in. Gated on
-        // `config.mcpSandbox.enabled` so we don't issue an SSM read against
-        // a parameter that doesn't exist when the mcp-sandbox stack isn't
-        // deployed (same conditional-SSM pattern as artifacts above; that
-        // failure would surface as cdk synth token resolution at deploy).
-        // Without it `AGENTCORE_MCP_APPS_SANDBOX_ORIGIN` falls back to its
-        // empty Python default and the SPA has no origin to frame an App
-        // in — the host surface stays dormant even with the flag on.
-        ...(config.mcpSandbox.enabled
-          ? {
-              AGENTCORE_MCP_APPS_SANDBOX_ORIGIN: ssm.StringParameter.valueForStringParameter(
-                this,
-                `/${config.projectPrefix}/mcp-sandbox/origin`
-              ),
-            }
-          : {}),
+        // cross-origin shell the SPA frames a hosted App in. The
+        // mcp-sandbox stack is always provisioned, so the SSM parameter
+        // always exists. Without this var, AGENTCORE_MCP_APPS_SANDBOX_ORIGIN
+        // would fall back to its empty Python default and the SPA would
+        // have no origin to frame an App in — the host surface stays
+        // dormant unless MCP_APPS_HOST_ENABLED is flipped on.
+        AGENTCORE_MCP_APPS_SANDBOX_ORIGIN: ssm.StringParameter.valueForStringParameter(
+          this,
+          `/${config.projectPrefix}/mcp-sandbox/origin`
+        ),
       },
     });
     this.runtime.node.addDependency(runtimeExecutionRole);

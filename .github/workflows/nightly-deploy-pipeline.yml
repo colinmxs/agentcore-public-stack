@@ -86,10 +86,6 @@ jobs:
         run: bash scripts/build/build-all-images.sh
 
       - name: Deploy BackendStack
-        env:
-          APP_API_IMAGE_TAG: ${{ steps.build.outputs.app_api_image_tag }}
-          INFERENCE_API_IMAGE_TAG: ${{ steps.build.outputs.inference_api_image_tag }}
-          RAG_INGESTION_IMAGE_TAG: ${{ steps.build.outputs.rag_ingestion_image_tag }}
         run: bash scripts/backend/deploy.sh
 
   deploy-frontend:

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # scripts/backend/deploy.sh — deploy BackendStack via CDK.
 #
-# Expects image tag env vars (from build-all-images.sh):
-#   APP_API_IMAGE_TAG, INFERENCE_API_IMAGE_TAG, RAG_INGESTION_IMAGE_TAG
+# Image tags are not passed via CDK context. The build pipeline
+# (scripts/build/build-all-images.sh) writes each service's tag to
+# SSM at /${prefix}/{service}/image-tag, and the constructs read
+# them from SSM at synth time. Keep that the single source of truth.
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
@@ -17,17 +19,6 @@ if [ ! -d "node_modules" ]; then
 fi
 
 CDK_CONTEXT_PARAMS=$(build_cdk_context_params)
-
-# Add image tag context params if provided
-if [ -n "${APP_API_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context appApiImageTag=\"${APP_API_IMAGE_TAG}\""
-fi
-if [ -n "${INFERENCE_API_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context inferenceApiImageTag=\"${INFERENCE_API_IMAGE_TAG}\""
-fi
-if [ -n "${RAG_INGESTION_IMAGE_TAG:-}" ]; then
-    CDK_CONTEXT_PARAMS="${CDK_CONTEXT_PARAMS} --context ragIngestionImageTag=\"${RAG_INGESTION_IMAGE_TAG}\""
-fi
 
 if [ -d "cdk.out" ] && [ -f "cdk.out/manifest.json" ]; then
     log_info "Using pre-synthesized template from cdk.out/"

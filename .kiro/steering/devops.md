@@ -8,13 +8,13 @@ This document provides a concise overview of the CI/CD pipelines, Infrastructure
 
 ## 0. How to Jump In (Fast)
 
-When you’re debugging a deploy or adding a stack, start here in this order:
+When you're debugging a deploy or adding a stack, start here in this order:
 
 1. **Workflow**: `.github/workflows/<stack>.yml` shows what runs in CI and when.
-2. **Scripts**: `scripts/stack-<name>/` contains the actual build/test/deploy logic (YAML should be a thin wrapper).
+2. **Scripts**: `scripts/<name>/` contains the actual build/test/deploy logic (YAML should be a thin wrapper). Common shared utilities live in `scripts/common/`; the content-hash Docker build pipeline lives in `scripts/build/`.
 3. **CDK Stack**: `infrastructure/lib/<stack>-stack.ts` defines the AWS resources.
 
-Rule of thumb: if you’re looking for “what does this job do?”, it’s almost always in `scripts/`, not the workflow YAML.
+Rule of thumb: if you're looking for "what does this job do?", it's almost always in `scripts/`, not the workflow YAML.
 
 ## 1. GitHub Actions Workflows
 
@@ -26,7 +26,7 @@ The project employs a **Modular, Job-Centric Architecture** designed for paralle
 1.  **Single Responsibility Jobs**: Each job performs exactly one major task (e.g., `build-docker`, `synth-cdk`, `test-python`). This makes debugging easier and allows for granular retries.
 2.  **Parallel Execution Tracks**: Independent processes run concurrently. For example, Docker images are built and pushed while the CDK code is simultaneously synthesized and diffed.
 3.  **Artifact-Driven Handover**: Jobs do not share state. Instead, they produce immutable artifacts (Docker image tarballs, synthesized CloudFormation templates) that are uploaded and then downloaded by downstream jobs.
-4.  **Script-Based Logic**: Workflows are thin wrappers around shell scripts. Every step calls a script in `scripts/stack-<name>/`, ensuring that CI logic can be reproduced locally.
+4.  **Script-Based Logic**: Workflows are thin wrappers around shell scripts. Every step calls a script in `scripts/<name>/`, ensuring that CI logic can be reproduced locally.
 
 ### Workflow Invariants (Assume These Are True)
 
@@ -38,35 +38,32 @@ These conventions are relied on throughout the repo and are the fastest way to r
 * **YAML is the table of contents**: any non-trivial logic belongs in `scripts/`.
 
 ### Available Workflows
-*   **`infrastructure.yml`**: Deploys the foundation (VPC, ALB, ECS Cluster). Runs first.
-*   **`app-api.yml`**: Deploys the main application API (Fargate).
-*   **`inference-api.yml`**: Deploys the inference runtime (Bedrock AgentCore Runtime).
-*   **`frontend.yml`**: Deploys the Angular application (S3 + CloudFront).
-*   **`gateway.yml`**: Deploys the Bedrock AgentCore Gateway and Lambda tools.
+*   **`platform.yml`**: Deploys the PlatformStack — every non-compute resource (VPC, ALB, DynamoDB, S3, Cognito, CloudFront, AgentCore Memory/Gateway/Code-Interpreter/Browser). Runs first.
+*   **`backend.yml`**: Deploys the BackendStack — all compute (App API Fargate service, Inference API AgentCore Runtime, Gateway Lambdas, RAG ingestion Lambda, artifact render Lambda). Includes a `build-images` job that runs `scripts/build/build-all-images.sh` to content-hash-tag the three Docker images and push to ECR.
+*   **`frontend.yml`**: Builds the Angular SPA and syncs it to the SPA bucket created by PlatformStack.
+*   **`teardown.yml`**: Manually-triggered. Calls `scripts/teardown/destroy.sh` to delete every CloudFormation stack with the project prefix (uses `aws cloudformation delete-stack`, not `cdk destroy`, so it works for both the current 2-stack architecture and any legacy 9-stack deployments).
+*   **`nightly-deploy-pipeline.yml`**: Combined platform → backend → frontend → smoke/E2E test pipeline that runs nightly.
 
 ---
 
 ## 2. CDK Stacks (Infrastructure)
 
-The infrastructure is defined in `infrastructure/lib/` and follows a strict layering model.
+The infrastructure is defined in `infrastructure/lib/` and is split into exactly two stacks. Every resource is provisioned unconditionally — there are no per-stack feature flags. If you don't need a feature in a particular environment, leave it deployed; the cost overhead is minimal compared to the operational cost of conditional infra.
 
 | Stack Name | Class | Description | Dependencies |
 | :--- | :--- | :--- | :--- |
-| **Infrastructure** | `InfrastructureStack` | **Foundation Layer**. Creates VPC, ALB, ECS Cluster, and Security Groups. Exports resource IDs to SSM. | None |
-| **App API** | `AppApiStack` | **Service Layer**. Fargate service for the application backend. Imports network resources via SSM. | Infrastructure |
-| **Inference API** | `InferenceApiStack` | **Service Layer**. Bedrock AgentCore Runtime which hosts the inference API. | Infrastructure |
-| **Gateway** | `GatewayStack` | **Integration Layer**. AWS Bedrock AgentCore Gateway and Lambda-based MCP tools. | Infrastructure |
-| **Frontend** | `FrontendStack` | **Presentation Layer**. S3 Bucket for assets and CloudFront Distribution. | Infrastructure |
+| **Platform** | `PlatformStack` | **Foundation + data layer**. VPC, ALB, ECS Cluster, security groups, every DynamoDB table, every S3 bucket (SPA, RAG documents, RAG vectors, file uploads, mcp-sandbox, fine-tuning data, artifacts content), Cognito, KMS keys, secrets, AgentCore Memory/Gateway/Code-Interpreter/Browser, CloudFront distributions for SPA + mcp-sandbox. Exports resource handles via SSM and via typed `props.platform.*` cross-stack refs. | None |
+| **Backend** | `BackendStack` | **Compute layer**. App API Fargate service, Inference API AgentCore Runtime, Gateway Lambdas + targets, RAG ingestion Lambda, Artifact render Lambda + its CloudFront distribution, SageMaker fine-tuning IAM role. Receives Platform handles via typed props; reads cross-stack SSM where typed refs aren't possible. | Platform |
 
 ### Key Concepts
-*   **SSM Parameter Store**: Used for all cross-stack references (e.g., `/${projectPrefix}/network/vpc-id`).
-*   **Context Configuration**: Project prefix, account IDs, and regions are passed via CDK Context (`cdk.json` or CLI flags), never hardcoded.
+*   **SSM Parameter Store**: Used for cross-stack references (Platform → Backend) and for runtime resolution by container env-var lookup. **Never** use SSM for same-stack reads — `valueForStringParameter` produces a CFN parameter that resolves before the stack's own resources are created, which deadlocks first deploys. Pass values directly via construct refs or function args inside the same stack.
+*   **Context Configuration**: Project prefix, account IDs, regions, and any tunables are passed via CDK Context, never hardcoded.
 
 ### Deployment Order & Layering Contract
 
-* **Deploy order (default)**: Infrastructure → Gateway → App API → Inference API → Frontend.
-* **Contract**: The Infrastructure stack is the foundation layer and exports shared IDs/attributes to SSM. All other stacks import those values from SSM.
-* **No direct cross-stack coupling**: Prefer SSM parameters over CloudFormation cross-stack references to keep stacks independently deployable.
+* **Deploy order (default)**: Platform → Backend → Frontend (asset sync).
+* **Contract**: PlatformStack is the foundation layer. BackendStack receives PlatformStack handles via typed props (CDK records the dep automatically) and via SSM for the values that must be resolved at container runtime.
+* **No direct cross-stack coupling between unrelated stacks**: BackendStack only depends on PlatformStack; Frontend only consumes PlatformStack outputs.
 
 ---
 
@@ -93,14 +90,19 @@ Follow these rules when adding or modifying stacks to ensure stability and maint
 
 **Use SSM Parameter Store when:**
 - Value is needed **by another stack** (cross-stack reference)
-- Examples: VPC ID (InfrastructureStack → AppApiStack), ALB ARN
+- Examples: VPC ID (PlatformStack → BackendStack), ALB ARN
 - Consumer stack reads via `ssm.StringParameter.valueForStringParameter()`
+- **Never** use this for same-stack reads. CloudFormation resolves
+  `AWS::SSM::Parameter::Value<String>` template parameters before any
+  of the stack's resources are created, so reading a parameter that
+  this same stack would publish is unsatisfiable on first deploy.
+  Pass values via construct refs or function args inside a single stack.
 
 
 ### B. Scripting & Automation
 *   **Shell Scripts First**: GitHub Actions YAML should **ONLY** call scripts in `scripts/`.
 *   **Portability**: Scripts must run locally and in CI. Use `set -euo pipefail` for error handling.
-*   **Naming**: Scripts follow the pattern `scripts/stack-<name>/<operation>.sh` (e.g., `scripts/stack-app-api/deploy.sh`).
+*   **Naming**: Scripts follow the pattern `scripts/<name>/<operation>.sh` (e.g., `scripts/platform/deploy.sh`, `scripts/backend/deploy.sh`).
 
 ### C. Deployment Safety
 *   **Synth Once, Deploy Anywhere**: Synthesize CloudFormation templates in the `synth` job/step. The `deploy` step must use the generated `cdk.out/` artifacts, not re-synthesize.
@@ -113,7 +115,7 @@ Follow these rules when adding or modifying stacks to ensure stability and maint
 
 * **CDK**: Add/update `infrastructure/lib/<your-stack>.ts` and wire it in `infrastructure/bin/infrastructure.ts`.
 * **SSM I/O**: Export shared values via SSM with the `/${projectPrefix}/...` convention; import via SSM in dependent stacks.
-* **Scripts**: Add a `scripts/stack-<name>/` folder and keep scripts single-purpose (install/build/synth/test/deploy as needed).
+* **Scripts**: Add a `scripts/<name>/` folder and keep scripts single-purpose (install/build/synth/test/deploy as needed).
 * **Workflow**: Add/update `.github/workflows/<stack>.yml` so it only calls scripts (no inline logic).
 * **Context discipline**: Keep context flags consistent between `synth.sh` and `deploy.sh` for the same stack.
 
@@ -193,7 +195,7 @@ fi
 
 #### Step 5: Update Stack Scripts
 
-**Files**: `scripts/stack-<name>/synth.sh` and `scripts/stack-<name>/deploy.sh`
+**Files**: `scripts/<name>/synth.sh` and `scripts/<name>/deploy.sh`
 
 Add context parameter to both scripts (must match exactly):
 
@@ -256,15 +258,15 @@ Here's how `CDK_CERTIFICATE_ARN` flows through the system:
 ```
 GitHub Secret (CDK_CERTIFICATE_ARN)
         ↓
-.github/workflows/infrastructure.yml (env section)
+.github/workflows/platform.yml (env section)
         ↓
 scripts/common/load-env.sh (export CDK_CERTIFICATE_ARN)
         ↓
-scripts/stack-infrastructure/synth.sh (--context certificateArn)
+scripts/platform/synth.sh (--context certificateArn)
         ↓
 infrastructure/lib/config.ts (loadConfig function)
         ↓
-infrastructure/lib/infrastructure-stack.ts (config.certificateArn)
+infrastructure/lib/platform-stack.ts (config.certificateArn)
         ↓
 AWS CloudFormation Template (Certificate resource)
 ```

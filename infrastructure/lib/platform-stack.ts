@@ -80,11 +80,6 @@ export interface PlatformStackProps extends cdk.StackProps {
  * auto-generates the underlying CFN exports / Fn::ImportValue from
  * the typed cross-stack reference.
  *
- * Two retained feature flags:
- *   - `config.artifacts.enabled`  → Artifacts data + distribution +
- *                                    render-token secret
- *   - `config.fineTuning.enabled` → Fine-tuning data
- *
  * The render Lambda lives in BackendStack (compute) and consumes
  * `artifactsContentBucket` + `artifactsTable` + `artifactRenderTokenSecret`
  * via typed prop passing. The artifacts CloudFront distribution also

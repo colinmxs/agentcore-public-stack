@@ -28,45 +28,35 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
     corsOrigins: 'http://localhost:4200',
     appVersion: '1.0.0-test',
     frontend: {
-      enabled: true,
       cloudFrontPriceClass: 'PriceClass_100',
     },
     appApi: {
-      enabled: true,
       cpu: 256,
       memory: 512,
       desiredCount: 1,
       maxCapacity: 2,
-      imageTag: 'latest',
     },
     inferenceApi: {
-      enabled: true,
       cpu: 256,
       memory: 512,
       desiredCount: 1,
       maxCapacity: 2,
-      imageTag: 'latest',
       logLevel: 'INFO',
     },
     gateway: {
-      enabled: true,
       apiType: 'REST',
       throttleRateLimit: 100,
       throttleBurstLimit: 50,
       enableWaf: false,
     },
-    assistants: {
-      enabled: true,
-    },
+    assistants: {},
     fileUpload: {
-      enabled: true,
       maxFileSizeBytes: 10485760,
       maxFilesPerMessage: 5,
       userQuotaBytes: 104857600,
       retentionDays: 30,
     },
     ragIngestion: {
-      enabled: true,
       lambdaMemorySize: 3008,
       lambdaTimeout: 900,
       embeddingModel: 'amazon.titan-embed-text-v2',
@@ -74,16 +64,13 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
       vectorDistanceMetric: 'cosine',
     },
     fineTuning: {
-      enabled: false,
       defaultQuotaHours: 0,
     },
     artifacts: {
-      enabled: false,
       retentionDays: 90,
       extraFrameAncestors: [],
     },
     mcpSandbox: {
-      enabled: false,
       extraFrameAncestors: [],
     },
     cognito: {
