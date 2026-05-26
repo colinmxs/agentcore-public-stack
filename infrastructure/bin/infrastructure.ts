@@ -14,12 +14,18 @@ const env = getStackEnv(config);
 
 // ============================================================
 // PlatformStack — every non-compute resource
+//
+// NOTE: The construct ID below is what `cdk deploy <name>` matches
+// against (NOT the `stackName` prop). The deploy scripts in
+// scripts/platform/ invoke `cdk deploy "${CDK_PROJECT_PREFIX}-PlatformStack"`,
+// so the construct ID must be the prefixed name. CDK will use this
+// same string as the CloudFormation stack name by default, which is
+// also what we want — no `stackName` override needed.
 // ============================================================
-const platform = new PlatformStack(app, 'PlatformStack', {
+const platform = new PlatformStack(app, `${config.projectPrefix}-PlatformStack`, {
   config,
   env,
   description: `${config.projectPrefix} Platform Stack - VPC, ALB, DynamoDB, S3, Cognito, CloudFront`,
-  stackName: `${config.projectPrefix}-PlatformStack`,
 });
 
 // The SPA CloudFront distribution needs the ALB URL (published by
@@ -34,13 +40,17 @@ platform.wireSpaDistribution(appApiUrl);
 
 // ============================================================
 // BackendStack — all compute (Fargate, AgentCore, Lambdas)
+//
+// Same convention as PlatformStack above: the construct ID is the
+// prefixed name so `cdk deploy "${CDK_PROJECT_PREFIX}-BackendStack"`
+// from scripts/backend/deploy.sh resolves correctly, and CDK uses
+// the same string as the CloudFormation stack name.
 // ============================================================
-const backend = new BackendStack(app, 'BackendStack', {
+const backend = new BackendStack(app, `${config.projectPrefix}-BackendStack`, {
   config,
   env,
   platform,
   description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Gateway, Lambdas`,
-  stackName: `${config.projectPrefix}-BackendStack`,
 });
 
 // Wire the artifacts CloudFront distribution AFTER both stacks are
