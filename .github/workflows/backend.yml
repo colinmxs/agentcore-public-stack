@@ -24,9 +24,24 @@ concurrency:
   group: backend-${{ github.ref }}
   cancel-in-progress: false
 
+# ------------------------------------------------------------
+# This workflow has one job per Docker image so the dashboard
+# shows three independent build statuses (Build app-api,
+# Build inference-api, Build rag-ingestion). Each build job
+# computes a content hash of its image's input surface and
+# skips the actual `docker build` + `docker push` when ECR
+# already has an image with that tag — so a check-in that
+# only touches one service rebuilds only that one image.
+#
+# All three build jobs are independent and run in parallel.
+# The deploy job waits on all three so we can be sure every
+# image's content-hash tag is in SSM before CDK reads it at
+# synth time.
+# ------------------------------------------------------------
+
 jobs:
-  build-images:
-    name: Build Docker Images
+  build-app-api:
+    name: Build app-api image
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 
@@ -45,27 +60,98 @@ jobs:
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
 
     outputs:
-      app_api_image_tag: ${{ steps.build.outputs.app_api_image_tag }}
-      inference_api_image_tag: ${{ steps.build.outputs.inference_api_image_tag }}
-      rag_ingestion_image_tag: ${{ steps.build.outputs.rag_ingestion_image_tag }}
+      image_tag: ${{ steps.build.outputs.image_tag }}
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: ./.github/actions/configure-aws-credentials
         with:
           aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
-      - name: Build and push images
+      - name: Build & push app-api
         id: build
-        run: bash scripts/build/build-all-images.sh
+        run: bash scripts/build/build-one.sh app-api
+
+  build-inference-api:
+    name: Build inference-api image
+    runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      # Inference API runs on AgentCore Runtime (linux/arm64). On the
+      # amd64 GitHub-hosted runner we need QEMU + buildx emulation so
+      # `docker build --platform linux/arm64` works.
+      - uses: docker/setup-qemu-action@v3
+        with:
+          platforms: arm64
+      - uses: docker/setup-buildx-action@v3
+      - name: Build & push inference-api
+        id: build
+        run: bash scripts/build/build-one.sh inference-api
+
+  build-rag-ingestion:
+    name: Build rag-ingestion image
+    runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    outputs:
+      image_tag: ${{ steps.build.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Build & push rag-ingestion
+        id: build
+        run: bash scripts/build/build-one.sh rag-ingestion
 
   deploy:
     name: Deploy BackendStack
-    needs: build-images
+    needs: [build-app-api, build-inference-api, build-rag-ingestion]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 
@@ -93,13 +179,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
       - uses: ./.github/actions/configure-aws-credentials
         with:
           aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-
       - name: Deploy BackendStack
         run: bash scripts/backend/deploy.sh

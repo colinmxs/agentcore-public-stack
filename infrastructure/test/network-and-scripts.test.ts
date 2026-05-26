@@ -305,6 +305,12 @@ describe('Build scripts', () => {
     expect(stat.mode & 0o111).toBeGreaterThan(0);
   });
 
+  it('build-one.sh exists and is executable', () => {
+    const stat = fs.statSync(path.join(SCRIPTS, 'build-one.sh'));
+    expect(stat.isFile()).toBe(true);
+    expect(stat.mode & 0o111).toBeGreaterThan(0);
+  });
+
   it('build-all-images.sh exists and is executable', () => {
     const stat = fs.statSync(path.join(SCRIPTS, 'build-all-images.sh'));
     expect(stat.isFile()).toBe(true);
@@ -321,13 +327,25 @@ describe('Build scripts', () => {
     expect(content).toContain('compute-content-hash.sh');
   });
 
-  it('build-all-images.sh calls build-and-push-if-changed.sh', () => {
-    const content = fs.readFileSync(path.join(SCRIPTS, 'build-all-images.sh'), 'utf-8');
+  it('build-one.sh calls build-and-push-if-changed.sh', () => {
+    const content = fs.readFileSync(path.join(SCRIPTS, 'build-one.sh'), 'utf-8');
     expect(content).toContain('build-and-push-if-changed.sh');
   });
 
-  it('build-all-images.sh emits to GITHUB_OUTPUT', () => {
+  it('build-one.sh handles all three services', () => {
+    const content = fs.readFileSync(path.join(SCRIPTS, 'build-one.sh'), 'utf-8');
+    expect(content).toContain('app-api)');
+    expect(content).toContain('inference-api)');
+    expect(content).toContain('rag-ingestion)');
+  });
+
+  it('build-all-images.sh calls build-one.sh', () => {
     const content = fs.readFileSync(path.join(SCRIPTS, 'build-all-images.sh'), 'utf-8');
+    expect(content).toContain('build-one.sh');
+  });
+
+  it('build-one.sh emits to GITHUB_OUTPUT', () => {
+    const content = fs.readFileSync(path.join(SCRIPTS, 'build-one.sh'), 'utf-8');
     expect(content).toContain('GITHUB_OUTPUT');
   });
 });

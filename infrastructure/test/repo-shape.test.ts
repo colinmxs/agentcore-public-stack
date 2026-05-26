@@ -135,20 +135,23 @@ describe('Workflow YAML shape', () => {
     let wf: any;
     beforeAll(() => { wf = loadWorkflow('backend.yml'); });
 
-    it('has build-images and deploy jobs', () => {
-      expect(wf.jobs['build-images']).toBeDefined();
+    it('has one build job per image plus deploy', () => {
+      expect(wf.jobs['build-app-api']).toBeDefined();
+      expect(wf.jobs['build-inference-api']).toBeDefined();
+      expect(wf.jobs['build-rag-ingestion']).toBeDefined();
       expect(wf.jobs.deploy).toBeDefined();
     });
 
-    it('deploy needs build-images', () => {
-      expect(wf.jobs.deploy.needs).toContain('build-images');
+    it('deploy waits on every build job', () => {
+      expect(wf.jobs.deploy.needs).toContain('build-app-api');
+      expect(wf.jobs.deploy.needs).toContain('build-inference-api');
+      expect(wf.jobs.deploy.needs).toContain('build-rag-ingestion');
     });
 
-    it('build-images outputs image tags', () => {
-      const outputs = wf.jobs['build-images'].outputs;
-      expect(outputs.app_api_image_tag).toBeDefined();
-      expect(outputs.inference_api_image_tag).toBeDefined();
-      expect(outputs.rag_ingestion_image_tag).toBeDefined();
+    it('each build job exposes the resulting image tag as an output', () => {
+      expect(wf.jobs['build-app-api'].outputs.image_tag).toBeDefined();
+      expect(wf.jobs['build-inference-api'].outputs.image_tag).toBeDefined();
+      expect(wf.jobs['build-rag-ingestion'].outputs.image_tag).toBeDefined();
     });
   });
 
@@ -174,7 +177,15 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs['deploy-platform']).toBeDefined();
       expect(wf.jobs['deploy-backend']).toBeDefined();
       expect(wf.jobs['deploy-frontend']).toBeDefined();
-      expect(wf.jobs['deploy-backend'].needs).toContain('deploy-platform');
+      // deploy-backend waits on the three per-image build jobs;
+      // each of those needs deploy-platform, so the platform → backend
+      // ordering is preserved transitively.
+      expect(wf.jobs['build-app-api'].needs).toBe('deploy-platform');
+      expect(wf.jobs['build-inference-api'].needs).toBe('deploy-platform');
+      expect(wf.jobs['build-rag-ingestion'].needs).toBe('deploy-platform');
+      expect(wf.jobs['deploy-backend'].needs).toContain('build-app-api');
+      expect(wf.jobs['deploy-backend'].needs).toContain('build-inference-api');
+      expect(wf.jobs['deploy-backend'].needs).toContain('build-rag-ingestion');
       expect(wf.jobs['deploy-frontend'].needs).toContain('deploy-backend');
     });
   });

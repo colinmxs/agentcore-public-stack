@@ -34,15 +34,15 @@ COMPUTE_HASH="${SCRIPT_DIR}/compute-content-hash.sh"
 
 SERVICE=""
 DOCKERFILE=""
-SOURCE_DIR=""
+SOURCE_DIRS=()
 ECR_REPO=""
 PLATFORM=""
 MANIFESTS=()
 
 usage() {
     cat <<EOF >&2
-Usage: $0 --service NAME --dockerfile PATH --source-dir DIR \\
-          --ecr-repository URI [--manifest PATH]... [--platform PLAT]
+Usage: $0 --service NAME --dockerfile PATH --ecr-repository URI \\
+          [--source-dir DIR]... [--manifest PATH]... [--platform PLAT]
 EOF
     exit 1
 }
@@ -51,7 +51,7 @@ while [[ $# -gt 0 ]]; do
     case "$1" in
         --service)        SERVICE="$2"; shift 2 ;;
         --dockerfile)     DOCKERFILE="$2"; shift 2 ;;
-        --source-dir)     SOURCE_DIR="$2"; shift 2 ;;
+        --source-dir)     SOURCE_DIRS+=("$2"); shift 2 ;;
         --manifest)       MANIFESTS+=("$2"); shift 2 ;;
         --ecr-repository) ECR_REPO="$2"; shift 2 ;;
         --platform)       PLATFORM="$2"; shift 2 ;;
@@ -62,7 +62,7 @@ done
 
 [[ -n "$SERVICE"    ]] || { echo "missing --service" >&2; usage; }
 [[ -n "$DOCKERFILE" ]] || { echo "missing --dockerfile" >&2; usage; }
-[[ -n "$SOURCE_DIR" ]] || { echo "missing --source-dir" >&2; usage; }
+[[ ${#SOURCE_DIRS[@]} -gt 0 ]] || { echo "at least one --source-dir required" >&2; usage; }
 [[ -n "$ECR_REPO"   ]] || { echo "missing --ecr-repository" >&2; usage; }
 [[ -n "${AWS_REGION:-}" ]] || { echo "AWS_REGION env var required" >&2; exit 2; }
 
@@ -74,7 +74,10 @@ REPO_NAME="${ECR_REPO##*/}"
 REGISTRY="${ECR_REPO%/*}"
 
 # 1. Compute the content hash. This is the candidate image tag.
-HASH_ARGS=( --dockerfile "$DOCKERFILE" --source-dir "$SOURCE_DIR" )
+HASH_ARGS=( --dockerfile "$DOCKERFILE" )
+for d in "${SOURCE_DIRS[@]}"; do
+    HASH_ARGS+=( --source-dir "$d" )
+done
 for m in "${MANIFESTS[@]}"; do
     HASH_ARGS+=( --manifest "$m" )
 done
