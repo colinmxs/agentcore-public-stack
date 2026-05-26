@@ -33,25 +33,28 @@ log_success() {
 #   Phase 2: Destroy InfrastructureStack (foundation)
 #
 # Implementation notes:
-#   - Each parallel `cdk destroy` writes its synth output to a
-#     dedicated directory (--output cdk.out.<stack>) so they don't
-#     contend for the same `cdk.out/` lock. Without this, only
-#     the first process to acquire the lock succeeds; the rest
-#     abort with "Another CLI (PID=...) is currently synthing".
-#   - Before invoking `cdk destroy`, we ask CloudFormation directly
-#     whether the stack exists. Missing stacks are skipped cleanly
-#     instead of being reported as ambiguous failures.
+#   - Uses `aws cloudformation delete-stack` directly instead of
+#     `cdk destroy`. The repo has been refactored from a 9-stack
+#     architecture to a 2-stack one, but legacy deployments still
+#     have the old CFN stacks. Those stack names are not present
+#     in the current CDK synth, so `cdk destroy <legacy-name>`
+#     silently no-ops (it exits 0 but never calls CloudFormation).
+#     `aws cloudformation delete-stack` deletes by the actual CFN
+#     stack name and works regardless of whether the stack is in
+#     the current CDK code.
+#   - Each stack delete is polled with `aws cloudformation wait
+#     stack-delete-complete`, so we know whether the stack is
+#     really gone before reporting success.
+#   - On DELETE_FAILED we surface the stack status reason and the
+#     specific resources that refused to delete (typically S3
+#     buckets that still have objects, or resources with RETAIN
+#     policies if you want them gone).
 # ===========================================================
 
 cd "${PROJECT_ROOT}/infrastructure"
 
-# Ensure dependencies are installed
-if [ ! -d "node_modules" ]; then
-    log_info "Installing CDK dependencies..."
-    npm ci
-fi
-
-# Build CDK context params
+# Build CDK context params (still used by load-env.sh's environment
+# loading, even though we're no longer invoking the CDK CLI).
 CDK_CONTEXT_PARAMS=$(build_cdk_context_params)
 
 # Phase 1: All application stacks (independent, can run in parallel)
@@ -92,20 +95,48 @@ stack_exists() {
         >/dev/null 2>&1
 }
 
-# Destroy a single stack. Each invocation writes synth output to its
-# own --output directory so parallel runs don't fight for cdk.out's
-# lock. Logs go to the per-stack file the caller passes in.
+# Delete a CloudFormation stack by name and wait for completion.
+# All output goes to ${log_file}; the caller decides what to surface
+# based on the exit code. On DELETE_FAILED, also dumps the stack
+# status reason and the resources that refused to delete.
 destroy_stack() {
-    local construct_id="$1"
-    local output_dir="$2"
-    local log_file="$3"
+    local stack_name="$1"
+    local log_file="$2"
 
-    eval cdk destroy "${construct_id}" \
-        ${CDK_CONTEXT_PARAMS} \
-        --output "${output_dir}" \
-        --force \
-        --exclusively \
-        > "${log_file}" 2>&1
+    {
+        echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Calling delete-stack for ${stack_name}"
+        if ! aws cloudformation delete-stack \
+            --stack-name "${stack_name}" \
+            --region "${CDK_AWS_REGION}"; then
+            echo "delete-stack API call failed for ${stack_name}"
+            return 1
+        fi
+
+        echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] Waiting for ${stack_name} to reach DELETE_COMPLETE..."
+        if aws cloudformation wait stack-delete-complete \
+            --stack-name "${stack_name}" \
+            --region "${CDK_AWS_REGION}"; then
+            echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] ${stack_name} deleted successfully"
+            return 0
+        fi
+
+        echo "[$(date -u '+%Y-%m-%dT%H:%M:%SZ')] wait stack-delete-complete returned non-zero for ${stack_name}"
+        echo
+        echo "Current stack status:"
+        aws cloudformation describe-stacks \
+            --stack-name "${stack_name}" \
+            --region "${CDK_AWS_REGION}" \
+            --query 'Stacks[0].[StackStatus,StackStatusReason]' \
+            --output text 2>&1 || true
+        echo
+        echo "Resources that refused to delete:"
+        aws cloudformation describe-stack-events \
+            --stack-name "${stack_name}" \
+            --region "${CDK_AWS_REGION}" \
+            --query 'StackEvents[?ResourceStatus==`DELETE_FAILED`].[LogicalResourceId,ResourceType,ResourceStatusReason]' \
+            --output table 2>&1 || true
+        return 1
+    } > "${log_file}" 2>&1
 }
 
 # ---------------------------------------------------------------
@@ -117,14 +148,13 @@ log_info "Phase 1: Destroying application stacks in parallel..."
 PIDS=()
 STACK_NAMES=()
 LOG_DIR=$(mktemp -d)
-SYNTH_DIR=$(mktemp -d)
 SKIPPED_STACKS=()
 
 for STACK in "${PARALLEL_STACKS[@]}"; do
     FULL_STACK_NAME="${CDK_PROJECT_PREFIX}-${STACK}"
 
     # Skip stacks that don't exist in CloudFormation. This avoids
-    # spending time synthing for a stack that was never deployed
+    # spending time waiting for a stack that was never deployed
     # (or has already been torn down).
     if ! stack_exists "${FULL_STACK_NAME}"; then
         log_info "  Skipping ${FULL_STACK_NAME} (does not exist in CloudFormation)"
@@ -135,8 +165,7 @@ for STACK in "${PARALLEL_STACKS[@]}"; do
     log_info "  Starting destroy: ${FULL_STACK_NAME}"
 
     destroy_stack \
-        "${STACK}" \
-        "${SYNTH_DIR}/${STACK}" \
+        "${FULL_STACK_NAME}" \
         "${LOG_DIR}/${STACK}.log" &
     PIDS+=($!)
     STACK_NAMES+=("${STACK}")
@@ -152,7 +181,7 @@ for i in "${!PIDS[@]}"; do
         log_warn "Failed to destroy ${CDK_PROJECT_PREFIX}-${STACK_NAMES[$i]}"
         if [ -f "${LOG_DIR}/${STACK_NAMES[$i]}.log" ]; then
             log_warn "  Tail of log:"
-            tail -n 20 "${LOG_DIR}/${STACK_NAMES[$i]}.log" \
+            tail -n 30 "${LOG_DIR}/${STACK_NAMES[$i]}.log" \
                 | sed 's/^/    /'
         fi
     fi
@@ -172,8 +201,7 @@ else
     log_info "  Destroying ${FULL_STACK_NAME}..."
     FOUNDATION_LOG="${LOG_DIR}/${FOUNDATION_STACK}.log"
     if destroy_stack \
-        "${FOUNDATION_STACK}" \
-        "${SYNTH_DIR}/${FOUNDATION_STACK}" \
+        "${FULL_STACK_NAME}" \
         "${FOUNDATION_LOG}"; then
         log_success "Destroyed ${FULL_STACK_NAME}"
     else
@@ -181,13 +209,13 @@ else
         log_warn "Failed to destroy ${FULL_STACK_NAME}"
         if [ -f "${FOUNDATION_LOG}" ]; then
             log_warn "  Tail of log:"
-            tail -n 20 "${FOUNDATION_LOG}" | sed 's/^/    /'
+            tail -n 30 "${FOUNDATION_LOG}" | sed 's/^/    /'
         fi
     fi
 fi
 
 # Cleanup
-rm -rf "${LOG_DIR}" "${SYNTH_DIR}"
+rm -rf "${LOG_DIR}"
 
 # ---------------------------------------------------------------
 # Summary
