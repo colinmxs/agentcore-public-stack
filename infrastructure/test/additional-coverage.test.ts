@@ -187,8 +187,8 @@ describe('Config defaults', () => {
     const config = createMockConfig();
     const requiredKeys: (keyof AppConfig)[] = [
       'projectPrefix', 'awsAccount', 'awsRegion', 'vpcCidr',
-      'frontend', 'appApi', 'inferenceApi', 'gateway',
-      'fileUpload', 'ragIngestion', 'fineTuning', 'artifacts',
+      'frontend', 'appApi', 'inferenceApi',
+      'ragIngestion', 'fineTuning', 'artifacts',
       'mcpSandbox', 'cognito', 'tags',
     ];
     for (const key of requiredKeys) {

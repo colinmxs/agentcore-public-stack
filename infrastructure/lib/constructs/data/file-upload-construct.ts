@@ -46,10 +46,7 @@ export class FileUploadConstruct extends Construct {
 
     const { config } = props;
 
-    const fileUploadCorsOrigins = buildCorsOrigins(
-      config,
-      config.fileUpload?.additionalCorsOrigins,
-    );
+    const fileUploadCorsOrigins = buildCorsOrigins(config);
 
     this.bucket = new s3.Bucket(this, 'UserFilesBucket', {
       bucketName: getResourceName(
@@ -104,9 +101,7 @@ export class FileUploadConstruct extends Construct {
         },
         {
           id: 'expire-objects',
-          expiration: cdk.Duration.days(
-            config.fileUpload?.retentionDays || 365,
-          ),
+          expiration: cdk.Duration.days(365),
         },
         {
           id: 'abort-incomplete-multipart',

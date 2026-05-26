@@ -28,9 +28,6 @@ export interface AppConfig {
   frontend: FrontendConfig;
   appApi: AppApiConfig;
   inferenceApi: InferenceApiConfig;
-  gateway: GatewayConfig;
-  assistants: AssistantsConfig;
-  fileUpload: FileUploadConfig;
   ragIngestion: RagIngestionConfig;
   fineTuning: FineTuningConfig;
   artifacts: ArtifactsConfig;
@@ -81,10 +78,6 @@ export interface FrontendConfig {
   additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
-export interface AssistantsConfig {
-  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
-}
-
 export interface AppApiConfig {
   cpu: number;
   memory: number;
@@ -93,29 +86,14 @@ export interface AppApiConfig {
   additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
+/**
+ * Inference API config.
+ *
+ * The inference API runs in Bedrock AgentCore Runtime, which manages
+ * its own compute. None of the typical Fargate-style knobs (cpu, memory,
+ * desiredCount, maxCapacity) apply here, so they're intentionally absent.
+ */
 export interface InferenceApiConfig {
-  cpu: number;
-  memory: number;
-  desiredCount: number;
-  maxCapacity: number;
-  // Environment variables for runtime container
-  logLevel: string;
-  additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
-}
-
-export interface GatewayConfig {
-  apiType: 'REST' | 'HTTP';
-  throttleRateLimit: number;
-  throttleBurstLimit: number;
-  enableWaf: boolean;
-  logLevel?: string;  // Log level for Lambda functions (INFO, DEBUG, ERROR)
-}
-
-export interface FileUploadConfig {
-  maxFileSizeBytes: number;      // Maximum file size (default: 4MB per Bedrock limit)
-  maxFilesPerMessage: number;    // Maximum files per message (default: 5)
-  userQuotaBytes: number;        // Per-user storage quota (default: 1GB)
-  retentionDays: number;         // File retention (default: 365 days)
   additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
@@ -129,7 +107,6 @@ export interface RagIngestionConfig {
 }
 
 export interface FineTuningConfig {
-  defaultQuotaHours: number;     // Default monthly GPU-hour quota for all users (0 = whitelist-only)
   additionalCorsOrigins?: string; // Extra CORS origins to append (comma-separated)
 }
 
@@ -241,30 +218,7 @@ export function loadConfig(scope: cdk.App): AppConfig {
       additionalCorsOrigins: process.env.CDK_APP_API_CORS_ORIGINS || scope.node.tryGetContext('appApi')?.additionalCorsOrigins,
     },
     inferenceApi: {
-      cpu: parseIntEnv(process.env.CDK_INFERENCE_API_CPU) || scope.node.tryGetContext('inferenceApi')?.cpu,
-      memory: parseIntEnv(process.env.CDK_INFERENCE_API_MEMORY) || scope.node.tryGetContext('inferenceApi')?.memory,
-      desiredCount: parseIntEnv(process.env.CDK_INFERENCE_API_DESIRED_COUNT) ?? scope.node.tryGetContext('inferenceApi')?.desiredCount,
-      maxCapacity: parseIntEnv(process.env.CDK_INFERENCE_API_MAX_CAPACITY) || scope.node.tryGetContext('inferenceApi')?.maxCapacity,
-      // Environment variables from GitHub Secrets/Variables with context fallback
-      logLevel: process.env.ENV_INFERENCE_API_LOG_LEVEL || scope.node.tryGetContext('inferenceApi')?.logLevel,
       additionalCorsOrigins: process.env.CDK_INFERENCE_API_CORS_ORIGINS || scope.node.tryGetContext('inferenceApi')?.additionalCorsOrigins,
-    },
-    gateway: {
-      apiType: (process.env.CDK_GATEWAY_API_TYPE as 'REST' | 'HTTP') || scope.node.tryGetContext('gateway')?.apiType,
-      throttleRateLimit: parseIntEnv(process.env.CDK_GATEWAY_THROTTLE_RATE_LIMIT) || scope.node.tryGetContext('gateway')?.throttleRateLimit,
-      throttleBurstLimit: parseIntEnv(process.env.CDK_GATEWAY_THROTTLE_BURST_LIMIT) || scope.node.tryGetContext('gateway')?.throttleBurstLimit,
-      enableWaf: parseBooleanEnv(process.env.CDK_GATEWAY_ENABLE_WAF) ?? scope.node.tryGetContext('gateway')?.enableWaf,
-      logLevel: process.env.CDK_GATEWAY_LOG_LEVEL || scope.node.tryGetContext('gateway')?.logLevel,
-    },
-    fileUpload: {
-      maxFileSizeBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILE_SIZE) || scope.node.tryGetContext('fileUpload')?.maxFileSizeBytes,
-      maxFilesPerMessage: parseIntEnv(process.env.CDK_FILE_UPLOAD_MAX_FILES_PER_MESSAGE) || scope.node.tryGetContext('fileUpload')?.maxFilesPerMessage,
-      userQuotaBytes: parseIntEnv(process.env.CDK_FILE_UPLOAD_USER_QUOTA) || scope.node.tryGetContext('fileUpload')?.userQuotaBytes,
-      retentionDays: parseIntEnv(process.env.CDK_FILE_UPLOAD_RETENTION_DAYS) || scope.node.tryGetContext('fileUpload')?.retentionDays,
-      additionalCorsOrigins: process.env.CDK_FILE_UPLOAD_CORS_ORIGINS || scope.node.tryGetContext('fileUpload')?.additionalCorsOrigins,
-    },
-    assistants: {
-      additionalCorsOrigins: process.env.CDK_ASSISTANTS_CORS_ORIGINS || scope.node.tryGetContext('assistants')?.additionalCorsOrigins,
     },
     ragIngestion: {
       additionalCorsOrigins: process.env.CDK_RAG_CORS_ORIGINS || scope.node.tryGetContext('ragIngestion')?.additionalCorsOrigins,
@@ -275,7 +229,6 @@ export function loadConfig(scope: cdk.App): AppConfig {
       vectorDistanceMetric: process.env.CDK_RAG_DISTANCE_METRIC || scope.node.tryGetContext('ragIngestion')?.vectorDistanceMetric,
     },
     fineTuning: {
-      defaultQuotaHours: parseIntEnv(process.env.CDK_FINE_TUNING_DEFAULT_QUOTA_HOURS) ?? scope.node.tryGetContext('fineTuning')?.defaultQuotaHours ?? 0,
       additionalCorsOrigins: process.env.CDK_FINE_TUNING_CORS_ORIGINS || scope.node.tryGetContext('fineTuning')?.additionalCorsOrigins,
     },
     artifacts: {
@@ -469,15 +422,7 @@ function validateConfig(config: AppConfig): void {
     });
   }
 
-  // Validate Gateway configuration (always provisioned).
-  const validApiTypes = ['REST', 'HTTP'];
-  if (!config.gateway.apiType || !validApiTypes.includes(config.gateway.apiType)) {
-    throw new Error(
-      `Gateway stack requires apiType to be 'REST' or 'HTTP'. Got: '${config.gateway.apiType}'`
-    );
-  }
-
-  // Validate File Upload CORS origins
+  // Validate top-level CORS origins.
   if (!config.corsOrigins) {
     console.warn(
       'Warning: no CORS origins configured. ' +
@@ -485,7 +430,7 @@ function validateConfig(config: AppConfig): void {
     );
   }
 
-  // Validate required fields for all stacks (everything always deploys).
+  // Validate required App API Fargate sizing (always provisioned).
   if (!config.appApi.cpu) {
     throw new Error('App API stack requires "cpu" to be set.');
   }
@@ -499,28 +444,8 @@ function validateConfig(config: AppConfig): void {
     throw new Error('App API stack requires "maxCapacity" to be set.');
   }
 
-  if (!config.inferenceApi.cpu) {
-    throw new Error('Inference API stack requires "cpu" to be set.');
-  }
-  if (!config.inferenceApi.memory) {
-    throw new Error('Inference API stack requires "memory" to be set.');
-  }
-  if (!config.inferenceApi.desiredCount && config.inferenceApi.desiredCount !== 0) {
-    throw new Error('Inference API stack requires "desiredCount" to be set.');
-  }
-  if (!config.inferenceApi.maxCapacity) {
-    throw new Error('Inference API stack requires "maxCapacity" to be set.');
-  }
-
   if (!config.frontend.cloudFrontPriceClass) {
     throw new Error('Frontend stack requires "cloudFrontPriceClass" to be set.');
-  }
-
-  if (!config.gateway.throttleRateLimit) {
-    throw new Error('Gateway stack requires "throttleRateLimit" to be set.');
-  }
-  if (!config.gateway.throttleBurstLimit) {
-    throw new Error('Gateway stack requires "throttleBurstLimit" to be set.');
   }
 
   // Artifacts and MCP Sandbox domain/cert validation is a deploy-time

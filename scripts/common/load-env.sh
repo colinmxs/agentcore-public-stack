@@ -129,39 +129,8 @@ build_cdk_context_params() {
     fi
 
     # Inference API optional parameters
-    if [ -n "${CDK_INFERENCE_API_CPU:-}" ]; then
-        context_params="${context_params} --context inferenceApi.cpu=\"${CDK_INFERENCE_API_CPU}\""
-    fi
-    if [ -n "${CDK_INFERENCE_API_MEMORY:-}" ]; then
-        context_params="${context_params} --context inferenceApi.memory=\"${CDK_INFERENCE_API_MEMORY}\""
-    fi
-    if [ -n "${CDK_INFERENCE_API_DESIRED_COUNT:-}" ]; then
-        context_params="${context_params} --context inferenceApi.desiredCount=\"${CDK_INFERENCE_API_DESIRED_COUNT}\""
-    fi
-    if [ -n "${CDK_INFERENCE_API_MAX_CAPACITY:-}" ]; then
-        context_params="${context_params} --context inferenceApi.maxCapacity=\"${CDK_INFERENCE_API_MAX_CAPACITY}\""
-    fi
-
-    # Inference API environment variables
-    if [ -n "${ENV_INFERENCE_API_LOG_LEVEL:-}" ]; then
-        context_params="${context_params} --context inferenceApi.logLevel=\"${ENV_INFERENCE_API_LOG_LEVEL}\""
-    fi
-
-    # Gateway optional parameters
-    if [ -n "${CDK_GATEWAY_API_TYPE:-}" ]; then
-        context_params="${context_params} --context gateway.apiType=\"${CDK_GATEWAY_API_TYPE}\""
-    fi
-    if [ -n "${CDK_GATEWAY_THROTTLE_RATE_LIMIT:-}" ]; then
-        context_params="${context_params} --context gateway.throttleRateLimit=\"${CDK_GATEWAY_THROTTLE_RATE_LIMIT}\""
-    fi
-    if [ -n "${CDK_GATEWAY_THROTTLE_BURST_LIMIT:-}" ]; then
-        context_params="${context_params} --context gateway.throttleBurstLimit=\"${CDK_GATEWAY_THROTTLE_BURST_LIMIT}\""
-    fi
-    if [ -n "${CDK_GATEWAY_ENABLE_WAF:-}" ]; then
-        context_params="${context_params} --context gateway.enableWaf=\"${CDK_GATEWAY_ENABLE_WAF}\""
-    fi
-    if [ -n "${CDK_GATEWAY_LOG_LEVEL:-}" ]; then
-        context_params="${context_params} --context gateway.logLevel=\"${CDK_GATEWAY_LOG_LEVEL}\""
+    if [ -n "${CDK_INFERENCE_API_CORS_ORIGINS:-}" ]; then
+        context_params="${context_params} --context inferenceApi.additionalCorsOrigins=\"${CDK_INFERENCE_API_CORS_ORIGINS}\""
     fi
 
     # Domain name — top-level context key (used by config.ts as config.domainName)

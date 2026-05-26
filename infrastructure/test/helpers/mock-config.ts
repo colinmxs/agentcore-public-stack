@@ -36,26 +36,7 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
       desiredCount: 1,
       maxCapacity: 2,
     },
-    inferenceApi: {
-      cpu: 256,
-      memory: 512,
-      desiredCount: 1,
-      maxCapacity: 2,
-      logLevel: 'INFO',
-    },
-    gateway: {
-      apiType: 'REST',
-      throttleRateLimit: 100,
-      throttleBurstLimit: 50,
-      enableWaf: false,
-    },
-    assistants: {},
-    fileUpload: {
-      maxFileSizeBytes: 10485760,
-      maxFilesPerMessage: 5,
-      userQuotaBytes: 104857600,
-      retentionDays: 30,
-    },
+    inferenceApi: {},
     ragIngestion: {
       lambdaMemorySize: 3008,
       lambdaTimeout: 900,
@@ -63,9 +44,7 @@ export function createMockConfig(overrides: Partial<AppConfig> = {}): AppConfig 
       vectorDimension: 1024,
       vectorDistanceMetric: 'cosine',
     },
-    fineTuning: {
-      defaultQuotaHours: 0,
-    },
+    fineTuning: {},
     artifacts: {
       retentionDays: 90,
       extraFrameAncestors: [],

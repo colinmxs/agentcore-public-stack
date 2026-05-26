@@ -23,7 +23,7 @@ describe('PlatformStack', () => {
       frontend: { cloudFrontPriceClass: 'PriceClass_100', certificateArn: cert },
       artifacts: { retentionDays: 90, extraFrameAncestors: [], certificateArn: cert },
       mcpSandbox: { extraFrameAncestors: [], certificateArn: cert },
-      fineTuning: { defaultQuotaHours: 100 },
+      fineTuning: {},
     });
     const app = new cdk.App();
     mockSsmContext(app, config);

@@ -24,27 +24,7 @@
     "desiredCount": 2,
     "maxCapacity": 10
   },
-  "inferenceApi": {
-    "cpu": 1024,
-    "memory": 2048,
-    "desiredCount": 1,
-    "maxCapacity": 5,
-    "logLevel": "INFO"
-  },
-  "gateway": {
-    "apiType": "HTTP",
-    "throttleRateLimit": 10000,
-    "throttleBurstLimit": 5000,
-    "enableWaf": false,
-    "logLevel": "INFO"
-  },
-  "fileUpload": {
-    "maxFileSizeBytes": 4194304,
-    "maxFilesPerMessage": 5,
-    "userQuotaBytes": 1073741824,
-    "retentionDays": 365
-  },
-  "assistants": {},
+  "inferenceApi": {},
   "ragIngestion": {
     "lambdaMemorySize": 3008,
     "lambdaTimeout": 900,
