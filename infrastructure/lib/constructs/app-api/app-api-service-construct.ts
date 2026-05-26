@@ -31,6 +31,28 @@ export interface AppApiServiceConstructProps {
    * `INFERENCE_API_URL` env var.
    */
   inferenceApiRuntimeEndpointUrl: string;
+  /**
+   * Artifacts iframe origin URL (https://artifacts.{domain}). Same-stack
+   * ref via ArtifactsDistributionConstruct; used as the App API
+   * container's `ARTIFACTS_ORIGIN` env var.
+   */
+  artifactsOrigin: string;
+  /**
+   * SageMaker fine-tuning execution role ARN. Same-stack ref via
+   * SageMakerExecutionRoleConstruct; consumed as both an env var
+   * and an IAM PassRole grant on the App API task role.
+   */
+  sagemakerExecutionRoleArn: string;
+  /**
+   * SageMaker fine-tuning security group ID. Same-stack ref via
+   * SageMakerExecutionRoleConstruct.
+   */
+  sagemakerSecurityGroupId: string;
+  /**
+   * Comma-separated VPC private subnet IDs the SageMaker training
+   * jobs run in. Same-stack ref derived from PlatformStack's VPC.
+   */
+  sagemakerPrivateSubnetIds: string;
 }
 
 /**
@@ -126,41 +148,43 @@ export class AppApiServiceConstruct extends Construct {
     // ── Container environment ──
     const environment = buildAppApiEnvironment(config, params);
 
-    // Artifacts env vars (always-on)
+    // Artifacts env vars (always-on).
+    // bucket-name, table-name, render-token-key-arn are written by
+    // PlatformStack — legitimate cross-stack SSM reads. `origin` is
+    // written by sibling ArtifactsDistributionConstruct in BackendStack,
+    // so we receive it via props (same-stack reads via SSM deadlock on
+    // first deploy).
     const artifactsBucketName = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/artifacts/bucket-name`);
     const artifactsTableName = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/artifacts/table-name`);
-    const artifactsOrigin = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/artifacts/origin`);
     const artifactRenderTokenSecretArn = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/artifacts/render-token-key-arn`);
 
     environment['S3_ARTIFACTS_BUCKET_NAME'] = artifactsBucketName;
     environment['DYNAMODB_ARTIFACTS_TABLE_NAME'] = artifactsTableName;
-    environment['ARTIFACTS_ORIGIN'] = artifactsOrigin;
+    environment['ARTIFACTS_ORIGIN'] = props.artifactsOrigin;
     environment['ARTIFACTS_RENDER_TOKEN_SECRET_ARN'] = artifactRenderTokenSecretArn;
 
-    // Fine-tuning env vars (always-on)
+    // Fine-tuning env vars (always-on).
+    // jobs-table-name, access-table-name, data-bucket-name are written
+    // by PlatformStack (FineTuningDataConstruct). Same-stack values
+    // (sagemaker-execution-role-arn, sagemaker-security-group-id,
+    // private-subnet-ids) come via props from the sibling
+    // SageMakerExecutionRoleConstruct in BackendStack.
     const ftJobsTableName = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/fine-tuning/jobs-table-name`);
     const ftAccessTableName = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/fine-tuning/access-table-name`);
     const ftDataBucketName = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/fine-tuning/data-bucket-name`);
-    const ftExecRoleArn = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/sagemaker-execution-role-arn`);
-    const ftSecurityGroupId = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/sagemaker-security-group-id`);
-    const ftPrivateSubnetIds = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/private-subnet-ids`);
 
     environment['FINE_TUNING_JOBS_TABLE_NAME'] = ftJobsTableName;
     environment['FINE_TUNING_ACCESS_TABLE_NAME'] = ftAccessTableName;
     environment['FINE_TUNING_DATA_BUCKET_NAME'] = ftDataBucketName;
-    environment['SAGEMAKER_EXECUTION_ROLE_ARN'] = ftExecRoleArn;
-    environment['SAGEMAKER_SECURITY_GROUP_ID'] = ftSecurityGroupId;
-    environment['FINE_TUNING_PRIVATE_SUBNET_IDS'] = ftPrivateSubnetIds;
+    environment['SAGEMAKER_EXECUTION_ROLE_ARN'] = props.sagemakerExecutionRoleArn;
+    environment['SAGEMAKER_SECURITY_GROUP_ID'] = props.sagemakerSecurityGroupId;
+    environment['FINE_TUNING_PRIVATE_SUBNET_IDS'] = props.sagemakerPrivateSubnetIds;
 
     // ── Container definition ──
     const container = taskDefinition.addContainer('AppApiContainer', {
@@ -214,6 +238,7 @@ export class AppApiServiceConstruct extends Construct {
       ragAssistantsTableArn: params.ragAssistantsTableArn,
       ragDocumentsBucketArn: params.ragDocumentsBucketArn,
       agentCoreMemoryArn: props.agentCoreMemoryArn,
+      sagemakerExecutionRoleArn: props.sagemakerExecutionRoleArn,
     });
 
     // ── Target group ──

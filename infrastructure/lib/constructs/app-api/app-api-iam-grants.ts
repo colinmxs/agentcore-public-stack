@@ -69,6 +69,12 @@ export interface AppApiIamGrantsProps {
    * deploy.
    */
   agentCoreMemoryArn: string;
+  /**
+   * SageMaker fine-tuning execution role ARN. Same-stack ref via
+   * SageMakerExecutionRoleConstruct in BackendStack — passed in to
+   * avoid a same-stack SSM round-trip.
+   */
+  sagemakerExecutionRoleArn: string;
 }
 
 /**
@@ -280,8 +286,9 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
     scope, `/${config.projectPrefix}/fine-tuning/access-table-arn`);
   const ftDataBucketArn = ssm.StringParameter.valueForStringParameter(
     scope, `/${config.projectPrefix}/fine-tuning/data-bucket-arn`);
-  const ftExecRoleArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/fine-tuning/sagemaker-execution-role-arn`);
+  // sagemaker-execution-role-arn is written by a sibling construct in
+  // BackendStack, so it comes in via props rather than SSM.
+  const ftExecRoleArn = props.sagemakerExecutionRoleArn;
 
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({

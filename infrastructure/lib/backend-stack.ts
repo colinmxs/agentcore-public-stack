@@ -51,27 +51,81 @@ export class BackendStack extends cdk.Stack {
     // Inference API — AgentCore Runtime + Memory + Tools
     //
     // Constructed before App API so we can pass the AgentCore Memory
-    // ARN directly into App API's task-role IAM grants. App API used
-    // to read this ARN from SSM, which deadlocked on first deploy
-    // because both writer and reader live in BackendStack.
+    // ARN, Memory ID, and runtime endpoint URL directly into App API.
+    // App API used to read these from SSM, which deadlocked on first
+    // deploy because both writer and reader live in BackendStack.
     // ============================================================
     const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', { config });
 
     // ============================================================
-    // App API Fargate service (the largest single construct)
+    // Artifact Render Lambda + CloudFront Distribution
+    //
+    // Constructed before App API so the distribution's origin URL
+    // can flow into App API as a direct prop. App API used to read
+    // /{prefix}/artifacts/origin from SSM, which deadlocked on first
+    // deploy (same-stack publisher and consumer). The artifacts data
+    // (bucket, table, render-token-key-arn) still cross over from
+    // PlatformStack and that path is fine to read via SSM.
+    //
+    // Both render Lambda and distribution live in BackendStack
+    // because the distribution's origin IS the Lambda — putting the
+    // distribution in PlatformStack would create a Platform → Backend
+    // dependency cycle.
     // ============================================================
-    // The construct still reads some values from SSM (table names,
-    // inference-api endpoint URL, etc.) because those are runtime
-    // reads that the Fargate task resolves at startup. The cross-stack
-    // CDK references (VPC, ALB, ECS cluster) flow through the typed
-    // Platform props via SSM reads inside the construct — these will
-    // be replaced with direct typed prop passing in a follow-up
-    // optimization pass.
+    const renderLambda = new ArtifactRenderLambdaConstruct(
+      this,
+      'ArtifactRender',
+      {
+        config,
+        artifactsTable: platform.artifactsTable,
+        artifactsBucket: platform.artifactsContentBucket,
+        frameAncestors: platform.artifactsFrameAncestors,
+      },
+    );
+    this.artifactRenderFunctionUrl = renderLambda.functionUrl;
+
+    const artifactsDistribution = new ArtifactsDistributionConstruct(this, 'ArtifactsDistribution', {
+      config,
+      renderFunctionUrl: renderLambda.functionUrl,
+      frameAncestors: platform.artifactsFrameAncestors,
+    });
+
+    // ============================================================
+    // SageMaker Fine-Tuning IAM
+    //
+    // Constructed before App API so its execution role ARN, security
+    // group ID, and the private subnet IDs flow into App API as direct
+    // props. (App API used to read all three from SSM — same-stack
+    // misuse.)
+    // ============================================================
+    const sagemakerPrivateSubnetIds = platform.vpc.privateSubnets
+      .map((s) => s.subnetId)
+      .join(',');
+    const sagemaker = new SageMakerExecutionRoleConstruct(this, 'FineTuning', {
+      config,
+      dataBucket: platform.fineTuningDataBucket,
+      jobsTable: platform.fineTuningJobsTable,
+      vpc: platform.vpc,
+      privateSubnetIdsString: sagemakerPrivateSubnetIds,
+    });
+
+    // ============================================================
+    // App API Fargate service (the largest single construct)
+    //
+    // Receives every same-stack value via typed props above.
+    // Cross-stack values from PlatformStack still flow via SSM
+    // reads inside the construct (table names, bucket names, etc.) —
+    // those are legitimate (Platform writes, Backend reads).
+    // ============================================================
     new AppApiServiceConstruct(this, 'AppApi', {
       config,
       agentCoreMemoryArn: inferenceApi.memory.attrMemoryArn,
       agentCoreMemoryId: inferenceApi.memory.attrMemoryId,
       inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,
+      artifactsOrigin: artifactsDistribution.originUrl,
+      sagemakerExecutionRoleArn: sagemaker.executionRole.roleArn,
+      sagemakerSecurityGroupId: sagemaker.securityGroup.securityGroupId,
+      sagemakerPrivateSubnetIds,
     });
 
     // ============================================================
@@ -105,44 +159,5 @@ export class BackendStack extends cdk.Stack {
       new s3n.LambdaDestination(ragIngestion.lambda),
       { prefix: 'assistants/' },
     );
-
-    // ============================================================
-    // Artifact Render Lambda + CloudFront Distribution
-    // ============================================================
-    // Both live in Backend because the distribution's origin IS the
-    // Lambda — putting the distribution in Platform would create a
-    // Platform → Backend dependency cycle.
-    const renderLambda = new ArtifactRenderLambdaConstruct(
-      this,
-      'ArtifactRender',
-      {
-        config,
-        artifactsTable: platform.artifactsTable,
-        artifactsBucket: platform.artifactsContentBucket,
-        frameAncestors: platform.artifactsFrameAncestors,
-      },
-    );
-    this.artifactRenderFunctionUrl = renderLambda.functionUrl;
-
-    // Artifacts CloudFront distribution — serves the render Lambda
-    // behind a custom domain with strict CSP headers.
-    new ArtifactsDistributionConstruct(this, 'ArtifactsDistribution', {
-      config,
-      renderFunctionUrl: renderLambda.functionUrl,
-      frameAncestors: platform.artifactsFrameAncestors,
-    });
-
-    // ============================================================
-    // SageMaker Fine-Tuning IAM
-    // ============================================================
-    new SageMakerExecutionRoleConstruct(this, 'FineTuning', {
-      config,
-      dataBucket: platform.fineTuningDataBucket,
-      jobsTable: platform.fineTuningJobsTable,
-      vpc: platform.vpc,
-      privateSubnetIdsString: platform.vpc.privateSubnets
-        .map((s) => s.subnetId)
-        .join(','),
-    });
   }
 }

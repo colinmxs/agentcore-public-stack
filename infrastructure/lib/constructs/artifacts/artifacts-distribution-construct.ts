@@ -41,6 +41,14 @@ export interface ArtifactsDistributionConstructProps {
  */
 export class ArtifactsDistributionConstruct extends Construct {
   public readonly distribution: cloudfront.Distribution;
+  /**
+   * Full URL of the artifacts iframe origin (https://artifacts.{domain}).
+   * Exposed so other BackendStack constructs (notably the App API)
+   * can wire it via direct construct refs instead of round-tripping
+   * through SSM, which would chicken-and-egg on a same-stack first
+   * deploy.
+   */
+  public readonly originUrl: string;
 
   constructor(
     scope: Construct,
@@ -141,9 +149,11 @@ export class ArtifactsDistributionConstruct extends Construct {
         'Artifact iframe origin — proxies to CloudFront → render Lambda',
     });
 
+    this.originUrl = `https://${artifactsSubdomain}`;
+
     new ssm.StringParameter(this, 'ArtifactsOriginParameter', {
       parameterName: `/${config.projectPrefix}/artifacts/origin`,
-      stringValue: `https://${artifactsSubdomain}`,
+      stringValue: this.originUrl,
       description:
         'Origin where artifact iframes are served (https://artifacts.{domain})',
       tier: ssm.ParameterTier.STANDARD,

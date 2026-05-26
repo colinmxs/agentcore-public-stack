@@ -24,12 +24,14 @@ if [ -d "cdk.out" ] && [ -f "cdk.out/manifest.json" ]; then
     log_info "Using pre-synthesized template from cdk.out/"
     npx cdk deploy "${CDK_PROJECT_PREFIX}-BackendStack" \
         --app "cdk.out/" \
+        --exclusively \
         --require-approval never \
         --outputs-file "${PROJECT_ROOT}/infrastructure/backend-outputs.json"
 else
     log_info "Synthesizing and deploying BackendStack..."
     eval npx cdk deploy "${CDK_PROJECT_PREFIX}-BackendStack" \
         ${CDK_CONTEXT_PARAMS} \
+        --exclusively \
         --require-approval never \
         --outputs-file "${PROJECT_ROOT}/infrastructure/backend-outputs.json"
 fi
