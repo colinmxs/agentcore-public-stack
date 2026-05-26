@@ -80,6 +80,7 @@ jobs:
 
   build-app-api:
     name: Build app-api image
+    needs: test-backend
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 
@@ -114,6 +115,7 @@ jobs:
 
   build-inference-api:
     name: Build inference-api image
+    needs: test-backend
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 
@@ -155,6 +157,7 @@ jobs:
 
   build-rag-ingestion:
     name: Build rag-ingestion image
+    needs: test-backend
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 

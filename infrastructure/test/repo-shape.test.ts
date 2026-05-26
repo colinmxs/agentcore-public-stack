@@ -156,6 +156,17 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs['test-backend']).toBeDefined();
     });
 
+    it('every build job waits on test-backend (no docker work until python tests pass)', () => {
+      const buildJobs = ['build-app-api', 'build-inference-api', 'build-rag-ingestion'];
+      for (const j of buildJobs) {
+        // 'needs' may be a string or array; normalise.
+        const needs = Array.isArray(wf.jobs[j].needs)
+          ? wf.jobs[j].needs
+          : [wf.jobs[j].needs];
+        expect(needs).toContain('test-backend');
+      }
+    });
+
     it('deploy waits on every build job and every test gate', () => {
       expect(wf.jobs.deploy.needs).toContain('build-app-api');
       expect(wf.jobs.deploy.needs).toContain('build-inference-api');
