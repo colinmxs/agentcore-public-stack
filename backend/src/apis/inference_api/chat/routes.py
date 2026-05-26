@@ -605,29 +605,22 @@ async def stream_conversational_message(
         logger.info("Preview session - skipping message persistence")
         return
 
-    # Save messages to session for persistence
+    # Persist user + assistant turns. Unlike the streaming error paths in
+    # stream_coordinator (which persist assistant-only because the agent
+    # loop's MessageAddedEvent hook already wrote the user turn), this
+    # path fires BEFORE any agent run — quota-exceeded short-circuits,
+    # etc. — so no hook has persisted the user turn yet.
     try:
-        from strands.types.content import Message
-        from strands.types.session import SessionMessage
+        from agents.main_agent.session.persistence import persist_synthetic_messages
 
         session_manager = SessionFactory.create_session_manager(session_id=session_id, user_id=user_id, caching_enabled=False)
+        persist_synthetic_messages(
+            session_manager,
+            session_id,
+            [("user", user_input), ("assistant", message)],
+        )
 
-        # Save user message
-        user_message: Message = {"role": "user", "content": [{"text": user_input}]}
-
-        # Save assistant message
-        assistant_message: Message = {"role": "assistant", "content": [{"text": message}]}
-
-        # Use base_manager's create_message for persistence (AgentCore Memory)
-        if hasattr(session_manager, "base_manager") and hasattr(session_manager.base_manager, "create_message"):
-            user_session_msg = SessionMessage.from_message(user_message, index=0)
-            assistant_session_msg = SessionMessage.from_message(assistant_message, index=1)
-
-            session_manager.base_manager.create_message(session_id, "default", user_session_msg)
-            session_manager.base_manager.create_message(session_id, "default", assistant_session_msg)
-            logger.info("Saved messages to session")
-
-    except Exception as e:
+    except Exception:
         logger.error("Failed to save messages to session", exc_info=True)
 
 
@@ -960,6 +953,14 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         logger.info("Assistant RAG requested")
         logger.info("Processing for authenticated user")
 
+        # Assistants are KB-grounded with no external tools available to the consumer.
+        # Override any tools the client sent — server is the source of truth here.
+        if input_data.enabled_tools:
+            logger.warning(
+                "Ignoring enabled_tools on assistant chat (assistants are KB-only)"
+            )
+        input_data.enabled_tools = []
+
         # 1. Check if session already has an assistant attached
         # If it does, verify it's the same assistant (can't change assistants mid-session)
         # If it doesn't, verify session has no messages (can only attach to new sessions)
@@ -1004,7 +1005,9 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
 
         # 2. Load assistant with access check
         logger.info("Loading assistant with access check...")
-        assistant = await get_assistant_with_access_check(assistant_id=input_data.rag_assistant_id, user_id=user_id, user_email=current_user.email)
+        assistant, _ = await get_assistant_with_access_check(
+            assistant_id=input_data.rag_assistant_id, user_id=user_id, user_email=current_user.email
+        )
 
         if not assistant:
             logger.warning("get_assistant_with_access_check returned None")
@@ -1068,6 +1071,13 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         preview_instructions_override = input_data.system_prompt if is_preview_session(input_data.session_id) and input_data.system_prompt else None
         effective_instructions = preview_instructions_override or assistant.instructions
 
+        kb_grounding_directive = (
+            "## Knowledge Base Grounding\n\n"
+            "Answer using only the knowledge base context provided with the user's message. "
+            "If the context does not cover the question, say so plainly rather than guessing. "
+            "You have no external tools available."
+        )
+
         if effective_instructions:
             # Import here to avoid circular dependency
             from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
@@ -1077,7 +1087,7 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
             base_prompt = base_prompt_builder.build(include_date=True)
 
             # Append assistant instructions to the base prompt
-            system_prompt = f"{base_prompt}\n\n## Assistant-Specific Instructions\n\n{effective_instructions}"
+            system_prompt = f"{base_prompt}\n\n{kb_grounding_directive}\n\n## Assistant-Specific Instructions\n\n{effective_instructions}"
             if preview_instructions_override:
                 logger.info(
                     "Using live preview instructions override"
@@ -1090,13 +1100,13 @@ async def invocations(request: InvocationRequest, current_user: User = Depends(g
         else:
             # No assistant instructions - use base prompt if no system_prompt provided
             logger.warning("No instructions found on assistant!")
-            if not system_prompt:
-                from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
+            from agents.main_agent.core.system_prompt_builder import SystemPromptBuilder
 
-                base_prompt_builder = SystemPromptBuilder()
-                system_prompt = base_prompt_builder.build(include_date=True)
+            base_prompt_builder = SystemPromptBuilder()
+            base_prompt = base_prompt_builder.build(include_date=True)
+            system_prompt = f"{base_prompt}\n\n{kb_grounding_directive}"
             logger.info(
-                "Assistant has no instructions - using fallback system prompt"
+                "Assistant has no instructions - using fallback system prompt with KB grounding"
             )
 
         # 6. Save assistant_id to session preferences (persist for future loads)

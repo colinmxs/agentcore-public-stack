@@ -3,6 +3,43 @@
 Items added by `kaizen-research`, consumed by `kaizen-review-prep`.
 
 ## Open
+<!-- Newest at top. -->
+
+### [2026-05-22] Strands 1.40 → 1.41 bump + enable Bedrock prompt caching (closes issue #269)
+- **Source**: research/2026-05-22.md ▸ Top 5 #1 — Strands v1.41.0 (PR #2232 `cache_tools_ttl`) + open issue #269
+- **Surface**: backend (`pyproject.toml`, `uv.lock`, `BedrockModel` construction, `CacheConfig` wiring)
+- **Effort × Impact**: M × H
+- **Subtracts**: partial — adopts library-native `cache_tools_ttl` instead of a hand-rolled TTL workaround
+- **Unlocks**: end-to-end 1h prompt caching → lower input-token cost on multi-turn sessions, surfaced in the admin "Cache Savings" card
+- **Status**: open — gated on a `starlette` 1.x transitive-conflict audit (Strands 1.41 bumps starlette to the 1.x major line)
+
+### [2026-05-22] Defensive guard against SDK #482 SSE-disconnect runtime deadlock
+- **Source**: research/2026-05-22.md ▸ Top 5 #2 — AgentCore SDK issue #482
+- **Surface**: backend (`inference-api` streaming worker — the `/invocations` SSE handler)
+- **Effort × Impact**: M × H
+- **Subtracts**: no — defensive; silent 78s+ microVM stall on mid-stream client disconnect
+- **Status**: open
+
+### [2026-05-22] Bump `bedrock-agentcore` 1.9.1 → 1.11.0
+- **Source**: research/2026-05-22.md ▸ Top 5 #3 — SDK v1.10.0/v1.11.0 releases
+- **Surface**: backend (`pyproject.toml`, `uv.lock`)
+- **Effort × Impact**: L × M
+- **Subtracts**: possibly — v1.10.0 header-forwarding may retire a custom `X-Amzn-Custom-` header workaround (audit during bump)
+- **Status**: open
+
+### [2026-05-22] Opus 4.7 `temperature`-omission guard
+- **Source**: research/2026-05-22.md ▸ Top 5 #4 — ref-repo commit `9385454`
+- **Surface**: backend (provider-translation chokepoint — same site as `_shape_thinking_value` / #329 / #331)
+- **Effort × Impact**: L × M
+- **Subtracts**: no — defensive; Opus 4.7 rejects `temperature` on extended-thinking turns
+- **Status**: open
+
+### [2026-05-22] Runaway-session cost guardrail — `max_turns` + CloudWatch Bedrock-spend alarm
+- **Source**: research/2026-05-22.md ▸ Top 5 #5 — starter-toolkit issue #498 + in-window HN $30K-bill story
+- **Surface**: cross-cutting — agent loop (`backend/src/agents/main_agent/`) + infrastructure (CloudWatch alarm)
+- **Effort × Impact**: L-M × M-H
+- **Subtracts**: no — defensive/operational; `stop_runtime_session` does not stop the microVM
+- **Status**: open
 
 ### [2026-05-15] Wire per-tool `duration_ms` into `tool_result` SSE
 - **Source**: research/2026-05-15.md ▸ Top 5 #5 — Claude Code 2.1.141 hook pattern
@@ -55,6 +92,27 @@ Items added by `kaizen-research`, consumed by `kaizen-review-prep`.
 - **Effort × Impact**: L-M × M
 - **Subtracts**: no — additive but pattern-validated across Linear/ChatGPT/Cursor
 - **Status**: open — deferred 4 weeks in reviews/2026-05-15.md (revisit 2026-06-12). Earns its keep when an A2A construct lands.
+
+### [2026-05-22] Pin `backup-data.yml` runner + actions to restore the CI gate
+- **Source**: reviews/2026-05-22.md ▸ Proposal #1 (direct observation — CI failure analysis). `kaizen-research` did not run 2026-05-22; this item surfaced from review-prep's repo-activity scan.
+- **Surface**: infrastructure / CI — `.github/workflows/backup-data.yml`
+- **Effort × Impact**: L × H
+- **Subtracts**: no — corrective; restores the supply-chain pinning control currently bypassed by a red gate
+- **Status**: open — surfaced in reviews/2026-05-22.md ▸ Proposal #1 (Ship — recommended ship-first); no decision logged yet. CI red *now*: ~8+ Deploy App API / Deploy Inference API / Nightly failures since PR #361 (May 20).
+
+### [2026-05-22] Re-bump `bedrock-agentcore` 1.9.1 → 1.11.0 + adopt `async_mode`
+- **Source**: reviews/2026-05-22.md ▸ Proposal #2 — re-evaluation of the `async_mode`/#452 risk the 2026-05-15 review explicitly deferred "to the 2026-05-22 review".
+- **Surface**: backend (`backend/pyproject.toml`, `backend/uv.lock`, `AgentCoreMemoryConfig` construction)
+- **Effort × Impact**: L-M × M-H
+- **Subtracts**: no — dep bump; adopting `async_mode` retires the latent #452 event-loop-blocking failure mode
+- **Status**: open — surfaced in reviews/2026-05-22.md ▸ Proposal #2 (Ship); no decision logged yet. Lag re-opened to 2 releases the week after #337 closed it.
+
+### [2026-05-22] Fast PR-gate for the deterministic `supply_chain` + `architecture` test subset
+- **Source**: reviews/2026-05-22.md ▸ Proposal #6 — root-cause of the Proposal #1 friction (policy violation merged clean because PR-merge CI runs no pytest).
+- **Surface**: CI — new lightweight job in the PR workflow
+- **Effort × Impact**: L × M
+- **Subtracts**: no — addition; converts a recurring post-merge friction class into a pre-merge block. Scoped to two deterministic dirs to avoid reopening the "no full pytest in PR CI" decision.
+- **Status**: open — surfaced in reviews/2026-05-22.md ▸ Proposal #6 (Ship scoped, or Defer 2 weeks); no decision logged yet.
 
 ## Resolved
 

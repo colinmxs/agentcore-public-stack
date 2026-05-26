@@ -3,8 +3,18 @@ import { CommonModule } from '@angular/common';
 import { FormsModule } from '@angular/forms';
 import { DIALOG_DATA, DialogRef } from '@angular/cdk/dialog';
 import { NgIcon, provideIcons } from '@ng-icons/core';
-import { heroXMark, heroShare, heroLink, heroMagnifyingGlass, heroUserPlus, heroTrash } from '@ng-icons/heroicons/outline';
-import { Assistant, UserSearchResult } from '../models/assistant.model';
+import {
+  heroXMark,
+  heroShare,
+  heroLink,
+  heroMagnifyingGlass,
+  heroUserPlus,
+  heroTrash,
+  heroPencilSquare,
+  heroEye,
+  heroChevronDown,
+} from '@ng-icons/heroicons/outline';
+import { Assistant, ShareEntry, SharePermission, UserSearchResult } from '../models/assistant.model';
 import { AssistantService } from '../services/assistant.service';
 import { UserApiService } from '../../users/services/user-api.service';
 import { Subject, debounceTime, distinctUntilChanged, switchMap, catchError, of } from 'rxjs';
@@ -33,7 +43,19 @@ export type ShareAssistantDialogResult = {
   selector: 'app-share-assistant-dialog',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [CommonModule, FormsModule, NgIcon],
-  providers: [provideIcons({ heroXMark, heroShare, heroLink, heroMagnifyingGlass, heroUserPlus, heroTrash })],
+  providers: [
+    provideIcons({
+      heroXMark,
+      heroShare,
+      heroLink,
+      heroMagnifyingGlass,
+      heroUserPlus,
+      heroTrash,
+      heroPencilSquare,
+      heroEye,
+      heroChevronDown,
+    }),
+  ],
   host: {
     'class': 'block',
     '(keydown.escape)': 'onCancel()'
@@ -49,7 +71,7 @@ export type ShareAssistantDialogResult = {
     <!-- Dialog Panel -->
     <div class="fixed inset-0 z-10 flex min-h-full items-end justify-center p-4 sm:items-center sm:p-0">
       <div
-        class="dialog-panel relative transform overflow-hidden rounded-lg bg-white px-4 pt-5 pb-4 text-left shadow-xl sm:my-8 sm:w-full sm:max-w-lg sm:p-6 dark:bg-gray-800 dark:outline dark:-outline-offset-1 dark:outline-white/10"
+        class="dialog-panel relative transform overflow-hidden rounded-2xl border border-gray-200 bg-white px-4 pt-5 pb-4 text-left shadow-xl sm:my-8 sm:w-full sm:max-w-lg sm:p-6 dark:border-gray-700 dark:bg-gray-800"
         role="dialog"
         aria-modal="true"
         [attr.aria-labelledby]="'dialog-title'"
@@ -57,240 +79,352 @@ export type ShareAssistantDialogResult = {
         (click)="$event.stopPropagation()"
       >
         <!-- Close button (top-right) -->
-        <div class="absolute top-0 right-0 hidden pt-4 pr-4 sm:block">
+        <div class="absolute top-3 right-3 hidden sm:block">
           <button
             type="button"
             (click)="onCancel()"
-            class="rounded-md bg-white text-gray-400 hover:text-gray-500 focus:outline-2 focus:outline-offset-2 focus:outline-indigo-600 dark:bg-gray-800 dark:hover:text-gray-300 dark:focus:outline-white"
+            class="flex size-8 items-center justify-center rounded-2xl text-gray-400 hover:bg-gray-100 hover:text-gray-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:hover:bg-gray-700 dark:hover:text-gray-200"
             aria-label="Close dialog"
           >
             <span class="sr-only">Close</span>
-            <ng-icon name="heroXMark" class="size-6" aria-hidden="true" />
+            <ng-icon name="heroXMark" class="size-5" aria-hidden="true" />
           </button>
         </div>
 
         <!-- Header with Icon -->
         <div class="sm:flex sm:items-start">
-          <div class="mx-auto flex size-12 shrink-0 items-center justify-center rounded-full bg-indigo-100 sm:mx-0 sm:size-10 dark:bg-indigo-500/10">
-            <ng-icon name="heroShare" class="size-6 text-indigo-600 dark:text-indigo-400" aria-hidden="true" />
+          <div class="mx-auto flex size-12 shrink-0 items-center justify-center rounded-2xl bg-blue-100 sm:mx-0 sm:size-10 dark:bg-blue-500/10">
+            <ng-icon name="heroShare" class="size-6 text-blue-600 dark:text-blue-400" aria-hidden="true" />
           </div>
           <div class="mt-3 text-center sm:mt-0 sm:ml-4 sm:text-left">
             <h3
               id="dialog-title"
               class="text-base/7 font-semibold text-gray-900 dark:text-white"
             >
-              Share Assistant
+              Share assistant
             </h3>
-            <div class="mt-2">
-              <p
-                id="dialog-description"
-                class="text-sm/6 text-gray-500 dark:text-gray-400"
-              >
-                {{ data.assistant.name }}
-              </p>
-            </div>
+            <p
+              id="dialog-description"
+              class="mt-1 text-sm/6 text-gray-500 dark:text-gray-400"
+            >
+              {{ data.assistant.name }}
+            </p>
           </div>
         </div>
 
         <!-- Content -->
-        <div class="mt-4">
+        <div class="mt-6">
           @if (isPublic()) {
             <!-- Public Assistant: Show shareable URL -->
-            <div class="space-y-3">
+            <section class="space-y-3">
               <p class="text-sm/6 text-gray-600 dark:text-gray-400">
-                This assistant is public and discoverable by everyone. Share this URL to let others start a conversation with it:
+                This assistant is public and discoverable by everyone. Share this URL to let
+                others start a conversation with it.
               </p>
               <div class="flex gap-2">
+                <label for="share-url" class="sr-only">Shareable URL</label>
                 <input
+                  id="share-url"
                   type="text"
                   [value]="shareableUrl()"
                   readonly
-                  class="flex-1 rounded-sm border border-gray-300 bg-gray-50 px-3 py-2 text-sm/6 text-gray-900 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-400"
-                  id="share-url"
+                  class="flex-1 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                 />
                 <button
                   type="button"
                   (click)="copyUrl()"
-                  class="inline-flex items-center gap-2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+                  class="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                 >
                   <ng-icon name="heroLink" class="size-4" aria-hidden="true" />
                   <span>{{ copied() ? 'Copied!' : 'Copy' }}</span>
                 </button>
               </div>
-            </div>
+            </section>
           } @else {
-            <!-- PRIVATE or SHARED Assistant: Show shareable URL and user search/email input -->
-            <div class="space-y-4">
-              <p class="text-sm/6 text-gray-600 dark:text-gray-400">
-                Share this assistant with specific users. Only people you share with will be able to access it.
-                @if (!isShared()) {
-                  <span class="block mt-1 text-xs text-gray-500 dark:text-gray-400">
-                    (Visibility will be automatically set to "SHARED" when you add people)
-                  </span>
-                }
-              </p>
-
-              <!-- Shareable URL -->
-              <div class="space-y-2">
-                <label class="block text-sm font-medium text-gray-700 dark:text-gray-300">
-                  Shareable URL
-                </label>
-                <p class="text-xs text-gray-500 dark:text-gray-400">
-                  Share this URL with people you've added below. They'll need to be in the share list to access it.
-                </p>
+            <!-- PRIVATE or SHARED Assistant: shareable URL + add-people + current shares -->
+            <div class="space-y-8">
+              <!-- Shareable URL section -->
+              <section class="space-y-3">
+                <div>
+                  <label for="share-url-shared" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                    Shareable URL
+                  </label>
+                  <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+                    Share this URL with people you've added below. They'll need to be on the list
+                    to access it.
+                  </p>
+                </div>
                 <div class="flex gap-2">
                   <input
+                    id="share-url-shared"
                     type="text"
                     [value]="shareableUrl()"
                     readonly
-                    class="flex-1 rounded-sm border border-gray-300 bg-gray-50 px-3 py-2 text-sm/6 text-gray-900 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:focus:border-blue-400"
-                    id="share-url-shared"
+                    class="flex-1 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
                   />
                   <button
                     type="button"
                     (click)="copyUrl()"
-                    class="inline-flex items-center gap-2 rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:hover:bg-gray-600"
+                    class="inline-flex items-center gap-2 rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 font-medium text-gray-700 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-gray-300 dark:hover:bg-gray-700"
                   >
                     <ng-icon name="heroLink" class="size-4" aria-hidden="true" />
                     <span>{{ copied() ? 'Copied!' : 'Copy' }}</span>
                   </button>
                 </div>
-              </div>
+              </section>
 
-              <!-- Divider -->
-              <div class="border-t border-gray-200 dark:border-gray-700 pt-4">
-                <h4 class="text-sm font-medium text-gray-900 dark:text-white mb-3">
-                  Share with specific people
-                </h4>
-              </div>
-
-              <!-- Mode Toggle -->
-              <div class="flex gap-2 border-b border-gray-200 dark:border-gray-700">
-                <button
-                  type="button"
-                  (click)="searchMode.set(true)"
-                  [class.border-b-2]="searchMode()"
-                  [class.border-indigo-600]="searchMode()"
-                  [class.text-indigo-600]="searchMode()"
-                  [class.dark:border-indigo-400]="searchMode()"
-                  [class.dark:text-indigo-400]="searchMode()"
-                  class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  <ng-icon name="heroMagnifyingGlass" class="size-4 inline mr-1" />
-                  Search Users
-                </button>
-                <button
-                  type="button"
-                  (click)="searchMode.set(false)"
-                  [class.border-b-2]="!searchMode()"
-                  [class.border-indigo-600]="!searchMode()"
-                  [class.text-indigo-600]="!searchMode()"
-                  [class.dark:border-indigo-400]="!searchMode()"
-                  [class.dark:text-indigo-400]="!searchMode()"
-                  class="px-4 py-2 text-sm font-medium text-gray-700 hover:text-gray-900 dark:text-gray-300 dark:hover:text-white"
-                >
-                  <ng-icon name="heroUserPlus" class="size-4 inline mr-1" />
-                  Add Email
-                </button>
-              </div>
-
-              <!-- Mode 1: Search Users -->
-              @if (searchMode()) {
-                <div class="space-y-3">
+              <!-- Add people section -->
+              <section class="space-y-4 border-t border-gray-200 pt-6 dark:border-gray-700">
+                <div class="flex flex-wrap items-end justify-between gap-3">
                   <div>
-                    <label for="search-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Search for users
-                    </label>
-                    <input
-                      id="search-input"
-                      type="text"
-                      [ngModel]="searchQuery()"
-                      (ngModelChange)="onSearchQueryChange($event)"
-                      placeholder="Type name or email..."
-                      class="w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-blue-400"
-                    />
+                    <h4 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                      Add people
+                    </h4>
+                    @if (!isShared()) {
+                      <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+                        Visibility switches to "Shared" automatically when you add someone.
+                      </p>
+                    }
                   </div>
-
-                  <!-- Search Results -->
-                  @if (searchResults() && searchResults()!.length > 0) {
-                    <div class="max-h-48 overflow-y-auto rounded-sm border border-gray-200 dark:border-gray-700">
-                      @for (user of searchResults(); track user.userId) {
-                        <button
-                          type="button"
-                          (click)="addUserFromSearch(user)"
-                          [disabled]="isEmailShared(user.email)"
-                          class="w-full px-3 py-2 text-left text-sm hover:bg-gray-50 dark:hover:bg-gray-700 disabled:opacity-50 disabled:cursor-not-allowed flex items-center justify-between"
-                        >
-                          <div>
-                            <div class="font-medium text-gray-900 dark:text-white">{{ user.name }}</div>
-                            <div class="text-xs text-gray-500 dark:text-gray-400">{{ user.email }}</div>
-                          </div>
-                          @if (isEmailShared(user.email)) {
-                            <span class="text-xs text-gray-500">Already shared</span>
-                          }
-                        </button>
-                      }
-                    </div>
-                  } @else if (searchQuery() && searchQuery().length >= 2 && !searching()) {
-                    <p class="text-sm text-gray-500 dark:text-gray-400 italic">
-                      No users found. Try adding their email manually.
-                    </p>
-                  }
-                </div>
-              }
-
-              <!-- Mode 2: Add Email Manually -->
-              @if (!searchMode()) {
-                <div class="space-y-3">
-                  <div>
-                    <label for="email-input" class="block text-sm font-medium text-gray-700 dark:text-gray-300 mb-1">
-                      Email addresses (comma-separated)
+                  <div class="flex items-center gap-2">
+                    <label for="new-permission-input" class="text-xs/5 font-medium text-gray-600 dark:text-gray-400">
+                      Default for new people
                     </label>
-                    <textarea
-                      id="email-input"
-                      [ngModel]="emailInput()"
-                      (ngModelChange)="emailInput.set($event)"
-                      placeholder="user1@example.com, user2@example.com"
-                      rows="3"
-                      class="w-full rounded-sm border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-hidden focus:ring-3 focus:ring-blue-500/50 dark:border-gray-600 dark:bg-gray-700 dark:text-white dark:placeholder:text-gray-500 dark:focus:border-blue-400"
-                    ></textarea>
+                    <!-- appearance-none + overlaid chevron: the native chevron sits at a
+                         fixed offset from the right edge regardless of padding, which
+                         crowds the rounded-2xl corner. Owning the chevron lets us place
+                         it where we want. -->
+                    <div class="relative inline-flex">
+                      <select
+                        id="new-permission-input"
+                        [ngModel]="newPermission()"
+                        (ngModelChange)="onNewPermissionChange($event)"
+                        class="appearance-none rounded-2xl border border-gray-300 bg-white py-1 pl-2.5 pr-8 text-xs/5 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                      >
+                        <option value="viewer">Can view & chat</option>
+                        <option value="editor">Can edit</option>
+                      </select>
+                      <ng-icon
+                        name="heroChevronDown"
+                        class="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                        aria-hidden="true"
+                      />
+                    </div>
+                  </div>
+                </div>
+
+                <!-- Mode Toggle (segmented tabs).
+                     Active styling rides aria-selected="true" rather than [class.x] bindings —
+                     both border-b-blue-600 and border-b-transparent share class-selector
+                     specificity, and Tailwind's emit order made the transparent base win.
+                     aria-selected:* generates [aria-selected="true"] which has higher
+                     specificity and reliably beats the base utility. -->
+                <div
+                  class="flex gap-1 border-b border-gray-200 dark:border-gray-700"
+                  role="tablist"
+                  aria-label="How to add people"
+                >
+                  <button
+                    type="button"
+                    role="tab"
+                    [attr.aria-selected]="searchMode()"
+                    (click)="searchMode.set(true)"
+                    class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-b-transparent px-3 py-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 aria-selected:border-b-blue-600 aria-selected:font-semibold aria-selected:text-blue-600 dark:text-gray-400 dark:hover:text-white dark:aria-selected:border-b-blue-400 dark:aria-selected:text-blue-400"
+                  >
+                    <ng-icon name="heroMagnifyingGlass" class="size-4" aria-hidden="true" />
+                    Search users
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    [attr.aria-selected]="!searchMode()"
+                    (click)="searchMode.set(false)"
+                    class="-mb-px inline-flex items-center gap-1.5 border-b-2 border-b-transparent px-3 py-2 text-sm/6 font-medium text-gray-600 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 aria-selected:border-b-blue-600 aria-selected:font-semibold aria-selected:text-blue-600 dark:text-gray-400 dark:hover:text-white dark:aria-selected:border-b-blue-400 dark:aria-selected:text-blue-400"
+                  >
+                    <ng-icon name="heroUserPlus" class="size-4" aria-hidden="true" />
+                    Add by email
+                  </button>
+                </div>
+
+                <!-- Mode 1: Search Users -->
+                @if (searchMode()) {
+                  <div class="space-y-3">
+                    <div>
+                      <label for="search-input" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                        Search for users
+                      </label>
+                      <input
+                        id="search-input"
+                        type="text"
+                        [ngModel]="searchQuery()"
+                        (ngModelChange)="onSearchQueryChange($event)"
+                        placeholder="Type a name or email…"
+                        class="mt-1 block w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500"
+                      />
+                    </div>
+
+                    <!-- Search Results -->
+                    @if (searching()) {
+                      <!-- Skeleton: three rows matching the real result layout so the
+                           container doesn't shift size when results land. -->
+                      <ul
+                        class="divide-y divide-gray-200 overflow-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+                        aria-hidden="true"
+                      >
+                        @for (placeholder of skeletonRows; track placeholder) {
+                          <li class="flex items-center justify-between px-3 py-2.5 sm:px-4">
+                            <div class="flex-1 space-y-1.5">
+                              <div class="h-3 w-32 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                              <div class="h-2.5 w-48 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                            </div>
+                          </li>
+                        }
+                      </ul>
+                      <span class="sr-only" role="status">Searching for users…</span>
+                    } @else if (searchResults() && searchResults()!.length > 0) {
+                      <ul
+                        class="max-h-48 divide-y divide-gray-200 overflow-y-auto overflow-x-hidden rounded-2xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+                        role="listbox"
+                        aria-label="Search results"
+                      >
+                        @for (user of searchResults(); track user.userId) {
+                          <li>
+                            <button
+                              type="button"
+                              role="option"
+                              [attr.aria-selected]="isEmailShared(user.email)"
+                              (click)="addUserFromSearch(user)"
+                              [disabled]="isEmailShared(user.email)"
+                              class="flex w-full items-center justify-between gap-3 px-3 py-2.5 text-left text-sm/6 hover:bg-gray-50 focus-visible:outline-2 focus-visible:outline-offset-[-2px] focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-60 sm:px-4 dark:hover:bg-gray-700/50"
+                            >
+                              <div class="min-w-0 flex-1">
+                                <div class="truncate font-medium text-gray-900 dark:text-white">{{ user.name }}</div>
+                                <div class="truncate text-xs/5 text-gray-500 dark:text-gray-400">{{ user.email }}</div>
+                              </div>
+                              @if (isEmailShared(user.email)) {
+                                <span class="shrink-0 text-xs/5 text-gray-500 dark:text-gray-400">Already added</span>
+                              }
+                            </button>
+                          </li>
+                        }
+                      </ul>
+                    } @else if (searchQuery() && searchQuery().length >= 2) {
+                      <p class="text-sm/6 text-gray-500 dark:text-gray-400">
+                        No users found. Try adding their email manually instead.
+                      </p>
+                    }
+                  </div>
+                }
+
+                <!-- Mode 2: Add Email Manually -->
+                @if (!searchMode()) {
+                  <div class="space-y-3">
+                    <div>
+                      <label for="email-input" class="block text-sm/6 font-medium text-gray-700 dark:text-gray-300">
+                        Email addresses
+                      </label>
+                      <p class="mt-1 text-xs/5 text-gray-500 dark:text-gray-400">
+                        Separate multiple addresses with commas.
+                      </p>
+                      <textarea
+                        id="email-input"
+                        [ngModel]="emailInput()"
+                        (ngModelChange)="emailInput.set($event)"
+                        placeholder="user1@example.com, user2@example.com"
+                        rows="3"
+                        class="mt-2 block w-full rounded-2xl border border-gray-300 bg-white px-3 py-2 text-sm/6 text-gray-900 placeholder:text-gray-400 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white dark:placeholder:text-gray-500"
+                      ></textarea>
+                    </div>
                     <button
                       type="button"
                       (click)="addEmailsFromInput()"
                       [disabled]="!emailInput().trim()"
-                      class="mt-2 inline-flex items-center gap-2 rounded-sm bg-indigo-600 px-3 py-2 text-sm/6 font-medium text-white hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed dark:bg-indigo-500 dark:hover:bg-indigo-400"
+                      class="inline-flex items-center gap-2 rounded-2xl bg-blue-600 px-4 py-2 text-sm/6 font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
                     >
-                      <ng-icon name="heroUserPlus" class="size-4" />
-                      Add Emails
+                      <ng-icon name="heroUserPlus" class="size-4" aria-hidden="true" />
+                      Add emails
                     </button>
                   </div>
-                </div>
-              }
+                }
+              </section>
 
-              <!-- Currently Shared List -->
-              @if (sharedEmails().length > 0) {
-                <div class="space-y-2">
-                  <h4 class="text-sm font-medium text-gray-900 dark:text-white">Currently shared with:</h4>
-                  <div class="space-y-1 max-h-32 overflow-y-auto">
-                    @for (email of sharedEmails(); track email) {
-                      <div class="flex items-center justify-between rounded-sm border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-700 dark:bg-gray-700">
-                        <span class="text-sm text-gray-900 dark:text-white">{{ email }}</span>
+              <!-- Current Shares section -->
+              <section class="space-y-3 border-t border-gray-200 pt-6 dark:border-gray-700">
+                <div class="flex items-baseline justify-between">
+                  <h4 class="text-base/7 font-semibold text-gray-900 dark:text-white">
+                    Currently shared with
+                  </h4>
+                  @if (!loadingShares()) {
+                    <span class="text-xs/5 tabular-nums text-gray-500 dark:text-gray-400">
+                      {{ shares().length }}
+                    </span>
+                  }
+                </div>
+
+                @if (loadingShares()) {
+                  <!-- Skeleton: single row matching the real layout (email + select + delete)
+                       so the container doesn't reflow when shares land. -->
+                  <ul
+                    class="overflow-hidden rounded-2xl border border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800"
+                    aria-hidden="true"
+                  >
+                    <li class="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+                      <div class="h-3 flex-1 animate-pulse rounded bg-gray-200 dark:bg-gray-700"></div>
+                      <div class="h-7 w-20 shrink-0 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+                      <div class="size-8 shrink-0 animate-pulse rounded-2xl bg-gray-200 dark:bg-gray-700"></div>
+                    </li>
+                  </ul>
+                  <span class="sr-only" role="status">Loading existing shares…</span>
+                } @else if (shares().length === 0) {
+                  <div class="rounded-2xl border border-dashed border-gray-300 bg-white p-6 text-center dark:border-gray-700 dark:bg-gray-800">
+                    <p class="text-sm/6 text-gray-500 dark:text-gray-400">
+                      Not shared with anyone yet.
+                    </p>
+                  </div>
+                } @else {
+                  <ul
+                    class="max-h-56 divide-y divide-gray-200 overflow-y-auto rounded-2xl border border-gray-200 bg-white dark:divide-gray-700 dark:border-gray-700 dark:bg-gray-800"
+                  >
+                    @for (entry of shares(); track entry.email) {
+                      <li class="flex items-center gap-3 px-3 py-2.5 sm:px-4">
+                        <div class="min-w-0 flex-1">
+                          <p class="truncate text-sm/6 text-gray-900 dark:text-white">{{ entry.email }}</p>
+                        </div>
+                        <label class="sr-only" [attr.for]="'perm-' + entry.email">
+                          Permission for {{ entry.email }}
+                        </label>
+                        <div class="relative inline-flex shrink-0">
+                          <select
+                            [id]="'perm-' + entry.email"
+                            [ngModel]="entry.permission"
+                            (ngModelChange)="setPermission(entry.email, $event)"
+                            class="appearance-none rounded-2xl border border-gray-300 bg-white py-1 pl-2.5 pr-8 text-xs/5 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-800 dark:text-white"
+                          >
+                            <option value="viewer">Can view</option>
+                            <option value="editor">Can edit</option>
+                          </select>
+                          <ng-icon
+                            name="heroChevronDown"
+                            class="pointer-events-none absolute right-2.5 top-1/2 size-3.5 -translate-y-1/2 text-gray-400 dark:text-gray-500"
+                            aria-hidden="true"
+                          />
+                        </div>
                         <button
                           type="button"
-                          (click)="removeEmail(email)"
-                          class="text-red-600 hover:text-red-700 dark:text-red-400 dark:hover:text-red-300"
-                          aria-label="Remove {{ email }}"
+                          (click)="removeEmail(entry.email)"
+                          class="flex size-8 shrink-0 items-center justify-center rounded-2xl text-gray-400 hover:bg-red-50 hover:text-red-600 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-red-500 dark:text-gray-500 dark:hover:bg-red-900/20 dark:hover:text-red-400"
+                          [attr.aria-label]="'Remove ' + entry.email"
                         >
-                          <ng-icon name="heroTrash" class="size-4" />
+                          <ng-icon name="heroTrash" class="size-4" aria-hidden="true" />
                         </button>
-                      </div>
+                      </li>
                     }
-                  </div>
-                </div>
-              }
+                  </ul>
+                }
+              </section>
 
               @if (error()) {
-                <div class="rounded-sm bg-red-50 px-3 py-2 text-sm text-red-800 dark:bg-red-900/20 dark:text-red-400">
+                <div class="rounded-2xl bg-red-50 px-3 py-2 text-sm/6 text-red-800 dark:bg-red-900/20 dark:text-red-400" role="alert">
                   {{ error() }}
                 </div>
               }
@@ -299,24 +433,24 @@ export type ShareAssistantDialogResult = {
         </div>
 
         <!-- Actions -->
-        <div class="mt-5 sm:mt-4 sm:flex sm:flex-row-reverse">
+        <div class="mt-6 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
+          <button
+            type="button"
+            (click)="onCancel()"
+            class="rounded-2xl px-4 py-2 text-sm/6 font-medium text-gray-600 hover:bg-gray-100 hover:text-gray-900 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-gray-500 dark:text-gray-400 dark:hover:bg-gray-800 dark:hover:text-white"
+          >
+            {{ isPublic() ? 'Close' : 'Cancel' }}
+          </button>
           @if (!isPublic()) {
             <button
               type="button"
               (click)="onSave()"
               [disabled]="saving()"
-              class="inline-flex w-full justify-center rounded-sm bg-indigo-600 px-3 py-2 text-sm/6 font-semibold text-white shadow-xs hover:bg-indigo-500 disabled:opacity-50 disabled:cursor-not-allowed sm:ml-3 sm:w-auto dark:bg-indigo-500 dark:shadow-none dark:hover:bg-indigo-400"
+              class="rounded-2xl bg-blue-600 px-4 py-2 text-sm/6 font-medium text-white hover:bg-blue-700 focus-visible:outline-2 focus-visible:outline-offset-2 focus-visible:outline-blue-500 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-600"
             >
-              {{ saving() ? 'Saving...' : 'Save Changes' }}
+              {{ saving() ? 'Saving…' : 'Save changes' }}
             </button>
           }
-          <button
-            type="button"
-            (click)="onCancel()"
-            class="mt-3 inline-flex w-full justify-center rounded-sm bg-white px-3 py-2 text-sm/6 font-semibold text-gray-900 shadow-xs ring-1 ring-gray-300 ring-inset hover:bg-gray-50 sm:mt-0 sm:w-auto dark:bg-white/10 dark:text-white dark:shadow-none dark:ring-white/5 dark:hover:bg-white/20"
-          >
-            {{ isPublic() ? 'Close' : 'Cancel' }}
-          </button>
         </div>
       </div>
     </div>
@@ -363,14 +497,25 @@ export class ShareAssistantDialogComponent {
   protected readonly assistantService = inject(AssistantService);
   protected readonly userApiService = inject(UserApiService);
 
+  /** Stable identity array for the skeleton @for loop — keeps trackBy happy without per-render churn. */
+  protected readonly skeletonRows = [0, 1, 2];
+
   protected readonly copied = signal<boolean>(false);
   protected readonly searchMode = signal<boolean>(true); // true = search, false = manual email
   protected readonly searchQuery = signal<string>('');
   protected readonly emailInput = signal<string>('');
-  protected readonly sharedEmails = signal<string[]>([]);
+  /** Working set of shares for this dialog. Compared against `initialShares` on Save to compute deltas. */
+  protected readonly shares = signal<ShareEntry[]>([]);
+  /** Snapshot of shares loaded from the API — used to detect adds/removes/permission changes. */
+  private initialShares: ShareEntry[] = [];
+  /** Permission applied to newly added emails (toggle at top of the add-people section). */
+  protected readonly newPermission = signal<SharePermission>('viewer');
   protected readonly searchResults = signal<UserSearchResult[] | null>(null);
   protected readonly searching = signal<boolean>(false);
   protected readonly saving = signal<boolean>(false);
+  /** True while loadShares() is in flight on dialog open — drives the shares-list skeleton.
+   *  Seeded `true` so the skeleton paints before the constructor's async fetch resolves. */
+  protected readonly loadingShares = signal<boolean>(true);
   protected readonly error = signal<string | null>(null);
 
   protected readonly isPublic = computed<boolean>(() => this.data.assistant.visibility === 'PUBLIC');
@@ -416,9 +561,14 @@ export class ShareAssistantDialogComponent {
     this.searchQuerySubject.next(value);
   }
 
+  protected onNewPermissionChange(value: SharePermission): void {
+    this.newPermission.set(value);
+  }
+
   protected addUserFromSearch(user: UserSearchResult): void {
-    if (!this.isEmailShared(user.email)) {
-      this.sharedEmails.update(emails => [...emails, user.email.toLowerCase()]);
+    const email = user.email.toLowerCase();
+    if (!this.isEmailShared(email)) {
+      this.shares.update(current => [...current, { email, permission: this.newPermission() }]);
       this.searchQuery.set('');
       this.searchResults.set(null);
     }
@@ -428,20 +578,18 @@ export class ShareAssistantDialogComponent {
     const input = this.emailInput();
     if (!input.trim()) return;
 
-    const emails = input
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    const candidates = input
       .split(',')
       .map(e => e.trim().toLowerCase())
-      .filter(e => {
-        // Basic email validation
-        const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
-        return emailRegex.test(e) && !this.isEmailShared(e);
-      });
+      .filter(e => emailRegex.test(e) && !this.isEmailShared(e));
 
-    if (emails.length > 0) {
-      this.sharedEmails.update(current => {
-        const newEmails = emails.filter(e => !current.includes(e));
-        return [...current, ...newEmails];
-      });
+    if (candidates.length > 0) {
+      const perm = this.newPermission();
+      this.shares.update(current => [
+        ...current,
+        ...candidates.map(email => ({ email, permission: perm })),
+      ]);
       this.emailInput.set('');
     } else {
       this.error.set('Please enter valid email addresses');
@@ -449,29 +597,41 @@ export class ShareAssistantDialogComponent {
     }
   }
 
+  protected setPermission(email: string, permission: SharePermission): void {
+    this.shares.update(current =>
+      current.map(entry => (entry.email === email ? { ...entry, permission } : entry)),
+    );
+  }
+
   protected removeEmail(email: string): void {
-    this.sharedEmails.update(emails => emails.filter(e => e !== email));
+    this.shares.update(current => current.filter(entry => entry.email !== email));
   }
 
   protected isEmailShared(email: string): boolean {
-    return this.sharedEmails().includes(email.toLowerCase());
+    const normalized = email.toLowerCase();
+    return this.shares().some(entry => entry.email === normalized);
   }
 
   protected async loadShares(): Promise<void> {
+    this.loadingShares.set(true);
     try {
       // Only try to load shares if assistant is SHARED
       // PRIVATE assistants won't have shares yet
       if (this.isShared()) {
-        const emails = await this.assistantService.getAssistantShares(this.data.assistant.assistantId);
-        this.sharedEmails.set(emails);
+        const entries = await this.assistantService.getAssistantShares(this.data.assistant.assistantId);
+        this.initialShares = entries.map(e => ({ ...e }));
+        this.shares.set(entries.map(e => ({ ...e })));
       } else {
-        // PRIVATE assistant - start with empty shares list
-        this.sharedEmails.set([]);
+        this.initialShares = [];
+        this.shares.set([]);
       }
     } catch (err) {
       console.error('Failed to load shares:', err);
       // Don't show error for initial load failure - just start with empty list
-      this.sharedEmails.set([]);
+      this.initialShares = [];
+      this.shares.set([]);
+    } finally {
+      this.loadingShares.set(false);
     }
   }
 
@@ -480,9 +640,9 @@ export class ShareAssistantDialogComponent {
     this.error.set(null);
 
     try {
-      const newShares = this.sharedEmails();
+      const next = this.shares();
       const isCurrentlyPrivate = !this.isShared();
-      const willHaveShares = newShares.length > 0;
+      const willHaveShares = next.length > 0;
 
       // If assistant is PRIVATE and we're adding shares, update visibility to SHARED
       if (isCurrentlyPrivate && willHaveShares) {
@@ -497,25 +657,29 @@ export class ShareAssistantDialogComponent {
         });
       }
 
-      // Get current shares from API (may be empty for PRIVATE assistants)
-      let currentShares: string[] = [];
-      try {
-        currentShares = await this.assistantService.getAssistantShares(this.data.assistant.assistantId);
-      } catch (err) {
-        // If assistant is PRIVATE, getAssistantShares might fail - that's okay, currentShares stays empty
-        console.debug('No existing shares (assistant may be PRIVATE)');
-      }
-      
-      // Find emails to add and remove
-      const toAdd = newShares.filter(e => !currentShares.includes(e));
-      const toRemove = currentShares.filter(e => !newShares.includes(e));
+      const deltas = this.computeDeltas(this.initialShares, next);
 
-      // Apply changes
-      if (toAdd.length > 0) {
-        await this.assistantService.shareAssistant(this.data.assistant.assistantId, toAdd);
+      // Apply each delta against the backend. The backend handles each grouped batch.
+      const id = this.data.assistant.assistantId;
+
+      // Permission changes use PATCH per-email (one record at a time keyed on email)
+      for (const change of deltas.permissionChanges) {
+        await this.assistantService.updateSharePermission(id, change.email, change.permission);
       }
-      if (toRemove.length > 0) {
-        await this.assistantService.unshareAssistant(this.data.assistant.assistantId, toRemove);
+
+      // Group adds by permission so we can POST in batches
+      const addsByPermission = new Map<SharePermission, string[]>();
+      for (const entry of deltas.adds) {
+        const bucket = addsByPermission.get(entry.permission) ?? [];
+        bucket.push(entry.email);
+        addsByPermission.set(entry.permission, bucket);
+      }
+      for (const [permission, emails] of addsByPermission) {
+        await this.assistantService.shareAssistant(id, emails, permission);
+      }
+
+      if (deltas.removes.length > 0) {
+        await this.assistantService.unshareAssistant(id, deltas.removes);
       }
 
       this.dialogRef.close({ action: 'shared' });
@@ -525,6 +689,39 @@ export class ShareAssistantDialogComponent {
     } finally {
       this.saving.set(false);
     }
+  }
+
+  /**
+   * Compare initial vs current shares to determine what API calls are needed.
+   * Adds, removes, and permission changes on already-shared emails are all distinct.
+   */
+  protected computeDeltas(
+    initial: ShareEntry[],
+    next: ShareEntry[],
+  ): { adds: ShareEntry[]; removes: string[]; permissionChanges: ShareEntry[] } {
+    const initialByEmail = new Map(initial.map(e => [e.email, e.permission]));
+    const nextByEmail = new Map(next.map(e => [e.email, e.permission]));
+
+    const adds: ShareEntry[] = [];
+    const removes: string[] = [];
+    const permissionChanges: ShareEntry[] = [];
+
+    for (const entry of next) {
+      const previous = initialByEmail.get(entry.email);
+      if (previous === undefined) {
+        adds.push(entry);
+      } else if (previous !== entry.permission) {
+        permissionChanges.push(entry);
+      }
+    }
+
+    for (const [email] of initialByEmail) {
+      if (!nextByEmail.has(email)) {
+        removes.push(email);
+      }
+    }
+
+    return { adds, removes, permissionChanges };
   }
 
   protected copyUrl(): void {

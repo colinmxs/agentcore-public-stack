@@ -4,6 +4,7 @@ import {
   inject,
   signal,
   computed,
+  effect,
   OnInit,
   OnDestroy,
 } from '@angular/core';
@@ -16,18 +17,25 @@ import {
   FormControl,
   Validators,
 } from '@angular/forms';
-import { Subscription } from 'rxjs';
+import { Subscription, firstValueFrom } from 'rxjs';
 import { AssistantService } from '../services/assistant.service';
 import { DocumentService, DocumentUploadError } from '../services/document.service';
 import { Document, PROCESSING_STATUSES, STALE_DOCUMENT_THRESHOLD_MS } from '../models/document.model';
 import { AssistantPreviewComponent } from './components/assistant-preview.component';
 import { NgIcon, provideIcons } from '@ng-icons/core';
 import {
+  heroArrowDownTray,
   heroArrowLeft,
+  heroArrowPath,
   heroChevronRight,
   heroFaceSmile,
+  heroGlobeAlt,
+  heroLink,
   heroXMark,
+  heroUser,
   heroUserGroup,
+  heroPlus,
+  heroTrash,
 } from '@ng-icons/heroicons/outline';
 import { Dialog } from '@angular/cdk/dialog';
 import { SidenavService } from '../../services/sidenav/sidenav.service';
@@ -38,6 +46,20 @@ import {
   ShareAssistantDialogComponent,
   ShareAssistantDialogData,
 } from '../components/share-assistant-dialog.component';
+import {
+  FileSourceBrowserDialogComponent,
+  FileSourceBrowserDialogData,
+} from '../components/file-source-browser-dialog.component';
+import {
+  WebSourceDialogComponent,
+  WebSourceDialogData,
+} from '../components/web-source-dialog.component';
+import { FileSourceService } from '../services/file-source.service';
+import { WebSourceService } from '../services/web-source.service';
+import { FileSourceConnector } from '../models/file-source.model';
+import { UserConnectorsService } from '../../settings/connectors/services/user-connectors.service';
+import { OAuthConsentService } from '../../services/oauth-consent/oauth-consent.service';
+import { ToastService } from '../../services/toast/toast.service';
 
 @Component({
   selector: 'app-assistant-form-page',
@@ -55,11 +77,18 @@ import {
   ],
   providers: [
     provideIcons({
+      heroArrowDownTray,
       heroArrowLeft,
+      heroArrowPath,
       heroChevronRight,
       heroFaceSmile,
+      heroGlobeAlt,
+      heroLink,
       heroXMark,
+      heroUser,
       heroUserGroup,
+      heroPlus,
+      heroTrash,
     }),
   ],
 })
@@ -69,9 +98,14 @@ export class AssistantFormPage implements OnInit, OnDestroy {
   private fb = inject(FormBuilder);
   private assistantService = inject(AssistantService);
   private documentService = inject(DocumentService);
+  private fileSourceService = inject(FileSourceService);
+  private webSourceService = inject(WebSourceService);
+  private readonly connectorsService = inject(UserConnectorsService);
+  private readonly consentService = inject(OAuthConsentService);
   readonly sidenavService = inject(SidenavService);
   private readonly themeService = inject(ThemeService);
   private readonly dialog = inject(Dialog);
+  private readonly toast = inject(ToastService);
 
   // Emoji picker popover state
   readonly isEmojiPickerOpen = signal(false);
@@ -81,6 +115,13 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   readonly assistantId = signal<string | null>(null);
   readonly mode = computed<'create' | 'edit'>(() => (this.assistantId() ? 'edit' : 'create'));
+  /** The requesting user's permission on the loaded assistant — populated by loadAssistant.
+   *  In create mode the user is implicitly the owner, so we seed it that way. */
+  readonly userPermission = signal<'owner' | 'editor' | 'viewer'>('owner');
+  /** Owner display name surfaced on the editor banner when the requester is an editor. */
+  readonly ownerName = signal<string>('');
+  readonly canManageShares = computed(() => this.userPermission() === 'owner');
+  readonly isEditorView = computed(() => this.userPermission() === 'editor');
 
   // Live form value signals — kept in sync via form.valueChanges so the
   // preview component (OnPush) receives updates as the user types.
@@ -101,6 +142,41 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     error?: string;
   } | null>(null);
   readonly pollingDocuments = signal<Set<string>>(new Set());
+
+  /** Connectors the user can import documents from, surfaced as buttons. */
+  readonly fileSources = signal<FileSourceConnector[]>([]);
+  /**
+   * True while the editor is fetching the connector catalog for the first
+   * time. Drives the inline skeleton chips so the connector buttons fade
+   * in rather than popping into existence after a network round-trip.
+   * Initial value `true` because `loadFileSources()` is called from
+   * `ngOnInit` — the row should render the skeleton on first paint.
+   */
+  readonly fileSourcesLoading = signal<boolean>(true);
+
+  /** Provider whose consent popup is in flight from an editor connector button. */
+  readonly connectingProviderId = signal<string | null>(null);
+  readonly connectPhase = signal<'initiating' | 'awaiting' | null>(null);
+
+  /**
+   * True while a web crawl is running for this assistant. Drives a small
+   * "crawling…" badge in the Knowledge section so the user knows pages will
+   * keep appearing for a while after the dialog closes.
+   */
+  readonly webCrawlActive = signal<boolean>(false);
+  private crawlWatcherHandle: ReturnType<typeof setInterval> | null = null;
+
+  /**
+   * True once at least one document exists, is uploading, or is still
+   * loading. Drives swapping the full drop zone for a compact "Add files"
+   * control — the drop zone only shows while there is nothing to display.
+   */
+  readonly hasDocuments = computed(
+    () =>
+      this.uploadedDocuments().length > 0 ||
+      this.currentUpload() !== null ||
+      this.isLoadingDocuments(),
+  );
 
   form!: FormGroup;
 
@@ -124,6 +200,41 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   get starters(): FormArray {
     return this.form.get('starters') as FormArray;
+  }
+
+  constructor() {
+    // Resolve the OAuth consent popup for a connector kicked off from an
+    // editor button. Mirrors the file-source browser dialog's effect so the
+    // editor can drive the flow without opening the modal first.
+    effect(() => {
+      const completion = this.consentService.completion();
+      if (!completion || !completion.providerId) {
+        return;
+      }
+      const connecting = this.connectingProviderId();
+      if (completion.providerId !== connecting) {
+        return;
+      }
+      this.consentService.acknowledgeCompletion();
+      this.connectingProviderId.set(null);
+      this.connectPhase.set(null);
+      if (completion.status === 'success') {
+        void this.afterConnect(connecting);
+      } else {
+        this.toast.error(completion.error ?? 'Could not connect the file source.');
+      }
+    });
+
+    // If the user closes the popup without finishing, the consent service
+    // drops the provider from `inFlightProviders` — reset the button state.
+    effect(() => {
+      const inFlight = this.consentService.inFlightProviders();
+      const connecting = this.connectingProviderId();
+      if (connecting && this.connectPhase() === 'awaiting' && !inFlight.has(connecting)) {
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+      }
+    });
   }
 
   ngOnInit(): void {
@@ -153,6 +264,9 @@ export class AssistantFormPage implements OnInit, OnDestroy {
       this.loadDocuments();
     }
 
+    // Load the connectors the user can import documents from (create or edit)
+    void this.loadFileSources();
+
     // Sync form changes into signals so the preview (OnPush) updates live
     this.syncFormToSignals();
     this.formSub = this.form.valueChanges.subscribe(() => this.syncFormToSignals());
@@ -171,6 +285,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     // Show sidenav when leaving the form page
     this.sidenavService.show();
     this.formSub?.unsubscribe();
+    this.stopCrawlWatcher();
   }
 
   async loadAssistant(id: string): Promise<void> {
@@ -195,6 +310,12 @@ export class AssistantFormPage implements OnInit, OnDestroy {
           emoji: assistant.emoji || '',
           status: assistant.status,
         });
+
+        // Cached assistants from the list view do not carry userPermission
+        // (the list synthesises it locally) — fall back to 'owner' for cache hits
+        // so the owner's editor experience stays identical.
+        this.userPermission.set(assistant.userPermission ?? 'owner');
+        this.ownerName.set(assistant.ownerName ?? '');
 
         // Populate starters FormArray
         this.starters.clear();
@@ -330,23 +451,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     let assistantId = this.assistantId();
     if (!assistantId) {
       try {
-        // Create a draft assistant first
-        const draft = await this.assistantService.createDraft({
-          name: this.form.get('name')?.value || 'Untitled Assistant',
-        });
-        assistantId = draft.assistantId;
-        this.assistantId.set(assistantId);
-
-        // Update form with draft data
-        this.form.patchValue({
-          name: draft.name,
-          description: draft.description || '',
-          instructions: draft.instructions || '',
-          vectorIndexId: draft.vectorIndexId,
-          visibility: draft.visibility,
-          tags: draft.tags,
-          status: draft.status,
-        });
+        assistantId = await this.createDraftAssistant();
       } catch (error) {
         const errorMessage = error instanceof Error ? error.message : 'Failed to create assistant';
         this.currentUpload.set({
@@ -365,6 +470,265 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
     // Clear the input to allow re-selecting the same file
     input.value = '';
+  }
+
+  /**
+   * Ensure an assistant record exists so documents have a parent to attach
+   * to. In create mode the form has no assistant yet, so a draft is created
+   * and the form is patched with its server-assigned fields. Returns the
+   * assistant id; throws if draft creation fails.
+   */
+  private async createDraftAssistant(): Promise<string> {
+    const draft = await this.assistantService.createDraft({
+      name: this.form.get('name')?.value || 'Untitled Assistant',
+    });
+    this.assistantId.set(draft.assistantId);
+    this.form.patchValue({
+      name: draft.name,
+      description: draft.description || '',
+      instructions: draft.instructions || '',
+      vectorIndexId: draft.vectorIndexId,
+      visibility: draft.visibility,
+      tags: draft.tags,
+      status: draft.status,
+    });
+    return draft.assistantId;
+  }
+
+  /**
+   * Load the connectors the user can import documents from. The feature is
+   * optional — on any error (not configured, no access) just surface no
+   * connector buttons rather than blocking the editor.
+   */
+  private async loadFileSources(): Promise<void> {
+    this.fileSourcesLoading.set(true);
+    try {
+      this.fileSources.set(await this.fileSourceService.listFileSources());
+    } catch {
+      this.fileSources.set([]);
+    } finally {
+      this.fileSourcesLoading.set(false);
+    }
+  }
+
+  /**
+   * Click handler for an editor connector button: browse when the source is
+   * already connected; otherwise kick off the OAuth consent flow in place so
+   * the user doesn't have to open the modal just to connect.
+   */
+  async openOrConnect(source: FileSourceConnector): Promise<void> {
+    if (source.connected) {
+      await this.openFileSourceBrowser(source);
+      return;
+    }
+    await this.connectFileSource(source);
+  }
+
+  /**
+   * Start the OAuth consent popup for a not-yet-connected file source. On
+   * success the browser modal opens automatically — see the completion
+   * effect → `afterConnect`. Mirrors the dialog's `connect()` path.
+   */
+  private async connectFileSource(source: FileSourceConnector): Promise<void> {
+    this.connectingProviderId.set(source.providerId);
+    this.connectPhase.set('initiating');
+    try {
+      const result = await this.connectorsService.initiateConsent(source.providerId);
+      if (result.connected) {
+        // Already connected upstream — skip the popup and go straight to browse.
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+        await this.afterConnect(source.providerId);
+        return;
+      }
+      if (!result.authorizationUrl) {
+        this.connectingProviderId.set(null);
+        this.connectPhase.set(null);
+        this.toast.error('Unexpected response from the server.');
+        return;
+      }
+      this.consentService.requestConsent(source.providerId, result.authorizationUrl);
+      void this.consentService.openConsentPopup(source.providerId);
+      this.connectPhase.set('awaiting');
+    } catch (error) {
+      this.connectingProviderId.set(null);
+      this.connectPhase.set(null);
+      const message =
+        error instanceof Error ? error.message : 'Could not start the connect flow.';
+      this.toast.error(message);
+    }
+  }
+
+  /**
+   * After a successful consent, refresh the file-source list (so the
+   * connector now reports `connected: true`) and open the browser modal
+   * straight into it so the user can pick files without a second click.
+   */
+  private async afterConnect(providerId: string): Promise<void> {
+    await this.loadFileSources();
+    const updated = this.fileSources().find((s) => s.providerId === providerId);
+    if (updated?.connected) {
+      await this.openFileSourceBrowser(updated);
+    }
+  }
+
+  /**
+   * Open the file-source browser so the user can import documents from a
+   * connector (Google Drive, etc.). When `connector` is given the browser
+   * opens straight into it, skipping the in-modal source picker. Ensures a
+   * draft assistant exists first — imported documents need a parent. On
+   * close, any imported documents are merged into the list and polled like a
+   * device upload.
+   */
+  async openFileSourceBrowser(connector?: FileSourceConnector): Promise<void> {
+    let assistantId = this.assistantId();
+    if (!assistantId) {
+      try {
+        assistantId = await this.createDraftAssistant();
+      } catch (error) {
+        const message = error instanceof Error ? error.message : 'Failed to create assistant';
+        this.toast.error(message);
+        return;
+      }
+    }
+
+    const dialogRef = this.dialog.open<Document[] | undefined, FileSourceBrowserDialogData>(
+      FileSourceBrowserDialogComponent,
+      {
+        data: { assistantId, connector },
+        hasBackdrop: false,
+      },
+    );
+
+    const imported = await firstValueFrom(dialogRef.closed);
+    if (imported && imported.length > 0) {
+      this.toast.success(
+        `Importing ${imported.length} file${imported.length === 1 ? '' : 's'}…`,
+      );
+      // loadDocuments() picks up the new 'uploading' records and starts
+      // polling them through to 'complete', exactly like a device upload.
+      await this.loadDocuments();
+    }
+  }
+
+  /**
+   * Open the web-source dialog so the user can attach a URL (single page or
+   * a bounded crawl). Mirrors {@link openFileSourceBrowser} — ensures a
+   * draft assistant exists, opens the dialog, then on close merges the
+   * pre-created root document into the list and starts the crawl watcher
+   * so additional pages surface as the crawler discovers them.
+   */
+  async openWebSourceDialog(): Promise<void> {
+    let assistantId = this.assistantId();
+    if (!assistantId) {
+      try {
+        assistantId = await this.createDraftAssistant();
+      } catch (error) {
+        const message =
+          error instanceof Error ? error.message : 'Failed to create assistant';
+        this.toast.error(message);
+        return;
+      }
+    }
+
+    const dialogRef = this.dialog.open<Document[] | undefined, WebSourceDialogData>(
+      WebSourceDialogComponent,
+      {
+        data: { assistantId },
+        hasBackdrop: false,
+      },
+    );
+
+    const imported = await firstValueFrom(dialogRef.closed);
+    if (imported && imported.length > 0) {
+      this.toast.success('Crawling web content…');
+      await this.loadDocuments();
+      this.startCrawlWatcher();
+    }
+  }
+
+  /**
+   * Poll active crawls for this assistant every few seconds. While any are
+   * `running` we surface newly-discovered pages via {@link discoverNewDocuments}
+   * — an *incremental* merge that appends only the new rows. The full list
+   * is not replaced, so unchanged rows keep their references and per-doc
+   * polling drives status updates without a list-wide flicker. Stops itself
+   * once the server reports no active crawls.
+   */
+  private startCrawlWatcher(): void {
+    this.webCrawlActive.set(true);
+    this.stopCrawlWatcher();
+    const tick = async (): Promise<void> => {
+      const assistantId = this.assistantId();
+      if (!assistantId) {
+        this.stopCrawlWatcher();
+        return;
+      }
+      try {
+        const active = await this.webSourceService.listActiveCrawls(assistantId);
+        if (active.length === 0) {
+          this.webCrawlActive.set(false);
+          this.stopCrawlWatcher();
+          // Catch any pages that completed in the gap between the previous
+          // tick and the server reporting "no crawls running" — still
+          // incremental, so no list-wide refresh.
+          await this.discoverNewDocuments();
+          return;
+        }
+        await this.discoverNewDocuments();
+      } catch {
+        // Network blip — keep polling; the watcher is non-critical.
+      }
+    };
+    this.crawlWatcherHandle = setInterval(() => void tick(), 5000);
+  }
+
+  private stopCrawlWatcher(): void {
+    if (this.crawlWatcherHandle !== null) {
+      clearInterval(this.crawlWatcherHandle);
+      this.crawlWatcherHandle = null;
+    }
+  }
+
+  /**
+   * Fetch the assistant's documents and append only the IDs we don't already
+   * have to the local list — does NOT replace existing rows. Each new
+   * processing doc gets its own per-doc polling started so its status
+   * updates flow into the list one row at a time, no list-wide refresh.
+   *
+   * Used by the crawl watcher: a crawl discovers pages over its lifetime,
+   * and we want each new page to slide into the list when it appears
+   * without re-rendering rows that already exist.
+   */
+  private async discoverNewDocuments(): Promise<void> {
+    const assistantId = this.assistantId();
+    if (!assistantId) {
+      return;
+    }
+    try {
+      const response = await this.documentService.listDocuments(assistantId);
+      const existing = new Set(
+        this.uploadedDocuments().map((doc) => doc.documentId),
+      );
+      const newDocs = response.documents.filter(
+        (doc) => !existing.has(doc.documentId),
+      );
+      if (newDocs.length === 0) {
+        return;
+      }
+      this.uploadedDocuments.update((docs) => [...docs, ...newDocs]);
+      for (const doc of newDocs) {
+        if (
+          PROCESSING_STATUSES.includes(doc.status) &&
+          !this.isDocumentStale(doc) &&
+          !this.pollingDocuments().has(doc.documentId)
+        ) {
+          this.startPollingDocument(doc.documentId, assistantId);
+        }
+      }
+    } catch (error) {
+      console.error('Error discovering new documents:', error);
+    }
   }
 
   async uploadDocument(file: File, assistantId: string): Promise<void> {
@@ -483,19 +847,55 @@ export class AssistantFormPage implements OnInit, OnDestroy {
     }
   }
 
-  async deleteDocument(documentId: string): Promise<void> {
+  async downloadDocument(documentId: string): Promise<void> {
     const assistantId = this.assistantId();
     if (!assistantId) {
       return;
     }
 
     try {
-      await this.documentService.deleteDocument(assistantId, documentId);
-      // Reload documents list
-      await this.loadDocuments();
+      const response = await this.documentService.getDownloadUrl(assistantId, documentId);
+      window.open(response.downloadUrl, '_blank', 'noopener,noreferrer');
     } catch (error) {
-      console.error('Error deleting document:', error);
-      // TODO: Show error message to user
+      const message =
+        error instanceof Error ? error.message : 'Failed to get download URL.';
+      this.toast.error(message);
+    }
+  }
+
+  async deleteDocument(documentId: string): Promise<void> {
+    const assistantId = this.assistantId();
+    if (!assistantId) {
+      return;
+    }
+
+    // Optimistic UI: drop the row immediately so the click feels instant
+    // instead of waiting on the DELETE + full document-list reload (a couple
+    // seconds round-trip). Soft-delete is idempotent and almost always
+    // succeeds for a doc the user owns and is currently looking at; on the
+    // rare failure we restore the row and toast.
+    const previousDocs = this.uploadedDocuments();
+    if (!previousDocs.some((doc) => doc.documentId === documentId)) {
+      return;
+    }
+    this.uploadedDocuments.update((docs) =>
+      docs.filter((doc) => doc.documentId !== documentId),
+    );
+    // Drop from the polling set too so the row's spinner indicator doesn't
+    // briefly reappear on the next poll tick before the GET 404s.
+    this.pollingDocuments.update((set) => {
+      const newSet = new Set(set);
+      newSet.delete(documentId);
+      return newSet;
+    });
+
+    try {
+      await this.documentService.deleteDocument(assistantId, documentId);
+    } catch (error) {
+      this.uploadedDocuments.set(previousDocs);
+      const message =
+        error instanceof Error ? error.message : 'Failed to delete document.';
+      this.toast.error(message);
     }
   }
 
@@ -546,7 +946,7 @@ export class AssistantFormPage implements OnInit, OnDestroy {
 
   getStatusBadgeClasses(): string {
     const status = this.form?.get('status')?.value || 'DRAFT';
-    const baseClasses = 'inline-flex items-center rounded-xs px-2.5 py-1 text-xs/5 font-medium';
+    const baseClasses = 'inline-flex items-center rounded-2xl px-2.5 py-0.5 text-xs/5 font-medium';
 
     switch (status) {
       case 'COMPLETE':
