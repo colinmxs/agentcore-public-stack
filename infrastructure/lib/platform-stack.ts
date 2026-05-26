@@ -176,6 +176,7 @@ export class PlatformStack extends cdk.Stack {
   private readonly _spaBucketConstruct: SpaBucketConstruct;
   private readonly _mcpSandboxBucketConstruct: McpSandboxBucketConstruct;
   private readonly _artifactsDataConstruct: ArtifactsDataConstruct;
+  private readonly _albDns!: AlbDnsConstruct;
   private _spaDistributionConstruct?: SpaDistributionConstruct;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
@@ -375,9 +376,16 @@ export class PlatformStack extends cdk.Stack {
     this.spaBucket = this._spaBucketConstruct.bucket;
 
     // ============================================================
-    // ALB DNS / hosted zone (Route53 lookup + ALB URL export)
+    // ALB DNS / hosted zone (Route53 lookup + ALB URL export).
+    // We hold onto the construct so wireSpaDistribution() can read
+    // `albUrl` directly (a same-stack reference resolves cleanly via
+    // CFN dependencies) instead of round-tripping through SSM, which
+    // would chicken-and-egg on first deploy.
     // ============================================================
-    new AlbDnsConstruct(this, 'AlbDns', { config, alb: this.alb });
+    this._albDns = new AlbDnsConstruct(this, 'AlbDns', {
+      config,
+      alb: this.alb,
+    });
 
     // Stub-fill the spa-distribution accessors until wireSpaDistribution()
     // is invoked. The downstream prop typing keeps these on the Stack
@@ -389,15 +397,24 @@ export class PlatformStack extends cdk.Stack {
   }
 
   /**
-   * Wire the SPA CloudFront distribution. Must be called from
-   * `bin/infrastructure.ts` after Platform has been constructed so
-   * the absolute ALB URL token is resolved against the SSM
-   * parameter the network stack publishes.
+   * Wire the SPA CloudFront distribution. Called from
+   * `bin/infrastructure.ts` after Platform has been constructed, so
+   * the SPA distribution sees the resolved ALB URL token from the
+   * sibling AlbDnsConstruct in the same stack.
+   *
+   * Both the ALB-URL publisher (AlbDnsConstruct) and the SPA-distribution
+   * consumer live inside this stack, so we wire them via a direct
+   * construct reference rather than round-tripping through SSM. The
+   * SSM round-trip created a chicken-and-egg on first deploy: CFN
+   * resolves `AWS::SSM::Parameter::Value<String>` parameters before
+   * any of the stack's resources are created, so reading an SSM
+   * parameter that this same stack would create is unsatisfiable.
    *
    * Also wires the RAG-CORS updater Lambda when RAG is enabled (it
-   * needs the resolved frontend URL to patch the bucket CORS).
+   * needs the resolved frontend URL to patch the bucket CORS) and
+   * receives the RAG documents bucket directly for the same reason.
    */
-  public wireSpaDistribution(appApiUrl: string): void {
+  public wireSpaDistribution(): void {
     if (this._spaDistributionConstruct) return;
 
     this._spaDistributionConstruct = new SpaDistributionConstruct(
@@ -406,7 +423,7 @@ export class PlatformStack extends cdk.Stack {
       {
         config: this._config,
         bucket: this.spaBucket,
-        appApiUrl,
+        appApiUrl: this._albDns.albUrl,
       },
     );
 
@@ -416,13 +433,16 @@ export class PlatformStack extends cdk.Stack {
       this._spaDistributionConstruct.distributionDomainName;
 
     // RAG CORS updater — patches the RAG documents bucket CORS to
-    // accept the resolved frontend URL.
+    // accept the resolved frontend URL. Receives the documents
+    // bucket directly (same-stack ref) instead of looking it up via
+    // SSM, which would chicken-and-egg on first deploy.
     const frontendUrl = this._config.domainName
       ? `https://${this._config.domainName}`
       : `https://${this.spaDistributionDomainName}`;
     new RagCorsUpdaterConstruct(this, 'RagCorsUpdater', {
       config: this._config,
       frontendUrl,
+      documentsBucket: this.ragDocumentsBucket,
     });
   }
 }

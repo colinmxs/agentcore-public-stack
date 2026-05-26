@@ -32,7 +32,7 @@ describe('PlatformStack', () => {
       env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
     });
     // Wire the SPA distribution (requires ALB URL)
-    stack.wireSpaDistribution('http://mock-alb.example.com');
+    stack.wireSpaDistribution();
     template = Template.fromStack(stack);
   });
 

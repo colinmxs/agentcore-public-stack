@@ -30,7 +30,7 @@ describe('Two-stack integration', () => {
       config,
       env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
     });
-    platform.wireSpaDistribution('http://mock-alb.example.com');
+    platform.wireSpaDistribution();
 
     const backend = new BackendStack(app, 'Backend', {
       config,

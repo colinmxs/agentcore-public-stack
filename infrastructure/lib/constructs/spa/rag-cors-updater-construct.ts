@@ -1,7 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
 import { AppConfig } from '../../config';
@@ -10,6 +10,17 @@ export interface RagCorsUpdaterConstructProps {
   config: AppConfig;
   /** Frontend URL the RAG documents bucket should accept. */
   frontendUrl: string;
+  /**
+   * RAG documents bucket whose CORS rules should be patched.
+   *
+   * Passed directly (rather than looked up via SSM) because publisher
+   * and consumer live in the same stack. Reading the same-stack SSM
+   * parameter via `valueForStringParameter` produces an
+   * `AWS::SSM::Parameter::Value<String>` template parameter that CFN
+   * tries to resolve before any of the stack's resources are created,
+   * which deadlocks on the first deploy.
+   */
+  documentsBucket: s3.IBucket;
 }
 
 /**
@@ -25,9 +36,6 @@ export interface RagCorsUpdaterConstructProps {
  *
  * Idempotent across re-deploys; trigger uses `Date.now()` so every
  * deployment forces a CORS refresh in case the rules drifted.
- *
- * The bucket name is read from
- * `/{prefix}/rag/documents-bucket-name` at synth time.
  */
 export class RagCorsUpdaterConstruct extends Construct {
   constructor(
@@ -37,12 +45,11 @@ export class RagCorsUpdaterConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { config, frontendUrl } = props;
+    const { config: _config, frontendUrl, documentsBucket } = props;
+    void _config;
 
-    const ragDocumentsBucketName = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag/documents-bucket-name`,
-    );
+    const ragDocumentsBucketName = documentsBucket.bucketName;
+    const ragDocumentsBucketArn = documentsBucket.bucketArn;
 
     const updateCorsHandler = new lambda.Function(this, 'UpdateRagCorsFn', {
       runtime: lambda.Runtime.PYTHON_3_13,
@@ -103,7 +110,7 @@ def handler(event, context):
     updateCorsHandler.addToRolePolicy(
       new iam.PolicyStatement({
         actions: ['s3:GetBucketCors', 's3:PutBucketCors'],
-        resources: [`arn:aws:s3:::${ragDocumentsBucketName}`],
+        resources: [ragDocumentsBucketArn],
       }),
     );
 

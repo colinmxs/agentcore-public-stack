@@ -1,6 +1,5 @@
 #!/usr/bin/env node
 import * as cdk from 'aws-cdk-lib/core';
-import * as ssm from 'aws-cdk-lib/aws-ssm';
 
 import { PlatformStack } from '../lib/platform-stack';
 import { BackendStack } from '../lib/backend-stack';
@@ -28,15 +27,15 @@ const platform = new PlatformStack(app, `${config.projectPrefix}-PlatformStack`,
   description: `${config.projectPrefix} Platform Stack - VPC, ALB, DynamoDB, S3, Cognito, CloudFront`,
 });
 
-// The SPA CloudFront distribution needs the ALB URL (published by
-// Platform's own AlbDnsConstruct) as the /api/* origin. Since both
-// the publisher and consumer are in the same stack, we resolve the
-// SSM token inline.
-const appApiUrl = ssm.StringParameter.valueForStringParameter(
-  platform,
-  `/${config.projectPrefix}/network/alb-url`,
-);
-platform.wireSpaDistribution(appApiUrl);
+// The SPA distribution and the RAG-CORS updater both consume values
+// (ALB URL, RAG documents bucket) published by sibling constructs in
+// the same Platform stack. They're wired through direct construct
+// references inside `wireSpaDistribution()`. The previous version of
+// this code round-tripped via SSM, which deadlocked on first deploy:
+// CFN resolves `AWS::SSM::Parameter::Value<String>` parameters before
+// any of the stack's resources are created, so reading the same-stack
+// SSM parameter that this stack would itself create is unsatisfiable.
+platform.wireSpaDistribution();
 
 // ============================================================
 // BackendStack — all compute (Fargate, AgentCore, Lambdas)

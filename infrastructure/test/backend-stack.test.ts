@@ -34,7 +34,7 @@ describe('BackendStack', () => {
       config,
       env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
     });
-    platform.wireSpaDistribution('http://mock-alb.example.com');
+    platform.wireSpaDistribution();
     // NOTE: wireArtifactsDistribution() NOT called — avoids circular dep
 
     const backend = new BackendStack(app, 'Backend', {
