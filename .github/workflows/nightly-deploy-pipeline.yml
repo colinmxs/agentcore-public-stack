@@ -12,8 +12,66 @@ env:
   LOAD_ENV_QUIET: true
 
 jobs:
+  test-infra:
+    name: Test infrastructure (jest)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: infrastructure/package-lock.json
+      - name: Install
+        working-directory: infrastructure
+        run: npm ci --prefer-offline
+      - name: Run tests
+        working-directory: infrastructure
+        run: npx jest --maxWorkers=2
+
+  test-backend:
+    name: Test backend (pytest)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: astral-sh/setup-uv@v5
+        with:
+          version: '0.7.12'
+          enable-cache: true
+          cache-dependency-glob: 'backend/uv.lock'
+      - name: Sync deps
+        working-directory: backend
+        run: uv sync --extra agentcore --extra dev
+      - name: Run pytest
+        working-directory: backend
+        run: uv run pytest tests/ -v
+
+  test-frontend:
+    name: Test frontend (ng test)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: frontend/ai.client/package-lock.json
+      - name: Install
+        working-directory: frontend/ai.client
+        run: npm ci --prefer-offline
+      - name: Run tests
+        working-directory: frontend/ai.client
+        run: npm run test:ci
+
   deploy-platform:
     name: Deploy PlatformStack
+    needs: test-infra
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:
@@ -149,7 +207,7 @@ jobs:
 
   deploy-backend:
     name: Deploy BackendStack
-    needs: [build-app-api, build-inference-api, build-rag-ingestion]
+    needs: [build-app-api, build-inference-api, build-rag-ingestion, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:
@@ -183,7 +241,7 @@ jobs:
 
   deploy-frontend:
     name: Deploy Frontend
-    needs: deploy-backend
+    needs: [deploy-backend, test-frontend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:

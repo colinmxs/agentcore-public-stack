@@ -23,8 +23,28 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  test-infra:
+    name: Test infrastructure (jest)
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: infrastructure/package-lock.json
+      - name: Install
+        working-directory: infrastructure
+        run: npm ci --prefer-offline
+      - name: Run tests
+        working-directory: infrastructure
+        run: npx jest --maxWorkers=2
+
   deploy:
     name: Deploy PlatformStack
+    needs: test-infra
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 

@@ -124,6 +124,15 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs.deploy).toBeDefined();
     });
 
+    it('has a test-infra gate that deploy waits on', () => {
+      expect(wf.jobs['test-infra']).toBeDefined();
+      // 'needs' can be a string or array; normalise.
+      const needs = Array.isArray(wf.jobs.deploy.needs)
+        ? wf.jobs.deploy.needs
+        : [wf.jobs.deploy.needs];
+      expect(needs).toContain('test-infra');
+    });
+
     it('uses the configure-aws-credentials action', () => {
       const steps = wf.jobs.deploy.steps;
       const awsStep = steps.find((s: any) => s.uses?.includes('configure-aws-credentials'));
@@ -142,10 +151,17 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs.deploy).toBeDefined();
     });
 
-    it('deploy waits on every build job', () => {
+    it('has test-infra and test-backend gates', () => {
+      expect(wf.jobs['test-infra']).toBeDefined();
+      expect(wf.jobs['test-backend']).toBeDefined();
+    });
+
+    it('deploy waits on every build job and every test gate', () => {
       expect(wf.jobs.deploy.needs).toContain('build-app-api');
       expect(wf.jobs.deploy.needs).toContain('build-inference-api');
       expect(wf.jobs.deploy.needs).toContain('build-rag-ingestion');
+      expect(wf.jobs.deploy.needs).toContain('test-infra');
+      expect(wf.jobs.deploy.needs).toContain('test-backend');
     });
 
     it('each build job exposes the resulting image tag as an output', () => {
@@ -159,13 +175,15 @@ describe('Workflow YAML shape', () => {
     let wf: any;
     beforeAll(() => { wf = loadWorkflow('frontend-deploy.yml'); });
 
-    it('has build and deploy jobs', () => {
+    it('has build, test-frontend, and deploy jobs', () => {
       expect(wf.jobs.build).toBeDefined();
+      expect(wf.jobs['test-frontend']).toBeDefined();
       expect(wf.jobs.deploy).toBeDefined();
     });
 
-    it('deploy needs build', () => {
+    it('deploy waits on build and test-frontend', () => {
       expect(wf.jobs.deploy.needs).toContain('build');
+      expect(wf.jobs.deploy.needs).toContain('test-frontend');
     });
   });
 
