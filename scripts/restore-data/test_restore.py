@@ -209,3 +209,126 @@ def test_decommissioned_assistants_component_skips_with_clear_reason():
         result = restore.restore_dynamodb_table(ctx, "assistants", component)
     assert result["status"] == "skipped"
     assert "target table not found" in result["reason"]
+
+
+# --------------------------------------------------------------------- #
+# Bug 6: cognito identity-providers.json + app-clients.json are wrapped #
+# objects ({"providers": [...]} and {"clients": [...]}), not bare       #
+# arrays. Iterating the dict directly yielded keys (strings), then     #
+# `idp.get(...)` raised AttributeError. Verify both wrappers are       #
+# unwrapped correctly, plus the bare-array fallback for hand-edited    #
+# backups.                                                              #
+# --------------------------------------------------------------------- #
+def test_cognito_identity_providers_unwraps_providers_key():
+    """The backup writes {'providers': [...]} — restore must read that
+    list, not iterate the dict's keys."""
+    idp_payload = json.dumps({
+        "providers": [
+            {
+                "ProviderName": "AzureAD",
+                "ProviderType": "OIDC",
+                "ProviderDetails": {"client_id": "abc"},
+                "AttributeMapping": {"email": "email"},
+                "IdpIdentifiers": [],
+            },
+        ],
+    })
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("identity-providers.json"):
+            return {"Body": io.BytesIO(idp_payload.encode())}
+        from botocore.exceptions import ClientError as _ClientError
+        raise _ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    cognito = MagicMock()
+    cognito.create_identity_provider = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    idp_result = next(r for r in results if r.get("component") == "cognito-idps")
+    assert idp_result["status"] == "ok", idp_result
+    assert idp_result["count"] == 1
+    cognito.create_identity_provider.assert_called_once()
+    call_kwargs = cognito.create_identity_provider.call_args.kwargs
+    assert call_kwargs["ProviderName"] == "AzureAD"
+    assert call_kwargs["ProviderType"] == "OIDC"
+
+
+def test_cognito_app_clients_unwraps_clients_key():
+    """Same wrapper as IdPs, but for app-clients.json."""
+    clients_payload = json.dumps({
+        "clients": [
+            {"ClientName": "WebClient", "ClientId": "abc123"},
+        ],
+    })
+    s3 = MagicMock()
+
+    # Two get_object calls happen during restore_cognito: identity-providers
+    # then app-clients. Make IdPs raise NoSuchKey (legitimate: no IdP backup
+    # in this fixture) so we exercise the clients path.
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("identity-providers.json"):
+            from botocore.exceptions import ClientError as _ClientError
+            raise _ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+        if Key.endswith("app-clients.json"):
+            return {"Body": io.BytesIO(clients_payload.encode())}
+        # Anything else (users, groups, memberships) — also NoSuchKey
+        from botocore.exceptions import ClientError as _ClientError
+        raise _ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    cognito = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    clients_result = next(r for r in results if r.get("component") == "cognito-clients")
+    assert clients_result["status"] == "ok"
+    assert clients_result["count"] == 1
+
+
+def test_cognito_identity_providers_falls_back_to_bare_array():
+    """If a hand-edited or alternate backup writes a bare array,
+    handle that too (defensive — backup always writes wrapped today)."""
+    idp_payload = json.dumps([
+        {"ProviderName": "BareArrayIdP", "ProviderType": "OIDC"},
+    ])
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("identity-providers.json"):
+            return {"Body": io.BytesIO(idp_payload.encode())}
+        from botocore.exceptions import ClientError as _ClientError
+        raise _ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    cognito = MagicMock()
+    cognito.create_identity_provider = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    idp_result = next(r for r in results if r.get("component") == "cognito-idps")
+    assert idp_result["status"] == "ok"
+    assert idp_result["count"] == 1

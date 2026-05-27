@@ -279,9 +279,16 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
     cognito = ctx.session.client("cognito-idp", config=BOTO_CONFIG)
 
     # --- Identity Providers ---
+    # Backup writes `cognito/identity-providers.json` as
+    #   {"providers": [{...idp1...}, {...idp2...}]}
+    # — see scripts/backup-data/backup.py:480. Earlier versions of
+    # this restore code iterated the top-level dict directly, which
+    # yielded the dict KEYS (strings) and triggered
+    # `'str' object has no attribute 'get'`. Read the wrapped list.
     try:
         idp_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=f"{root}cognito/identity-providers.json")
-        idps = json.loads(idp_obj["Body"].read())
+        idp_blob = json.loads(idp_obj["Body"].read())
+        idps = idp_blob.get("providers", []) if isinstance(idp_blob, dict) else idp_blob
         for idp in idps:
             provider_name = idp.get("ProviderName")
             if not provider_name:
@@ -310,9 +317,12 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
             results.append({"component": "cognito-idps", "status": "failed", "error": str(e)})
 
     # --- App Clients ---
+    # Same wrapper-list shape as identity-providers — backup writes
+    # {"clients": [...]}. See scripts/backup-data/backup.py:507.
     try:
         clients_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=f"{root}cognito/app-clients.json")
-        clients = json.loads(clients_obj["Body"].read())
+        clients_blob = json.loads(clients_obj["Body"].read())
+        clients = clients_blob.get("clients", []) if isinstance(clients_blob, dict) else clients_blob
         for client in clients:
             client_name = client.get("ClientName")
             LOG.info(f"[Cognito] Noting app client: {client_name} (CDK manages creation; secrets preserved for reference)")
