@@ -99,13 +99,14 @@ describe('Two-stack integration', () => {
       expect(backendBuckets).toBe(0);
     });
 
-    it('CloudFront distributions are split correctly', () => {
-      // Platform: SPA + MCP sandbox
-      // Backend: artifacts (origin is the render Lambda)
+    it('CloudFront distributions are all in Platform after Phase 3', () => {
+      // Phase 3 moved the artifacts distribution to Platform.
+      // Platform now owns SPA + MCP sandbox + artifacts.
+      // Backend owns zero CloudFront distributions.
       const platformDists = Object.keys(platformTemplate.findResources('AWS::CloudFront::Distribution')).length;
       const backendDists = Object.keys(backendTemplate.findResources('AWS::CloudFront::Distribution')).length;
-      expect(platformDists).toBeGreaterThanOrEqual(2);
-      expect(backendDists).toBe(1);
+      expect(platformDists).toBeGreaterThanOrEqual(3);
+      expect(backendDists).toBe(0);
     });
 
     it('Platform owns Cognito', () => {

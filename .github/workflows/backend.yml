@@ -190,9 +190,49 @@ jobs:
         id: build
         run: bash scripts/build/build-one.sh rag-ingestion
 
+  deploy-artifact-render-code:
+    name: Deploy artifact-render Lambda code
+    # Lambda zip code deploy. Mirrors the build-* jobs but for a
+    # zip-based Lambda whose configuration lives in PlatformStack
+    # with a stable bootstrap zip; this step ships the real handler
+    # code via `aws lambda update-function-code` if its content hash
+    # has changed since last deploy.
+    needs: test-backend
+    runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    outputs:
+      code_hash: ${{ steps.deploy.outputs.code_hash }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy artifact-render code
+        id: deploy
+        run: bash scripts/build/deploy-zip-lambda-one.sh artifact-render
+
   deploy:
     name: Deploy BackendStack
-    needs: [build-app-api, build-inference-api, build-rag-ingestion, test-infra, test-backend]
+    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, test-infra, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 

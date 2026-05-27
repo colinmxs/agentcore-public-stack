@@ -117,10 +117,11 @@ describe('PlatformStack', () => {
   });
 
   describe('CloudFront distributions', () => {
-    it('creates SPA + mcp-sandbox distributions', () => {
-      // Artifacts distribution is wired separately via wireArtifactsDistribution
-      // (not called in this test to avoid circular dep)
-      template.resourceCountIs('AWS::CloudFront::Distribution', 2);
+    it('creates SPA + mcp-sandbox + artifacts distributions', () => {
+      // Phase 3 of the platform-as-bootstrap refactor moved the
+      // artifacts distribution into PlatformStack alongside the
+      // SPA + mcp-sandbox distributions. Three total now.
+      template.resourceCountIs('AWS::CloudFront::Distribution', 3);
     });
 
     it('creates CloudFront functions', () => {

@@ -40,8 +40,15 @@ import { SharedConversationsConstruct } from './constructs/data/shared-conversat
 // RAG (data half lives in Platform)
 import { RagDataConstruct } from './constructs/rag/rag-data-construct';
 
-// Artifacts (data + distribution; render Lambda lives in Backend)
+// Artifacts (data + render Lambda + CloudFront distribution).
+// Phase 3 of the platform-as-bootstrap refactor moved the render
+// Lambda + distribution + Route53 alias here. The Lambda's
+// configuration is CDK-owned, but its handler code is shipped
+// out-of-band by the backend workflow (`update-function-code`),
+// so Platform deploys do not redeploy the Lambda's code.
 import { ArtifactsDataConstruct } from './constructs/artifacts/artifacts-data-construct';
+import { ArtifactRenderLambdaConstruct } from './constructs/artifacts/artifact-render-lambda-construct';
+import { ArtifactsDistributionConstruct } from './constructs/artifacts/artifacts-distribution-construct';
 
 // AgentCore (Memory, Code Interpreter, Browser, Gateway).
 // Pure infrastructure — no code, no out-of-band updates needed.
@@ -168,6 +175,15 @@ export class PlatformStack extends cdk.Stack {
    * identical with the CloudFront response-headers-policy.
    */
   public readonly artifactsFrameAncestors: string;
+  /**
+   * Origin URL where the artifacts iframe is served
+   * (`https://artifacts.{domain}`). Exposed for BackendStack's App
+   * API to forward to the Fargate container as `ARTIFACTS_ORIGIN`
+   * env var. Until Phase 6 of the platform-as-bootstrap refactor,
+   * BackendStack still owns the Fargate task def — once it moves to
+   * Platform, this typed ref isn't needed for cross-stack.
+   */
+  public readonly artifactsOriginUrl: string;
 
   // ── Fine-tuning
   public readonly fineTuningJobsTable: dynamodb.ITable;
@@ -351,6 +367,45 @@ export class PlatformStack extends cdk.Stack {
       `https://${artifactsDomainName}`,
       ...config.artifacts.extraFrameAncestors,
     ].join(' ');
+
+    // ============================================================
+    // Artifact render Lambda + CloudFront distribution + Route53
+    //
+    // Lambda owns its CDK configuration (runtime, IAM, env vars,
+    // function URL, log group) but NOT its code — that's shipped
+    // out-of-band by the backend workflow's
+    // `scripts/build/deploy-artifact-render-code.sh` step using
+    // `aws lambda update-function-code`. Same model as the SPA
+    // (Platform owns bucket + CloudFront; the workflow does
+    // `aws s3 sync` + invalidation).
+    //
+    // CDK uses a stable bootstrap asset (a 503 placeholder); CFN
+    // sees no change to the Lambda's `Code` property on subsequent
+    // Platform deploys and leaves the out-of-band-deployed real
+    // handler untouched.
+    // ============================================================
+    const artifactRenderLambda = new ArtifactRenderLambdaConstruct(
+      this,
+      'ArtifactRender',
+      {
+        config,
+        artifactsTable: this.artifactsTable,
+        artifactsBucket: this.artifactsContentBucket,
+        renderTokenSecret: this.artifactRenderTokenSecret,
+        frameAncestors: this.artifactsFrameAncestors,
+      },
+    );
+
+    const artifactsDistribution = new ArtifactsDistributionConstruct(
+      this,
+      'ArtifactsDistribution',
+      {
+        config,
+        renderFunctionUrl: artifactRenderLambda.functionUrl,
+        frameAncestors: this.artifactsFrameAncestors,
+      },
+    );
+    this.artifactsOriginUrl = artifactsDistribution.originUrl;
 
     // ============================================================
     // AgentCore Memory + Code Interpreter + Browser

@@ -1,9 +1,9 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as path from 'path';
 import { Construct } from 'constructs';
@@ -16,6 +16,12 @@ export interface ArtifactRenderLambdaConstructProps {
   artifactsTable: dynamodb.ITable;
   /** Artifact content bucket — granted read access. */
   artifactsBucket: s3.IBucket;
+  /**
+   * The HMAC-SHA256 signing key for render JWTs. Same-stack typed
+   * ref (PlatformStack creates the secret via
+   * `ArtifactRenderTokenSecretConstruct`); no SSM round-trip needed.
+   */
+  renderTokenSecret: secretsmanager.ISecret;
   /** CSP `frame-ancestors` source list (space-separated). */
   frameAncestors: string;
 }
@@ -24,15 +30,30 @@ export interface ArtifactRenderLambdaConstructProps {
  * ArtifactRenderLambdaConstruct — JWT-validating, S3-fetching Lambda
  * that returns rendered artifact HTML with a strict CSP.
  *
- * The JWT-signing key (HMAC-SHA256) lives in PlatformStack
- * (`/{prefix}/artifacts/render-token-key-arn`); this construct reads
- * it via SSM and grants `secretsmanager:GetSecretValue` on the secret.
+ * Phase 3 of the platform-as-bootstrap refactor moved this construct
+ * (and its paired CloudFront distribution) from BackendStack to
+ * PlatformStack. The Lambda's *configuration* (runtime, arch, IAM
+ * role, env vars, function URL, CloudFront origin wiring) is owned
+ * by CDK; its *handler code* is shipped independently by the backend
+ * workflow's `scripts/build/deploy-artifact-render-code.sh` step,
+ * which calls `aws lambda update-function-code` directly.
  *
- * Function URL with `AWS_IAM` auth — the URL is invoked by CloudFront
- * over Origin Access Control (configured in the distribution
- * construct). AWS_IAM blocks direct invocation at the
- * `lambdaUrl.amazonaws.com` hostname; CloudFront signs each origin
- * request with SigV4.
+ * The model: same as how the SPA works (Platform owns the bucket +
+ * CloudFront; the workflow does `aws s3 sync` + invalidation).
+ *
+ * `lambda.Code.fromAsset` here points at the bootstrap zip dir, NOT
+ * at backend/src/lambdas/artifact_render. The bootstrap dir contents
+ * are byte-stable, so its content-hash is stable, so CFN sees no
+ * change to the `Code` property on subsequent Platform deploys and
+ * leaves the out-of-band-deployed real handler untouched. (CFN tracks
+ * desired-vs-known-state from its own model, not by querying live
+ * Lambda config — drift detection only fires on a manual scan.)
+ *
+ * Function URL is `AWS_IAM`-authed — the URL is invoked by CloudFront
+ * over Origin Access Control (configured in
+ * `ArtifactsDistributionConstruct`). AWS_IAM blocks direct invocation
+ * at the `lambdaUrl.amazonaws.com` hostname; CloudFront signs each
+ * origin request with SigV4.
  *
  * The CSP `script-src` allow-list (`CSP_SCRIPT_SRC` env var) is kept
  * byte-identical with the CloudFront response-headers-policy in the
@@ -54,44 +75,35 @@ export class ArtifactRenderLambdaConstruct extends Construct {
   ) {
     super(scope, id);
 
-    const { config, artifactsTable, artifactsBucket, frameAncestors } = props;
-
-    const renderTokenKeyArn = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/artifacts/render-token-key-arn`,
-    );
+    const { config, artifactsTable, artifactsBucket, renderTokenSecret, frameAncestors } = props;
 
     // Auto-generated log group name (no `logGroupName`) so a
-    // failed-deploy orphan can't collide with a redeploy. Default
-    // CDK behaviour with feature flag
-    // `@aws-cdk/aws-lambda:useCdkManagedLogGroup: true` would name
-    // the log group `/aws/lambda/<functionName>`, which collides
-    // with any orphan left behind by a previous failed deploy.
+    // failed-deploy orphan can't collide with a redeploy.
     const renderLogGroup = new logs.LogGroup(this, 'RenderFunctionLogGroup', {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });
 
     this.renderFunction = new lambda.Function(this, 'RenderFunction', {
-      // Intentionally no `functionName` — let CDK auto-generate it
-      // for the same orphan-collision reason as the log group above.
+      // Intentionally no `functionName` — let CDK auto-generate.
       // The deploy script resolves the function via SSM at
       // `/{prefix}/artifacts/render-function-name` (published below).
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: 'handler.handler',
       logGroup: renderLogGroup,
+      // Stable bootstrap (returns 503). Real code is deployed by the
+      // backend workflow via update-function-code. Do NOT point this
+      // at backend/src/lambdas/artifact_render/ — that would re-couple
+      // Lambda code changes to Platform deploys.
       code: lambda.Code.fromAsset(
         path.resolve(
           __dirname,
           '..',
           '..',
           '..',
-          '..',
-          'backend',
-          'src',
-          'lambdas',
-          'artifact_render',
+          'bootstrap-assets',
+          'artifact-render',
         ),
       ),
       memorySize: 512,
@@ -99,7 +111,7 @@ export class ArtifactRenderLambdaConstruct extends Construct {
       environment: {
         ARTIFACTS_BUCKET: artifactsBucket.bucketName,
         ARTIFACTS_TABLE: artifactsTable.tableName,
-        RENDER_TOKEN_SECRET_ARN: renderTokenKeyArn,
+        RENDER_TOKEN_SECRET_ARN: renderTokenSecret.secretArn,
         FRAME_ANCESTOR_ORIGIN: frameAncestors,
         // Pinned CSP allow-list. Must stay byte-identical with the
         // `script-src` line in the paired distribution construct's
@@ -111,14 +123,7 @@ export class ArtifactRenderLambdaConstruct extends Construct {
 
     artifactsBucket.grantRead(this.renderFunction);
     artifactsTable.grantReadData(this.renderFunction);
-
-    this.renderFunction.addToRolePolicy(
-      new iam.PolicyStatement({
-        sid: 'ReadRenderTokenSecret',
-        actions: ['secretsmanager:GetSecretValue'],
-        resources: [`${renderTokenKeyArn}*`],
-      }),
-    );
+    renderTokenSecret.grantRead(this.renderFunction);
 
     this.functionUrl = this.renderFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.AWS_IAM,
@@ -126,9 +131,7 @@ export class ArtifactRenderLambdaConstruct extends Construct {
 
     // Publish the auto-generated function name so the backend
     // workflow's code-deploy step can resolve which function to
-    // call `aws lambda update-function-code` against. (We dropped
-    // the deterministic `functionName` above to avoid collisions
-    // with orphans from failed deploys.)
+    // call `aws lambda update-function-code` against.
     new ssm.StringParameter(this, 'RenderFunctionNameParameter', {
       parameterName: `/${config.projectPrefix}/artifacts/render-function-name`,
       stringValue: this.renderFunction.functionName,

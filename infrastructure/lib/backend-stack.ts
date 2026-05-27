@@ -9,8 +9,6 @@ import { AppConfig, applyStandardTags } from './config';
 import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
 import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
-import { ArtifactRenderLambdaConstruct } from './constructs/artifacts/artifact-render-lambda-construct';
-import { ArtifactsDistributionConstruct } from './constructs/artifacts/artifacts-distribution-construct';
 import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
 
 // Platform typed imports (explicit prop passing)
@@ -36,9 +34,6 @@ export interface BackendStackProps extends cdk.StackProps {
  *
  */
 export class BackendStack extends cdk.Stack {
-  /** Exposed so bin/infrastructure.ts can wire the artifacts distribution. */
-  public readonly artifactRenderFunctionUrl?: import('aws-cdk-lib/aws-lambda').IFunctionUrl;
-
   constructor(scope: Construct, id: string, props: BackendStackProps) {
     super(scope, id, props);
 
@@ -71,38 +66,15 @@ export class BackendStack extends cdk.Stack {
     });
 
     // ============================================================
-    // Artifact Render Lambda + CloudFront Distribution
-    //
-    // Constructed before App API so the distribution's origin URL
-    // can flow into App API as a direct prop. App API used to read
-    // /{prefix}/artifacts/origin from SSM, which deadlocked on first
-    // deploy (same-stack publisher and consumer). The artifacts data
-    // (bucket, table, render-token-key-arn) still cross over from
-    // PlatformStack and that path is fine to read via SSM.
-    //
-    // Both render Lambda and distribution live in BackendStack
-    // because the distribution's origin IS the Lambda — putting the
-    // distribution in PlatformStack would create a Platform → Backend
-    // dependency cycle.
+    // Artifact Render Lambda + CloudFront Distribution moved to
+    // PlatformStack in Phase 3 of the platform-as-bootstrap refactor.
+    // The Lambda now lives in Platform with a stable bootstrap zip
+    // asset, and the backend workflow's
+    // `scripts/build/deploy-artifact-render-code.sh` ships the real
+    // handler code via `aws lambda update-function-code` — no CFN
+    // round-trip on artifact-code changes. The artifacts origin URL
+    // flows back into AppApi here as `platform.artifactsOriginUrl`.
     // ============================================================
-    const renderLambda = new ArtifactRenderLambdaConstruct(
-      this,
-      'ArtifactRender',
-      {
-        config,
-        artifactsTable: platform.artifactsTable,
-        artifactsBucket: platform.artifactsContentBucket,
-        frameAncestors: platform.artifactsFrameAncestors,
-      },
-    );
-    this.artifactRenderFunctionUrl = renderLambda.functionUrl;
-
-    const artifactsDistribution = new ArtifactsDistributionConstruct(this, 'ArtifactsDistribution', {
-      config,
-      renderFunctionUrl: renderLambda.functionUrl,
-      frameAncestors: platform.artifactsFrameAncestors,
-    });
-
     // ============================================================
     // SageMaker Fine-Tuning IAM
     //
@@ -135,7 +107,7 @@ export class BackendStack extends cdk.Stack {
       agentCoreMemoryArn: platform.agentCoreMemoryArn,
       agentCoreMemoryId: platform.agentCoreMemoryId,
       inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,
-      artifactsOrigin: artifactsDistribution.originUrl,
+      artifactsOrigin: platform.artifactsOriginUrl,
       sagemakerExecutionRoleArn: sagemaker.executionRole.roleArn,
       sagemakerSecurityGroupId: sagemaker.securityGroup.securityGroupId,
       sagemakerPrivateSubnetIds,

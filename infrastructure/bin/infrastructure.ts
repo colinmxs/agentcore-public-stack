@@ -45,19 +45,11 @@ platform.wireSpaDistribution();
 // from scripts/backend/deploy.sh resolves correctly, and CDK uses
 // the same string as the CloudFormation stack name.
 // ============================================================
-const backend = new BackendStack(app, `${config.projectPrefix}-BackendStack`, {
+new BackendStack(app, `${config.projectPrefix}-BackendStack`, {
   config,
   env,
   platform,
-  description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Gateway, Lambdas`,
+  description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Lambdas (until Phases 4-6 of the platform-as-bootstrap refactor land)`,
 });
-
-// Wire the artifacts CloudFront distribution AFTER both stacks are
-// constructed. This avoids a circular CDK dependency (Platform needs
-// Backend's render Lambda Function URL; Backend needs Platform's RAG
-// bucket). The distribution lives in Platform but its origin is in Backend.
-if (backend.artifactRenderFunctionUrl) {
-  // Artifacts distribution lives in BackendStack now (no cycle)
-}
 
 app.synth();
