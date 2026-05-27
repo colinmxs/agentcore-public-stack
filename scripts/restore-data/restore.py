@@ -44,6 +44,7 @@ from dataclasses import dataclass, field
 from typing import Any
 
 import boto3
+from boto3.dynamodb.types import TypeDeserializer
 import botocore
 from botocore.config import Config as BotoConfig
 from botocore.exceptions import ClientError
@@ -80,10 +81,14 @@ TABLE_SSM_MAP: dict[str, str] = {
     "fine-tuning-access":   "/fine-tuning/access-table-name",
 }
 
-# Convention-named tables (not in SSM)
-TABLE_CONVENTION_MAP: dict[str, str] = {
-    "assistants": "assistants",  # {prefix}-assistants
-}
+# Convention-named tables (not in SSM).
+# Currently empty — the previously-listed `assistants` table was
+# decommissioned in commit c977e04e (the project uses the
+# rag-assistants table for both assistant config and document
+# metadata via DYNAMODB_ASSISTANTS_TABLE_NAME). Restoring an
+# `assistants` component from an old backup will skip cleanly with
+# "target table not found via SSM".
+TABLE_CONVENTION_MAP: dict[str, str] = {}
 
 BUCKET_SSM_MAP: dict[str, str] = {
     "user-file-uploads": "/user-file-uploads/bucket-name",
@@ -127,9 +132,14 @@ def get_ssm_param(session: boto3.Session, prefix: str, path: str) -> str | None:
 def restore_dynamodb_table(ctx: RestoreContext, logical_name: str, component: dict) -> dict:
     """Restore a single DynamoDB table from its ExportTableToPointInTime output."""
     detail = component.get("detail", {})
-    export_manifest_key = detail.get("export_manifest_key")
-    if not export_manifest_key:
-        return {"logical": logical_name, "status": "skipped", "reason": "no export_manifest_key in backup"}
+    # Backup records the AWS-returned ExportManifest field as `export_manifest`
+    # (a path like '<prefix>/AWSDynamoDB/<exportId>/manifest-summary.json').
+    # Earlier versions of this script looked for `export_manifest_key`,
+    # which never existed in the backup output — see manifest.json from any
+    # backup-data run for the canonical field name.
+    export_summary_key = detail.get("export_manifest")
+    if not export_summary_key:
+        return {"logical": logical_name, "status": "skipped", "reason": "no export_manifest in backup"}
 
     # Resolve target table name
     target_table = None
@@ -149,27 +159,33 @@ def restore_dynamodb_table(ctx: RestoreContext, logical_name: str, component: di
     dynamodb = ctx.session.resource("dynamodb", config=BOTO_CONFIG)
     table = dynamodb.Table(target_table)
 
-    # Read the export manifest to find data files
-    manifest_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=export_manifest_key)
-    manifest_body = manifest_obj["Body"].read().decode("utf-8")
+    # AWS DynamoDB ExportTableToPointInTime emits a two-level manifest:
+    #   1. <prefix>/AWSDynamoDB/<exportId>/manifest-summary.json — metadata,
+    #      includes a `manifestFilesS3Key` field pointing to (2).
+    #   2. <prefix>/AWSDynamoDB/<exportId>/manifest-files.json — line-
+    #      delimited JSON, each line carries a `dataFileS3Key` for the
+    #      actual gzipped DDB-JSON data file.
+    # We have to indirect through both to find the data files.
+    summary_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=export_summary_key)
+    summary = json.loads(summary_obj["Body"].read().decode("utf-8"))
+    manifest_files_key = summary.get("manifestFilesS3Key")
+    if not manifest_files_key:
+        return {
+            "logical": logical_name,
+            "status": "failed",
+            "error": f"manifest-summary at {export_summary_key} missing manifestFilesS3Key",
+        }
 
-    # The export manifest is a summary JSON with a dataFileS3Key list
-    # OR it's the manifest-files format. Handle both.
-    data_files = []
-    try:
-        manifest_data = json.loads(manifest_body)
-        # ExportTableToPointInTime manifest format
-        if "dataFileS3Key" in manifest_data:
-            data_files = [manifest_data["dataFileS3Key"]]
-        elif "dataFiles" in manifest_data:
-            data_files = [f["dataFileS3Key"] for f in manifest_data["dataFiles"]]
-    except json.JSONDecodeError:
-        # Line-delimited manifest (each line is a JSON object with dataFileS3Key)
-        for line in manifest_body.strip().split("\n"):
-            if line.strip():
-                entry = json.loads(line)
-                if "dataFileS3Key" in entry:
-                    data_files.append(entry["dataFileS3Key"])
+    files_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=manifest_files_key)
+    files_body = files_obj["Body"].read().decode("utf-8")
+
+    data_files: list[str] = []
+    for line in files_body.strip().split("\n"):
+        if not line.strip():
+            continue
+        entry = json.loads(line)
+        if "dataFileS3Key" in entry:
+            data_files.append(entry["dataFileS3Key"])
 
     items_written = 0
     for data_key in data_files:
@@ -198,7 +214,7 @@ def restore_dynamodb_table(ctx: RestoreContext, logical_name: str, component: di
 
 def _deserialize_dynamodb_json(item: dict) -> dict:
     """Convert DynamoDB-JSON (typed attribute values) to plain Python dict."""
-    deserializer = boto3.dynamodb.types.TypeDeserializer()
+    deserializer = TypeDeserializer()
     return {k: deserializer.deserialize(v) for k, v in item.items()}
 
 
@@ -212,9 +228,14 @@ def restore_s3_bucket(ctx: RestoreContext, logical_name: str, component: dict) -
     if not target_bucket:
         return {"logical": logical_name, "status": "skipped", "reason": "target bucket not found via SSM"}
 
-    # Source path in backup bucket
+    # Source path in backup bucket. Same root-prefix slash gotcha as
+    # the cognito restore — the manifest stores `root_prefix` without
+    # a trailing slash, so concatenation needs an explicit separator.
+    root_prefix = ctx.manifest.get("root_prefix", "")
+    if root_prefix and not root_prefix.endswith("/"):
+        root_prefix = root_prefix + "/"
     source_prefix = component.get("detail", {}).get("s3_prefix", f"s3/{logical_name}/")
-    source_uri = f"s3://{ctx.backup_bucket}/{ctx.manifest.get('root_prefix', '')}{source_prefix}"
+    source_uri = f"s3://{ctx.backup_bucket}/{root_prefix}{source_prefix}"
     target_uri = f"s3://{target_bucket}/"
 
     LOG.info(f"[S3] Syncing {logical_name}: {source_uri} → {target_uri}")
@@ -239,7 +260,15 @@ def restore_s3_bucket(ctx: RestoreContext, logical_name: str, component: dict) -
 def restore_cognito(ctx: RestoreContext) -> list[dict]:
     """Restore Cognito identity providers, app clients, and users."""
     results = []
+    # Append a trailing '/' so subsequent f-strings concat cleanly.
+    # Backup writes `root_prefix` without a trailing slash (e.g.
+    # 'ai-sbmt-api/20260521T181146Z'); the previous restore code
+    # forgot the separator and ended up looking up keys like
+    # 'ai-sbmt-api/20260521T181146Zcognito/users.jsonl.gz' which
+    # don't exist — every cognito component reported "no backup file".
     root = ctx.manifest.get("root_prefix", "")
+    if root and not root.endswith("/"):
+        root = root + "/"
     s3 = ctx.session.client("s3", config=BOTO_CONFIG)
 
     target_pool_id = get_ssm_param(ctx.session, ctx.target_prefix, SSM_USER_POOL_ID)
