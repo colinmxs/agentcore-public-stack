@@ -38,32 +38,46 @@ These conventions are relied on throughout the repo and are the fastest way to r
 * **YAML is the table of contents**: any non-trivial logic belongs in `scripts/`.
 
 ### Available Workflows
-*   **`platform.yml`**: Deploys the PlatformStack — every non-compute resource (VPC, ALB, DynamoDB, S3, Cognito, CloudFront, AgentCore Memory/Gateway/Code-Interpreter/Browser). Runs first.
-*   **`backend.yml`**: Deploys the BackendStack — all compute (App API Fargate service, Inference API AgentCore Runtime, Gateway Lambdas, RAG ingestion Lambda, artifact render Lambda). Includes a `build-images` job that runs `scripts/build/build-all-images.sh` to content-hash-tag the three Docker images and push to ECR.
-*   **`frontend.yml`**: Builds the Angular SPA and syncs it to the SPA bucket created by PlatformStack.
-*   **`teardown.yml`**: Manually-triggered. Calls `scripts/teardown/destroy.sh` to delete every CloudFormation stack with the project prefix (uses `aws cloudformation delete-stack`, not `cdk destroy`, so it works for both the current 2-stack architecture and any legacy 9-stack deployments).
+*   **`platform.yml`**: Deploys the unified PlatformStack — the only stack now. Runs CFN updates for infrastructure changes (new tables, new IAM grants, network config, etc.). After Phases 5+6 of the platform-as-bootstrap refactor land, this is the *only* workflow that touches CFN; all other code/image deploys go through AWS APIs directly.
+*   **`backend.yml`**: Backend code-deploy entry point. Runs:
+    *   Test gates (`test-infra`, `test-backend`).
+    *   Per-image builds (`build-app-api`, `build-inference-api`, `build-rag-ingestion`) — all gate on `test-backend`, push to ECR with content-hash tags, write tags to SSM.
+    *   Per-Lambda code deploys (`deploy-artifact-render-code` ships the zip-Lambda's handler via `aws lambda update-function-code`; `deploy-rag-ingestion-code` ships the image-Lambda's container via `aws lambda update-function-code --image-uri`).
+    *   A `deploy` job (transitional) that runs `scripts/platform/deploy.sh` for the App API + Inference API container deploys still flowing through CFN. Phases 5+6 will make this job redundant by adding bootstrap-container patterns to those services.
+*   **`frontend-deploy.yml`**: Builds the Angular SPA and syncs it to the SPA bucket created by PlatformStack.
+*   **`teardown.yml`**: Manually-triggered. Calls `scripts/teardown/destroy.sh` to delete every CloudFormation stack with the project prefix (uses `aws cloudformation delete-stack`, not `cdk destroy`, so it works for both the current single-stack architecture and any legacy 2-stack or 9-stack deployments).
 *   **`nightly-deploy-pipeline.yml`**: Combined platform → backend → frontend → smoke/E2E test pipeline that runs nightly.
 
 ---
 
-## 2. CDK Stacks (Infrastructure)
+## 2. CDK Stack (Infrastructure)
 
-The infrastructure is defined in `infrastructure/lib/` and is split into exactly two stacks. Every resource is provisioned unconditionally — there are no per-stack feature flags. If you don't need a feature in a particular environment, leave it deployed; the cost overhead is minimal compared to the operational cost of conditional infra.
+After Phase 7 of the platform-as-bootstrap refactor, the infrastructure is a single `PlatformStack` defined in `infrastructure/lib/platform-stack.ts`. Every resource — data, edge, AgentCore, compute — lives there. There are no cross-stack references to manage and no second stack to deploy in a particular order.
 
-| Stack Name | Class | Description | Dependencies |
-| :--- | :--- | :--- | :--- |
-| **Platform** | `PlatformStack` | **Foundation + data layer**. VPC, ALB, ECS Cluster, security groups, every DynamoDB table, every S3 bucket (SPA, RAG documents, RAG vectors, file uploads, mcp-sandbox, fine-tuning data, artifacts content), Cognito, KMS keys, secrets, AgentCore Memory/Gateway/Code-Interpreter/Browser, CloudFront distributions for SPA + mcp-sandbox. Exports resource handles via SSM and via typed `props.platform.*` cross-stack refs. | None |
-| **Backend** | `BackendStack` | **Compute layer**. App API Fargate service, Inference API AgentCore Runtime, Gateway Lambdas + targets, RAG ingestion Lambda, Artifact render Lambda + its CloudFront distribution, SageMaker fine-tuning IAM role. Receives Platform handles via typed props; reads cross-stack SSM where typed refs aren't possible. | Platform |
+| Stack Name | Class | Description |
+| :--- | :--- | :--- |
+| **Platform** | `PlatformStack` | All resources: VPC, ALB, ECS cluster + Fargate App API service, security groups, every DynamoDB table, every S3 bucket (SPA, RAG documents, RAG vectors, file uploads, mcp-sandbox, fine-tuning data, artifacts content), Cognito, KMS keys, secrets, AgentCore Memory/Gateway/Code-Interpreter/Browser/Runtime, CloudFront distributions (SPA + mcp-sandbox + artifacts), Route53 aliases, RAG ingestion Lambda, artifact render Lambda + distribution, SageMaker fine-tuning IAM. Construction is split across the constructor (data + edge + AgentCore Memory/CI/Browser/Gateway), `wireSpaDistribution()` (SPA + RAG-CORS updater), and `wireCompute()` (Inference Runtime + SageMaker + App API). |
 
 ### Key Concepts
-*   **SSM Parameter Store**: Used for cross-stack references (Platform → Backend) and for runtime resolution by container env-var lookup. **Never** use SSM for same-stack reads — `valueForStringParameter` produces a CFN parameter that resolves before the stack's own resources are created, which deadlocks first deploys. Pass values directly via construct refs or function args inside the same stack.
+*   **No cross-stack SSM**: Single-stack means there are no `Fn::ImportValue` references to other stacks. SSM is still used for *runtime* lookups by container env-vars and by the workflow's API-driven code-deploy steps (e.g. `/${prefix}/artifacts/render-function-name` so the deploy script can find the auto-generated Lambda name).
+*   **Same-stack SSM is still forbidden**: `valueForStringParameter` resolves a CFN template parameter before any of the stack's resources are created, so reading a parameter that this same stack would publish is unsatisfiable on first deploy. Pass values via construct refs or function args inside the same stack.
 *   **Context Configuration**: Project prefix, account IDs, regions, and any tunables are passed via CDK Context, never hardcoded.
 
-### Deployment Order & Layering Contract
+### Deployment Order
+*   **Single stack**: just `cdk deploy <prefix>-PlatformStack`. The workflow's `deploy` job in either `platform.yml` or `backend.yml` runs the same script (`scripts/platform/deploy.sh`).
+*   **Code deploys** for artifact-render and rag-ingestion Lambdas don't go through CFN at all — they're API calls directly from the `deploy-artifact-render-code` and `deploy-rag-ingestion-code` jobs.
+*   **App API and Inference API** still flow through CFN for now (their image tags are baked into the task def / runtime config at synth time). Phases 5+6 will replace this with bootstrap-container patterns + workflow API calls.
 
-* **Deploy order (default)**: Platform → Backend → Frontend (asset sync).
-* **Contract**: PlatformStack is the foundation layer. BackendStack receives PlatformStack handles via typed props (CDK records the dep automatically) and via SSM for the values that must be resolved at container runtime.
-* **No direct cross-stack coupling between unrelated stacks**: BackendStack only depends on PlatformStack; Frontend only consumes PlatformStack outputs.
+### The Platform-as-Bootstrap Pattern
+
+Several Lambdas in PlatformStack don't ship their real code via CDK. CDK ships a small, byte-stable "bootstrap" placeholder; the workflow ships the real handler via `aws lambda update-function-code`:
+
+*   **artifact-render** (zip Lambda): bootstrap at `infrastructure/bootstrap-assets/artifact-render/handler.py` (returns 503). Workflow's `deploy-artifact-render-code` step zips `backend/src/lambdas/artifact_render/`, hashes it, calls `update-function-code` if the hash differs from the SSM-tracked latest.
+*   **rag-ingestion** (image Lambda): bootstrap at `infrastructure/bootstrap-assets/rag-ingestion/` (Dockerfile + handler.py, base image digest-pinned). Workflow's `deploy-rag-ingestion-code` step calls `update-function-code --image-uri` with the image tag the build job just pushed.
+
+Why it works: CFN tracks the Lambda's `Code` property from its own model, not by querying live AWS. With a byte-stable bootstrap asset, the CDK-computed S3Key/digest is constant across synths, so CFN sees no change to the `Code` property on subsequent Platform deploys and leaves the out-of-band-deployed real code untouched. (Drift detection would surface this if anyone ran it manually, but normal stack updates leave the Lambda alone.)
+
+The same pattern is planned for the AgentCore Runtime container (Phase 5) and the App API ECS task definition (Phase 6).
 
 ---
 
