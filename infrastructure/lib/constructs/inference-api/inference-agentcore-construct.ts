@@ -1,11 +1,13 @@
 import * as cdk from 'aws-cdk-lib';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as cloudwatch from 'aws-cdk-lib/aws-cloudwatch';
 import * as xray from 'aws-cdk-lib/aws-xray';
 import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
+import * as path from 'path';
 import { Construct } from 'constructs';
 import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags, buildCorsOrigins } from '../../config';
 import {
@@ -73,9 +75,32 @@ export class InferenceAgentCoreConstruct extends Construct {
 
     applyStandardTags(cdk.Stack.of(this), config);
 
-    // ── Image tag + ECR ──
-    const imageTag = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/inference-api/image-tag`);
+    // ── Bootstrap container image ──
+    // Phase 5 of the platform-as-bootstrap refactor: the Runtime is
+    // configured with a stable bootstrap image at synth time; the
+    // real image is shipped out-of-band by the backend workflow's
+    // `scripts/build/deploy-runtime-image-one.sh` step, which calls
+    // `aws bedrock-agentcore-control update-agent-runtime` with
+    // the project's freshly-built ECR image URI.
+    //
+    // The bootstrap container is a tiny stdlib HTTP server (port
+    // 8080 + /ping for AgentCore's health check + /invocations
+    // returning 503) so the Runtime can provision successfully
+    // before the workflow ships the real image. Byte-stable
+    // contents → stable asset content-hash → CFN sees no change to
+    // `agentRuntimeArtifact.containerConfiguration.containerUri`
+    // on subsequent Platform deploys, leaving the out-of-band-deployed
+    // real image untouched.
+    const bootstrapImage = new ecr_assets.DockerImageAsset(this, 'AgentCoreRuntimeBootstrap', {
+      directory: path.resolve(
+        __dirname, '..', '..', '..', 'bootstrap-assets', 'inference-api',
+      ),
+      platform: ecr_assets.Platform.LINUX_ARM64,
+    });
+
+    // The project's ECR repo (where the workflow ships real images
+    // to). Imported for IAM grants only — CDK doesn't reference any
+    // image tag in this repo at synth time anymore.
     const ecrRepository = ecr.Repository.fromRepositoryName(
       this, 'InferenceApiRepository', getResourceName(config, 'inference-api'));
 
@@ -88,8 +113,14 @@ export class InferenceAgentCoreConstruct extends Construct {
     //   - constructs/agentcore/code-interpreter-construct.ts
     //   - constructs/agentcore/browser-construct.ts
 
+    // Grant the Runtime execution role pull rights on the project's
+    // inference-api ECR repo so `update-agent-runtime` can switch the
+    // Runtime over to a real image. The bootstrap image's pull
+    // rights on cdk-assets are auto-granted by DockerImageAsset.
+    bootstrapImage.repository.grantPull(runtimeExecutionRole);
+    ecrRepository.grantPull(runtimeExecutionRole);
+
     // ── Additional SSM reads needed by the runtime container env ──
-    const _containerImageUri = `${ecrRepository.repositoryUri}:${imageTag}`;
     const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/auth/auth-provider-secrets-arn`);
     const oauthTokenEncryptionKeyArn = ssm.StringParameter.valueForStringParameter(
@@ -248,7 +279,7 @@ export class InferenceAgentCoreConstruct extends Construct {
       agentRuntimeName: getResourceName(config, 'agentcore_runtime').replace(/-/g, '_'),
       agentRuntimeArtifact: {
         containerConfiguration: {
-          containerUri: _containerImageUri,
+          containerUri: bootstrapImage.imageUri,
         },
       },
       authorizerConfiguration: {

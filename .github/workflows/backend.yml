@@ -270,8 +270,48 @@ jobs:
         id: deploy
         run: bash scripts/build/deploy-image-lambda-one.sh rag-ingestion
 
+  deploy-inference-api-code:
+    name: Deploy inference-api image to AgentCore Runtime
+    # Phase 5 of the platform-as-bootstrap refactor: the AgentCore
+    # Runtime is configured in CDK with a stable bootstrap container
+    # image; this step ships the real image via
+    # `aws bedrock-agentcore-control update-agent-runtime`. Mirrors
+    # deploy-rag-ingestion-code but for a Runtime instead of a Lambda.
+    needs: [build-inference-api, test-backend]
+    runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+
+    permissions:
+      id-token: write
+      contents: read
+
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    outputs:
+      image_tag: ${{ steps.deploy.outputs.image_tag }}
+
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy inference-api image
+        id: deploy
+        run: bash scripts/build/deploy-runtime-image-one.sh inference-api
+
   deploy:
-    name: Deploy unified stack (app-api + inference-api code via CFN until Phases 5+6 land)
+    name: Deploy unified stack (app-api code via CFN until Phase 6 lands)
     # The unified PlatformStack now owns every resource (Phase 7 of
     # the platform-as-bootstrap refactor collapsed the old
     # BackendStack into Platform). Until Phases 5+6 land their
@@ -285,7 +325,7 @@ jobs:
     # Once Phases 5+6 are done, this job goes away — backend.yml
     # becomes purely build-images + code-deploys (no CFN), and
     # platform.yml is the single CFN entry point.
-    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, test-infra, test-backend]
+    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, deploy-inference-api-code, test-infra, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 

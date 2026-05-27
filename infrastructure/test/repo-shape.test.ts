@@ -144,12 +144,13 @@ describe('Workflow YAML shape', () => {
     let wf: any;
     beforeAll(() => { wf = loadWorkflow('backend.yml'); });
 
-    it('has one build job per image plus deploy plus zip-Lambda code-deploy', () => {
+    it('has one build job per image plus deploy plus three code-deploy jobs', () => {
       expect(wf.jobs['build-app-api']).toBeDefined();
       expect(wf.jobs['build-inference-api']).toBeDefined();
       expect(wf.jobs['build-rag-ingestion']).toBeDefined();
       expect(wf.jobs['deploy-artifact-render-code']).toBeDefined();
       expect(wf.jobs['deploy-rag-ingestion-code']).toBeDefined();
+      expect(wf.jobs['deploy-inference-api-code']).toBeDefined();
       expect(wf.jobs.deploy).toBeDefined();
     });
 
@@ -165,6 +166,7 @@ describe('Workflow YAML shape', () => {
         'build-rag-ingestion',
         'deploy-artifact-render-code',
         'deploy-rag-ingestion-code',
+        'deploy-inference-api-code',
       ];
       for (const j of codeJobs) {
         // 'needs' may be a string or array; normalise.
@@ -175,19 +177,25 @@ describe('Workflow YAML shape', () => {
       }
     });
 
-    it('deploy-rag-ingestion-code waits on build-rag-ingestion (image must exist before update-function-code)', () => {
-      const needs = Array.isArray(wf.jobs['deploy-rag-ingestion-code'].needs)
+    it('image-Lambda + Runtime code-deploys wait on their build jobs (image must exist before update API)', () => {
+      const ragNeeds = Array.isArray(wf.jobs['deploy-rag-ingestion-code'].needs)
         ? wf.jobs['deploy-rag-ingestion-code'].needs
         : [wf.jobs['deploy-rag-ingestion-code'].needs];
-      expect(needs).toContain('build-rag-ingestion');
+      expect(ragNeeds).toContain('build-rag-ingestion');
+
+      const infNeeds = Array.isArray(wf.jobs['deploy-inference-api-code'].needs)
+        ? wf.jobs['deploy-inference-api-code'].needs
+        : [wf.jobs['deploy-inference-api-code'].needs];
+      expect(infNeeds).toContain('build-inference-api');
     });
 
-    it('deploy waits on every build job, both code-deploys, and every test gate', () => {
+    it('deploy waits on every build job, all code-deploys, and every test gate', () => {
       expect(wf.jobs.deploy.needs).toContain('build-app-api');
       expect(wf.jobs.deploy.needs).toContain('build-inference-api');
       expect(wf.jobs.deploy.needs).toContain('build-rag-ingestion');
       expect(wf.jobs.deploy.needs).toContain('deploy-artifact-render-code');
       expect(wf.jobs.deploy.needs).toContain('deploy-rag-ingestion-code');
+      expect(wf.jobs.deploy.needs).toContain('deploy-inference-api-code');
       expect(wf.jobs.deploy.needs).toContain('test-infra');
       expect(wf.jobs.deploy.needs).toContain('test-backend');
     });
@@ -225,9 +233,11 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs['deploy-frontend']).toBeDefined();
       expect(wf.jobs['deploy-artifact-render-code']).toBeDefined();
       expect(wf.jobs['deploy-rag-ingestion-code']).toBeDefined();
+      expect(wf.jobs['deploy-inference-api-code']).toBeDefined();
       // deploy-backend waits on the three per-image build jobs +
-      // both code-deploy jobs (artifact-render zip + rag-ingestion
-      // image). Each upstream needs deploy-platform AND test-backend.
+      // three code-deploy jobs (artifact-render zip, rag-ingestion
+      // image, inference-api Runtime image). Each upstream needs
+      // deploy-platform AND test-backend.
       expect(wf.jobs['build-app-api'].needs).toContain('deploy-platform');
       expect(wf.jobs['build-app-api'].needs).toContain('test-backend');
       expect(wf.jobs['build-inference-api'].needs).toContain('deploy-platform');
@@ -238,11 +248,14 @@ describe('Workflow YAML shape', () => {
       expect(wf.jobs['deploy-artifact-render-code'].needs).toContain('test-backend');
       expect(wf.jobs['deploy-rag-ingestion-code'].needs).toContain('build-rag-ingestion');
       expect(wf.jobs['deploy-rag-ingestion-code'].needs).toContain('test-backend');
+      expect(wf.jobs['deploy-inference-api-code'].needs).toContain('build-inference-api');
+      expect(wf.jobs['deploy-inference-api-code'].needs).toContain('test-backend');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-app-api');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-inference-api');
       expect(wf.jobs['deploy-backend'].needs).toContain('build-rag-ingestion');
       expect(wf.jobs['deploy-backend'].needs).toContain('deploy-artifact-render-code');
       expect(wf.jobs['deploy-backend'].needs).toContain('deploy-rag-ingestion-code');
+      expect(wf.jobs['deploy-backend'].needs).toContain('deploy-inference-api-code');
       expect(wf.jobs['deploy-frontend'].needs).toContain('deploy-backend');
     });
   });
