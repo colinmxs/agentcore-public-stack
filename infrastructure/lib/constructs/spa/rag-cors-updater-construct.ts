@@ -1,6 +1,7 @@
 import * as cdk from 'aws-cdk-lib';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import { Construct } from 'constructs';
 
@@ -51,9 +52,17 @@ export class RagCorsUpdaterConstruct extends Construct {
     const ragDocumentsBucketName = documentsBucket.bucketName;
     const ragDocumentsBucketArn = documentsBucket.bucketArn;
 
+    // Auto-generated log group name — see ArtifactRenderLambdaConstruct
+    // for the same pattern + rationale.
+    const updateCorsLogGroup = new logs.LogGroup(this, 'UpdateRagCorsFnLogGroup', {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     const updateCorsHandler = new lambda.Function(this, 'UpdateRagCorsFn', {
       runtime: lambda.Runtime.PYTHON_3_13,
       handler: 'index.handler',
+      logGroup: updateCorsLogGroup,
       code: lambda.Code.fromInline(`
 import boto3
 import cfnresponse

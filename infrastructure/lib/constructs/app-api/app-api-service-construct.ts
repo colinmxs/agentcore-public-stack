@@ -129,8 +129,9 @@ export class AppApiServiceConstruct extends Construct {
       memoryLimitMiB: config.appApi.memory,
     });
 
+    // Auto-generated log group name (no `logGroupName` set) so a
+    // failed-deploy orphan can't collide with a redeploy.
     const logGroup = new logs.LogGroup(this, 'AppApiLogGroup', {
-      logGroupName: `/ecs/${config.projectPrefix}/app-api`,
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
     });

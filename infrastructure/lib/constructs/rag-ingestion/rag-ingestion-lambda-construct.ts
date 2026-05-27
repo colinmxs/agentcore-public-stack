@@ -79,7 +79,10 @@ export class RagIngestionLambdaConstruct extends Construct {
     });
 
     this.lambda = new lambda.DockerImageFunction(this, 'RagIngestionLambda', {
-      functionName: getResourceName(config, 'rag-ingestion'),
+      // Intentionally no `functionName` — let CDK auto-generate it
+      // so a failed-deploy orphan can't collide with a redeploy.
+      // The deploy script resolves the function via SSM at
+      // `/{prefix}/rag/ingestion-function-name` (published below).
       code: lambda.DockerImageCode.fromEcr(ecrRepository, {
         tagOrDigest: imageTag,
       }),
@@ -145,6 +148,13 @@ export class RagIngestionLambdaConstruct extends Construct {
       parameterName: `/${config.projectPrefix}/rag/ingestion-lambda-arn`,
       stringValue: this.lambda.functionArn,
       description: 'RAG ingestion Lambda ARN',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+
+    new ssm.StringParameter(this, 'IngestionFunctionNameParameter', {
+      parameterName: `/${config.projectPrefix}/rag/ingestion-function-name`,
+      stringValue: this.lambda.functionName,
+      description: 'RAG ingestion Lambda function name (CDK-auto-generated; consumed by backend workflow code-deploy step)',
       tier: ssm.ParameterTier.STANDARD,
     });
   }

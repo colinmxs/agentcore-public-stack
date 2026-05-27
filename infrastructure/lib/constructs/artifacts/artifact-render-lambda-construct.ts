@@ -2,12 +2,13 @@ import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
+import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as path from 'path';
 import { Construct } from 'constructs';
 
-import { AppConfig, getResourceName } from '../../config';
+import { AppConfig } from '../../config';
 
 export interface ArtifactRenderLambdaConstructProps {
   config: AppConfig;
@@ -60,11 +61,26 @@ export class ArtifactRenderLambdaConstruct extends Construct {
       `/${config.projectPrefix}/artifacts/render-token-key-arn`,
     );
 
+    // Auto-generated log group name (no `logGroupName`) so a
+    // failed-deploy orphan can't collide with a redeploy. Default
+    // CDK behaviour with feature flag
+    // `@aws-cdk/aws-lambda:useCdkManagedLogGroup: true` would name
+    // the log group `/aws/lambda/<functionName>`, which collides
+    // with any orphan left behind by a previous failed deploy.
+    const renderLogGroup = new logs.LogGroup(this, 'RenderFunctionLogGroup', {
+      retention: logs.RetentionDays.ONE_WEEK,
+      removalPolicy: cdk.RemovalPolicy.DESTROY,
+    });
+
     this.renderFunction = new lambda.Function(this, 'RenderFunction', {
-      functionName: getResourceName(config, 'artifact-render'),
+      // Intentionally no `functionName` — let CDK auto-generate it
+      // for the same orphan-collision reason as the log group above.
+      // The deploy script resolves the function via SSM at
+      // `/{prefix}/artifacts/render-function-name` (published below).
       runtime: lambda.Runtime.PYTHON_3_12,
       architecture: lambda.Architecture.ARM_64,
       handler: 'handler.handler',
+      logGroup: renderLogGroup,
       code: lambda.Code.fromAsset(
         path.resolve(
           __dirname,
@@ -106,6 +122,18 @@ export class ArtifactRenderLambdaConstruct extends Construct {
 
     this.functionUrl = this.renderFunction.addFunctionUrl({
       authType: lambda.FunctionUrlAuthType.AWS_IAM,
+    });
+
+    // Publish the auto-generated function name so the backend
+    // workflow's code-deploy step can resolve which function to
+    // call `aws lambda update-function-code` against. (We dropped
+    // the deterministic `functionName` above to avoid collisions
+    // with orphans from failed deploys.)
+    new ssm.StringParameter(this, 'RenderFunctionNameParameter', {
+      parameterName: `/${config.projectPrefix}/artifacts/render-function-name`,
+      stringValue: this.renderFunction.functionName,
+      description: 'Artifact render Lambda function name (CDK-auto-generated; consumed by backend workflow code-deploy step)',
+      tier: ssm.ParameterTier.STANDARD,
     });
   }
 }
