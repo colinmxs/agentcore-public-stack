@@ -119,8 +119,11 @@ td = json.load(sys.stdin)["taskDefinition"]
 
 # Update the first container image. Single-container task defs only
 # (assert that -- the project has just one app-api container per task).
-assert len(td["containerDefinitions"]) == 1, \
-    f"expected 1 container, got {len(td[\"containerDefinitions\"])}"
+# Precompute the count so the f-string does not need quote escapes
+# inside its expression — backslash escapes are not permitted inside
+# f-string `{...}` expressions, which broke an earlier inline form.
+container_count = len(td["containerDefinitions"])
+assert container_count == 1, f"expected 1 container, got {container_count}"
 td["containerDefinitions"][0]["image"] = sys.argv[1]
 
 # Drop fields that register-task-definition does not accept.
