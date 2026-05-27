@@ -128,6 +128,11 @@ log "Function name: $FUNCTION_NAME"
 # working directory and `handler.handler` resolves correctly.
 TMP_ZIP="$(mktemp -t "${SERVICE}-XXXXXX.zip")"
 trap 'rm -f "$TMP_ZIP"' EXIT
+# mktemp creates the file empty; zip would interpret an existing
+# empty file as a malformed archive and exit 3. Remove it first
+# so zip starts from a clean slate. The trap above still cleans
+# up the new file zip writes.
+rm -f "$TMP_ZIP"
 log "Zipping source to $TMP_ZIP..."
 (cd "$SOURCE_DIR" && zip -r -q -X "$TMP_ZIP" . -x '__pycache__/*' '*.pyc' '.DS_Store')
 
