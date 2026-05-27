@@ -146,12 +146,69 @@ if [[ "$CURRENT_STATUS" != "READY" ]]; then
     wait_for_ready "pre-update" || exit 4
 fi
 
-# 5. Update.
+# 5. Update. update-agent-runtime is a FULL replacement API — it
+# requires roleArn, networkConfiguration, and every other config
+# field, not just the new artifact. We rebuild the payload from
+# get-agent-runtime by allow-listing the fields the update API
+# accepts (the get response includes read-only fields like
+# agentRuntimeArn, agentRuntimeVersion, status, createdAt,
+# lastUpdatedAt, and workloadIdentityDetails that the update API
+# rejects). The container URI is the only field we mutate.
+log "Building update payload from current runtime state..."
+STATE_TMP="$(mktemp)"
+PAYLOAD_TMP="$(mktemp)"
+trap 'rm -f "$STATE_TMP" "$PAYLOAD_TMP"' EXIT
+printf '%s' "$STATE_JSON" > "$STATE_TMP"
+
+# Pass state as a tmpfile path (not stdin) so the heredoc owns stdin
+# for the python script body. python3 - SCRIPT_FROM_STDIN ARGV...
+python3 - "$STATE_TMP" "$NEW_CONTAINER_URI" "$PAYLOAD_TMP" <<'PYEOF'
+import json
+import sys
+
+state_path = sys.argv[1]
+new_uri = sys.argv[2]
+out_path = sys.argv[3]
+
+with open(state_path) as fh:
+    state = json.load(fh)
+
+# Allow-list of fields update-agent-runtime accepts. Anything not in
+# this set is either read-only (agentRuntimeArn, agentRuntimeVersion,
+# status, createdAt, lastUpdatedAt, workloadIdentityDetails) or just
+# absent from the update API surface. Pulled from
+# `aws bedrock-agentcore-control update-agent-runtime --generate-cli-skeleton`.
+ALLOWED = {
+    "agentRuntimeId",
+    "agentRuntimeArtifact",
+    "roleArn",
+    "networkConfiguration",
+    "description",
+    "authorizerConfiguration",
+    "requestHeaderConfiguration",
+    "protocolConfiguration",
+    "lifecycleConfiguration",
+    "metadataConfiguration",
+    "environmentVariables",
+    "filesystemConfigurations",
+}
+
+payload = {k: v for k, v in state.items() if k in ALLOWED}
+
+# Swap the container URI. Force containerConfiguration shape so we
+# overwrite any code-configuration shape that might have been there.
+payload["agentRuntimeArtifact"] = {
+    "containerConfiguration": {"containerUri": new_uri},
+}
+
+with open(out_path, "w") as fh:
+    json.dump(payload, fh)
+PYEOF
+
 log "Calling aws bedrock-agentcore-control update-agent-runtime..."
 aws bedrock-agentcore-control update-agent-runtime \
     --region "$AWS_REGION" \
-    --agent-runtime-id "$RUNTIME_ID" \
-    --agent-runtime-artifact "containerConfiguration={containerUri=$NEW_CONTAINER_URI}" \
+    --cli-input-json "file://$PAYLOAD_TMP" \
     --no-cli-pager \
     --output text \
     --query 'agentRuntimeArn' >/dev/null
