@@ -55,7 +55,21 @@ export class BackendStack extends cdk.Stack {
     // App API used to read these from SSM, which deadlocked on first
     // deploy because both writer and reader live in BackendStack.
     // ============================================================
-    const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', { config });
+    const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', {
+      config,
+      // AgentCore Memory + Code Interpreter + Browser were hoisted
+      // to PlatformStack in Phase 1 of the platform-as-bootstrap
+      // refactor. Their ARNs and IDs flow in as typed cross-stack
+      // refs. The Runtime continues to live in BackendStack until
+      // Phase 5 (when it gets the bootstrap-container pattern and
+      // also moves to Platform).
+      memoryArn: platform.agentCoreMemoryArn,
+      memoryId: platform.agentCoreMemoryId,
+      codeInterpreterArn: platform.agentCoreCodeInterpreterArn,
+      codeInterpreterId: platform.agentCoreCodeInterpreterId,
+      browserArn: platform.agentCoreBrowserArn,
+      browserId: platform.agentCoreBrowserId,
+    });
 
     // ============================================================
     // Artifact Render Lambda + CloudFront Distribution
@@ -119,8 +133,8 @@ export class BackendStack extends cdk.Stack {
     // ============================================================
     new AppApiServiceConstruct(this, 'AppApi', {
       config,
-      agentCoreMemoryArn: inferenceApi.memory.attrMemoryArn,
-      agentCoreMemoryId: inferenceApi.memory.attrMemoryId,
+      agentCoreMemoryArn: platform.agentCoreMemoryArn,
+      agentCoreMemoryId: platform.agentCoreMemoryId,
       inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,
       artifactsOrigin: artifactsDistribution.originUrl,
       sagemakerExecutionRoleArn: sagemaker.executionRole.roleArn,

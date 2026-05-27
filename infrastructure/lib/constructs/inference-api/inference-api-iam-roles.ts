@@ -1,15 +1,10 @@
 /**
- * IAM execution roles for the AgentCore inference-api constructs.
+ * IAM execution role for the AgentCore Runtime construct.
  *
- * Extracted from the monolithic inference-agentcore-construct.ts.
- * Each function creates one IAM role with all its policy statements
- * and returns it.
- *
- * Roles:
- *   - Runtime execution role (assumed by bedrock-agentcore.amazonaws.com)
- *   - Memory execution role
- *   - Code Interpreter execution role
- *   - Browser execution role
+ * Originally housed Memory / Code Interpreter / Browser roles too,
+ * but those were hoisted to `constructs/agentcore/*-construct.ts`
+ * alongside their resources in Phase 1 of the platform-as-bootstrap
+ * refactor. Only the Runtime execution role remains here.
  */
 
 import * as iam from 'aws-cdk-lib/aws-iam';
@@ -275,60 +270,22 @@ export function createRuntimeExecutionRole(
 
 /**
  * Create the AgentCore Memory execution role.
+ *
+ * MOVED to `constructs/agentcore/memory-construct.ts` in Phase 1 of
+ * the platform-as-bootstrap refactor. The role is created inline in
+ * the construct alongside the Memory resource.
  */
-export function createMemoryExecutionRole(scope: Construct, config: AppConfig): iam.Role {
-  const role = new iam.Role(scope, 'AgentCoreMemoryExecutionRole', {
-    roleName: getResourceName(config, 'agentcore-memory-role'),
-    assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
-    description: 'Execution role for AgentCore Memory',
-  });
-  role.addToPolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
-    actions: ['bedrock:InvokeModel'],
-    resources: [`arn:aws:bedrock:*::foundation-model/*`],
-  }));
-  // Additional model access for memory processing (Claude + Nova)
-  role.addToPolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
-    actions: ['bedrock:InvokeModel'],
-    resources: [
-      `arn:aws:bedrock:${config.awsRegion}::foundation-model/anthropic.claude-*`,
-      `arn:aws:bedrock:${config.awsRegion}::foundation-model/amazon.nova-*`,
-    ],
-  }));
-  return role;
-}
 
 /**
  * Create the Code Interpreter execution role.
+ *
+ * MOVED to `constructs/agentcore/code-interpreter-construct.ts` in
+ * Phase 1 of the platform-as-bootstrap refactor.
  */
-export function createCodeInterpreterExecutionRole(scope: Construct, config: AppConfig): iam.Role {
-  const role = new iam.Role(scope, 'CodeInterpreterExecutionRole', {
-    roleName: getResourceName(config, 'code-interpreter-role'),
-    assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
-    description: 'Execution role for AgentCore Code Interpreter',
-  });
-  role.addToPolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
-    actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
-    resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/code-interpreter/*`],
-  }));
-  return role;
-}
 
 /**
  * Create the Browser execution role.
+ *
+ * MOVED to `constructs/agentcore/browser-construct.ts` in Phase 1
+ * of the platform-as-bootstrap refactor.
  */
-export function createBrowserExecutionRole(scope: Construct, config: AppConfig): iam.Role {
-  const role = new iam.Role(scope, 'BrowserExecutionRole', {
-    roleName: getResourceName(config, 'browser-role'),
-    assumedBy: new iam.ServicePrincipal('bedrock-agentcore.amazonaws.com'),
-    description: 'Execution role for AgentCore Browser',
-  });
-  role.addToPolicy(new iam.PolicyStatement({
-    effect: iam.Effect.ALLOW,
-    actions: ['logs:CreateLogGroup', 'logs:CreateLogStream', 'logs:PutLogEvents'],
-    resources: [`arn:aws:logs:${config.awsRegion}:${config.awsAccount}:log-group:/aws/bedrock/agentcore/${config.projectPrefix}/browser/*`],
-  }));
-  return role;
-}

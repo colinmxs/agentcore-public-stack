@@ -10,33 +10,53 @@ import { Construct } from 'constructs';
 import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags, buildCorsOrigins } from '../../config';
 import {
   createRuntimeExecutionRole,
-  createMemoryExecutionRole,
-  createCodeInterpreterExecutionRole,
-  createBrowserExecutionRole,
 } from './inference-api-iam-roles';
 
 export interface InferenceAgentCoreConstructProps {
   config: AppConfig;
+  /**
+   * AgentCore Memory ARN. Sourced from PlatformStack as a typed
+   * cross-stack ref. Memory itself was hoisted to PlatformStack —
+   * see `AgentCoreMemoryConstruct` — because it has no code, takes
+   * 5-15 minutes to create, and shouldn't be touched on every
+   * Backend deploy.
+   */
+  memoryArn: string;
+  /** AgentCore Memory ID — same provenance as memoryArn. */
+  memoryId: string;
+  /**
+   * AgentCore Code Interpreter ARN. Sourced from PlatformStack as
+   * a typed cross-stack ref (CodeInterpreter hoisted to Platform).
+   */
+  codeInterpreterArn: string;
+  /** AgentCore Code Interpreter ID — same provenance as codeInterpreterArn. */
+  codeInterpreterId: string;
+  /**
+   * AgentCore Browser ARN. Sourced from PlatformStack as a typed
+   * cross-stack ref (Browser hoisted to Platform).
+   */
+  browserArn: string;
+  /** AgentCore Browser ID — same provenance as browserArn. */
+  browserId: string;
 }
 
 /**
- * InferenceAgentCoreConstruct — AgentCore Runtime + Memory + Tools.
+ * InferenceAgentCoreConstruct — AgentCore Runtime.
  *
- * Provisions:
- *   - AgentCore Runtime (CfnRuntime) with Cognito JWT authorizer
- *   - AgentCore Memory (CfnMemory) for conversation context
- *   - Code Interpreter Custom (CfnCodeInterpreterCustom)
- *   - Browser Custom (CfnBrowserCustom)
- *   - Observability: vended log deliveries, X-Ray sampling/group,
- *     CloudWatch dashboard + alarms
- *   - SSM parameter exports for cross-stack consumption
+ * After Phase 1 of the platform-as-bootstrap refactor, this construct
+ * owns just the Runtime + its execution role + Runtime observability.
+ * Memory, Code Interpreter, and Browser were hoisted to PlatformStack
+ * (each with its own construct under `agentcore/`); this construct
+ * receives them as typed props.
+ *
+ * Phase 5 of the same refactor will move the Runtime to PlatformStack
+ * with a bootstrap container image; at that point this construct
+ * will be deleted entirely and BackendStack will lose its last
+ * AgentCore-related responsibility.
  *
  * IAM roles are created via inference-api-iam-roles.ts (extracted).
  */
 export class InferenceAgentCoreConstruct extends Construct {
-  public readonly memory: bedrock.CfnMemory;
-  public readonly codeInterpreter: bedrock.CfnCodeInterpreterCustom;
-  public readonly browser: bedrock.CfnBrowserCustom;
   public readonly runtime: bedrock.CfnRuntime;
   /**
    * Full Bedrock AgentCore Runtime endpoint URL. Exposed so other
@@ -61,9 +81,12 @@ export class InferenceAgentCoreConstruct extends Construct {
 
     // ── IAM roles (extracted into inference-api-iam-roles.ts) ──
     const runtimeExecutionRole = createRuntimeExecutionRole(this, config);
-    const memoryExecutionRole = createMemoryExecutionRole(this, config);
-    const codeInterpreterExecutionRole = createCodeInterpreterExecutionRole(this, config);
-    const browserExecutionRole = createBrowserExecutionRole(this, config);
+    // Memory / Code Interpreter / Browser execution roles were hoisted
+    // to PlatformStack alongside their resources (Phase 1 of the
+    // platform-as-bootstrap refactor). They live in:
+    //   - constructs/agentcore/memory-construct.ts
+    //   - constructs/agentcore/code-interpreter-construct.ts
+    //   - constructs/agentcore/browser-construct.ts
 
     // ── Additional SSM reads needed by the runtime container env ──
     const _containerImageUri = `${ecrRepository.repositoryUri}:${imageTag}`;
@@ -74,67 +97,15 @@ export class InferenceAgentCoreConstruct extends Construct {
     const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
       this, `/${config.projectPrefix}/oauth/client-secrets-arn`);
 
-    this.memory = new bedrock.CfnMemory(this, 'AgentCoreMemory', {
-      name: getResourceName(config, 'agentcore_memory').replace(/-/g, '_'),
-      eventExpiryDuration: 90, // 90 days (property expects days, not hours; max is 365, min is 7)
-      memoryExecutionRoleArn: memoryExecutionRole.roleArn,
-      description: 'AgentCore Memory for maintaining conversation context, user preferences, and semantic facts',
-      memoryStrategies: [
-        {
-          semanticMemoryStrategy: {
-            name: 'SemanticFactExtraction',
-            description: 'Extracts and stores semantic facts from conversations',
-          },
-        },
-        {
-          summaryMemoryStrategy: {
-            name: 'ConversationSummary',
-            description: 'Generates and stores conversation summaries',
-          },
-        },
-        {
-          userPreferenceMemoryStrategy: {
-            name: 'UserPreferenceExtraction',
-            description: 'Identifies and stores user preferences',
-          },
-        },
-      ],
-    });
-
-    // ============================================================
-    // AgentCore Code Interpreter Custom
-    // ============================================================
-    
-    this.codeInterpreter = new bedrock.CfnCodeInterpreterCustom(this, 'CodeInterpreterCustom', {
-      name: getResourceName(config, 'code_interpreter').replace(/-/g, '_'),
-      description: 'Custom Code Interpreter for Python code execution with advanced configuration',
-      networkConfiguration: {
-        networkMode: 'PUBLIC',
-      },
-      executionRoleArn: codeInterpreterExecutionRole.roleArn,
-    });
-
-    this.codeInterpreter.node.addDependency(codeInterpreterExecutionRole);
-
-    // ============================================================
-    // AgentCore Browser Custom
-    // ============================================================
-    
-    this.browser = new bedrock.CfnBrowserCustom(this, 'BrowserCustom', {
-      name: getResourceName(config, 'browser').replace(/-/g, '_'),
-      description: 'Custom Browser for secure web interaction and data extraction',
-      networkConfiguration: {
-        networkMode: 'PUBLIC',
-      },
-      executionRoleArn: browserExecutionRole.roleArn,
-    });
-
-    this.browser.node.addDependency(browserExecutionRole);
+    // Memory + Code Interpreter + Browser are owned by PlatformStack
+    // (Phase 1 of the platform-as-bootstrap refactor). Their ARNs and
+    // IDs flow in via typed props (`props.memoryArn`, etc.). We grant
+    // the Runtime role permission against those ARNs below.
 
     // ============================================================
     // AgentCore Runtime
     // ============================================================
-    
+
     // Grant Runtime permission to access Memory
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'MemoryAccess',
@@ -154,7 +125,7 @@ export class InferenceAgentCoreConstruct extends Construct {
         'bedrock-agentcore:ListMemorySessions',
         'bedrock-agentcore:GetMemorySession',
       ],
-      resources: [this.memory.attrMemoryArn],
+      resources: [props.memoryArn],
     }));
 
     // Grant Runtime permission to use the Custom Code Interpreter.
@@ -173,7 +144,7 @@ export class InferenceAgentCoreConstruct extends Construct {
         'bedrock-agentcore:GetCodeInterpreterSession',
         'bedrock-agentcore:ListCodeInterpreterSessions',
       ],
-      resources: [this.codeInterpreter.attrCodeInterpreterArn],
+      resources: [props.codeInterpreterArn],
     }));
 
     // Grant Runtime permission to use Browser
@@ -183,7 +154,7 @@ export class InferenceAgentCoreConstruct extends Construct {
       actions: [
         'bedrock-agentcore:InvokeBrowser',
       ],
-      resources: [this.browser.attrBrowserArn],
+      resources: [props.browserArn],
     }));
 
     // ============================================================
@@ -329,10 +300,10 @@ export class InferenceAgentCoreConstruct extends Construct {
         OAUTH_CLIENT_SECRETS_ARN: oauthClientSecretsArn,
 
         // AgentCore resources
-        AGENTCORE_MEMORY_ID: this.memory.attrMemoryId,
-        MEMORY_ARN: this.memory.attrMemoryArn,
-        AGENTCORE_CODE_INTERPRETER_ID: this.codeInterpreter.attrCodeInterpreterId,
-        BROWSER_ID: this.browser.attrBrowserId,
+        AGENTCORE_MEMORY_ID: props.memoryId,
+        MEMORY_ARN: props.memoryArn,
+        AGENTCORE_CODE_INTERPRETER_ID: props.codeInterpreterId,
+        BROWSER_ID: props.browserId,
 
         // S3 storage
         S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
@@ -415,55 +386,13 @@ export class InferenceAgentCoreConstruct extends Construct {
     // ============================================================
     // Observability: Vended Log Deliveries for AgentCore Resources
     // ============================================================
-    // Uses CloudWatch Logs vended logs API (CfnDeliverySource/Destination/Delivery)
-    // to configure APPLICATION_LOGS and TRACES for CDK-managed resources.
-
-    // --- Memory: APPLICATION_LOGS ---
-    const memoryLogsLogGroup = new logs.LogGroup(this, 'MemoryLogsLogGroup', {
-      logGroupName: `/aws/vendedlogs/bedrock-agentcore/memory/${config.projectPrefix}`,
-      retention: logs.RetentionDays.ONE_MONTH,
-      removalPolicy: cdk.RemovalPolicy.DESTROY,
-    });
-
-    const memoryLogsSource = new logs.CfnDeliverySource(this, 'MemoryLogsSource', {
-      name: `${config.projectPrefix}-memory-logs`,
-      logType: 'APPLICATION_LOGS',
-      resourceArn: this.memory.attrMemoryArn,
-    });
-    memoryLogsSource.node.addDependency(this.memory);
-
-    const memoryLogsDestination = new logs.CfnDeliveryDestination(this, 'MemoryLogsDestination', {
-      name: `${config.projectPrefix}-memory-logs-dest`,
-      deliveryDestinationType: 'CWL',
-      destinationResourceArn: memoryLogsLogGroup.logGroupArn,
-    });
-
-    const memoryLogsDelivery = new logs.CfnDelivery(this, 'MemoryLogsDelivery', {
-      deliverySourceName: memoryLogsSource.name,
-      deliveryDestinationArn: memoryLogsDestination.attrArn,
-    });
-    memoryLogsDelivery.node.addDependency(memoryLogsSource);
-    memoryLogsDelivery.node.addDependency(memoryLogsDestination);
-
-    // --- Memory: TRACES ---
-    const memoryTracesSource = new logs.CfnDeliverySource(this, 'MemoryTracesSource', {
-      name: `${config.projectPrefix}-memory-traces`,
-      logType: 'TRACES',
-      resourceArn: this.memory.attrMemoryArn,
-    });
-    memoryTracesSource.node.addDependency(this.memory);
-
-    const memoryTracesDestination = new logs.CfnDeliveryDestination(this, 'MemoryTracesDestination', {
-      name: `${config.projectPrefix}-memory-traces-dest`,
-      deliveryDestinationType: 'XRAY',
-    });
-
-    const memoryTracesDelivery = new logs.CfnDelivery(this, 'MemoryTracesDelivery', {
-      deliverySourceName: memoryTracesSource.name,
-      deliveryDestinationArn: memoryTracesDestination.attrArn,
-    });
-    memoryTracesDelivery.node.addDependency(memoryTracesSource);
-    memoryTracesDelivery.node.addDependency(memoryTracesDestination);
+    // Memory observability moved to PlatformStack.
+    //
+    // The vended log delivery for Memory APPLICATION_LOGS + TRACES
+    // now lives in `AgentCoreMemoryConstruct` alongside the Memory
+    // resource itself, since they're inseparable from the Memory's
+    // lifecycle.
+    // ============================================================
 
     // NOTE: Code Interpreter and Browser do NOT need vended log delivery right now.
     // Valid resource types are: code-interpreter, memory, workload-identity,
@@ -676,47 +605,10 @@ export class InferenceAgentCoreConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
     
-    new ssm.StringParameter(this, 'InferenceApiMemoryArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/memory-arn`,
-      stringValue: this.memory.attrMemoryArn,
-      description: 'Inference API AgentCore Memory ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'InferenceApiMemoryIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/memory-id`,
-      stringValue: this.memory.attrMemoryId,
-      description: 'Inference API AgentCore Memory ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'InferenceApiCodeInterpreterIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-id`,
-      stringValue: this.codeInterpreter.attrCodeInterpreterId,
-      description: 'Inference API AgentCore Code Interpreter ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'InferenceApiCodeInterpreterArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-arn`,
-      stringValue: this.codeInterpreter.attrCodeInterpreterArn,
-      description: 'Inference API AgentCore Code Interpreter ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'InferenceApiBrowserIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/browser-id`,
-      stringValue: this.browser.attrBrowserId,
-      description: 'Inference API AgentCore Browser ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-
-    new ssm.StringParameter(this, 'InferenceApiBrowserArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/browser-arn`,
-      stringValue: this.browser.attrBrowserArn,
-      description: 'Inference API AgentCore Browser ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
+    // Memory / Code Interpreter / Browser SSM publications were
+    // hoisted to PlatformStack alongside the resources themselves
+    // (see constructs/agentcore/*.ts). The Runtime continues to
+    // consume them via typed cross-stack props.
 
     // Export ECR repository URI for Lambda-created runtimes
     new ssm.StringParameter(this, 'EcrRepositoryUriParameter', {
@@ -737,13 +629,10 @@ export class InferenceAgentCoreConstruct extends Construct {
     // ============================================================
     // CloudFormation Outputs
     // ============================================================
-    
 
-    new cdk.CfnOutput(this, 'InferenceApiMemoryArn', {
-      value: this.memory.attrMemoryArn,
-      description: 'Inference API AgentCore Memory ARN',
-      exportName: `${config.projectPrefix}-InferenceApiMemoryArn`,
-    });
+    // Memory / Code Interpreter / Browser outputs were hoisted to
+    // PlatformStack alongside their resources; no need to re-emit
+    // here. Runtime-specific outputs follow.
 
     new cdk.CfnOutput(this, 'AgentCoreRuntimeArn', {
       value: this.runtime.attrAgentRuntimeArn,
@@ -755,24 +644,6 @@ export class InferenceAgentCoreConstruct extends Construct {
       value: this.runtime.attrAgentRuntimeId,
       description: 'AgentCore Runtime ID',
       exportName: `${config.projectPrefix}-AgentCoreRuntimeId`,
-    });
-
-    new cdk.CfnOutput(this, 'InferenceApiMemoryId', {
-      value: this.memory.attrMemoryId,
-      description: 'Inference API AgentCore Memory ID',
-      exportName: `${config.projectPrefix}-InferenceApiMemoryId`,
-    });
-
-    new cdk.CfnOutput(this, 'InferenceApiCodeInterpreterId', {
-      value: this.codeInterpreter.attrCodeInterpreterId,
-      description: 'Inference API AgentCore Code Interpreter ID',
-      exportName: `${config.projectPrefix}-InferenceApiCodeInterpreterId`,
-    });
-
-    new cdk.CfnOutput(this, 'InferenceApiBrowserId', {
-      value: this.browser.attrBrowserId,
-      description: 'Inference API AgentCore Browser ID',
-      exportName: `${config.projectPrefix}-InferenceApiBrowserId`,
     });
 
     new cdk.CfnOutput(this, 'EcrRepositoryUri', {

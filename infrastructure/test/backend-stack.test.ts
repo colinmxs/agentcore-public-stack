@@ -94,19 +94,23 @@ describe('BackendStack', () => {
       template.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
     });
 
-    it('creates AgentCore Memory', () => {
-      template.resourceCountIs('AWS::BedrockAgentCore::Memory', 1);
+    it('does NOT create AgentCore Memory (hoisted to PlatformStack)', () => {
+      // Memory was hoisted to PlatformStack in Phase 1 of the
+      // platform-as-bootstrap refactor. BackendStack consumes it
+      // via typed cross-stack ref now.
+      template.resourceCountIs('AWS::BedrockAgentCore::Memory', 0);
     });
 
-    it('creates Code Interpreter Custom', () => {
-      template.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
+    it('does NOT create Code Interpreter Custom (hoisted to PlatformStack)', () => {
+      template.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 0);
     });
 
-    it('creates Browser Custom', () => {
-      template.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
+    it('does NOT create Browser Custom (hoisted to PlatformStack)', () => {
+      template.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 0);
     });
 
     it('creates AgentCore Gateway', () => {
+      // Gateway hoist is Phase 2; still in Backend until then.
       template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
     });
   });
@@ -165,10 +169,12 @@ describe('BackendStack', () => {
       });
     });
 
-    it('creates the AgentCore memory execution role', () => {
-      template.hasResourceProperties('AWS::IAM::Role', {
-        RoleName: 'test-project-agentcore-memory-role',
+    it('does NOT create the AgentCore memory execution role (hoisted to PlatformStack)', () => {
+      // Memory role moved with the Memory resource in Phase 1.
+      const roles = template.findResources('AWS::IAM::Role', {
+        Properties: { RoleName: 'test-project-agentcore-memory-role' },
       });
+      expect(Object.keys(roles).length).toBe(0);
     });
 
     it('creates the gateway execution role', () => {

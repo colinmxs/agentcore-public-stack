@@ -43,6 +43,15 @@ import { RagDataConstruct } from './constructs/rag/rag-data-construct';
 // Artifacts (data + distribution; render Lambda lives in Backend)
 import { ArtifactsDataConstruct } from './constructs/artifacts/artifacts-data-construct';
 
+// AgentCore (Memory, Code Interpreter, Browser).
+// Pure infrastructure — no code, no out-of-band updates needed.
+// The Runtime itself stays in BackendStack for now; it will move
+// here in a follow-up phase when the bootstrap-container pattern
+// is in place.
+import { AgentCoreMemoryConstruct } from './constructs/agentcore/memory-construct';
+import { AgentCoreCodeInterpreterConstruct } from './constructs/agentcore/code-interpreter-construct';
+import { AgentCoreBrowserConstruct } from './constructs/agentcore/browser-construct';
+
 // MCP sandbox (S3 + CloudFront — Platform edge surface)
 import { McpSandboxBucketConstruct } from './constructs/mcp-sandbox/mcp-sandbox-bucket-construct';
 import { McpSandboxDistributionConstruct } from './constructs/mcp-sandbox/mcp-sandbox-distribution-construct';
@@ -163,6 +172,20 @@ export class PlatformStack extends cdk.Stack {
   public readonly fineTuningJobsTable: dynamodb.ITable;
   public readonly fineTuningAccessTable: dynamodb.ITable;
   public readonly fineTuningDataBucket: s3.IBucket;
+
+  // ── AgentCore (Memory, Code Interpreter, Browser)
+  // Pure infra — no code attached to these. The Runtime that
+  // *uses* them lives in BackendStack for now; it consumes these
+  // typed refs to avoid a same-stack SSM round-trip there.
+  public readonly agentCoreMemory: bedrock.CfnMemory;
+  public readonly agentCoreMemoryArn: string;
+  public readonly agentCoreMemoryId: string;
+  public readonly agentCoreCodeInterpreter: bedrock.CfnCodeInterpreterCustom;
+  public readonly agentCoreCodeInterpreterArn: string;
+  public readonly agentCoreCodeInterpreterId: string;
+  public readonly agentCoreBrowser: bedrock.CfnBrowserCustom;
+  public readonly agentCoreBrowserArn: string;
+  public readonly agentCoreBrowserId: string;
 
   // ── Internal handles for the two-step wiring methods
   private readonly _config: AppConfig;
@@ -327,6 +350,45 @@ export class PlatformStack extends cdk.Stack {
       `https://${artifactsDomainName}`,
       ...config.artifacts.extraFrameAncestors,
     ].join(' ');
+
+    // ============================================================
+    // AgentCore Memory + Code Interpreter + Browser
+    //
+    // Pure-infrastructure AgentCore resources. They have no "code"
+    // to redeploy, take 5-15 minutes to create (Memory in particular),
+    // and rarely change. They live here so:
+    //   1. Backend can deploy without recreating them on every push.
+    //   2. Memory's transitional-state errors only affect the once-
+    //      ever first Platform deploy, not subsequent code deploys.
+    //   3. The Runtime in BackendStack consumes them via typed cross-
+    //      stack refs (no same-stack SSM round-trip).
+    // ============================================================
+    const agentCoreMemoryConstruct = new AgentCoreMemoryConstruct(
+      this,
+      'AgentCoreMemory',
+      { config },
+    );
+    this.agentCoreMemory = agentCoreMemoryConstruct.memory;
+    this.agentCoreMemoryArn = agentCoreMemoryConstruct.memoryArn;
+    this.agentCoreMemoryId = agentCoreMemoryConstruct.memoryId;
+
+    const agentCoreCodeInterpreterConstruct = new AgentCoreCodeInterpreterConstruct(
+      this,
+      'AgentCoreCodeInterpreter',
+      { config },
+    );
+    this.agentCoreCodeInterpreter = agentCoreCodeInterpreterConstruct.codeInterpreter;
+    this.agentCoreCodeInterpreterArn = agentCoreCodeInterpreterConstruct.codeInterpreterArn;
+    this.agentCoreCodeInterpreterId = agentCoreCodeInterpreterConstruct.codeInterpreterId;
+
+    const agentCoreBrowserConstruct = new AgentCoreBrowserConstruct(
+      this,
+      'AgentCoreBrowser',
+      { config },
+    );
+    this.agentCoreBrowser = agentCoreBrowserConstruct.browser;
+    this.agentCoreBrowserArn = agentCoreBrowserConstruct.browserArn;
+    this.agentCoreBrowserId = agentCoreBrowserConstruct.browserId;
 
     // ============================================================
     // MCP sandbox edge (always-on; bucket+dist; deployment is wired
