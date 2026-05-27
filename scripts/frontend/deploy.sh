@@ -19,7 +19,14 @@ DISTRIBUTION_ID=$(aws ssm get-parameter \
   --query 'Parameter.Value' --output text)
 
 echo "Syncing to s3://${BUCKET_NAME}..."
-aws s3 sync "$SCRIPT_DIR/../../frontend/ai.client/dist/ai.client/" \
+# Angular's @angular/build:application builder (default since v17)
+# emits the SPA into a `browser/` subdirectory of outputPath. The
+# index.html, main bundle, and asset hashes all live under
+# dist/ai.client/browser/, NOT dist/ai.client/. Syncing the parent
+# would put index.html at s3://bucket/browser/index.html and serve
+# 403 Access Denied to anyone hitting `/` (CloudFront's
+# defaultRootObject = index.html resolves to /index.html, no key).
+aws s3 sync "$SCRIPT_DIR/../../frontend/ai.client/dist/ai.client/browser/" \
   "s3://${BUCKET_NAME}/" --delete --region "$AWS_REGION"
 
 echo "Invalidating CloudFront distribution ${DISTRIBUTION_ID}..."
