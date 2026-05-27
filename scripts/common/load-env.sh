@@ -240,9 +240,14 @@ export CDK_AWS_ACCOUNT="${CDK_AWS_ACCOUNT:-${CDK_CONTEXT_ACCOUNT:-${CDK_DEFAULT_
 export CDK_DEFAULT_ACCOUNT="${CDK_AWS_ACCOUNT}"
 export CDK_DEFAULT_REGION="${CDK_AWS_REGION}"
 
-# Validate required configuration
-if ! validate_required_vars; then
-    return 1 2>/dev/null || exit 1
+# Validate required configuration. Some callers (notably the
+# frontend build, which produces a static Angular bundle and never
+# touches AWS) can opt out by setting LOAD_ENV_SKIP_AWS_VALIDATION=1
+# before sourcing this script.
+if [ "${LOAD_ENV_SKIP_AWS_VALIDATION:-false}" != "true" ] && [ "${LOAD_ENV_SKIP_AWS_VALIDATION:-0}" != "1" ]; then
+    if ! validate_required_vars; then
+        return 1 2>/dev/null || exit 1
+    fi
 fi
 
 # Validate configuration
