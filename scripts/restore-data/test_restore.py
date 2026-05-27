@@ -332,3 +332,70 @@ def test_cognito_identity_providers_falls_back_to_bare_array():
     idp_result = next(r for r in results if r.get("component") == "cognito-idps")
     assert idp_result["status"] == "ok"
     assert idp_result["count"] == 1
+
+
+# --------------------------------------------------------------------- #
+# Bug 7: Cognito's `sub` attribute is auto-generated and immutable.     #
+# Backup captures user attributes verbatim from list-users; if the      #
+# restore passes `sub` (or other Cognito-managed read-only attrs) back  #
+# into AdminCreateUser, AWS rejects with                                #
+#   "Cannot modify the non-mutable attribute sub".                      #
+# --------------------------------------------------------------------- #
+def test_cognito_users_strips_immutable_attributes():
+    """A backed-up user with `sub`, `cognito:user_status`,
+    `cognito:mfa_enabled`, and `identities` attributes is restored
+    via AdminCreateUser with NONE of those four passed through."""
+    user_record = {
+        "Username": "colin",
+        "Attributes": [
+            {"Name": "sub", "Value": "fa84a268-3091-7032-1234-abcdef000000"},
+            {"Name": "email", "Value": "colin@example.com"},
+            {"Name": "email_verified", "Value": "true"},
+            {"Name": "cognito:user_status", "Value": "CONFIRMED"},
+            {"Name": "cognito:mfa_enabled", "Value": "false"},
+            {"Name": "identities", "Value": "[]"},
+            {"Name": "given_name", "Value": "Colin"},
+        ],
+    }
+    users_jsonl = json.dumps(user_record) + "\n"
+    users_gz = gzip.compress(users_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("users.jsonl.gz"):
+            return {"Body": io.BytesIO(users_gz)}
+        from botocore.exceptions import ClientError as _ClientError
+        raise _ClientError({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    cognito = MagicMock()
+    cognito.admin_create_user = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    users_result = next(r for r in results if r.get("component") == "cognito-users")
+    assert users_result["status"] == "ok"
+    assert users_result["count"] == 1
+
+    cognito.admin_create_user.assert_called_once()
+    call_kwargs = cognito.admin_create_user.call_args.kwargs
+    submitted_names = {a["Name"] for a in call_kwargs["UserAttributes"]}
+
+    forbidden = {"sub", "cognito:user_status", "cognito:mfa_enabled", "identities"}
+    leaked = forbidden & submitted_names
+    assert not leaked, f"Cognito-immutable attrs leaked into AdminCreateUser: {leaked}"
+
+    # And the legit attrs ARE preserved.
+    assert "email" in submitted_names
+    assert "email_verified" in submitted_names
+    assert "given_name" in submitted_names
+    assert call_kwargs["Username"] == "colin"
+    assert call_kwargs["MessageAction"] == "SUPPRESS"

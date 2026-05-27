@@ -350,10 +350,24 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
             if ctx.dry_run:
                 user_count += 1
                 continue
-            # Create user with suppressed welcome message
+            # Create user with suppressed welcome message.
+            # AdminCreateUser rejects Cognito-managed attributes:
+            #   - sub: auto-generated UUID, set by Cognito at create
+            #   - cognito:user_status: state machine field
+            #   - cognito:mfa_enabled: derived from MFA preferences
+            #   - identities: managed by IdP linking, not by attribute
+            # Backup captures these from list-users; we drop them on
+            # the restore side so AdminCreateUser doesn't fail with
+            # "Cannot modify the non-mutable attribute sub".
+            COGNITO_IMMUTABLE_ATTRS = {
+                "sub",
+                "cognito:user_status",
+                "cognito:mfa_enabled",
+                "identities",
+            }
             attrs = [{"Name": a["Name"], "Value": a["Value"]}
                      for a in user.get("Attributes", [])
-                     if a.get("Value")]
+                     if a.get("Value") and a.get("Name") not in COGNITO_IMMUTABLE_ATTRS]
             try:
                 cognito.admin_create_user(
                     UserPoolId=target_pool_id,
