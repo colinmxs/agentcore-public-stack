@@ -1,32 +1,24 @@
 # Infrastructure
 
-Two-stack CDK architecture for the AgentCore platform.
+Single-stack CDK architecture for the AgentCore platform.
 
-## Stacks
+## Architecture
 
-| Stack | Purpose |
-|-------|---------|
-| **PlatformStack** | VPC, ALB, Cognito, DynamoDB tables, S3 buckets, CloudFront distributions, Route53, Secrets Manager |
-| **BackendStack** | App API Fargate service, AgentCore Runtime/Memory/Gateway, RAG ingestion Lambda, artifact render Lambda, SageMaker IAM |
-
-The frontend is deployed separately via `scripts/frontend/` (S3 sync + CloudFront invalidation).
-
-## Deploy Order
+One CDK stack (`PlatformStack`) owns **all** AWS infrastructure. Application code is shipped out-of-band via AWS APIs (ECR push → ECS service update / Lambda code update / AgentCore Runtime update), not via CDK deploys.
 
 ```
-1. PlatformStack   → scripts/platform/deploy.sh
-2. BackendStack    → scripts/backend/deploy.sh  (builds images first)
-3. Frontend        → scripts/frontend/build.sh + scripts/frontend/deploy.sh
+PlatformStack
+├── Network:     VPC, ALB, ECS cluster, security groups
+├── Identity:    Cognito, Secrets Manager, KMS, WorkloadIdentity
+├── Data:        ~24 DynamoDB tables, 6 S3 buckets
+├── Edge:        CloudFront (SPA + artifacts + MCP sandbox)
+├── AgentCore:   Memory, Code Interpreter, Browser, Gateway, Runtime
+├── Compute:     App API Fargate service, RAG + artifact render Lambdas
+├── ML:          SageMaker execution role + security group
+└── DNS:         Route53 hosted zone + alias records
 ```
 
-## Prerequisites
-
-- AWS CLI configured with appropriate credentials
-- Node.js 22+
-- Docker (for container image builds)
-- `CDK_PROJECT_PREFIX`, `CDK_AWS_REGION`, `CDK_AWS_ACCOUNT` environment variables set
-
-## Commands
+## Deploy
 
 ```bash
 cd infrastructure
@@ -34,25 +26,32 @@ cd infrastructure
 # Install dependencies
 npm ci
 
-# Synthesize both stacks
+# Synthesize
 npx cdk synth
 
-# List stacks
-npx cdk list
-
-# Deploy PlatformStack
+# Deploy infrastructure
 npx cdk deploy {prefix}-PlatformStack
 
-# Deploy BackendStack (after building images)
-npx cdk deploy {prefix}-BackendStack
-
-# Diff
+# Diff (check what would change)
 npx cdk diff
 ```
 
+Infrastructure deploys are rare — only when adding tables, changing IAM grants, etc. Day-to-day code changes go through `backend.yml` (AWS API calls, no CDK).
+
+## Deploy Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `scripts/platform/deploy.sh` | CDK deploy of PlatformStack |
+| `scripts/platform/synth.sh` | CDK synth only |
+| `scripts/build/build-all-images.sh` | Content-hash Docker builds for all services |
+| `scripts/frontend/build.sh` | Angular SPA production build |
+| `scripts/frontend/deploy.sh` | S3 sync + CloudFront invalidation |
+| `scripts/teardown/destroy.sh` | Destroy all stacks (cleanup) |
+
 ## Content-Hash Docker Builds
 
-Container images are tagged with a SHA-256 content hash of their source inputs. The build pipeline (`scripts/build/`) skips `docker build` + `docker push` when ECR already has an image with the computed tag.
+Container images are tagged with a SHA-256 hash of their source inputs (Dockerfile + tracked source files + dependency manifests). The build pipeline skips `docker build` + `docker push` when ECR already has an image with that tag.
 
 ```bash
 # Build all images (skips unchanged)
@@ -65,18 +64,37 @@ scripts/build/compute-content-hash.sh \
   --manifest backend/pyproject.toml
 ```
 
-## Feature Flags
+## Constructs
 
-Two optional features are gated by config:
+The stack is composed of 39 reusable constructs under `lib/constructs/`:
 
-- `config.artifacts.enabled` — provisions artifacts DDB + S3 + CloudFront + render Lambda
-- `config.fineTuning.enabled` — provisions fine-tuning DDB + S3 + SageMaker IAM
+```
+constructs/
+  network/        — VPC, ALB, ECS cluster
+  identity/       — Cognito, auth secrets, KMS, OAuth, WorkloadIdentity
+  data/           — DynamoDB tables, file uploads
+  rag/            — RAG documents bucket, vectors, assistants table
+  rag-ingestion/  — RAG ingestion Lambda
+  artifacts/      — Artifacts DDB + S3 + render Lambda + CloudFront
+  mcp-sandbox/    — MCP Apps sandbox proxy S3 + CloudFront
+  agentcore/      — Memory, Code Interpreter, Browser, Gateway
+  inference-api/  — AgentCore Runtime
+  app-api/        — Fargate service + task definition
+  fine-tuning/    — SageMaker IAM + data tables
+  spa/            — SPA S3 bucket + CloudFront distribution
+  zones/          — Route53, ALB DNS
+```
 
-All other resources are always provisioned.
+## Prerequisites
 
-## Legacy Stacks
+- AWS CLI configured with appropriate credentials
+- Node.js 22+
+- Docker (for container image builds)
+- `CDK_PROJECT_PREFIX`, `CDK_AWS_REGION`, `CDK_AWS_ACCOUNT` environment variables set
 
-If migrating from the previous 9-stack architecture, delete the old CloudFormation stacks before deploying the new two-stack architecture:
+## Legacy Migration
+
+If migrating from the previous multi-stack architecture, back up data first (`scripts/backup-data/`), then delete the old CloudFormation stacks:
 
 ```bash
 aws cloudformation delete-stack --stack-name {prefix}-InfrastructureStack
@@ -90,4 +108,4 @@ aws cloudformation delete-stack --stack-name {prefix}-McpSandboxStack
 aws cloudformation delete-stack --stack-name {prefix}-FrontendStack
 ```
 
-Back up data first using `scripts/backup-data/`.
+Then deploy the new single stack and restore data (`scripts/restore-data/`).
