@@ -31,7 +31,6 @@ import { VoiceTicketConstruct } from './constructs/identity/voice-ticket-constru
 
 // Data
 import { AdminTablesConstruct } from './constructs/data/admin-tables-construct';
-import { AssistantsTableConstruct } from './constructs/data/assistants-table-construct';
 import { AuthTablesConstruct } from './constructs/data/auth-tables-construct';
 import { CostTrackingTablesConstruct } from './constructs/data/cost-tracking-tables-construct';
 import { FileUploadConstruct } from './constructs/data/file-upload-construct';
@@ -126,7 +125,6 @@ export class PlatformStack extends cdk.Stack {
   public readonly managedModelsTable: dynamodb.ITable;
   public readonly userSettingsTable: dynamodb.ITable;
   public readonly userMenuLinksTable: dynamodb.ITable;
-  public readonly assistantsTable: dynamodb.ITable;
   public readonly sharedConversationsTable: dynamodb.ITable;
   public readonly fileUploadBucket: s3.IBucket;
   public readonly fileUploadTable: dynamodb.ITable;
@@ -277,11 +275,6 @@ export class PlatformStack extends cdk.Stack {
     });
     this.userSettingsTable = adminTables.userSettingsTable;
     this.userMenuLinksTable = adminTables.userMenuLinksTable;
-
-    const assistants = new AssistantsTableConstruct(this, 'AssistantsTable', {
-      config,
-    });
-    this.assistantsTable = assistants.table;
 
     const fileUpload = new FileUploadConstruct(this, 'FileUpload', { config });
     this.fileUploadBucket = fileUpload.bucket;

@@ -102,8 +102,10 @@ describe('PlatformStack', () => {
 
   describe('DynamoDB tables', () => {
     it('creates all shared tables', () => {
-      // All 24 tables (artifacts always-on now)
-      template.resourceCountIs('AWS::DynamoDB::Table', 24);
+      // 23 tables. Was 24 — the standalone "assistants" table was
+      // decommissioned (the python app uses rag-assistants for both
+      // assistant config and document metadata via DYNAMODB_ASSISTANTS_TABLE_NAME).
+      template.resourceCountIs('AWS::DynamoDB::Table', 23);
     });
   });
 

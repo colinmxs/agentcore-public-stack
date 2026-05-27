@@ -8,7 +8,6 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 import { AppConfig, getResourceName, buildCorsOrigins } from '../../config';
-import { AssistantsTableConstruct } from '../data/assistants-table-construct';
 import { resolveAppApiSsmParams, buildAppApiEnvironment } from './app-api-environment';
 import { grantAppApiPermissions } from './app-api-iam-grants';
 
@@ -123,11 +122,6 @@ export class AppApiServiceConstruct extends Construct {
       'Allow traffic from ALB to App API tasks',
     );
 
-    // ── Assistants table (local) ──
-    const assistantsTable = new AssistantsTableConstruct(
-      this, 'AssistantsTableConstruct', { config },
-    ).table;
-
     // ── Task definition ──
     const taskDefinition = new ecs.FargateTaskDefinition(this, 'AppApiTaskDefinition', {
       family: getResourceName(config, 'app-api-task'),
@@ -207,7 +201,6 @@ export class AppApiServiceConstruct extends Construct {
       scope: this,
       config,
       taskRole: taskDefinition.taskRole,
-      assistantsTable,
       oidcStateTableArn: params.oidcStateTableArn,
       usersTableArn: params.usersTableArn,
       appRolesTableArn: params.appRolesTableArn,

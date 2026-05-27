@@ -159,9 +159,12 @@ describe('BackendStack', () => {
   });
 
   describe('No data resources in Backend', () => {
-    it('creates zero DynamoDB tables (except assistants which is local)', () => {
-      // Only the assistants table lives in Backend (local to app-api)
-      template.resourceCountIs('AWS::DynamoDB::Table', 1);
+    it('creates zero DynamoDB tables', () => {
+      // PlatformStack owns 100% of the data layer. BackendStack is
+      // pure compute — Fargate, Lambdas, CloudFront. The previous
+      // "assistants table is local" carve-out has been removed; the
+      // construct is decommissioned.
+      template.resourceCountIs('AWS::DynamoDB::Table', 0);
     });
 
     it('creates zero S3 buckets', () => {

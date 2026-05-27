@@ -19,7 +19,6 @@
  */
 
 import * as iam from 'aws-cdk-lib/aws-iam';
-import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -29,7 +28,6 @@ export interface AppApiIamGrantsProps {
   scope: Construct;
   config: AppConfig;
   taskRole: iam.IRole;
-  assistantsTable: dynamodb.ITable;
   // All the SSM-resolved ARNs/names are passed as strings since
   // the parent construct already resolved them from SSM.
   oidcStateTableArn: string;
@@ -87,15 +85,12 @@ export interface AppApiIamGrantsProps {
 export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   const { scope, config, taskRole } = props;
 
-  // ── Assistants table (local) ──
-  props.assistantsTable.grantReadWriteData(taskRole);
-  taskRole.addToPrincipalPolicy(
-    new iam.PolicyStatement({
-      effect: iam.Effect.ALLOW,
-      actions: ['dynamodb:Query', 'dynamodb:Scan'],
-      resources: [`${props.assistantsTable.tableArn}/index/*`],
-    }),
-  );
+  // ── Assistants table ──
+  // The "regular" assistants table was decommissioned — the python
+  // app uses the rag-assistants table for both assistant config and
+  // their RAG document/vector metadata, via DYNAMODB_ASSISTANTS_TABLE_NAME
+  // → /{prefix}/rag/assistants-table-name. Grants on rag-assistants
+  // are wired in the RagAssistantsTableAccess block below.
 
   // ── User settings ──
   taskRole.addToPrincipalPolicy(

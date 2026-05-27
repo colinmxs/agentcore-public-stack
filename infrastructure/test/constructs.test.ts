@@ -25,7 +25,6 @@ import { CostTrackingTablesConstruct } from '../lib/constructs/data/cost-trackin
 import { AdminTablesConstruct } from '../lib/constructs/data/admin-tables-construct';
 import { FileUploadConstruct } from '../lib/constructs/data/file-upload-construct';
 import { SharedConversationsConstruct } from '../lib/constructs/data/shared-conversations-construct';
-import { AssistantsTableConstruct } from '../lib/constructs/data/assistants-table-construct';
 import { RagDataConstruct } from '../lib/constructs/rag/rag-data-construct';
 import { FineTuningDataConstruct } from '../lib/constructs/fine-tuning/fine-tuning-data-construct';
 import { ArtifactsDataConstruct } from '../lib/constructs/artifacts/artifacts-data-construct';
@@ -243,22 +242,6 @@ describe('SharedConversationsConstruct', () => {
     new SharedConversationsConstruct(stack, 'SC', { config: createMockConfig() });
     const t = Template.fromStack(stack);
     t.resourceCountIs('AWS::DynamoDB::Table', 1);
-  });
-});
-
-describe('AssistantsTableConstruct', () => {
-  it('creates 1 DDB table with 3 GSIs', () => {
-    const stack = testStack();
-    new AssistantsTableConstruct(stack, 'Asst', { config: createMockConfig() });
-    const t = Template.fromStack(stack);
-    t.resourceCountIs('AWS::DynamoDB::Table', 1);
-    t.hasResourceProperties('AWS::DynamoDB::Table', {
-      GlobalSecondaryIndexes: [
-        { IndexName: 'OwnerStatusIndex' },
-        { IndexName: 'VisibilityStatusIndex' },
-        { IndexName: 'SharedWithIndex' },
-      ],
-    });
   });
 });
 

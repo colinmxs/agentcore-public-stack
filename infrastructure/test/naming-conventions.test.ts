@@ -12,7 +12,6 @@ import { AdminTablesConstruct } from '../lib/constructs/data/admin-tables-constr
 import { FineTuningDataConstruct } from '../lib/constructs/fine-tuning/fine-tuning-data-construct';
 import { RagDataConstruct } from '../lib/constructs/rag/rag-data-construct';
 import { ArtifactsDataConstruct } from '../lib/constructs/artifacts/artifacts-data-construct';
-import { AssistantsTableConstruct } from '../lib/constructs/data/assistants-table-construct';
 import { SharedConversationsConstruct } from '../lib/constructs/data/shared-conversations-construct';
 import { FileUploadConstruct } from '../lib/constructs/data/file-upload-construct';
 import { VoiceTicketConstruct } from '../lib/constructs/identity/voice-ticket-construct';
@@ -88,13 +87,6 @@ describe('Table naming convention — all tables use {prefix}-{name}', () => {
     new ArtifactsDataConstruct(stack, 'Art', { config });
     const t = Template.fromStack(stack);
     t.hasResourceProperties('AWS::DynamoDB::Table', { TableName: 'test-project-user-artifacts' });
-  });
-
-  it('assistants table follows naming convention', () => {
-    const stack = testStack();
-    new AssistantsTableConstruct(stack, 'Asst', { config });
-    const t = Template.fromStack(stack);
-    t.hasResourceProperties('AWS::DynamoDB::Table', { TableName: 'test-project-assistants' });
   });
 
   it('shared-conversations table follows naming convention', () => {

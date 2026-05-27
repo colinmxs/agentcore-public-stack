@@ -14,7 +14,6 @@ import { CostTrackingTablesConstruct } from '../lib/constructs/data/cost-trackin
 import { AdminTablesConstruct } from '../lib/constructs/data/admin-tables-construct';
 import { FileUploadConstruct } from '../lib/constructs/data/file-upload-construct';
 import { SharedConversationsConstruct } from '../lib/constructs/data/shared-conversations-construct';
-import { AssistantsTableConstruct } from '../lib/constructs/data/assistants-table-construct';
 import { RagDataConstruct } from '../lib/constructs/rag/rag-data-construct';
 import { FineTuningDataConstruct } from '../lib/constructs/fine-tuning/fine-tuning-data-construct';
 import { VoiceTicketConstruct } from '../lib/constructs/identity/voice-ticket-construct';
