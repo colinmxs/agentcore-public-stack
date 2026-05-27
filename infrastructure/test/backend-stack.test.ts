@@ -109,9 +109,10 @@ describe('BackendStack', () => {
       template.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 0);
     });
 
-    it('creates AgentCore Gateway', () => {
-      // Gateway hoist is Phase 2; still in Backend until then.
-      template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
+    it('does NOT create AgentCore Gateway (hoisted to PlatformStack)', () => {
+      // Gateway hoist landed in Phase 2 of the platform-as-bootstrap
+      // refactor. Backend no longer touches the Gateway.
+      template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
     });
   });
 
@@ -177,10 +178,11 @@ describe('BackendStack', () => {
       expect(Object.keys(roles).length).toBe(0);
     });
 
-    it('creates the gateway execution role', () => {
-      template.hasResourceProperties('AWS::IAM::Role', {
-        RoleName: 'test-project-gateway-role',
+    it('does NOT create the gateway execution role (hoisted to PlatformStack)', () => {
+      const roles = template.findResources('AWS::IAM::Role', {
+        Properties: { RoleName: 'test-project-gateway-role' },
       });
+      expect(Object.keys(roles).length).toBe(0);
     });
   });
 
@@ -203,10 +205,11 @@ describe('BackendStack', () => {
   });
 
   describe('SSM parameters', () => {
-    it('publishes gateway SSM parameters', () => {
-      template.hasResourceProperties('AWS::SSM::Parameter', {
-        Name: '/test-project/gateway/url',
+    it('does NOT publish gateway SSM parameters (hoisted to PlatformStack)', () => {
+      const gatewayParams = template.findResources('AWS::SSM::Parameter', {
+        Properties: { Name: '/test-project/gateway/url' },
       });
+      expect(Object.keys(gatewayParams).length).toBe(0);
     });
 
     it('publishes RAG ingestion Lambda ARN', () => {

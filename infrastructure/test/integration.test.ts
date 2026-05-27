@@ -78,8 +78,9 @@ describe('Two-stack integration', () => {
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
     });
 
-    it('creates the AgentCore Gateway', () => {
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
+    it('creates the AgentCore Gateway in Platform (hoisted Phase 2)', () => {
+      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
+      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
     });
   });
 
@@ -127,21 +128,21 @@ describe('Two-stack integration', () => {
       platformTemplate.resourceCountIs('AWS::ECS::Service', 0);
     });
 
-    it('Platform owns Memory + Code Interpreter + Browser; Backend owns Runtime + Gateway', () => {
+    it('Platform owns Memory + Code Interpreter + Browser + Gateway; Backend owns Runtime', () => {
       // Phase 1 of the platform-as-bootstrap refactor moved
-      // Memory + CI + Browser to Platform. Runtime + Gateway move
-      // to Platform in Phases 5 + 2 respectively.
+      // Memory + CI + Browser to Platform. Phase 2 moved Gateway.
+      // Runtime moves in Phase 5.
       platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Memory', 1);
       platformTemplate.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
       platformTemplate.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
+      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
       platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 0);
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
 
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Memory', 0);
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 0);
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 0);
+      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
     });
 
     it('Backend owns Lambda functions (RAG + artifact render)', () => {

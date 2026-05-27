@@ -43,7 +43,7 @@ import { RagDataConstruct } from './constructs/rag/rag-data-construct';
 // Artifacts (data + distribution; render Lambda lives in Backend)
 import { ArtifactsDataConstruct } from './constructs/artifacts/artifacts-data-construct';
 
-// AgentCore (Memory, Code Interpreter, Browser).
+// AgentCore (Memory, Code Interpreter, Browser, Gateway).
 // Pure infrastructure — no code, no out-of-band updates needed.
 // The Runtime itself stays in BackendStack for now; it will move
 // here in a follow-up phase when the bootstrap-container pattern
@@ -51,6 +51,7 @@ import { ArtifactsDataConstruct } from './constructs/artifacts/artifacts-data-co
 import { AgentCoreMemoryConstruct } from './constructs/agentcore/memory-construct';
 import { AgentCoreCodeInterpreterConstruct } from './constructs/agentcore/code-interpreter-construct';
 import { AgentCoreBrowserConstruct } from './constructs/agentcore/browser-construct';
+import { AgentCoreGatewayConstruct } from './constructs/gateway/agentcore-gateway-construct';
 
 // MCP sandbox (S3 + CloudFront — Platform edge surface)
 import { McpSandboxBucketConstruct } from './constructs/mcp-sandbox/mcp-sandbox-bucket-construct';
@@ -389,6 +390,13 @@ export class PlatformStack extends cdk.Stack {
     this.agentCoreBrowser = agentCoreBrowserConstruct.browser;
     this.agentCoreBrowserArn = agentCoreBrowserConstruct.browserArn;
     this.agentCoreBrowserId = agentCoreBrowserConstruct.browserId;
+
+    // AgentCore Gateway — config-only (MCP protocol, AWS_IAM
+    // authorizer, IAM execution role with invoke rights against the
+    // /^${prefix}-mcp-/ Lambda naming convention used by the
+    // external mcp-servers repo). No code lives here — Gateway
+    // Targets are managed out-of-band by mcp-servers' own deploy.
+    new AgentCoreGatewayConstruct(this, 'AgentCoreGateway', { config });
 
     // ============================================================
     // MCP sandbox edge (always-on; bucket+dist; deployment is wired

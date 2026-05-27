@@ -6,7 +6,6 @@ import { Construct } from 'constructs';
 import { AppConfig, applyStandardTags } from './config';
 
 // Backend constructs
-import { AgentCoreGatewayConstruct } from './constructs/gateway/agentcore-gateway-construct';
 import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
 import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
@@ -143,9 +142,9 @@ export class BackendStack extends cdk.Stack {
     });
 
     // ============================================================
-    // AgentCore Gateway
-    // ============================================================
-    new AgentCoreGatewayConstruct(this, 'Gateway', { config });
+    // AgentCore Gateway moved to PlatformStack in Phase 2 of the
+    // platform-as-bootstrap refactor. It's pure infrastructure (no
+    // code), naturally fits the data-tier ownership.
 
     // ============================================================
     // RAG Ingestion Lambda
