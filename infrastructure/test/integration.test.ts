@@ -1,16 +1,17 @@
 /**
- * Integration tests — verify the two-stack architecture synthesizes
- * correctly end-to-end and produces the expected cross-stack references.
+ * Integration test — single-stack architecture (post Phase 7 of the
+ * platform-as-bootstrap refactor). Verifies that PlatformStack
+ * synthesizes end-to-end with `wireSpaDistribution()` + `wireCompute()`
+ * called and that every resource the application needs is present
+ * in exactly one stack.
  */
 import * as cdk from 'aws-cdk-lib';
 import { Template } from 'aws-cdk-lib/assertions';
 import { PlatformStack } from '../lib/platform-stack';
-import { BackendStack } from '../lib/backend-stack';
 import { createMockConfig, mockSsmContext, MOCK_ACCOUNT, MOCK_REGION } from './helpers/mock-config';
 
-describe('Two-stack integration', () => {
-  let platformTemplate: Template;
-  let backendTemplate: Template;
+describe('Single-stack integration', () => {
+  let template: Template;
 
   beforeAll(() => {
     const cert = 'arn:aws:acm:us-east-1:123456789012:certificate/test';
@@ -31,139 +32,97 @@ describe('Two-stack integration', () => {
       env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
     });
     platform.wireSpaDistribution();
+    platform.wireCompute();
 
-    const backend = new BackendStack(app, 'Backend', {
-      config,
-      platform,
-      env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
-    });
-
-    // NOTE: wireArtifactsDistribution is NOT called here because it
-    // creates a circular CDK dependency (Platform → Backend Function URL,
-    // Backend → Platform RAG bucket). This is a known issue — the fix is
-    // to move the artifacts distribution into BackendStack. For now the
-    // integration test verifies everything except the artifacts CF distro.
-
-    platformTemplate = Template.fromStack(platform);
-    backendTemplate = Template.fromStack(backend);
+    template = Template.fromStack(platform);
   });
 
-  describe('Platform produces cross-stack exports', () => {
-    it('has CFN outputs (CDK auto-generates for cross-stack refs)', () => {
-      const outputs = platformTemplate.findOutputs('*');
+  describe('Stack contents', () => {
+    it('produces a substantial template (the unified stack has ~150-200 resources)', () => {
+      const json = template.toJSON();
+      const count = Object.keys(json.Resources || {}).length;
+      expect(count).toBeGreaterThan(80);
+    });
+
+    it('emits CFN outputs (auto-generated for cross-resource refs and explicit CfnOutputs)', () => {
+      const outputs = template.findOutputs('*');
       expect(Object.keys(outputs).length).toBeGreaterThan(0);
     });
 
-    it('both stacks produce substantial resources', () => {
-      const platformJson = platformTemplate.toJSON();
-      const backendJson = backendTemplate.toJSON();
-      const platformCount = Object.keys(platformJson.Resources || {}).length;
-      const backendCount = Object.keys(backendJson.Resources || {}).length;
-      expect(platformCount).toBeGreaterThan(50);
-      expect(backendCount).toBeGreaterThan(20);
+    it('uses zero Fn::ImportValue (no cross-stack refs in a single-stack architecture)', () => {
+      const json = JSON.stringify(template.toJSON());
+      // Allow for the rare CDK-internal use; just assert it isn't
+      // peppered with project-scoped imports.
+      const projectImports = (json.match(/Fn::ImportValue/g) || []).length;
+      expect(projectImports).toBe(0);
     });
   });
 
-  describe('Backend consumes Platform resources', () => {
-    it('has Fn::ImportValue references', () => {
-      const templateJson = JSON.stringify(backendTemplate.toJSON());
-      expect(templateJson).toContain('Fn::ImportValue');
-    });
-
-    it('creates the Fargate service', () => {
-      backendTemplate.resourceCountIs('AWS::ECS::Service', 1);
+  describe('Compute resources', () => {
+    it('creates the App API Fargate service', () => {
+      template.resourceCountIs('AWS::ECS::Service', 1);
     });
 
     it('creates the AgentCore Runtime', () => {
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
+      template.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
     });
 
-    it('creates the AgentCore Gateway in Platform (hoisted Phase 2)', () => {
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
+    it('creates the AgentCore Memory + CI + Browser + Gateway', () => {
+      template.resourceCountIs('AWS::BedrockAgentCore::Memory', 1);
+      template.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
+      template.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
+      template.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
     });
   });
 
-  describe('Resource ownership is correct', () => {
-    it('Platform owns all DynamoDB tables', () => {
-      const platformTables = Object.keys(platformTemplate.findResources('AWS::DynamoDB::Table')).length;
-      const backendTables = Object.keys(backendTemplate.findResources('AWS::DynamoDB::Table')).length;
-      expect(platformTables).toBeGreaterThanOrEqual(20);
-      expect(backendTables).toBeLessThanOrEqual(2); // only assistants
+  describe('Data + edge resources', () => {
+    it('owns all DynamoDB tables', () => {
+      const tables = Object.keys(template.findResources('AWS::DynamoDB::Table')).length;
+      expect(tables).toBeGreaterThanOrEqual(20);
     });
 
-    it('Platform owns all S3 buckets', () => {
-      const platformBuckets = Object.keys(platformTemplate.findResources('AWS::S3::Bucket')).length;
-      const backendBuckets = Object.keys(backendTemplate.findResources('AWS::S3::Bucket')).length;
-      expect(platformBuckets).toBeGreaterThanOrEqual(5);
-      expect(backendBuckets).toBe(0);
+    it('owns multiple S3 buckets', () => {
+      const buckets = Object.keys(template.findResources('AWS::S3::Bucket')).length;
+      expect(buckets).toBeGreaterThanOrEqual(5);
     });
 
-    it('CloudFront distributions are all in Platform after Phase 3', () => {
-      // Phase 3 moved the artifacts distribution to Platform.
-      // Platform now owns SPA + MCP sandbox + artifacts.
-      // Backend owns zero CloudFront distributions.
-      const platformDists = Object.keys(platformTemplate.findResources('AWS::CloudFront::Distribution')).length;
-      const backendDists = Object.keys(backendTemplate.findResources('AWS::CloudFront::Distribution')).length;
-      expect(platformDists).toBeGreaterThanOrEqual(3);
-      expect(backendDists).toBe(0);
+    it('owns SPA + MCP sandbox + artifacts CloudFront distributions', () => {
+      template.resourceCountIs('AWS::CloudFront::Distribution', 3);
     });
 
-    it('Platform owns Cognito', () => {
-      platformTemplate.resourceCountIs('AWS::Cognito::UserPool', 1);
-      backendTemplate.resourceCountIs('AWS::Cognito::UserPool', 0);
+    it('owns Cognito user pool', () => {
+      template.resourceCountIs('AWS::Cognito::UserPool', 1);
     });
 
-    it('Platform owns the VPC', () => {
-      platformTemplate.resourceCountIs('AWS::EC2::VPC', 1);
-      backendTemplate.resourceCountIs('AWS::EC2::VPC', 0);
+    it('owns the VPC + ALB', () => {
+      template.resourceCountIs('AWS::EC2::VPC', 1);
+      template.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 1);
+    });
+  });
+
+  describe('Lambdas (artifact-render + rag-ingestion + CFN custom resources)', () => {
+    it('has the two real Lambdas plus CFN custom-resource handlers', () => {
+      const fns = Object.keys(template.findResources('AWS::Lambda::Function')).length;
+      // Two real Lambdas (artifact-render + rag-ingestion). CDK
+      // adds custom-resource handlers for things like S3 bucket
+      // notification setup; the count is at least 2 but typically
+      // a few more.
+      expect(fns).toBeGreaterThanOrEqual(2);
     });
 
-    it('Platform owns the ALB', () => {
-      platformTemplate.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 1);
-      backendTemplate.resourceCountIs('AWS::ElasticLoadBalancingV2::LoadBalancer', 0);
-    });
-
-    it('Backend owns the ECS service', () => {
-      backendTemplate.resourceCountIs('AWS::ECS::Service', 1);
-      platformTemplate.resourceCountIs('AWS::ECS::Service', 0);
-    });
-
-    it('Platform owns Memory + Code Interpreter + Browser + Gateway; Backend owns Runtime', () => {
-      // Phase 1 of the platform-as-bootstrap refactor moved
-      // Memory + CI + Browser to Platform. Phase 2 moved Gateway.
-      // Runtime moves in Phase 5.
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Memory', 1);
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 1);
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 1);
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 1);
-      platformTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 0);
-
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Memory', 0);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::CodeInterpreterCustom', 0);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::BrowserCustom', 0);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Gateway', 0);
-      backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
-    });
-
-    it('Lambda functions live in PlatformStack after Phases 3+4', () => {
-      // Phase 3 moved artifact-render. Phase 4 moved rag-ingestion.
-      // BackendStack has zero Lambdas now. PlatformStack has at
-      // least the two real Lambdas plus a CFN custom-resource
-      // handler (S3 bucket notification configurator).
-      const backendLambdas = Object.keys(backendTemplate.findResources('AWS::Lambda::Function')).length;
-      const platformLambdas = Object.keys(platformTemplate.findResources('AWS::Lambda::Function')).length;
-      expect(backendLambdas).toBe(0);
-      expect(platformLambdas).toBeGreaterThanOrEqual(2);
+    it('publishes the auto-generated function names to SSM', () => {
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: '/test-project/artifacts/render-function-name',
+      });
+      template.hasResourceProperties('AWS::SSM::Parameter', {
+        Name: '/test-project/rag/ingestion-function-name',
+      });
     });
   });
 
   describe('Stack naming', () => {
-    it('Platform stack name includes project prefix', () => {
-      const templateJson = platformTemplate.toJSON();
-      // Stack name is set via props, not in the template itself
-      // but we can verify the resource naming convention
-      const params = platformTemplate.findResources('AWS::SSM::Parameter');
+    it('SSM parameter names include the project prefix', () => {
+      const params = template.findResources('AWS::SSM::Parameter');
       const firstParam = Object.values(params)[0] as any;
       expect(firstParam.Properties.Name).toContain('test-project');
     });
@@ -173,7 +132,6 @@ describe('Two-stack integration', () => {
 describe('Config validation', () => {
   it('loadConfig requires CDK_PROJECT_PREFIX', () => {
     const app = new cdk.App();
-    // No context set — should throw
     expect(() => {
       const { loadConfig } = require('../lib/config');
       loadConfig(app);

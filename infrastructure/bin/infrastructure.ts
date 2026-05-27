@@ -2,54 +2,47 @@
 import * as cdk from 'aws-cdk-lib/core';
 
 import { PlatformStack } from '../lib/platform-stack';
-import { BackendStack } from '../lib/backend-stack';
 import { loadConfig, getStackEnv } from '../lib/config';
 
 const app = new cdk.App();
 
-// Load configuration from cdk.context.json / env vars
 const config = loadConfig(app);
 const env = getStackEnv(config);
 
 // ============================================================
-// PlatformStack — every non-compute resource
+// PlatformStack — every resource the application needs.
 //
-// NOTE: The construct ID below is what `cdk deploy <name>` matches
-// against (NOT the `stackName` prop). The deploy scripts in
-// scripts/platform/ invoke `cdk deploy "${CDK_PROJECT_PREFIX}-PlatformStack"`,
-// so the construct ID must be the prefixed name. CDK will use this
-// same string as the CloudFormation stack name by default, which is
-// also what we want — no `stackName` override needed.
+// As of Phase 7 of the platform-as-bootstrap refactor, this is
+// the *only* stack. The previous BackendStack was absorbed:
+// every compute resource (App API Fargate, Inference AgentCore
+// Runtime, SageMaker IAM, plus the artifact-render and
+// rag-ingestion Lambdas hoisted in Phases 3+4) lives here too.
+//
+// Application code is shipped via AWS APIs (workflow → ECR push →
+// update-function-code / update-service / UpdateAgentRuntime),
+// not via CFN deploys. CFN updates only when *infrastructure*
+// changes — new tables, new IAM grants, etc. — which is a
+// significantly less frequent event.
+//
+// Construction is split across the constructor (the data + edge +
+// AgentCore Memory/CI/Browser/Gateway layer) and two `wire*`
+// methods (`wireSpaDistribution`, `wireCompute`) which are called
+// in deterministic order from this file. The split exists because:
+//   - wireSpaDistribution depends on AlbDnsConstruct, which is
+//     created by the constructor but ALSO consumes a domain name
+//     resolved late.
+//   - wireCompute uses every other typed ref the stack exposes,
+//     so it has to be last.
+// Both methods are pure CDK additions to the same stack — calling
+// them does not produce a separate CFN stack.
 // ============================================================
 const platform = new PlatformStack(app, `${config.projectPrefix}-PlatformStack`, {
   config,
   env,
-  description: `${config.projectPrefix} Platform Stack - VPC, ALB, DynamoDB, S3, Cognito, CloudFront`,
+  description: `${config.projectPrefix} Platform Stack — VPC, ALB, DynamoDB, S3, Cognito, CloudFront, AgentCore, Fargate, Lambdas (single-stack architecture; backend code is shipped out-of-band via AWS APIs)`,
 });
 
-// The SPA distribution and the RAG-CORS updater both consume values
-// (ALB URL, RAG documents bucket) published by sibling constructs in
-// the same Platform stack. They're wired through direct construct
-// references inside `wireSpaDistribution()`. The previous version of
-// this code round-tripped via SSM, which deadlocked on first deploy:
-// CFN resolves `AWS::SSM::Parameter::Value<String>` parameters before
-// any of the stack's resources are created, so reading the same-stack
-// SSM parameter that this stack would itself create is unsatisfiable.
 platform.wireSpaDistribution();
-
-// ============================================================
-// BackendStack — all compute (Fargate, AgentCore, Lambdas)
-//
-// Same convention as PlatformStack above: the construct ID is the
-// prefixed name so `cdk deploy "${CDK_PROJECT_PREFIX}-BackendStack"`
-// from scripts/backend/deploy.sh resolves correctly, and CDK uses
-// the same string as the CloudFormation stack name.
-// ============================================================
-new BackendStack(app, `${config.projectPrefix}-BackendStack`, {
-  config,
-  env,
-  platform,
-  description: `${config.projectPrefix} Backend Stack - Fargate, AgentCore Runtime, Lambdas (until Phases 4-6 of the platform-as-bootstrap refactor land)`,
-});
+platform.wireCompute();
 
 app.synth();

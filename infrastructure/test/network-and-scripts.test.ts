@@ -353,7 +353,7 @@ describe('Build scripts', () => {
 describe('Deploy scripts', () => {
   const SCRIPTS_ROOT = path.resolve(__dirname, '..', '..', 'scripts');
 
-  for (const dir of ['platform', 'backend', 'frontend']) {
+  for (const dir of ['platform', 'frontend']) {
     it(`scripts/${dir}/deploy.sh exists`, () => {
       expect(fs.existsSync(path.join(SCRIPTS_ROOT, dir, 'deploy.sh'))).toBe(true);
     });

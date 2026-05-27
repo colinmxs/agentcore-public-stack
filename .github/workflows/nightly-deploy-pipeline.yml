@@ -268,7 +268,7 @@ jobs:
         run: bash scripts/build/deploy-image-lambda-one.sh rag-ingestion
 
   deploy-backend:
-    name: Deploy BackendStack
+    name: Deploy unified stack (compute via CFN until Phases 5+6 land)
     needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
@@ -298,8 +298,8 @@ jobs:
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Deploy BackendStack
-        run: bash scripts/backend/deploy.sh
+      - name: Deploy unified stack
+        run: bash scripts/platform/deploy.sh
 
   deploy-frontend:
     name: Deploy Frontend

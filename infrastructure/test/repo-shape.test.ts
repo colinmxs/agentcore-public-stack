@@ -78,8 +78,8 @@ describe('Repo shape — new architecture files exist', () => {
     expect(fs.existsSync(path.join(INFRA_LIB, 'platform-stack.ts'))).toBe(true);
   });
 
-  it('backend-stack.ts exists', () => {
-    expect(fs.existsSync(path.join(INFRA_LIB, 'backend-stack.ts'))).toBe(true);
+  it('backend-stack.ts has been deleted (Phase 7 of platform-as-bootstrap collapse)', () => {
+    expect(fs.existsSync(path.join(INFRA_LIB, 'backend-stack.ts'))).toBe(false);
   });
 
   it('constructs/ directory exists with subdirectories', () => {
@@ -98,7 +98,7 @@ describe('Repo shape — new architecture files exist', () => {
     });
   }
 
-  const newScriptDirs = ['platform', 'backend', 'frontend', 'build'];
+  const newScriptDirs = ['platform', 'frontend', 'build'];
   for (const dir of newScriptDirs) {
     it(`scripts/${dir}/ exists`, () => {
       expect(fs.existsSync(path.join(SCRIPTS, dir))).toBe(true);
@@ -249,11 +249,11 @@ describe('Workflow YAML shape', () => {
 });
 
 describe('bin/infrastructure.ts shape', () => {
-  it('imports only PlatformStack and BackendStack', () => {
+  it('imports only PlatformStack (single-stack architecture)', () => {
     const content = fs.readFileSync(
       path.resolve(__dirname, '..', 'bin', 'infrastructure.ts'), 'utf-8');
     expect(content).toContain("from '../lib/platform-stack'");
-    expect(content).toContain("from '../lib/backend-stack'");
+    expect(content).not.toContain("from '../lib/backend-stack'");
     expect(content).not.toContain('InfrastructureStack');
     expect(content).not.toContain('AppApiStack');
     expect(content).not.toContain('InferenceApiStack');

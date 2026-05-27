@@ -271,7 +271,20 @@ jobs:
         run: bash scripts/build/deploy-image-lambda-one.sh rag-ingestion
 
   deploy:
-    name: Deploy BackendStack
+    name: Deploy unified stack (app-api + inference-api code via CFN until Phases 5+6 land)
+    # The unified PlatformStack now owns every resource (Phase 7 of
+    # the platform-as-bootstrap refactor collapsed the old
+    # BackendStack into Platform). Until Phases 5+6 land their
+    # bootstrap-container patterns for the AgentCore Runtime and
+    # App API ECS task def, those services' container images flow
+    # through CDK at synth time — meaning a code change to
+    # app-api or inference-api still requires a full CFN deploy.
+    # That deploy lives here so the backend workflow remains the
+    # entry point for backend-affecting commits.
+    #
+    # Once Phases 5+6 are done, this job goes away — backend.yml
+    # becomes purely build-images + code-deploys (no CFN), and
+    # platform.yml is the single CFN entry point.
     needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, test-infra, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
@@ -306,5 +319,5 @@ jobs:
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Deploy BackendStack
-        run: bash scripts/backend/deploy.sh
+      - name: Deploy unified stack
+        run: bash scripts/platform/deploy.sh

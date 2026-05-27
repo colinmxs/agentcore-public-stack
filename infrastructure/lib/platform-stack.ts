@@ -77,6 +77,14 @@ import { RagCorsUpdaterConstruct } from './constructs/spa/rag-cors-updater-const
 // Zones
 import { AlbDnsConstruct } from './constructs/zones/alb-dns-construct';
 
+// Compute constructs (absorbed from the old BackendStack in Phase 7
+// of the platform-as-bootstrap refactor). After the collapse, all
+// resources — data, edge, AgentCore, compute — live in this one
+// stack.
+import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
+import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
+import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
+
 export interface PlatformStackProps extends cdk.StackProps {
   config: AppConfig;
 }
@@ -589,6 +597,66 @@ export class PlatformStack extends cdk.Stack {
       config: this._config,
       frontendUrl,
       documentsBucket: this.ragDocumentsBucket,
+    });
+  }
+
+  /**
+   * Wire the application compute layer (Inference AgentCore Runtime,
+   * SageMaker fine-tuning IAM, App API Fargate service).
+   *
+   * Phase 7 of the platform-as-bootstrap refactor absorbed the old
+   * BackendStack here. These constructs were previously instantiated
+   * by BackendStack with `props.platform.*` typed refs; after the
+   * collapse, the same refs are `this.*` (same-stack), so the
+   * construction is identical except for that prefix swap.
+   *
+   * Why this is a separate method (rather than inline in the
+   * constructor): bin/infrastructure.ts calls
+   * `wireSpaDistribution()` first to break a circular dependency
+   * between the SPA distribution and the ALB DNS. The compute layer
+   * has no such concern, but lives in a method for symmetry —
+   * lets bin/ control the wire-up order explicitly and gives a
+   * single hook for future tear-out (Phase 5/6 will refactor each
+   * compute construct to use a bootstrap container; that's easier
+   * to reason about with a discrete entry point here).
+   *
+   * Construction order matters:
+   *   1. InferenceApi — exposes runtimeEndpointUrl
+   *   2. SageMaker — exposes executionRole + securityGroup +
+   *      privateSubnetIdsString
+   *   3. AppApi — consumes both of the above as typed props.
+   */
+  public wireCompute(): void {
+    const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', {
+      config: this._config,
+      memoryArn: this.agentCoreMemoryArn,
+      memoryId: this.agentCoreMemoryId,
+      codeInterpreterArn: this.agentCoreCodeInterpreterArn,
+      codeInterpreterId: this.agentCoreCodeInterpreterId,
+      browserArn: this.agentCoreBrowserArn,
+      browserId: this.agentCoreBrowserId,
+    });
+
+    const sagemakerPrivateSubnetIds = this.vpc.privateSubnets
+      .map((s) => s.subnetId)
+      .join(',');
+    const sagemaker = new SageMakerExecutionRoleConstruct(this, 'FineTuning', {
+      config: this._config,
+      dataBucket: this.fineTuningDataBucket,
+      jobsTable: this.fineTuningJobsTable,
+      vpc: this.vpc,
+      privateSubnetIdsString: sagemakerPrivateSubnetIds,
+    });
+
+    new AppApiServiceConstruct(this, 'AppApi', {
+      config: this._config,
+      agentCoreMemoryArn: this.agentCoreMemoryArn,
+      agentCoreMemoryId: this.agentCoreMemoryId,
+      inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,
+      artifactsOrigin: this.artifactsOriginUrl,
+      sagemakerExecutionRoleArn: sagemaker.executionRole.roleArn,
+      sagemakerSecurityGroupId: sagemaker.securityGroup.securityGroupId,
+      sagemakerPrivateSubnetIds,
     });
   }
 }
