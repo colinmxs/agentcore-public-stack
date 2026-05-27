@@ -236,9 +236,40 @@ jobs:
         id: deploy
         run: bash scripts/build/deploy-zip-lambda-one.sh artifact-render
 
+  deploy-rag-ingestion-code:
+    name: Deploy rag-ingestion Lambda image
+    needs: [build-rag-ingestion, test-backend]
+    runs-on: ubuntu-24.04
+    environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      CDK_AWS_REGION: ${{ vars.AWS_REGION }}
+      CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
+      CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
+      AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
+      AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+      AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    outputs:
+      image_tag: ${{ steps.deploy.outputs.image_tag }}
+    steps:
+      - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
+      - uses: ./.github/actions/configure-aws-credentials
+        with:
+          aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
+          aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
+          aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+      - name: Deploy rag-ingestion image
+        id: deploy
+        run: bash scripts/build/deploy-image-lambda-one.sh rag-ingestion
+
   deploy-backend:
     name: Deploy BackendStack
-    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, test-backend]
+    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:

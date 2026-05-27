@@ -8,6 +8,7 @@ import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as kms from 'aws-cdk-lib/aws-kms';
 import * as s3 from 'aws-cdk-lib/aws-s3';
+import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import * as secretsmanager from 'aws-cdk-lib/aws-secretsmanager';
 import { CfnResource } from 'aws-cdk-lib';
 import { Construct } from 'constructs';
@@ -39,6 +40,7 @@ import { SharedConversationsConstruct } from './constructs/data/shared-conversat
 
 // RAG (data half lives in Platform)
 import { RagDataConstruct } from './constructs/rag/rag-data-construct';
+import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
 
 // Artifacts (data + render Lambda + CloudFront distribution).
 // Phase 3 of the platform-as-bootstrap refactor moved the render
@@ -337,6 +339,37 @@ export class PlatformStack extends cdk.Stack {
     this.ragVectorIndexName = ragData.vectorIndexName;
     this.ragVectorBucket = ragData.vectorBucket;
     this.ragVectorIndex = ragData.vectorIndex;
+
+    // ============================================================
+    // RAG ingestion Lambda
+    //
+    // Phase 4 of the platform-as-bootstrap refactor moved this from
+    // BackendStack to Platform. Same model as artifact-render in
+    // Phase 3: CDK ships the Lambda's *configuration* with a stable
+    // bootstrap container image; the workflow ships the *real* image
+    // out-of-band via `aws lambda update-function-code --image-uri`.
+    //
+    // The S3 ObjectCreated subscription on the documents bucket is
+    // wired here too, since both bucket and Lambda live in this
+    // stack now (no more cross-stack notification dance).
+    // ============================================================
+    const ragIngestion = new RagIngestionLambdaConstruct(
+      this,
+      'RagIngestion',
+      {
+        config,
+        documentsBucket: this.ragDocumentsBucket,
+        assistantsTable: this.ragAssistantsTable,
+        vectorBucketName: this.ragVectorBucketName,
+        vectorIndexName: this.ragVectorIndexName,
+      },
+    );
+
+    this.ragDocumentsBucket.addEventNotification(
+      s3.EventType.OBJECT_CREATED,
+      new s3n.LambdaDestination(ragIngestion.lambda),
+      { prefix: 'assistants/' },
+    );
 
     // ============================================================
     // Fine-tuning data

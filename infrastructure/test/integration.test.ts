@@ -146,9 +146,15 @@ describe('Two-stack integration', () => {
       backendTemplate.resourceCountIs('AWS::BedrockAgentCore::Runtime', 1);
     });
 
-    it('Backend owns Lambda functions (RAG + artifact render)', () => {
+    it('Lambda functions live in PlatformStack after Phases 3+4', () => {
+      // Phase 3 moved artifact-render. Phase 4 moved rag-ingestion.
+      // BackendStack has zero Lambdas now. PlatformStack has at
+      // least the two real Lambdas plus a CFN custom-resource
+      // handler (S3 bucket notification configurator).
       const backendLambdas = Object.keys(backendTemplate.findResources('AWS::Lambda::Function')).length;
-      expect(backendLambdas).toBeGreaterThanOrEqual(2);
+      const platformLambdas = Object.keys(platformTemplate.findResources('AWS::Lambda::Function')).length;
+      expect(backendLambdas).toBe(0);
+      expect(platformLambdas).toBeGreaterThanOrEqual(2);
     });
   });
 

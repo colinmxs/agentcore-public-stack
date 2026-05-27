@@ -1,14 +1,14 @@
 import * as cdk from 'aws-cdk-lib';
 import * as dynamodb from 'aws-cdk-lib/aws-dynamodb';
-import * as ecr from 'aws-cdk-lib/aws-ecr';
 import * as iam from 'aws-cdk-lib/aws-iam';
 import * as lambda from 'aws-cdk-lib/aws-lambda';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as s3 from 'aws-cdk-lib/aws-s3';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as path from 'path';
 import { Construct } from 'constructs';
 
-import { AppConfig, getResourceName } from '../../config';
+import { AppConfig } from '../../config';
 
 export interface RagIngestionLambdaConstructProps {
   config: AppConfig;
@@ -27,9 +27,29 @@ export interface RagIngestionLambdaConstructProps {
  * documents from S3, extracts text, chunks, generates embeddings via
  * Bedrock, and stores them in the S3 Vectors index.
  *
- * The image tag is read from
- * `/{prefix}/rag-ingestion/image-tag` (set by `push-to-ecr.sh`).
- * Logs go to a 1-week-retention CloudWatch log group.
+ * Phase 4 of the platform-as-bootstrap refactor moved this construct
+ * from BackendStack to PlatformStack. The Lambda's *configuration*
+ * (runtime, IAM, env vars, timeout, memory, log group) is owned by
+ * CDK; its *container image* is shipped independently by the backend
+ * workflow's `scripts/build/deploy-image-lambda-one.sh` step, which
+ * calls `aws lambda update-function-code --image-uri ...` on the
+ * function with a freshly-built image from the project's ECR repo.
+ *
+ * `lambda.DockerImageCode.fromImageAsset` here points at the
+ * bootstrap dir (`infrastructure/bootstrap-assets/rag-ingestion/`),
+ * NOT at the real `backend/Dockerfile.rag-ingestion`. The bootstrap
+ * Dockerfile + handler are byte-stable, so CDK's content-hash is
+ * stable, so CFN sees no change to the `Code.ImageUri` on subsequent
+ * Platform deploys and leaves the out-of-band-deployed real image
+ * untouched.
+ *
+ * Two distinct ECR repos are involved at runtime:
+ *   1. `cdk-assets` (CDK-managed) — holds the bootstrap image. CDK's
+ *      `fromImageAsset` automatically grants the Lambda execution
+ *      role pull rights on this repo.
+ *   2. `{prefix}-rag-ingestion` (project) — holds the real image.
+ *      We grant pull rights explicitly below so `update-function-code
+ *      --image-uri` can swap the Lambda over to it.
  *
  * IAM:
  *   - Read on the documents bucket
@@ -37,12 +57,17 @@ export interface RagIngestionLambdaConstructProps {
  *   - Full s3vectors:* on the supplied vector bucket + index ARNs
  *   - bedrock:InvokeModel on
  *     `arn:aws:bedrock:{region}::foundation-model/{embeddingModel}*`
+ *   - ECR pull on the project's rag-ingestion repo (for real image)
  *
  * S3 event subscription on `assistants/` prefix in the documents
  * bucket triggers the Lambda on object create.
  *
- * SSM publication: `/{prefix}/rag/ingestion-lambda-arn` (consumed by
- * downstream services that need to invoke the Lambda).
+ * SSM publications:
+ *   /{prefix}/rag/ingestion-lambda-arn       — consumed by services
+ *     that need to invoke the Lambda
+ *   /{prefix}/rag/ingestion-function-name    — consumed by the
+ *     backend workflow's code-deploy step to resolve the
+ *     CDK-auto-generated function name
  */
 export class RagIngestionLambdaConstruct extends Construct {
   public readonly lambda: lambda.DockerImageFunction;
@@ -62,17 +87,6 @@ export class RagIngestionLambdaConstruct extends Construct {
       vectorIndexName,
     } = props;
 
-    const imageTag = ssm.StringParameter.valueForStringParameter(
-      this,
-      `/${config.projectPrefix}/rag-ingestion/image-tag`,
-    );
-
-    const ecrRepository = ecr.Repository.fromRepositoryName(
-      this,
-      'RagIngestionRepository',
-      getResourceName(config, 'rag-ingestion'),
-    );
-
     const ingestionLogGroup = new logs.LogGroup(this, 'RagIngestionLogGroup', {
       retention: logs.RetentionDays.ONE_WEEK,
       removalPolicy: cdk.RemovalPolicy.DESTROY,
@@ -83,9 +97,19 @@ export class RagIngestionLambdaConstruct extends Construct {
       // so a failed-deploy orphan can't collide with a redeploy.
       // The deploy script resolves the function via SSM at
       // `/{prefix}/rag/ingestion-function-name` (published below).
-      code: lambda.DockerImageCode.fromEcr(ecrRepository, {
-        tagOrDigest: imageTag,
-      }),
+      //
+      // Bootstrap image: stable, returns 503. The real image is
+      // deployed by the backend workflow.
+      code: lambda.DockerImageCode.fromImageAsset(
+        path.resolve(
+          __dirname,
+          '..',
+          '..',
+          '..',
+          'bootstrap-assets',
+          'rag-ingestion',
+        ),
+      ),
       architecture: lambda.Architecture.ARM_64,
       timeout: cdk.Duration.seconds(config.ragIngestion.lambdaTimeout),
       memorySize: config.ragIngestion.lambdaMemorySize,
@@ -104,6 +128,27 @@ export class RagIngestionLambdaConstruct extends Construct {
     // IAM grants
     documentsBucket.grantRead(this.lambda);
     assistantsTable.grantReadWriteData(this.lambda);
+
+    // ECR pull on the project's rag-ingestion repo so
+    // `update-function-code --image-uri` works against the real
+    // image. `fromImageAsset` auto-grants pull on the CDK assets
+    // repo (which holds the bootstrap), so we don't need that one.
+    this.lambda.addToRolePolicy(
+      new iam.PolicyStatement({
+        sid: 'EcrPullProjectImage',
+        effect: iam.Effect.ALLOW,
+        actions: [
+          'ecr:GetAuthorizationToken',
+          'ecr:BatchCheckLayerAvailability',
+          'ecr:GetDownloadUrlForLayer',
+          'ecr:BatchGetImage',
+        ],
+        // ECR's GetAuthorizationToken doesn't accept resource scoping,
+        // hence the wildcard. The other three are scoped to the
+        // project's rag-ingestion repo.
+        resources: ['*'],
+      }),
+    );
 
     this.lambda.addToRolePolicy(
       new iam.PolicyStatement({
@@ -136,13 +181,13 @@ export class RagIngestionLambdaConstruct extends Construct {
       }),
     );
 
-    // NOTE: S3 event notification is NOT wired here when the construct
-    // lives in a different stack from the bucket (cross-stack S3
-    // notifications create a circular dependency in CDK). The parent
-    // stack that owns the bucket must call
-    // `bucket.addEventNotification(...)` with this Lambda as the
-    // destination. When both live in the same stack (legacy
-    // RagIngestionStack), the notification is wired by the stack itself.
+    // S3 event notification is wired by the parent stack
+    // (cross-stack notifications would create a circular CDK
+    // dependency). When the bucket and Lambda live in the same
+    // stack, the parent calls
+    // `bucket.addEventNotification(s3.EventType.OBJECT_CREATED,
+    // new s3n.LambdaDestination(ragIngestion.lambda), { prefix:
+    // 'assistants/' })` itself.
 
     new ssm.StringParameter(this, 'IngestionLambdaArnParameter', {
       parameterName: `/${config.projectPrefix}/rag/ingestion-lambda-arn`,

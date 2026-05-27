@@ -1,6 +1,4 @@
 import * as cdk from 'aws-cdk-lib';
-import * as s3 from 'aws-cdk-lib/aws-s3';
-import * as s3n from 'aws-cdk-lib/aws-s3-notifications';
 import { Construct } from 'constructs';
 
 import { AppConfig, applyStandardTags } from './config';
@@ -8,7 +6,6 @@ import { AppConfig, applyStandardTags } from './config';
 // Backend constructs
 import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
-import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
 import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
 
 // Platform typed imports (explicit prop passing)
@@ -119,30 +116,16 @@ export class BackendStack extends cdk.Stack {
     // code), naturally fits the data-tier ownership.
 
     // ============================================================
-    // RAG Ingestion Lambda
+    // RAG Ingestion Lambda moved to PlatformStack in Phase 4 of the
+    // platform-as-bootstrap refactor. Lives there with a stable
+    // bootstrap container image; the real image is shipped via
+    // `aws lambda update-function-code --image-uri` from the
+    // backend workflow's `deploy-rag-ingestion-code` job.
+    //
+    // The S3 ObjectCreated event subscription on the documents
+    // bucket is wired in PlatformStack too, since both bucket and
+    // Lambda now live there (no more cross-stack notification
+    // dance).
     // ============================================================
-    const ragIngestion = new RagIngestionLambdaConstruct(this, 'RagIngestion', {
-      config,
-      documentsBucket: platform.ragDocumentsBucket,
-      assistantsTable: platform.ragAssistantsTable,
-      vectorBucketName: platform.ragVectorBucketName,
-      vectorIndexName: platform.ragVectorIndexName,
-    });
-
-    // S3 event notification must be wired from the bucket's owning
-    // stack (PlatformStack) to avoid a circular CDK dependency.
-    // We use an imported bucket reference within THIS stack to add
-    // the notification — CDK resolves it without a reverse cross-stack
-    // reference because the bucket is imported by name (not by L2 ref).
-    const ragDocsBucketImported = s3.Bucket.fromBucketName(
-      this,
-      'ImportedRagDocsBucket',
-      platform.ragDocumentsBucket.bucketName,
-    );
-    ragDocsBucketImported.addEventNotification(
-      s3.EventType.OBJECT_CREATED,
-      new s3n.LambdaDestination(ragIngestion.lambda),
-      { prefix: 'assistants/' },
-    );
   }
 }
