@@ -399,3 +399,386 @@ def test_cognito_users_strips_immutable_attributes():
     assert "given_name" in submitted_names
     assert call_kwargs["Username"] == "colin"
     assert call_kwargs["MessageAction"] == "SUPPRESS"
+
+
+# ===================================================================== #
+# Cross-pool sub remapping — the load-bearing piece of the cross-pool   #
+# migration. Cognito does not allow setting `sub` on user creation, so  #
+# every user gets a NEW sub when the pool is recreated. The app keys    #
+# all DynamoDB partitions and several S3 paths by <sub>. The restore    #
+# tool builds an old_sub → new_sub map during cognito user creation     #
+# and applies it in-flight while restoring DDB items and S3 objects.   #
+# ===================================================================== #
+def test_compile_sub_pattern_empty_returns_none():
+    assert restore.compile_sub_pattern({}) is None
+
+
+def test_compile_sub_pattern_compiles_alternation():
+    sub_map = {
+        "00000000-0000-0000-0000-000000000001": "11111111-1111-1111-1111-111111111111",
+        "00000000-0000-0000-0000-000000000002": "22222222-2222-2222-2222-222222222222",
+    }
+    pattern = restore.compile_sub_pattern(sub_map)
+    assert pattern is not None
+    # Both old subs should match.
+    assert pattern.search("USER#00000000-0000-0000-0000-000000000001") is not None
+    assert pattern.search("USER#00000000-0000-0000-0000-000000000002") is not None
+    # An unrelated UUID should not.
+    assert pattern.search("USER#99999999-9999-9999-9999-999999999999") is None
+
+
+def test_remap_subs_string_replacement():
+    sub_map = {
+        "old-sub-1": "new-sub-A",
+        "old-sub-2": "new-sub-B",
+    }
+    pattern = restore.compile_sub_pattern(sub_map)
+    assert restore.remap_subs("USER#old-sub-1", pattern, sub_map) == "USER#new-sub-A"
+    assert restore.remap_subs("plain string", pattern, sub_map) == "plain string"
+    # Multi-occurrence in one string.
+    assert (
+        restore.remap_subs("USER#old-sub-1/files/old-sub-1.pdf", pattern, sub_map)
+        == "USER#new-sub-A/files/new-sub-A.pdf"
+    )
+
+
+def test_remap_subs_recursive_dict_and_list():
+    sub_map = {"OLD": "NEW"}
+    pattern = restore.compile_sub_pattern(sub_map)
+    item = {
+        "PK": "USER#OLD",
+        "SK": "PROFILE",
+        "owner_user_id": "OLD",
+        "tags": ["OLD", "other", "USER#OLD"],
+        "metadata": {
+            "created_by": "USER#OLD",
+            "history": [{"actor": "OLD"}, {"actor": "someone-else"}],
+        },
+        "count": 42,             # int — must be returned unchanged
+        "active": True,          # bool — must be returned unchanged
+        "binary": b"\x00\x01",   # bytes — must be returned unchanged
+    }
+    result = restore.remap_subs(item, pattern, sub_map)
+    assert result["PK"] == "USER#NEW"
+    assert result["owner_user_id"] == "NEW"
+    assert result["tags"] == ["NEW", "other", "USER#NEW"]
+    assert result["metadata"]["created_by"] == "USER#NEW"
+    assert result["metadata"]["history"][0]["actor"] == "NEW"
+    assert result["metadata"]["history"][1]["actor"] == "someone-else"
+    assert result["count"] == 42
+    assert result["active"] is True
+    assert result["binary"] == b"\x00\x01"
+
+
+def test_remap_subs_with_none_pattern_short_circuits():
+    """When sub_map is empty (compile_sub_pattern returns None), the
+    helper returns its input untouched. This is the common case for
+    deployments with no Cognito users to migrate."""
+    item = {"PK": "USER#abc-def", "data": "any string"}
+    result = restore.remap_subs(item, None, {})
+    assert result is item or result == item
+
+
+def test_remap_subs_in_key_rewrites_s3_path():
+    sub_map = {"old-uuid": "new-uuid"}
+    pattern = restore.compile_sub_pattern(sub_map)
+    assert (
+        restore.remap_subs_in_key("users/old-uuid/file.pdf", pattern, sub_map)
+        == "users/new-uuid/file.pdf"
+    )
+    # Key with no sub passes through.
+    assert (
+        restore.remap_subs_in_key("public/img.png", pattern, sub_map)
+        == "public/img.png"
+    )
+
+
+# --------------------------------------------------------------------- #
+# Cognito creates user, captures new sub, builds the map.              #
+# --------------------------------------------------------------------- #
+def test_cognito_user_creation_captures_new_sub_and_links_identity():
+    """Backup contains a federated user with old sub and an `identities`
+    blob. Restore creates the user, captures the AdminCreateUser-assigned
+    new sub, and links the federated identity so future IdP logins
+    resolve to the same user."""
+    user_record = {
+        "Username": "AzureAD_entra-user-id",
+        "Attributes": [
+            {"Name": "sub", "Value": "OLD-SUB-UUID"},
+            {"Name": "email", "Value": "colin@example.com"},
+            {"Name": "email_verified", "Value": "true"},
+            {
+                "Name": "identities",
+                "Value": json.dumps([
+                    {
+                        "userId": "entra-user-id",
+                        "providerName": "AzureAD",
+                        "providerType": "OIDC",
+                        "primary": True,
+                        "dateCreated": 1700000000,
+                    }
+                ]),
+            },
+        ],
+    }
+    users_jsonl = json.dumps(user_record) + "\n"
+    users_gz = gzip.compress(users_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("users.jsonl.gz"):
+            return {"Body": io.BytesIO(users_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+    s3.put_object = MagicMock()  # audit artifact write
+
+    cognito = MagicMock()
+    cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "AzureAD_entra-user-id",
+            "Attributes": [
+                {"Name": "sub", "Value": "NEW-SUB-UUID"},
+                {"Name": "email", "Value": "colin@example.com"},
+            ],
+        }
+    }
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    # Sub mapping captured
+    assert ctx.sub_map == {"OLD-SUB-UUID": "NEW-SUB-UUID"}
+    # Pattern compiled and ready for downstream passes
+    assert ctx.sub_map_pattern is not None
+    assert ctx.sub_map_pattern.search("USER#OLD-SUB-UUID")
+
+    # AdminCreateUser was called with sanitised attrs (no sub, no identities)
+    create_kwargs = cognito.admin_create_user.call_args.kwargs
+    submitted_names = {a["Name"] for a in create_kwargs["UserAttributes"]}
+    assert "sub" not in submitted_names
+    assert "identities" not in submitted_names
+    assert "email" in submitted_names
+
+    # AdminLinkProviderForUser was called for the AzureAD identity
+    cognito.admin_link_provider_for_user.assert_called_once()
+    link_kwargs = cognito.admin_link_provider_for_user.call_args.kwargs
+    assert link_kwargs["DestinationUser"]["ProviderName"] == "Cognito"
+    assert link_kwargs["DestinationUser"]["ProviderAttributeValue"] == "AzureAD_entra-user-id"
+    assert link_kwargs["SourceUser"]["ProviderName"] == "AzureAD"
+    assert link_kwargs["SourceUser"]["ProviderAttributeValue"] == "entra-user-id"
+
+    # Result reports the remapping
+    user_result = next(r for r in results if r.get("component") == "cognito-users")
+    assert user_result["status"] == "ok"
+    assert user_result["count"] == 1
+    assert user_result["subs_remapped"] == 1
+    assert user_result["identities_linked"] == 1
+
+    # Audit artifact persisted to S3
+    audit_calls = [c for c in s3.put_object.call_args_list
+                   if "sub-mapping" in c.kwargs.get("Key", "")]
+    assert len(audit_calls) == 1
+    audit_body = json.loads(audit_calls[0].kwargs["Body"])
+    assert audit_body["old_to_new"] == {"OLD-SUB-UUID": "NEW-SUB-UUID"}
+
+
+def test_cognito_user_idempotent_rerun_picks_up_existing_sub():
+    """Re-running the restore against an already-restored pool should
+    succeed: AdminCreateUser raises UsernameExistsException, the code
+    falls back to AdminGetUser and recovers the existing sub so the
+    sub_map is built correctly even on re-runs."""
+    user_record = {
+        "Username": "colin",
+        "Attributes": [
+            {"Name": "sub", "Value": "OLD-SUB"},
+            {"Name": "email", "Value": "colin@example.com"},
+        ],
+    }
+    users_jsonl = json.dumps(user_record) + "\n"
+    users_gz = gzip.compress(users_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("users.jsonl.gz"):
+            return {"Body": io.BytesIO(users_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+    s3.put_object = MagicMock()
+
+    cognito = MagicMock()
+    from botocore.exceptions import ClientError as _CE
+    cognito.admin_create_user.side_effect = _CE(
+        {"Error": {"Code": "UsernameExistsException"}}, "AdminCreateUser"
+    )
+    cognito.admin_get_user.return_value = {
+        "Username": "colin",
+        "UserAttributes": [
+            {"Name": "sub", "Value": "EXISTING-NEW-SUB"},
+            {"Name": "email", "Value": "colin@example.com"},
+        ],
+    }
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        restore.restore_cognito(ctx)
+
+    assert ctx.sub_map == {"OLD-SUB": "EXISTING-NEW-SUB"}
+
+
+# --------------------------------------------------------------------- #
+# DDB restore applies the sub_map.                                     #
+# --------------------------------------------------------------------- #
+def test_dynamodb_restore_remaps_subs_in_items():
+    """When ctx.sub_map is populated, restore_dynamodb_table rewrites
+    every old sub → new sub in the item's string values BEFORE writing
+    to DynamoDB (the load-bearing protection against orphaned data)."""
+    component = {
+        "logical_name": "users",
+        "status": "ok",
+        "detail": {
+            "export_manifest": "root/dynamodb/users/AWSDynamoDB/x/manifest-summary.json",
+        },
+    }
+
+    summary_payload = json.dumps({"manifestFilesS3Key": "root/dynamodb/users/AWSDynamoDB/x/manifest-files.json"})
+    files_payload = json.dumps({"dataFileS3Key": "root/dynamodb/users/AWSDynamoDB/x/data.json.gz"}) + "\n"
+
+    item = {
+        "Item": {
+            "PK": {"S": "USER#OLD-SUB"},
+            "SK": {"S": "PROFILE"},
+            "user_id": {"S": "OLD-SUB"},
+            "email": {"S": "colin@example.com"},
+            "audit_trail": {"L": [{"S": "actor=OLD-SUB"}, {"S": "ts=now"}]},
+        }
+    }
+    data_payload = gzip.compress((json.dumps(item) + "\n").encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("manifest-summary.json"):
+            return {"Body": io.BytesIO(summary_payload.encode())}
+        if Key.endswith("manifest-files.json"):
+            return {"Body": io.BytesIO(files_payload.encode())}
+        if Key.endswith("data.json.gz"):
+            return {"Body": io.BytesIO(data_payload)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    written_items: list[dict] = []
+
+    class FakeBatch:
+        def __enter__(self_inner): return self_inner
+        def __exit__(self_inner, *a): return False
+        def put_item(self_inner, Item):  # noqa: N803
+            written_items.append(Item)
+
+    fake_table = MagicMock()
+    fake_table.batch_writer.return_value = FakeBatch()
+
+    fake_dynamodb = MagicMock()
+    fake_dynamodb.Table.return_value = fake_table
+
+    def client_factory(name, *_a, **_kw):
+        return s3
+    def resource_factory(name, *_a, **_kw):
+        return fake_dynamodb
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+    ctx.session.resource.side_effect = resource_factory
+
+    # Populate sub_map directly (in real restores, restore_cognito
+    # would have done this before this function runs).
+    ctx.sub_map = {"OLD-SUB": "NEW-SUB"}
+    ctx.sub_map_pattern = restore.compile_sub_pattern(ctx.sub_map)
+
+    with patch.object(restore, "get_ssm_param", return_value="ai-sbmt-api-users"):
+        result = restore.restore_dynamodb_table(ctx, "users", component)
+
+    assert result["status"] == "ok"
+    assert result["items_written"] == 1
+    assert result["items_remapped"] == 1
+
+    [written] = written_items
+    assert written["PK"] == "USER#NEW-SUB"
+    assert written["user_id"] == "NEW-SUB"
+    assert written["email"] == "colin@example.com"  # untouched
+    assert written["audit_trail"][0] == "actor=NEW-SUB"  # nested rewrite
+    assert written["audit_trail"][1] == "ts=now"
+
+
+# --------------------------------------------------------------------- #
+# S3 restore applies the sub_map to keys.                              #
+# --------------------------------------------------------------------- #
+def test_s3_restore_remaps_subs_in_keys():
+    """A user-file-uploads bucket with keys like
+    `users/<old-sub>/<file-id>.pdf` is copied to the target with the
+    sub portion of the key rewritten to the new sub."""
+    component = {
+        "logical_name": "user-file-uploads",
+        "status": "ok",
+        "detail": {},  # source_prefix falls back to f"s3/{logical_name}/"
+    }
+
+    s3 = MagicMock()
+
+    # list_objects_v2 paginator returns one page with two objects:
+    # one whose key contains the old sub, one whose key doesn't.
+    def get_paginator(_op_name):
+        class P:
+            def paginate(self, **kwargs):
+                return iter([
+                    {
+                        "Contents": [
+                            {"Key": "root/s3/user-file-uploads/users/OLD-SUB/file-1.pdf"},
+                            {"Key": "root/s3/user-file-uploads/public/banner.png"},
+                        ]
+                    }
+                ])
+        return P()
+    s3.get_paginator.side_effect = get_paginator
+    s3.copy_object = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+    ctx.sub_map = {"OLD-SUB": "NEW-SUB"}
+    ctx.sub_map_pattern = restore.compile_sub_pattern(ctx.sub_map)
+
+    with patch.object(restore, "get_ssm_param", return_value="ai-sbmt-api-user-file-uploads"):
+        result = restore.restore_s3_bucket(ctx, "user-file-uploads", component)
+
+    assert result["status"] == "ok"
+    assert result["objects_copied"] == 2
+    assert result["keys_remapped"] == 1
+
+    # Inspect the copy_object calls
+    target_keys = sorted(c.kwargs["Key"] for c in s3.copy_object.call_args_list)
+    assert target_keys == ["public/banner.png", "users/NEW-SUB/file-1.pdf"]
+    # Source keys preserved verbatim (we copy from the OLD-SUB key
+    # because that's where the data lives in the backup).
+    source_keys = sorted(c.kwargs["CopySource"]["Key"] for c in s3.copy_object.call_args_list)
+    assert source_keys == [
+        "root/s3/user-file-uploads/public/banner.png",
+        "root/s3/user-file-uploads/users/OLD-SUB/file-1.pdf",
+    ]

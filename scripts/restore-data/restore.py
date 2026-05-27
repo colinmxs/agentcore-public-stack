@@ -36,6 +36,7 @@ import io
 import json
 import logging
 import os
+import re
 import subprocess
 import sys
 import time
@@ -111,6 +112,26 @@ class RestoreContext:
     dry_run: bool = False
     skip_cognito_users: bool = False
     results: list[dict[str, Any]] = field(default_factory=list)
+    # ----- Cognito sub remapping -----
+    # AWS Cognito does NOT permit setting `sub` on user creation —
+    # it is auto-generated and immutable. When a user pool is
+    # destroyed and re-created (which happens on every full
+    # teardown + redeploy), every user's sub changes. The app keys
+    # all DynamoDB rows by USER#<sub> and embeds <sub> inside other
+    # string attributes (owner refs, audit trails, S3 keys, etc.),
+    # so a naive restore that just copies the old data would orphan
+    # every user's history.
+    #
+    # `sub_map` is built during restore_cognito, populated as each
+    # user is recreated and we capture the new sub from the
+    # AdminCreateUser response. Subsequent DynamoDB and S3 restore
+    # passes look up every string attribute / key against this map
+    # and rewrite any matching old-sub UUIDs to their new
+    # equivalents before persisting. The compiled regex is cached
+    # alongside the map for O(1) per-string scans regardless of
+    # user count.
+    sub_map: dict[str, str] = field(default_factory=dict)
+    sub_map_pattern: re.Pattern[str] | None = None
 
 
 # --------------------------------------------------------------------------- #
@@ -124,6 +145,59 @@ def get_ssm_param(session: boto3.Session, prefix: str, path: str) -> str | None:
         if exc.response.get("Error", {}).get("Code") == "ParameterNotFound":
             return None
         raise
+
+
+# --------------------------------------------------------------------------- #
+# Cognito sub remapping                                                        #
+#                                                                              #
+# When a Cognito user pool is recreated, every user's `sub` UUID changes.      #
+# The app keys all per-user DynamoDB partitions and several S3 prefixes by    #
+# `<sub>`, so we have to rewrite every string occurrence of an old sub to     #
+# its new sub between read (from the backup) and write (to the new            #
+# infrastructure). The mapping is built during restore_cognito as users are   #
+# recreated, then applied generically here.                                   #
+# --------------------------------------------------------------------------- #
+def compile_sub_pattern(sub_map: dict[str, str]) -> re.Pattern[str] | None:
+    """Compile a single regex matching any old-sub UUID in `sub_map`.
+
+    Returns None if the map is empty (caller short-circuits remapping).
+    Subs are 36-char Cognito UUIDs (alpha + digits + hyphens) that are
+    extremely unlikely to collide with anything else in user data, so
+    plain alternation is safe.
+    """
+    if not sub_map:
+        return None
+    return re.compile("|".join(re.escape(s) for s in sub_map.keys()))
+
+
+def remap_subs(value: Any, pattern: re.Pattern[str] | None, sub_map: dict[str, str]) -> Any:
+    """Recursively replace every occurrence of any old sub in a Python value.
+
+    Handles the four DynamoDB-deserialised Python shapes:
+      - str         → re.sub against the compiled pattern
+      - dict        → recurse on each value (keys are never subs in this
+                      app — partition/sort keys are always 'PK'/'SK', etc.)
+      - list / set  → recurse on each element
+      - everything else (bytes, int, Decimal, bool, None) is returned as-is
+    """
+    if pattern is None:
+        return value
+    if isinstance(value, str):
+        return pattern.sub(lambda m: sub_map[m.group(0)], value)
+    if isinstance(value, dict):
+        return {k: remap_subs(v, pattern, sub_map) for k, v in value.items()}
+    if isinstance(value, list):
+        return [remap_subs(v, pattern, sub_map) for v in value]
+    if isinstance(value, set):
+        return {remap_subs(v, pattern, sub_map) for v in value}
+    return value
+
+
+def remap_subs_in_key(key: str, pattern: re.Pattern[str] | None, sub_map: dict[str, str]) -> str:
+    """Remap any old-sub UUID inside an S3 key path component."""
+    if pattern is None:
+        return key
+    return pattern.sub(lambda m: sub_map[m.group(0)], key)
 
 
 # --------------------------------------------------------------------------- #
@@ -188,6 +262,7 @@ def restore_dynamodb_table(ctx: RestoreContext, logical_name: str, component: di
             data_files.append(entry["dataFileS3Key"])
 
     items_written = 0
+    items_remapped = 0
     for data_key in data_files:
         obj = s3.get_object(Bucket=ctx.backup_bucket, Key=data_key)
         body = obj["Body"].read()
@@ -205,11 +280,28 @@ def restore_dynamodb_table(ctx: RestoreContext, logical_name: str, component: di
                 item = record.get("Item", record)
                 # Convert DynamoDB-JSON to Python dict
                 deserialized = _deserialize_dynamodb_json(item)
+                # Apply Cognito sub remapping. Even if no users were
+                # recreated (empty sub_map), `remap_subs` short-circuits
+                # in O(1) via the None pattern check.
+                if ctx.sub_map_pattern is not None:
+                    remapped = remap_subs(deserialized, ctx.sub_map_pattern, ctx.sub_map)
+                    if remapped != deserialized:
+                        items_remapped += 1
+                    deserialized = remapped
                 batch.put_item(Item=deserialized)
                 items_written += 1
 
-    LOG.info(f"[DynamoDB] {logical_name}: wrote {items_written} items to {target_table}")
-    return {"logical": logical_name, "status": "ok", "items_written": items_written, "target_table": target_table}
+    LOG.info(
+        f"[DynamoDB] {logical_name}: wrote {items_written} items to {target_table}"
+        + (f" ({items_remapped} sub-remapped)" if items_remapped else "")
+    )
+    return {
+        "logical": logical_name,
+        "status": "ok",
+        "items_written": items_written,
+        "items_remapped": items_remapped,
+        "target_table": target_table,
+    }
 
 
 def _deserialize_dynamodb_json(item: dict) -> dict:
@@ -222,7 +314,16 @@ def _deserialize_dynamodb_json(item: dict) -> dict:
 # S3 restore                                                                   #
 # --------------------------------------------------------------------------- #
 def restore_s3_bucket(ctx: RestoreContext, logical_name: str, component: dict) -> dict:
-    """Restore an S3 bucket via aws s3 sync from the backup."""
+    """Restore an S3 bucket from backup, applying Cognito sub remapping to keys.
+
+    The previous implementation shelled out to `aws s3 sync` — fast for
+    bulk copies but unable to transform keys in-flight. Since the new
+    Cognito sub for each user differs from the backed-up one, any key
+    embedding a sub (e.g. `users/<sub>/<file-id>` in user-file-uploads)
+    has to be rewritten on the way through. We list source objects and
+    copy them one by one, applying `remap_subs_in_key` between source
+    and target.
+    """
     # Resolve target bucket name
     target_bucket = get_ssm_param(ctx.session, ctx.target_prefix, BUCKET_SSM_MAP.get(logical_name, ""))
     if not target_bucket:
@@ -235,23 +336,75 @@ def restore_s3_bucket(ctx: RestoreContext, logical_name: str, component: dict) -
     if root_prefix and not root_prefix.endswith("/"):
         root_prefix = root_prefix + "/"
     source_prefix = component.get("detail", {}).get("s3_prefix", f"s3/{logical_name}/")
-    source_uri = f"s3://{ctx.backup_bucket}/{root_prefix}{source_prefix}"
+    if not source_prefix.endswith("/"):
+        source_prefix = source_prefix + "/"
+    source_full_prefix = f"{root_prefix}{source_prefix}"
+    source_uri = f"s3://{ctx.backup_bucket}/{source_full_prefix}"
     target_uri = f"s3://{target_bucket}/"
 
-    LOG.info(f"[S3] Syncing {logical_name}: {source_uri} → {target_uri}")
+    LOG.info(f"[S3] Restoring {logical_name}: {source_uri} → {target_uri}")
     if ctx.dry_run:
         return {"logical": logical_name, "status": "dry-run", "source": source_uri, "target": target_uri}
 
-    result = subprocess.run(
-        ["aws", "s3", "sync", source_uri, target_uri, "--region", ctx.region],
-        capture_output=True, text=True,
-    )
-    if result.returncode != 0:
-        LOG.error(f"[S3] {logical_name} sync failed: {result.stderr}")
-        return {"logical": logical_name, "status": "failed", "error": result.stderr[:500]}
+    s3 = ctx.session.client("s3", config=BOTO_CONFIG)
+    paginator = s3.get_paginator("list_objects_v2")
 
-    LOG.info(f"[S3] {logical_name}: sync complete")
-    return {"logical": logical_name, "status": "ok", "target_bucket": target_bucket}
+    objects_copied = 0
+    keys_remapped = 0
+
+    def _copy_one(source_key: str) -> tuple[bool, bool]:
+        """Copy one object, returning (copied, remapped)."""
+        if not source_key.startswith(source_full_prefix):
+            return (False, False)
+        relative_key = source_key[len(source_full_prefix):]
+        if not relative_key:
+            return (False, False)  # skip the prefix itself if it shows up
+        target_key = remap_subs_in_key(relative_key, ctx.sub_map_pattern, ctx.sub_map)
+        s3.copy_object(
+            Bucket=target_bucket,
+            Key=target_key,
+            CopySource={"Bucket": ctx.backup_bucket, "Key": source_key},
+            MetadataDirective="COPY",
+        )
+        return (True, target_key != relative_key)
+
+    # Parallelise object copies. ThreadPoolExecutor handles the
+    # connection pooling for boto3 s3.copy_object cleanly. 16 workers
+    # is a safe default — boto3 default connection pool is 10 per
+    # session; we override BOTO_CONFIG.max_pool_connections=20 below.
+    keys_to_copy: list[str] = []
+    for page in paginator.paginate(Bucket=ctx.backup_bucket, Prefix=source_full_prefix):
+        for obj in page.get("Contents", []) or []:
+            keys_to_copy.append(obj["Key"])
+
+    if not keys_to_copy:
+        LOG.info(f"[S3] {logical_name}: source prefix is empty, nothing to copy")
+        return {"logical": logical_name, "status": "ok", "objects_copied": 0, "target_bucket": target_bucket}
+
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [pool.submit(_copy_one, k) for k in keys_to_copy]
+        for f in as_completed(futures):
+            try:
+                copied, remapped = f.result()
+            except ClientError as e:
+                LOG.warning(f"[S3] {logical_name}: copy failed for one object: {e}")
+                continue
+            if copied:
+                objects_copied += 1
+            if remapped:
+                keys_remapped += 1
+
+    LOG.info(
+        f"[S3] {logical_name}: copied {objects_copied} objects to {target_bucket}"
+        + (f" ({keys_remapped} sub-remapped keys)" if keys_remapped else "")
+    )
+    return {
+        "logical": logical_name,
+        "status": "ok",
+        "objects_copied": objects_copied,
+        "keys_remapped": keys_remapped,
+        "target_bucket": target_bucket,
+    }
 
 
 # --------------------------------------------------------------------------- #
@@ -332,58 +485,198 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
         results.append({"component": "cognito-clients", "status": "skipped"})
 
     # --- Users ---
+    # This is the load-bearing section for the cross-pool migration.
+    # Cognito does NOT permit setting `sub` on user creation (the
+    # field is auto-generated and immutable), so when a user pool is
+    # destroyed and recreated each user gets a fresh sub. Every
+    # USER#<sub> partition in DynamoDB and every <sub>-keyed S3 path
+    # would otherwise be orphaned. To keep the data consistent we:
+    #
+    #   1. Read each backed-up user, extract their OLD sub from the
+    #      attributes captured by list-users.
+    #   2. AdminCreateUser with the same Username and the sanitised
+    #      attribute set (immutable Cognito-managed names dropped).
+    #   3. Pull the NEW sub from the AdminCreateUser response (or
+    #      AdminGetUser if the user already exists, for re-runs).
+    #   4. For any federated identity recorded in the backup
+    #      (`identities` JSON), call AdminLinkProviderForUser so the
+    #      next IdP login resolves to this user (otherwise Cognito
+    #      would create a SECOND user with yet another sub).
+    #   5. Record (old_sub → new_sub) in ctx.sub_map. Subsequent DDB
+    #      and S3 restore passes apply this mapping to every string
+    #      they write.
     if ctx.skip_cognito_users:
         results.append({"component": "cognito-users", "status": "skipped", "reason": "--skip-cognito-users"})
-        return results
+        # Don't early-return — groups/memberships still need to run
+        # below in case the operator wants those without users.
+        # Compile an empty pattern (None) so downstream remap is a no-op.
+        ctx.sub_map_pattern = compile_sub_pattern(ctx.sub_map)
+    else:
+        try:
+            users_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=f"{root}cognito/users.jsonl.gz")
+            body = gzip.decompress(users_obj["Body"].read()).decode("utf-8")
+            user_count = 0
+            users_remapped = 0
+            users_linked = 0
+            users_failed: list[str] = []
+            for line in body.strip().split("\n"):
+                if not line.strip():
+                    continue
+                user = json.loads(line)
+                username = user.get("Username")
+                if not username:
+                    continue
 
-    try:
-        users_obj = s3.get_object(Bucket=ctx.backup_bucket, Key=f"{root}cognito/users.jsonl.gz")
-        body = gzip.decompress(users_obj["Body"].read()).decode("utf-8")
-        user_count = 0
-        for line in body.strip().split("\n"):
-            if not line.strip():
-                continue
-            user = json.loads(line)
-            username = user.get("Username")
-            if not username:
-                continue
-            if ctx.dry_run:
-                user_count += 1
-                continue
-            # Create user with suppressed welcome message.
-            # AdminCreateUser rejects Cognito-managed attributes:
-            #   - sub: auto-generated UUID, set by Cognito at create
-            #   - cognito:user_status: state machine field
-            #   - cognito:mfa_enabled: derived from MFA preferences
-            #   - identities: managed by IdP linking, not by attribute
-            # Backup captures these from list-users; we drop them on
-            # the restore side so AdminCreateUser doesn't fail with
-            # "Cannot modify the non-mutable attribute sub".
-            COGNITO_IMMUTABLE_ATTRS = {
-                "sub",
-                "cognito:user_status",
-                "cognito:mfa_enabled",
-                "identities",
-            }
-            attrs = [{"Name": a["Name"], "Value": a["Value"]}
-                     for a in user.get("Attributes", [])
-                     if a.get("Value") and a.get("Name") not in COGNITO_IMMUTABLE_ATTRS]
-            try:
-                cognito.admin_create_user(
-                    UserPoolId=target_pool_id,
-                    Username=username,
-                    UserAttributes=attrs,
-                    MessageAction="SUPPRESS",
-                )
-                user_count += 1
-            except ClientError as e:
-                if e.response["Error"]["Code"] == "UsernameExistsException":
-                    user_count += 1  # already exists, idempotent
+                # Pull old sub + identities BEFORE we strip them.
+                source_attrs = user.get("Attributes", []) or []
+                attr_by_name = {a["Name"]: a["Value"] for a in source_attrs if a.get("Value")}
+                old_sub = attr_by_name.get("sub")
+                identities_blob = attr_by_name.get("identities", "")
+                identities: list[dict[str, Any]] = []
+                if identities_blob:
+                    try:
+                        identities = json.loads(identities_blob)
+                    except (TypeError, ValueError):
+                        identities = []
+
+                if ctx.dry_run:
+                    user_count += 1
+                    continue
+
+                # Sanitised attribute set — Cognito-managed names
+                # rejected by AdminCreateUser get dropped here.
+                COGNITO_IMMUTABLE_ATTRS = {
+                    "sub",
+                    "cognito:user_status",
+                    "cognito:mfa_enabled",
+                    "identities",
+                }
+                attrs = [
+                    {"Name": a["Name"], "Value": a["Value"]}
+                    for a in source_attrs
+                    if a.get("Value") and a.get("Name") not in COGNITO_IMMUTABLE_ATTRS
+                ]
+
+                new_sub: str | None = None
+                try:
+                    create_resp = cognito.admin_create_user(
+                        UserPoolId=target_pool_id,
+                        Username=username,
+                        UserAttributes=attrs,
+                        MessageAction="SUPPRESS",
+                    )
+                    user_count += 1
+                    new_sub = next(
+                        (a["Value"] for a in create_resp["User"]["Attributes"] if a["Name"] == "sub"),
+                        None,
+                    )
+                except ClientError as e:
+                    code = e.response["Error"]["Code"]
+                    if code == "UsernameExistsException":
+                        # Idempotent re-run: pick up the existing sub.
+                        try:
+                            get_resp = cognito.admin_get_user(
+                                UserPoolId=target_pool_id, Username=username
+                            )
+                            new_sub = next(
+                                (a["Value"] for a in get_resp["UserAttributes"] if a["Name"] == "sub"),
+                                None,
+                            )
+                            user_count += 1
+                        except ClientError as ge:
+                            LOG.warning(f"[Cognito] Failed to re-fetch existing user {username}: {ge}")
+                            users_failed.append(username)
+                            continue
+                    else:
+                        LOG.warning(f"[Cognito] Failed to create user {username}: {e}")
+                        users_failed.append(username)
+                        continue
+
+                # Record the sub mapping. If old_sub or new_sub
+                # is missing, we can't remap downstream data for
+                # this user — log and continue, but flag it.
+                if old_sub and new_sub:
+                    ctx.sub_map[old_sub] = new_sub
+                    users_remapped += 1
                 else:
-                    LOG.warning(f"[Cognito] Failed to create user {username}: {e}")
-        results.append({"component": "cognito-users", "status": "ok", "count": user_count})
-    except ClientError:
-        results.append({"component": "cognito-users", "status": "skipped", "reason": "no users backup file"})
+                    LOG.warning(
+                        f"[Cognito] {username}: missing sub mapping "
+                        f"(old={old_sub!r}, new={new_sub!r}); user data will not be remapped"
+                    )
+
+                # Link any federated identities so the next IdP login
+                # resolves to this user (and not a duplicate auto-
+                # provisioned one).
+                for identity in identities:
+                    provider_name = identity.get("providerName")
+                    idp_user_id = identity.get("userId")
+                    if not provider_name or not idp_user_id:
+                        continue
+                    try:
+                        cognito.admin_link_provider_for_user(
+                            UserPoolId=target_pool_id,
+                            DestinationUser={
+                                "ProviderName": "Cognito",
+                                "ProviderAttributeValue": username,
+                            },
+                            SourceUser={
+                                "ProviderName": provider_name,
+                                "ProviderAttributeName": "Cognito_Subject",
+                                "ProviderAttributeValue": idp_user_id,
+                            },
+                        )
+                        users_linked += 1
+                    except ClientError as le:
+                        # Already-linked is fine for re-runs.
+                        if le.response["Error"]["Code"] in (
+                            "InvalidParameterException",  # AWS uses this for "already linked"
+                            "DuplicateProviderException",
+                        ) and "already linked" in str(le).lower():
+                            continue
+                        LOG.warning(
+                            f"[Cognito] Failed to link {provider_name} identity "
+                            f"({idp_user_id}) to {username}: {le}"
+                        )
+
+            # Compile the regex once after the full mapping is built.
+            # Subsequent DDB/S3 passes consult ctx.sub_map_pattern.
+            ctx.sub_map_pattern = compile_sub_pattern(ctx.sub_map)
+
+            # Persist the mapping as an audit artifact in the source
+            # backup bucket. Operators can use this to verify the
+            # remap and to debug any orphaned data after the fact.
+            try:
+                mapping_audit = {
+                    "target_prefix": ctx.target_prefix,
+                    "user_pool_id": target_pool_id,
+                    "old_to_new": ctx.sub_map,
+                    "users_failed": users_failed,
+                    "identities_linked": users_linked,
+                }
+                s3.put_object(
+                    Bucket=ctx.backup_bucket,
+                    Key=f"{root}cognito/sub-mapping-{ctx.target_prefix}.json",
+                    Body=json.dumps(mapping_audit, indent=2).encode("utf-8"),
+                    ContentType="application/json",
+                )
+            except ClientError as ae:
+                LOG.warning(f"[Cognito] Failed to persist sub-mapping audit: {ae}")
+
+            user_result = {
+                "component": "cognito-users",
+                "status": "ok",
+                "count": user_count,
+                "subs_remapped": users_remapped,
+                "identities_linked": users_linked,
+            }
+            if users_failed:
+                user_result["failed"] = users_failed
+            results.append(user_result)
+        except ClientError:
+            results.append({"component": "cognito-users", "status": "skipped", "reason": "no users backup file"})
+            # No users → empty mapping, but still set a None pattern
+            # so downstream remap calls short-circuit.
+            ctx.sub_map_pattern = compile_sub_pattern(ctx.sub_map)
 
     # --- Groups + Memberships ---
     try:
@@ -445,7 +738,15 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
 # Main orchestration                                                           #
 # --------------------------------------------------------------------------- #
 def run_restore(ctx: RestoreContext) -> dict:
-    """Execute the full restore pipeline."""
+    """Execute the full restore pipeline.
+
+    Order matters: Cognito MUST run before DynamoDB and S3 so the
+    `ctx.sub_map` (old_sub → new_sub for every recreated user) is
+    populated before any data is rewritten. The downstream DDB and
+    S3 passes consult `ctx.sub_map_pattern` for inline string
+    substitution; if Cognito ran AFTER, every user partition would
+    land with a dead old-pool sub.
+    """
     s3 = ctx.session.client("s3", config=BOTO_CONFIG)
 
     # Load manifest
@@ -455,6 +756,19 @@ def run_restore(ctx: RestoreContext) -> dict:
 
     components = ctx.manifest.get("components", {})
     root_prefix = ctx.manifest.get("root_prefix", "")
+
+    # --- Cognito (first — populates ctx.sub_map) ---
+    cognito_components = components.get("cognito", [])
+    if cognito_components:
+        LOG.info("Restoring Cognito (must run before DDB + S3 to build sub mapping)...")
+        cognito_results = restore_cognito(ctx)
+        ctx.results.extend(cognito_results)
+    else:
+        LOG.info("No Cognito backup found, skipping")
+        # Even with no Cognito, ensure pattern is initialised so
+        # downstream passes don't error on a missing attribute.
+        ctx.sub_map_pattern = compile_sub_pattern(ctx.sub_map)
+    LOG.info(f"Cognito sub_map size: {len(ctx.sub_map)} (will be applied to DDB items + S3 keys)")
 
     # --- DynamoDB ---
     ddb_components = components.get("dynamodb", [])
@@ -475,15 +789,6 @@ def run_restore(ctx: RestoreContext) -> dict:
             continue
         result = restore_s3_bucket(ctx, comp["logical_name"], comp)
         ctx.results.append(result)
-
-    # --- Cognito ---
-    cognito_components = components.get("cognito", [])
-    if cognito_components:
-        LOG.info("Restoring Cognito...")
-        cognito_results = restore_cognito(ctx)
-        ctx.results.extend(cognito_results)
-    else:
-        LOG.info("No Cognito backup found, skipping")
 
     # --- Summary ---
     ok = sum(1 for r in ctx.results if r.get("status") == "ok")
