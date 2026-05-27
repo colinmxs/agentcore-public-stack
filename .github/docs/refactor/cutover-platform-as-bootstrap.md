@@ -150,13 +150,13 @@ Forward-fix is almost always better. The bootstrap pattern means most code-relat
 
 ---
 
-## 6. Phases 5 + 6 (post-cutover, future work)
+## 6. Phases 5 + 6 (now landed)
 
-After this cutover lands, two phases of the platform-as-bootstrap refactor remain:
+The original cutover doc described Phases 5 + 6 as future work. Both have since landed:
 
-* **Phase 5**: AgentCore Runtime moves to a bootstrap-container pattern (CDK ships a stub container that satisfies the AgentCore Runtime HTTP contract; the workflow ships the real container via `aws bedrock-agentcore-control update-agent-runtime`). Until this lands, inference-api code changes still trigger a CFN deploy of the unified stack.
-* **Phase 6**: App API ECS Fargate moves to the same pattern (CDK ships a stub task definition; the workflow registers new task def revisions and calls `update-service`).
+* **Phase 5 (AgentCore Runtime)**: CDK now ships a stable bootstrap container (`infrastructure/bootstrap-assets/inference-api/`, stdlib HTTP server on port 8080 with `/ping` health check). The backend workflow's `deploy-inference-api-code` job calls `aws bedrock-agentcore-control update-agent-runtime` with the project's freshly-built ECR image URI. Polls for the runtime to be in `READY` state before and after.
+* **Phase 6 (App API ECS Fargate)**: CDK ships a bootstrap task def with a stable container (`infrastructure/bootstrap-assets/app-api/`, stdlib HTTP server on port 8000 with `/health`). The workflow's `deploy-app-api-code` job does `aws ecs register-task-definition` (mutates the live task def's `containerDefinitions[0].image` field, registers a new revision of the same family), then `aws ecs update-service`, then `aws ecs wait services-stable`.
 
-After both land, the `deploy` job in `backend.yml` becomes empty (no `cdk deploy` step) and `platform.yml` is the single CFN entry point. Until then, `backend.yml`'s `deploy` job redirects to `scripts/platform/deploy.sh` so a code change to either service still triggers the necessary CFN update.
+After Phase 6, the transitional `deploy` job in `backend.yml` (which was running `scripts/platform/deploy.sh` so app-api/inference-api code changes still triggered a CFN deploy) was deleted. Backend code changes now flow exclusively through the four `deploy-*-code` jobs — no `cdk deploy` step in `backend.yml` at all. `platform.yml` is the single CFN entry point.
 
-These phases require their own bootstrap container designs and AWS API integration; they are scoped as separate engineering tasks rather than included in the initial cutover.
+The bootstrap window is brief but real. During the first deploy of the unified stack, the App API and Inference API serve requests from their bootstrap containers (which return graceful 503 responses) until the workflow's code-deploy step ships the real images. Same-day operational mitigation is the same as for artifact-render and rag-ingestion: run Step 5 of this cutover promptly after Step 4 finishes.

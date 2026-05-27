@@ -19,7 +19,6 @@ export interface AppApiSsmParams {
   vpcCidr: string;
   privateSubnetIds: string;
   availabilityZones: string;
-  imageTag: string;
   albSecurityGroupId: string;
   albArn: string;
   albListenerArn: string;
@@ -122,7 +121,6 @@ export function resolveAppApiSsmParams(
     vpcCidr: p('network/vpc-cidr'),
     privateSubnetIds: p('network/private-subnet-ids'),
     availabilityZones: p('network/availability-zones'),
-    imageTag: p('app-api/image-tag'),
     albSecurityGroupId: p('network/alb-security-group-id'),
     albArn: p('network/alb-arn'),
     albListenerArn: p('network/alb-listener-arn'),

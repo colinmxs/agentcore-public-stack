@@ -6,12 +6,8 @@ on:
     branches: [develop, main]
     paths:
       - 'backend/**'
-      - 'infrastructure/lib/backend-stack.ts'
-      - 'infrastructure/lib/constructs/**'
-      - 'infrastructure/lib/config.ts'
-      - 'infrastructure/bin/infrastructure.ts'
-      - 'scripts/backend/**'
       - 'scripts/build/**'
+      - '.github/workflows/backend.yml'
 
 permissions:
   contents: read
@@ -310,22 +306,15 @@ jobs:
         id: deploy
         run: bash scripts/build/deploy-runtime-image-one.sh inference-api
 
-  deploy:
-    name: Deploy unified stack (app-api code via CFN until Phase 6 lands)
-    # The unified PlatformStack now owns every resource (Phase 7 of
-    # the platform-as-bootstrap refactor collapsed the old
-    # BackendStack into Platform). Until Phases 5+6 land their
-    # bootstrap-container patterns for the AgentCore Runtime and
-    # App API ECS task def, those services' container images flow
-    # through CDK at synth time — meaning a code change to
-    # app-api or inference-api still requires a full CFN deploy.
-    # That deploy lives here so the backend workflow remains the
-    # entry point for backend-affecting commits.
-    #
-    # Once Phases 5+6 are done, this job goes away — backend.yml
-    # becomes purely build-images + code-deploys (no CFN), and
-    # platform.yml is the single CFN entry point.
-    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, deploy-inference-api-code, test-infra, test-backend]
+  deploy-app-api-code:
+    name: Deploy app-api image to ECS Fargate service
+    # Phase 6 of the platform-as-bootstrap refactor: the App API
+    # task definition is built in CDK with a stable bootstrap
+    # container image; this step ships the real image via
+    # `aws ecs register-task-definition` (registers a new revision
+    # of the same family) followed by `aws ecs update-service` and
+    # `aws ecs wait services-stable`.
+    needs: [build-app-api, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
 
@@ -337,19 +326,14 @@ jobs:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
-      CDK_CORS_ORIGINS: ${{ vars.CDK_CORS_ORIGINS }}
-      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
-      CDK_ALB_SUBDOMAIN: ${{ vars.CDK_ALB_SUBDOMAIN }}
-      CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
-      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
-      CDK_ARTIFACTS_CERTIFICATE_ARN: ${{ vars.CDK_ARTIFACTS_CERTIFICATE_ARN }}
-      CDK_FRONTEND_CERTIFICATE_ARN: ${{ vars.CDK_FRONTEND_CERTIFICATE_ARN }}
-      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-      CDK_COGNITO_DOMAIN_PREFIX: ${{ vars.CDK_COGNITO_DOMAIN_PREFIX }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+
+    outputs:
+      image_tag: ${{ steps.deploy.outputs.image_tag }}
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
@@ -359,5 +343,6 @@ jobs:
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Deploy unified stack
-        run: bash scripts/platform/deploy.sh
+      - name: Deploy app-api image
+        id: deploy
+        run: bash scripts/build/deploy-ecs-service-one.sh app-api

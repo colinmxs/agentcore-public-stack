@@ -39,11 +39,14 @@ These conventions are relied on throughout the repo and are the fastest way to r
 
 ### Available Workflows
 *   **`platform.yml`**: Deploys the unified PlatformStack — the only stack now. Runs CFN updates for infrastructure changes (new tables, new IAM grants, network config, etc.). After Phases 5+6 of the platform-as-bootstrap refactor land, this is the *only* workflow that touches CFN; all other code/image deploys go through AWS APIs directly.
-*   **`backend.yml`**: Backend code-deploy entry point. Runs:
+*   **`backend.yml`**: Backend code-deploy entry point. After Phases 5+6 of the platform-as-bootstrap refactor, this workflow runs **only** API-driven deploys — there's no `cdk deploy` step. The shape is:
     *   Test gates (`test-infra`, `test-backend`).
     *   Per-image builds (`build-app-api`, `build-inference-api`, `build-rag-ingestion`) — all gate on `test-backend`, push to ECR with content-hash tags, write tags to SSM.
-    *   Per-Lambda code deploys (`deploy-artifact-render-code` ships the zip-Lambda's handler via `aws lambda update-function-code`; `deploy-rag-ingestion-code` ships the image-Lambda's container via `aws lambda update-function-code --image-uri`).
-    *   A `deploy` job (transitional) that runs `scripts/platform/deploy.sh` for the App API + Inference API container deploys still flowing through CFN. Phases 5+6 will make this job redundant by adding bootstrap-container patterns to those services.
+    *   Per-service code deploys, all gating on `test-backend` and (for image deploys) the matching `build-*` job:
+        *   `deploy-artifact-render-code` — `aws lambda update-function-code` for the artifact-render zip Lambda.
+        *   `deploy-rag-ingestion-code` — `aws lambda update-function-code --image-uri` for the RAG-ingestion image Lambda.
+        *   `deploy-inference-api-code` — `aws bedrock-agentcore-control update-agent-runtime` for the AgentCore Runtime.
+        *   `deploy-app-api-code` — `aws ecs register-task-definition` + `update-service` + `wait services-stable` for the App API Fargate service.
 *   **`frontend-deploy.yml`**: Builds the Angular SPA and syncs it to the SPA bucket created by PlatformStack.
 *   **`teardown.yml`**: Manually-triggered. Calls `scripts/teardown/destroy.sh` to delete every CloudFormation stack with the project prefix (uses `aws cloudformation delete-stack`, not `cdk destroy`, so it works for both the current single-stack architecture and any legacy 2-stack or 9-stack deployments).
 *   **`nightly-deploy-pipeline.yml`**: Combined platform → backend → frontend → smoke/E2E test pipeline that runs nightly.
@@ -66,7 +69,7 @@ After Phase 7 of the platform-as-bootstrap refactor, the infrastructure is a sin
 ### Deployment Order
 *   **Single stack**: just `cdk deploy <prefix>-PlatformStack`. The workflow's `deploy` job in either `platform.yml` or `backend.yml` runs the same script (`scripts/platform/deploy.sh`).
 *   **Code deploys** for artifact-render and rag-ingestion Lambdas don't go through CFN at all — they're API calls directly from the `deploy-artifact-render-code` and `deploy-rag-ingestion-code` jobs.
-*   **App API and Inference API** still flow through CFN for now (their image tags are baked into the task def / runtime config at synth time). Phases 5+6 will replace this with bootstrap-container patterns + workflow API calls.
+*   **App API and Inference API** also use the bootstrap-container pattern (Phases 5+6 of the refactor). The CDK construct ships a stable bootstrap container at synth time; the workflow ships the real image via `aws bedrock-agentcore-control update-agent-runtime` (inference-api) or `aws ecs register-task-definition` + `aws ecs update-service` (app-api). No CFN deploy is needed for backend code changes.
 
 ### The Platform-as-Bootstrap Pattern
 
@@ -77,7 +80,12 @@ Several Lambdas in PlatformStack don't ship their real code via CDK. CDK ships a
 
 Why it works: CFN tracks the Lambda's `Code` property from its own model, not by querying live AWS. With a byte-stable bootstrap asset, the CDK-computed S3Key/digest is constant across synths, so CFN sees no change to the `Code` property on subsequent Platform deploys and leaves the out-of-band-deployed real code untouched. (Drift detection would surface this if anyone ran it manually, but normal stack updates leave the Lambda alone.)
 
-The same pattern is planned for the AgentCore Runtime container (Phase 5) and the App API ECS task definition (Phase 6).
+The same pattern applies to two container-based services:
+
+*   **inference-api** (AgentCore Runtime): bootstrap at `infrastructure/bootstrap-assets/inference-api/` (Dockerfile + handler.py — stdlib HTTP server on port 8080 with `/ping` for AgentCore's health check). Workflow's `deploy-inference-api-code` step calls `aws bedrock-agentcore-control update-agent-runtime` with the new image URI; polls for `READY` state before/after.
+*   **app-api** (ECS Fargate task): bootstrap at `infrastructure/bootstrap-assets/app-api/` (Dockerfile + handler.py — stdlib HTTP server on port 8000 with `/health` for ALB target group health checks). Workflow's `deploy-app-api-code` step does `aws ecs register-task-definition` (mutates the live task def's `containerDefinitions[0].image`, registers a new revision of the same family) → `aws ecs update-service` → `aws ecs wait services-stable`.
+
+Container HEALTHCHECK note: the App API construct's container-level `healthCheck` uses `python3 -c '...'` (stdlib `urllib.request`) rather than `curl`, so both bootstrap (no curl) and real (Python-based, has curl) images pass the same health probe.
 
 ---
 

@@ -2,9 +2,11 @@ import * as cdk from 'aws-cdk-lib';
 import * as ec2 from 'aws-cdk-lib/aws-ec2';
 import * as ecs from 'aws-cdk-lib/aws-ecs';
 import * as ecr from 'aws-cdk-lib/aws-ecr';
+import * as ecr_assets from 'aws-cdk-lib/aws-ecr-assets';
 import * as elbv2 from 'aws-cdk-lib/aws-elasticloadbalancingv2';
 import * as logs from 'aws-cdk-lib/aws-logs';
 import * as ssm from 'aws-cdk-lib/aws-ssm';
+import * as path from 'path';
 import { Construct } from 'constructs';
 
 import { AppConfig, getResourceName, buildCorsOrigins } from '../../config';
@@ -140,6 +142,31 @@ export class AppApiServiceConstruct extends Construct {
       this, 'AppApiRepository', getResourceName(config, 'app-api'),
     );
 
+    // ── Bootstrap container image ──
+    // Phase 6 of the platform-as-bootstrap refactor: the App API
+    // task definition is built with a stable bootstrap image at
+    // synth time; the real image is shipped out-of-band by the
+    // backend workflow's `scripts/build/deploy-ecs-service-one.sh`
+    // step, which calls `aws ecs register-task-definition` with the
+    // project's freshly-built ECR image URI and then
+    // `aws ecs update-service` to roll the service over.
+    //
+    // The bootstrap container is a tiny stdlib HTTP server (port
+    // 8000 + /health for ALB target group health checks) so the
+    // task can start successfully and pass health checks before the
+    // workflow ships the real image. Byte-stable contents → stable
+    // asset content-hash → CFN sees no change to the task def's
+    // ContainerDefinitions[].Image on subsequent Platform deploys,
+    // leaving any out-of-band-deployed real image untouched (i.e.,
+    // the live ECS Service runs the latest task def revision the
+    // workflow registered, not the CDK-managed bootstrap revision).
+    const bootstrapImage = new ecr_assets.DockerImageAsset(this, 'AppApiBootstrap', {
+      directory: path.resolve(
+        __dirname, '..', '..', '..', 'bootstrap-assets', 'app-api',
+      ),
+      platform: ecr_assets.Platform.LINUX_AMD64,
+    });
+
     // ── Container environment ──
     const environment = buildAppApiEnvironment(config, params);
 
@@ -184,12 +211,12 @@ export class AppApiServiceConstruct extends Construct {
     // ── Container definition ──
     const container = taskDefinition.addContainer('AppApiContainer', {
       containerName: 'app-api',
-      image: ecs.ContainerImage.fromEcrRepository(ecrRepository, params.imageTag),
+      image: ecs.ContainerImage.fromDockerImageAsset(bootstrapImage),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'app-api', logGroup }),
       environment,
       portMappings: [{ containerPort: 8000, protocol: ecs.Protocol.TCP }],
       healthCheck: {
-        command: ['CMD-SHELL', 'curl -f http://localhost:8000/health || exit 1'],
+        command: ['CMD-SHELL', "python3 -c 'import urllib.request,sys; urllib.request.urlopen(\"http://localhost:8000/health\", timeout=3).read(); sys.exit(0)' || exit 1"],
         interval: cdk.Duration.seconds(30),
         timeout: cdk.Duration.seconds(5),
         retries: 3,
@@ -261,6 +288,13 @@ export class AppApiServiceConstruct extends Construct {
       targetGroups: [targetGroup],
     });
 
+    // Grant ECS task execution role pull rights on the project's
+    // app-api ECR repo. CDK auto-grants pull on the cdk-assets repo
+    // for the bootstrap image; we need this explicit grant for the
+    // real image the backend workflow ships via
+    // `aws ecs register-task-definition` + `update-service`.
+    ecrRepository.grantPull(taskDefinition.executionRole!);
+
     // ── Fargate service ──
     this.ecsService = new ecs.FargateService(this, 'AppApiService', {
       cluster: ecsCluster,
@@ -292,6 +326,32 @@ export class AppApiServiceConstruct extends Construct {
       targetUtilizationPercent: 80,
       scaleInCooldown: cdk.Duration.seconds(60),
       scaleOutCooldown: cdk.Duration.seconds(60),
+    });
+
+    // ── SSM publications ──
+    // The backend workflow's deploy-app-api-code step needs:
+    //   - the ECS cluster name to scope the service lookup
+    //   - the ECS service name to call update-service against
+    //   - the task definition family name to call
+    //     register-task-definition (CDK-auto-generated; the
+    //     workflow registers new revisions of the same family)
+    new ssm.StringParameter(this, 'AppApiClusterNameParameter', {
+      parameterName: `/${config.projectPrefix}/app-api/cluster-name`,
+      stringValue: ecsCluster.clusterName,
+      description: 'ECS cluster name for App API (consumed by the backend workflow code-deploy step)',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+    new ssm.StringParameter(this, 'AppApiServiceNameParameter', {
+      parameterName: `/${config.projectPrefix}/app-api/service-name`,
+      stringValue: this.ecsService.serviceName,
+      description: 'ECS service name for App API (consumed by the backend workflow code-deploy step)',
+      tier: ssm.ParameterTier.STANDARD,
+    });
+    new ssm.StringParameter(this, 'AppApiTaskDefFamilyParameter', {
+      parameterName: `/${config.projectPrefix}/app-api/task-def-family`,
+      stringValue: taskDefinition.family,
+      description: 'ECS task definition family name for App API (consumed by the backend workflow code-deploy step to register new revisions)',
+      tier: ssm.ParameterTier.STANDARD,
     });
 
     // ── Outputs ──

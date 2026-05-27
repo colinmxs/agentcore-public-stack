@@ -298,9 +298,9 @@ jobs:
         id: deploy
         run: bash scripts/build/deploy-runtime-image-one.sh inference-api
 
-  deploy-backend:
-    name: Deploy unified stack (compute via CFN until Phase 6 lands)
-    needs: [build-app-api, build-inference-api, build-rag-ingestion, deploy-artifact-render-code, deploy-rag-ingestion-code, deploy-inference-api-code, test-backend]
+  deploy-app-api-code:
+    name: Deploy app-api image to ECS Fargate service
+    needs: [build-app-api, test-backend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:
@@ -310,17 +310,13 @@ jobs:
       CDK_AWS_REGION: ${{ vars.AWS_REGION }}
       CDK_AWS_ACCOUNT: ${{ vars.CDK_AWS_ACCOUNT }}
       CDK_PROJECT_PREFIX: ${{ vars.CDK_PROJECT_PREFIX }}
-      CDK_DOMAIN_NAME: ${{ vars.CDK_DOMAIN_NAME }}
-      CDK_CORS_ORIGINS: ${{ vars.CDK_CORS_ORIGINS }}
-      CDK_VPC_CIDR: ${{ vars.CDK_VPC_CIDR }}
-      CDK_ALB_SUBDOMAIN: ${{ vars.CDK_ALB_SUBDOMAIN }}
-      CDK_CERTIFICATE_ARN: ${{ vars.CDK_CERTIFICATE_ARN }}
-      CDK_HOSTED_ZONE_DOMAIN: ${{ vars.CDK_HOSTED_ZONE_DOMAIN }}
-      CDK_RETAIN_DATA_ON_DELETE: ${{ vars.CDK_RETAIN_DATA_ON_DELETE }}
-      CDK_ARTIFACTS_CERTIFICATE_ARN: ${{ vars.CDK_ARTIFACTS_CERTIFICATE_ARN }}
+      AWS_REGION: ${{ vars.AWS_REGION }}
+      AWS_ACCOUNT_ID: ${{ vars.CDK_AWS_ACCOUNT }}
       AWS_ROLE_ARN: ${{ secrets.AWS_ROLE_ARN }}
       AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
       AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+    outputs:
+      image_tag: ${{ steps.deploy.outputs.image_tag }}
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
       - uses: ./.github/actions/configure-aws-credentials
@@ -329,12 +325,19 @@ jobs:
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Deploy unified stack
-        run: bash scripts/platform/deploy.sh
+      - name: Deploy app-api image
+        id: deploy
+        run: bash scripts/build/deploy-ecs-service-one.sh app-api
 
   deploy-frontend:
     name: Deploy Frontend
-    needs: [deploy-backend, test-frontend]
+    # Phase 6 of the platform-as-bootstrap refactor removed the
+    # transitional CFN-deploy-backend job. The frontend deploy
+    # now waits on every backend code-deploy job individually
+    # (artifact-render Lambda, rag-ingestion Lambda image,
+    # inference-api Runtime image, app-api ECS service) and on
+    # test-frontend.
+    needs: [deploy-platform, deploy-artifact-render-code, deploy-rag-ingestion-code, deploy-inference-api-code, deploy-app-api-code, test-frontend]
     runs-on: ubuntu-24.04
     environment: ${{ (github.ref == 'refs/heads/main' && 'production') || 'development' }}
     permissions:
