@@ -2,12 +2,17 @@ name: Backend Stack
 
 on:
   workflow_dispatch:
-  push:
-    branches: [develop, main]
-    paths:
-      - 'backend/**'
-      - 'scripts/build/**'
-      - '.github/workflows/backend.yml'
+  # ----------------------------------------------------------------- #
+  # TEMPORARY: push triggers disabled to give downstream forks a buffer
+  # to absorb the platform-as-bootstrap refactor + cross-pool sub-remap
+  # restore changes. Re-enable by uncommenting the block below.
+  # ----------------------------------------------------------------- #
+  # push:
+  #   branches: [develop, main]
+  #   paths:
+  #     - 'backend/**'
+  #     - 'scripts/build/**'
+  #     - '.github/workflows/backend.yml'
 
 permissions:
   contents: read
