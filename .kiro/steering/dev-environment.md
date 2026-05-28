@@ -49,11 +49,10 @@ unix:///var/run/docker.sock`. Pure-CLI ops like `docker --version` still
 work because they don't open the socket.
 
 This **only** affects workflows that drive `docker build`/`docker push` from
-inside the dev container — that is, `scripts/stack-app-api/build.sh`,
-`scripts/stack-inference-api/build.sh`, `scripts/stack-rag-ingestion/build.sh`,
-and any deploy script that invokes them. Everything else (`pytest`,
-`ng build`, `cdk synth`, `ruff`, `mypy`, `playwright test`) doesn't touch the
-socket and works regardless of the GID.
+inside the dev container — that is, `scripts/build/build-one.sh`,
+`scripts/build/build-all-images.sh`, and any deploy script that invokes them.
+Everything else (`pytest`, `ng build`, `cdk synth`, `ruff`, `mypy`,
+`playwright test`) doesn't touch the socket and works regardless of the GID.
 
 ## Resource Caps (READ THIS)
 
@@ -171,7 +170,7 @@ need a TTY (interactive shells); leave them off for scripted runs.
 - Docker work for the project's own images — `docker build -f backend/Dockerfile.app-api ...`,
   `docker push`, etc.
 - Anything that imports project dependencies or runs project code
-- Repo build/test/deploy wrapper scripts (`scripts/stack-*/...`)
+- Repo build/test/deploy wrapper scripts (`scripts/build/`, `scripts/platform/`, `scripts/frontend/`)
 
 ## What runs OUTSIDE `agentcore-dev`
 

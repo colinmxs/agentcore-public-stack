@@ -111,10 +111,10 @@ Follow these rules when adding or modifying stacks to ensure stability and maint
 - Application reads via `os.getenv("TABLE_NAME")` in Python
 
 **Use SSM Parameter Store when:**
-- Value is needed **by another stack** (cross-stack reference)
-- Examples: VPC ID (PlatformStack → BackendStack), ALB ARN
-- Consumer stack reads via `ssm.StringParameter.valueForStringParameter()`
-- **Never** use this for same-stack reads. CloudFormation resolves
+- Value is needed **at runtime by application code** running in ECS/Lambda
+- Examples: table names, bucket names, memory IDs — anything the Python/Node app reads via `os.getenv()` at startup
+- Published by CDK constructs so the running container can discover its dependencies
+- **Never** use this for same-stack CDK-to-CDK reads. CloudFormation resolves
   `AWS::SSM::Parameter::Value<String>` template parameters before any
   of the stack's resources are created, so reading a parameter that
   this same stack would publish is unsatisfiable on first deploy.
