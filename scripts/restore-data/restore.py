@@ -37,6 +37,8 @@ import json
 import logging
 import os
 import re
+import secrets
+import string
 import subprocess
 import sys
 import time
@@ -560,6 +562,7 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
                 ]
 
                 new_sub: str | None = None
+                user_was_created = False
                 try:
                     create_resp = cognito.admin_create_user(
                         UserPoolId=target_pool_id,
@@ -568,6 +571,7 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
                         MessageAction="SUPPRESS",
                     )
                     user_count += 1
+                    user_was_created = True
                     new_sub = next(
                         (a["Value"] for a in create_resp["User"]["Attributes"] if a["Name"] == "sub"),
                         None,
@@ -593,6 +597,48 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
                         LOG.warning(f"[Cognito] Failed to create user {username}: {e}")
                         users_failed.append(username)
                         continue
+
+                # Flip the user from FORCE_CHANGE_PASSWORD → CONFIRMED.
+                #
+                # AdminCreateUser with MessageAction=SUPPRESS leaves the
+                # user in FORCE_CHANGE_PASSWORD state, which silently
+                # breaks the hosted UI's "Forgot password" flow: Cognito
+                # shows "code sent" but never delivers a code because
+                # there's nothing to reset on a user that hasn't yet
+                # completed initial setup. The standard cross-pool
+                # migration pattern is to set a random throwaway
+                # password as Permanent=True, which transitions the
+                # user to CONFIRMED. The password is never
+                # communicated to anyone — the user does ForgotPassword
+                # on first login and chooses a real one. The throwaway
+                # is sized to comfortably exceed the pool's password
+                # policy regardless of customisation.
+                #
+                # Done unconditionally on every loop iteration (not just
+                # user_was_created) so re-runs against a pool where the
+                # users are still FORCE_CHANGE_PASSWORD also get fixed.
+                # AdminSetUserPassword is idempotent — calling it on a
+                # CONFIRMED user just resets to the new password, so
+                # re-runs are safe.
+                throwaway_password = (
+                    "Aa1!" + "".join(
+                        secrets.choice(string.ascii_letters + string.digits + "!@#$%^&*")
+                        for _ in range(28)
+                    )
+                )
+                try:
+                    cognito.admin_set_user_password(
+                        UserPoolId=target_pool_id,
+                        Username=username,
+                        Password=throwaway_password,
+                        Permanent=True,
+                    )
+                except ClientError as pe:
+                    LOG.warning(
+                        f"[Cognito] {username}: created but could not transition to "
+                        f"CONFIRMED via admin_set_user_password: {pe}. ForgotPassword "
+                        f"may not work for this user until manually fixed."
+                    )
 
                 # Record the sub mapping. If old_sub or new_sub
                 # is missing, we can't remap downstream data for

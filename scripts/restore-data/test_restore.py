@@ -782,3 +782,117 @@ def test_s3_restore_remaps_subs_in_keys():
         "root/s3/user-file-uploads/public/banner.png",
         "root/s3/user-file-uploads/users/OLD-SUB/file-1.pdf",
     ]
+
+
+# --------------------------------------------------------------------- #
+# Bug 8: AdminCreateUser leaves users in FORCE_CHANGE_PASSWORD state,   #
+# which breaks the hosted UI's ForgotPassword flow (Cognito appears to  #
+# accept the request but silently no-ops because there is no completed  #
+# initial setup to reset against). Fix is to call AdminSetUserPassword  #
+# with Permanent=True to transition them to CONFIRMED. Restored users  #
+# can then ForgotPassword on first login and pick a real password.     #
+# --------------------------------------------------------------------- #
+def test_cognito_user_creation_transitions_to_confirmed():
+    """After AdminCreateUser, restore must call AdminSetUserPassword
+    with Permanent=True so the user lands in CONFIRMED state and the
+    standard ForgotPassword flow works."""
+    user_record = {
+        "Username": "colin",
+        "Attributes": [
+            {"Name": "sub", "Value": "OLD-SUB"},
+            {"Name": "email", "Value": "colin@example.com"},
+            {"Name": "email_verified", "Value": "true"},
+        ],
+    }
+    users_jsonl = json.dumps(user_record) + "\n"
+    users_gz = gzip.compress(users_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("users.jsonl.gz"):
+            return {"Body": io.BytesIO(users_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+    s3.put_object = MagicMock()
+
+    cognito = MagicMock()
+    cognito.admin_create_user.return_value = {
+        "User": {
+            "Username": "colin",
+            "Attributes": [{"Name": "sub", "Value": "NEW-SUB"}],
+        }
+    }
+    cognito.admin_set_user_password = MagicMock()
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        restore.restore_cognito(ctx)
+
+    cognito.admin_set_user_password.assert_called_once()
+    set_kwargs = cognito.admin_set_user_password.call_args.kwargs
+    assert set_kwargs["UserPoolId"] == "us-west-2_test"
+    assert set_kwargs["Username"] == "colin"
+    assert set_kwargs["Permanent"] is True
+    # Password should be at least 24 chars and contain all four char
+    # classes — generic safety check, not a fixed string.
+    pwd = set_kwargs["Password"]
+    assert len(pwd) >= 24
+    assert any(c.isupper() for c in pwd)
+    assert any(c.islower() for c in pwd)
+    assert any(c.isdigit() for c in pwd)
+    assert any(c in "!@#$%^&*" for c in pwd)
+
+
+def test_cognito_set_password_failure_is_warned_not_fatal():
+    """If admin_set_user_password fails (e.g., policy mismatch), the
+    restore continues with a warning. The user_count + sub_map for that
+    user is still recorded so downstream DDB/S3 remap is not stalled."""
+    user_record = {
+        "Username": "colin",
+        "Attributes": [
+            {"Name": "sub", "Value": "OLD"},
+            {"Name": "email", "Value": "colin@example.com"},
+        ],
+    }
+    users_jsonl = json.dumps(user_record) + "\n"
+    users_gz = gzip.compress(users_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("users.jsonl.gz"):
+            return {"Body": io.BytesIO(users_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+    s3.put_object = MagicMock()
+
+    cognito = MagicMock()
+    cognito.admin_create_user.return_value = {
+        "User": {"Attributes": [{"Name": "sub", "Value": "NEW"}]}
+    }
+    from botocore.exceptions import ClientError as _CE
+    cognito.admin_set_user_password.side_effect = _CE(
+        {"Error": {"Code": "InvalidPasswordException"}}, "AdminSetUserPassword"
+    )
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else cognito
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="us-west-2_test"):
+        results = restore.restore_cognito(ctx)
+
+    user_result = next(r for r in results if r.get("component") == "cognito-users")
+    assert user_result["status"] == "ok"
+    # Mapping was still recorded — DDB/S3 remap should still work
+    assert ctx.sub_map == {"OLD": "NEW"}
