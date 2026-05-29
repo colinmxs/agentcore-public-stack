@@ -257,13 +257,30 @@ export function createRuntimeExecutionRole(
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'AgentCoreToolsAccess',
     effect: iam.Effect.ALLOW,
+    // Real action names per
+    // https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html
+    // 'InvokeBrowser' was speculative and silently no-op.
+    //
+    // Resource ARNs use the *-custom resource types because the
+    // platform creates CfnBrowserCustom + CfnCodeInterpreterCustom.
+    // The non-custom ARNs (browser/*, code-interpreter/*) refer to
+    // AWS-managed resources owned by account 'aws' and would never
+    // match the platform's resources — another silent no-op
+    // documented in:
+    //   https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html#amazonbedrockagentcore-resources-for-iam-policies
     actions: [
       'bedrock-agentcore:InvokeCodeInterpreter',
-      'bedrock-agentcore:InvokeBrowser',
+      'bedrock-agentcore:StartBrowserSession',
+      'bedrock-agentcore:GetBrowserSession',
+      'bedrock-agentcore:ListBrowserSessions',
+      'bedrock-agentcore:StopBrowserSession',
+      'bedrock-agentcore:ConnectBrowserAutomationStream',
+      'bedrock-agentcore:ConnectBrowserLiveViewStream',
+      'bedrock-agentcore:UpdateBrowserStream',
     ],
     resources: [
-      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:code-interpreter/*`,
-      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:browser/*`,
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:code-interpreter-custom/*`,
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:browser-custom/*`,
     ],
   }));
 

@@ -179,12 +179,24 @@ export class InferenceAgentCoreConstruct extends Construct {
       resources: [props.codeInterpreterArn],
     }));
 
-    // Grant Runtime permission to use Browser
+    // Grant Runtime permission to use Browser.
+    // Real browser actions per the Service Authorization Reference:
+    //   StartBrowserSession, GetBrowserSession, ListBrowserSessions,
+    //   StopBrowserSession, ConnectBrowserAutomationStream,
+    //   ConnectBrowserLiveViewStream, UpdateBrowserStream,
+    //   SaveBrowserSessionProfile.
+    // 'InvokeBrowser' is NOT a real action and was a silent no-op.
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'BrowserAccess',
       effect: iam.Effect.ALLOW,
       actions: [
-        'bedrock-agentcore:InvokeBrowser',
+        'bedrock-agentcore:StartBrowserSession',
+        'bedrock-agentcore:GetBrowserSession',
+        'bedrock-agentcore:ListBrowserSessions',
+        'bedrock-agentcore:StopBrowserSession',
+        'bedrock-agentcore:ConnectBrowserAutomationStream',
+        'bedrock-agentcore:ConnectBrowserLiveViewStream',
+        'bedrock-agentcore:UpdateBrowserStream',
       ],
       resources: [props.browserArn],
     }));
