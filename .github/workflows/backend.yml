@@ -104,15 +104,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/configure-aws-credentials
+      - uses: ./.github/actions/build-and-push-image
+        id: build
         with:
+          image-name: app-api
           aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Build & push app-api
-        id: build
-        run: bash scripts/build/build-one.sh app-api
 
   build-inference-api:
     name: Build inference-api image
@@ -139,22 +138,15 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/configure-aws-credentials
+      - uses: ./.github/actions/build-and-push-image
+        id: build
         with:
+          image-name: inference-api
+          platform: linux/arm64
           aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      # Inference API runs on AgentCore Runtime (linux/arm64). On the
-      # amd64 GitHub-hosted runner we need QEMU + buildx emulation so
-      # `docker build --platform linux/arm64` works.
-      - uses: docker/setup-qemu-action@ce360397dd3f832beb865e1373c09c0e9f86d70a # v4.0.0
-        with:
-          platforms: arm64
-      - uses: docker/setup-buildx-action@4d04d5d9486b7bd6fa91e7baf45bbb4f8b9deedd # v4.0.0
-      - name: Build & push inference-api
-        id: build
-        run: bash scripts/build/build-one.sh inference-api
 
   build-rag-ingestion:
     name: Build rag-ingestion image
@@ -181,15 +173,14 @@ jobs:
 
     steps:
       - uses: actions/checkout@de0fac2e4500dabe0009e67214ff5f5447ce83dd # v6.0.2
-      - uses: ./.github/actions/configure-aws-credentials
+      - uses: ./.github/actions/build-and-push-image
+        id: build
         with:
+          image-name: rag-ingestion
           aws-region: ${{ vars.AWS_REGION || 'us-west-2' }}
           aws-role-arn: ${{ secrets.AWS_ROLE_ARN }}
           aws-access-key-id: ${{ secrets.AWS_ACCESS_KEY_ID }}
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-      - name: Build & push rag-ingestion
-        id: build
-        run: bash scripts/build/build-one.sh rag-ingestion
 
   deploy-artifact-render-code:
     name: Deploy artifact-render Lambda code
