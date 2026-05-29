@@ -83,6 +83,7 @@ import { AlbDnsConstruct } from './constructs/zones/alb-dns-construct';
 // stack.
 import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
+import { PlatformComputeRefs } from './constructs/platform-compute-refs';
 import { SageMakerExecutionRoleConstruct } from './constructs/fine-tuning/sagemaker-execution-role-construct';
 
 export interface PlatformStackProps extends cdk.StackProps {
@@ -627,8 +628,74 @@ export class PlatformStack extends cdk.Stack {
    *   3. AppApi — consumes both of the above as typed props.
    */
   public wireCompute(): void {
+    // Build the typed refs bundle once. Used by both compute
+    // constructs to source their dependencies from typed CDK refs
+    // instead of `valueForStringParameter` (which deadlocks on
+    // first deploy because CFN parameter resolution runs before
+    // resource creation in a single-stack architecture).
+    const refs: PlatformComputeRefs = {
+      vpc: this.vpc,
+      alb: this.alb,
+      albListener: this.albListener,
+      albSecurityGroup: this.albSecurityGroup,
+      ecsCluster: this.ecsCluster,
+      userPool: this.userPool,
+      bffAppClient: this.bffAppClient,
+      bffAppClientSecret: this.bffAppClientSecret,
+      cognitoDomain: this.cognitoDomain,
+      cognitoIssuerUrl: `https://cognito-idp.${this._config.awsRegion}.amazonaws.com/${this.userPool.userPoolId}`,
+      cognitoDomainUrl: `https://${this.cognitoDomain.domainName}.auth.${this._config.awsRegion}.amazoncognito.com`,
+      authSecret: this.authSecret,
+      voiceTicketSigningSecret: this.voiceTicketSigningSecret,
+      voiceTicketReplayTable: this.voiceTicketReplayTable,
+      bffCookieSigningKey: this.bffCookieSigningKey,
+      bffCookieDataKeySecret: this.bffCookieDataKeySecret,
+      platformWorkloadIdentity: this.platformWorkloadIdentity,
+      oauthProvidersTable: this.oauthProvidersTable,
+      oauthUserTokensTable: this.oauthUserTokensTable,
+      oauthTokenEncryptionKey: this.oauthTokenEncryptionKey,
+      oauthClientSecretsSecret: this.oauthClientSecretsSecret,
+      authProvidersTable: this.authProvidersTable,
+      authProviderSecretsSecret: this.authProviderSecretsSecret,
+      oidcStateTable: this.oidcStateTable,
+      bffSessionsTable: this.bffSessionsTable,
+      usersTable: this.usersTable,
+      appRolesTable: this.appRolesTable,
+      apiKeysTable: this.apiKeysTable,
+      userQuotasTable: this.userQuotasTable,
+      quotaEventsTable: this.quotaEventsTable,
+      sessionsMetadataTable: this.sessionsMetadataTable,
+      userCostSummaryTable: this.userCostSummaryTable,
+      systemCostRollupTable: this.systemCostRollupTable,
+      managedModelsTable: this.managedModelsTable,
+      userSettingsTable: this.userSettingsTable,
+      userMenuLinksTable: this.userMenuLinksTable,
+      sharedConversationsTable: this.sharedConversationsTable,
+      fileUploadBucket: this.fileUploadBucket,
+      fileUploadTable: this.fileUploadTable,
+      ragDocumentsBucket: this.ragDocumentsBucket,
+      ragAssistantsTable: this.ragAssistantsTable,
+      ragVectorBucketName: this.ragVectorBucketName,
+      ragVectorIndexName: this.ragVectorIndexName,
+      artifactsContentBucket: this.artifactsContentBucket,
+      artifactsTable: this.artifactsTable,
+      artifactRenderTokenSecret: this.artifactRenderTokenSecret,
+      artifactsOriginUrl: this.artifactsOriginUrl,
+      fineTuningJobsTable: this.fineTuningJobsTable,
+      fineTuningAccessTable: this.fineTuningAccessTable,
+      fineTuningDataBucket: this.fineTuningDataBucket,
+      agentCoreMemoryArn: this.agentCoreMemoryArn,
+      agentCoreMemoryId: this.agentCoreMemoryId,
+      agentCoreCodeInterpreterArn: this.agentCoreCodeInterpreterArn,
+      agentCoreCodeInterpreterId: this.agentCoreCodeInterpreterId,
+      agentCoreBrowserArn: this.agentCoreBrowserArn,
+      agentCoreBrowserId: this.agentCoreBrowserId,
+      mcpSandboxProxyOrigin: this.mcpSandboxProxyOrigin,
+    };
+
     const inferenceApi = new InferenceAgentCoreConstruct(this, 'InferenceApi', {
       config: this._config,
+      refs,
       memoryArn: this.agentCoreMemoryArn,
       memoryId: this.agentCoreMemoryId,
       codeInterpreterArn: this.agentCoreCodeInterpreterArn,
@@ -650,6 +717,7 @@ export class PlatformStack extends cdk.Stack {
 
     new AppApiServiceConstruct(this, 'AppApi', {
       config: this._config,
+      refs,
       agentCoreMemoryArn: this.agentCoreMemoryArn,
       agentCoreMemoryId: this.agentCoreMemoryId,
       inferenceApiRuntimeEndpointUrl: inferenceApi.runtimeEndpointUrl,

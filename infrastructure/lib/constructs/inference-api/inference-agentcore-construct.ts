@@ -10,12 +10,20 @@ import * as bedrock from 'aws-cdk-lib/aws-bedrockagentcore';
 import * as path from 'path';
 import { Construct } from 'constructs';
 import { AppConfig, getResourceName, getTruncatedResourceName, applyStandardTags, buildCorsOrigins } from '../../config';
+import { PlatformComputeRefs } from '../platform-compute-refs';
 import {
   createRuntimeExecutionRole,
 } from './inference-api-iam-roles';
 
 export interface InferenceAgentCoreConstructProps {
   config: AppConfig;
+  /**
+   * Typed bundle of every PlatformStack resource ref this construct
+   * needs at synth time. Replaces the in-construct
+   * `valueForStringParameter` calls — same-stack SSM reads cause a
+   * CFN parameter-resolution deadlock on first deploy.
+   */
+  refs: PlatformComputeRefs;
   /**
    * AgentCore Memory ARN. Sourced from PlatformStack as a typed
    * cross-stack ref. Memory itself was hoisted to PlatformStack —
@@ -105,7 +113,7 @@ export class InferenceAgentCoreConstruct extends Construct {
       this, 'InferenceApiRepository', getResourceName(config, 'inference-api'));
 
     // ── IAM roles (extracted into inference-api-iam-roles.ts) ──
-    const runtimeExecutionRole = createRuntimeExecutionRole(this, config);
+    const runtimeExecutionRole = createRuntimeExecutionRole(this, config, props.refs);
     // Memory / Code Interpreter / Browser execution roles were hoisted
     // to PlatformStack alongside their resources (Phase 1 of the
     // platform-as-bootstrap refactor). They live in:
@@ -121,12 +129,9 @@ export class InferenceAgentCoreConstruct extends Construct {
     ecrRepository.grantPull(runtimeExecutionRole);
 
     // ── Additional SSM reads needed by the runtime container env ──
-    const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/auth-provider-secrets-arn`);
-    const oauthTokenEncryptionKeyArn = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/oauth/token-encryption-key-arn`);
-    const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/oauth/client-secrets-arn`);
+    const authProviderSecretsArn = props.refs.authProviderSecretsSecret.secretArn;
+    const oauthTokenEncryptionKeyArn = props.refs.oauthTokenEncryptionKey.keyArn;
+    const oauthClientSecretsArn = props.refs.oauthClientSecretsSecret.secretArn;
 
     // Memory + Code Interpreter + Browser are owned by PlatformStack
     // (Phase 1 of the platform-as-bootstrap refactor). Their ARNs and
@@ -205,16 +210,12 @@ export class InferenceAgentCoreConstruct extends Construct {
     // Import Cognito SSM Parameters for JWT Authorizer
     // ============================================================
 
-    const cognitoUserPoolId = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/cognito/user-pool-id`
-    );
+    const cognitoUserPoolId = props.refs.userPool.userPoolId;
     // Phase 7 retired the public PKCE SPA client; the BFF confidential
     // client is the only one left. The runtime authorizer's allowed-clients
     // list now points at it so tokens minted via the BFF flow are accepted
     // when the chat proxy on app-api forwards them to /invocations.
-    const cognitoAppClientId = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/cognito/bff-app-client-id`
-    );
+    const cognitoAppClientId = props.refs.bffAppClient.userPoolClientId;
 
     // Construct Cognito OIDC discovery URL
     const cognitoDiscoveryUrl = `https://cognito-idp.${config.awsRegion}.amazonaws.com/${cognitoUserPoolId}/.well-known/openid-configuration`;
@@ -224,62 +225,26 @@ export class InferenceAgentCoreConstruct extends Construct {
     // ============================================================
 
     // DynamoDB table names (the ARNs are already imported above for IAM)
-    const usersTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/users/users-table-name`
-    );
-    const appRolesTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/rbac/app-roles-table-name`
-    );
-    const oidcStateTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/oidc-state-table-name`
-    );
-    const apiKeysTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/api-keys-table-name`
-    );
-    const oauthProvidersTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/oauth/providers-table-name`
-    );
-    const oauthUserTokensTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/oauth/user-tokens-table-name`
-    );
-    const assistantsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/rag/assistants-table-name`
-    );
-    const userQuotasTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/quota/user-quotas-table-name`
-    );
-    const quotaEventsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/quota/quota-events-table-name`
-    );
-    const sessionsMetadataTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`
-    );
-    const userCostSummaryTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-name`
-    );
-    const systemCostRollupTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`
-    );
-    const managedModelsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/admin/managed-models-table-name`
-    );
-    const userSettingsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/settings/user-settings-table-name`
-    );
-    const authProvidersTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/auth/auth-providers-table-name`
-    );
-    const userFilesTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/user-file-uploads/table-name`
-    );
+    const usersTableName = props.refs.usersTable.tableName;
+    const appRolesTableName = props.refs.appRolesTable.tableName;
+    const oidcStateTableName = props.refs.oidcStateTable.tableName;
+    const apiKeysTableName = props.refs.apiKeysTable.tableName;
+    const oauthProvidersTableName = props.refs.oauthProvidersTable.tableName;
+    const oauthUserTokensTableName = props.refs.oauthUserTokensTable.tableName;
+    const assistantsTableName = props.refs.ragAssistantsTable.tableName;
+    const userQuotasTableName = props.refs.userQuotasTable.tableName;
+    const quotaEventsTableName = props.refs.quotaEventsTable.tableName;
+    const sessionsMetadataTableName = props.refs.sessionsMetadataTable.tableName;
+    const userCostSummaryTableName = props.refs.userCostSummaryTable.tableName;
+    const systemCostRollupTableName = props.refs.systemCostRollupTable.tableName;
+    const managedModelsTableName = props.refs.managedModelsTable.tableName;
+    const userSettingsTableName = props.refs.userSettingsTable.tableName;
+    const authProvidersTableName = props.refs.authProvidersTable.tableName;
+    const userFilesTableName = props.refs.fileUploadTable.tableName;
 
     // S3 / RAG
-    const vectorBucketName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/rag/vector-bucket-name`
-    );
-    const vectorIndexName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/rag/vector-index-name`
-    );
+    const vectorBucketName = props.refs.ragVectorBucketName;
+    const vectorIndexName = props.refs.ragVectorIndexName;
 
     // Frontend CORS origins — single source: buildCorsOrigins (from CDK_DOMAIN_NAME)
     const corsOrigins = buildCorsOrigins(config, config.inferenceApi.additionalCorsOrigins).join(',');
@@ -357,10 +322,7 @@ export class InferenceAgentCoreConstruct extends Construct {
         // the Code Interpreter sandbox. Imported from RagIngestionStack via
         // SSM (same parameter app-api uses). Without this the agent fails
         // with "S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME not configured".
-        S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/rag/documents-bucket-name`
-        ),
+        S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: props.refs.ragDocumentsBucket.bucketName,
 
         // Authentication
         ENABLE_AUTHENTICATION: 'true',
@@ -389,26 +351,17 @@ export class InferenceAgentCoreConstruct extends Construct {
         // Both inference-api and app-api mint user-scoped workload tokens
         // against this identity so they share a single OAuth token vault.
         // The runtime auto-creates its own service-linked identity, but it
-        // cannot be shared cross-service — see InfrastructureStack and
+        // cannot be shared cross-service — see PlatformStack and
         // `_resolve_workload_token` in apis/shared/oauth/agentcore_identity.py.
-        AGENTCORE_RUNTIME_WORKLOAD_NAME: ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/oauth/platform-workload-identity-name`
-        ),
+        AGENTCORE_RUNTIME_WORKLOAD_NAME: props.refs.platformWorkloadIdentity.name,
 
         // MCP Apps sandbox-proxy origin (PR #7 of
         // docs/kaizen/scoping/mcp-apps-host-renderer.md). The agent emits
         // it on the `ui_resource` SSE event as `sandboxOrigin` — the
         // cross-origin shell the SPA frames a hosted App in. The
-        // mcp-sandbox stack is always provisioned, so the SSM parameter
-        // always exists. Without this var, AGENTCORE_MCP_APPS_SANDBOX_ORIGIN
-        // would fall back to its empty Python default and the SPA would
-        // have no origin to frame an App in — the host surface stays
-        // dormant unless MCP_APPS_HOST_ENABLED is flipped on.
-        AGENTCORE_MCP_APPS_SANDBOX_ORIGIN: ssm.StringParameter.valueForStringParameter(
-          this,
-          `/${config.projectPrefix}/mcp-sandbox/origin`
-        ),
+        // mcp-sandbox stack is always provisioned, so the value is always
+        // available via the platform refs.
+        AGENTCORE_MCP_APPS_SANDBOX_ORIGIN: props.refs.mcpSandboxProxyOrigin,
       },
     });
     this.runtime.node.addDependency(runtimeExecutionRole);
@@ -609,19 +562,7 @@ export class InferenceAgentCoreConstruct extends Construct {
     // ============================================================
     
     // Export runtime execution role ARN for Lambda-created runtimes
-    new ssm.StringParameter(this, 'RuntimeExecutionRoleArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-execution-role-arn`,
-      stringValue: runtimeExecutionRole.roleArn,
-      description: 'Runtime execution role ARN for Lambda-created AgentCore Runtimes',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'RuntimeArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-arn`,
-      stringValue: this.runtime.attrAgentRuntimeArn,
-      description: 'AgentCore Runtime ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     new ssm.StringParameter(this, 'RuntimeIdParameter', {
       parameterName: `/${config.projectPrefix}/inference-api/runtime-id`,
@@ -642,12 +583,6 @@ export class InferenceAgentCoreConstruct extends Construct {
     );
     this.runtimeEndpointUrl = runtimeEndpointUrl;
 
-    new ssm.StringParameter(this, 'InferenceApiRuntimeEndpointUrlParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-endpoint-url`,
-      stringValue: runtimeEndpointUrl,
-      description: 'Inference API AgentCore Runtime Endpoint URL',
-      tier: ssm.ParameterTier.STANDARD,
-    });
     
     // Memory / Code Interpreter / Browser SSM publications were
     // hoisted to PlatformStack alongside the resources themselves
@@ -655,20 +590,8 @@ export class InferenceAgentCoreConstruct extends Construct {
     // consume them via typed cross-stack props.
 
     // Export ECR repository URI for Lambda-created runtimes
-    new ssm.StringParameter(this, 'EcrRepositoryUriParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/ecr-repository-uri`,
-      stringValue: ecrRepository.repositoryUri,
-      description: 'Inference API ECR Repository URI for runtime container images',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Export observability log group name
-    new ssm.StringParameter(this, 'RuntimeLogGroupNameParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/runtime-log-group-name`,
-      stringValue: runtimeLogGroup.logGroupName,
-      description: 'CloudWatch Log Group name for AgentCore Runtime observability',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // ============================================================
     // CloudFormation Outputs

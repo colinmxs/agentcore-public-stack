@@ -11,6 +11,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 import { AppConfig, buildCorsOrigins } from '../../config';
+import { PlatformComputeRefs } from '../platform-compute-refs';
 
 /** All SSM-resolved values the App API construct needs. */
 export interface AppApiSsmParams {
@@ -109,83 +110,97 @@ export interface AppApiBackendOverrides {
   inferenceApiRuntimeEndpointUrl: string;
 }
 
-/** Resolve all SSM parameters the App API construct needs. */
-export function resolveAppApiSsmParams(
-  scope: Construct,
-  prefix: string,
+/** Resolve every value the App API construct needs.
+ *
+ * Sourced from typed PlatformStack refs (see PlatformComputeRefs),
+ * NOT from SSM. Reading SSM via `valueForStringParameter` from
+ * within the same stack that publishes the parameter dead-locks
+ * on first deploy — see the file-level docstring for the full
+ * explanation.
+ */
+export function resolveAppApiParams(
+  refs: PlatformComputeRefs,
   overrides: AppApiBackendOverrides,
 ): AppApiSsmParams {
-  const p = (path: string) => ssm.StringParameter.valueForStringParameter(scope, `/${prefix}/${path}`);
   return {
-    vpcId: p('network/vpc-id'),
-    vpcCidr: p('network/vpc-cidr'),
-    privateSubnetIds: p('network/private-subnet-ids'),
-    availabilityZones: p('network/availability-zones'),
-    albSecurityGroupId: p('network/alb-security-group-id'),
-    albArn: p('network/alb-arn'),
-    albListenerArn: p('network/alb-listener-arn'),
-    ecsClusterName: p('network/ecs-cluster-name'),
-    ecsClusterArn: p('network/ecs-cluster-arn'),
-    oidcStateTableName: p('auth/oidc-state-table-name'),
-    oidcStateTableArn: p('auth/oidc-state-table-arn'),
-    usersTableName: p('users/users-table-name'),
-    usersTableArn: p('users/users-table-arn'),
-    appRolesTableName: p('rbac/app-roles-table-name'),
-    appRolesTableArn: p('rbac/app-roles-table-arn'),
-    apiKeysTableName: p('auth/api-keys-table-name'),
-    apiKeysTableArn: p('auth/api-keys-table-arn'),
-    oauthProvidersTableName: p('oauth/providers-table-name'),
-    oauthProvidersTableArn: p('oauth/providers-table-arn'),
-    oauthUserTokensTableName: p('oauth/user-tokens-table-name'),
-    oauthUserTokensTableArn: p('oauth/user-tokens-table-arn'),
-    oauthTokenEncryptionKeyArn: p('oauth/token-encryption-key-arn'),
-    oauthClientSecretsArn: p('oauth/client-secrets-arn'),
-    userQuotasTableName: p('quota/user-quotas-table-name'),
-    userQuotasTableArn: p('quota/user-quotas-table-arn'),
-    quotaEventsTableName: p('quota/quota-events-table-name'),
-    quotaEventsTableArn: p('quota/quota-events-table-arn'),
-    sessionsMetadataTableName: p('cost-tracking/sessions-metadata-table-name'),
-    sessionsMetadataTableArn: p('cost-tracking/sessions-metadata-table-arn'),
-    userCostSummaryTableName: p('cost-tracking/user-cost-summary-table-name'),
-    userCostSummaryTableArn: p('cost-tracking/user-cost-summary-table-arn'),
-    systemCostRollupTableName: p('cost-tracking/system-cost-rollup-table-name'),
-    systemCostRollupTableArn: p('cost-tracking/system-cost-rollup-table-arn'),
-    managedModelsTableName: p('admin/managed-models-table-name'),
-    managedModelsTableArn: p('admin/managed-models-table-arn'),
-    userSettingsTableName: p('settings/user-settings-table-name'),
-    userSettingsTableArn: p('settings/user-settings-table-arn'),
-    userMenuLinksTableName: p('admin/user-menu-links-table-name'),
-    userMenuLinksTableArn: p('admin/user-menu-links-table-arn'),
-    authProvidersTableName: p('auth/auth-providers-table-name'),
-    authProvidersTableArn: p('auth/auth-providers-table-arn'),
-    authProviderSecretsArn: p('auth/auth-provider-secrets-arn'),
-    cognitoUserPoolArn: p('auth/cognito/user-pool-arn'),
-    cognitoUserPoolId: p('auth/cognito/user-pool-id'),
-    cognitoAppClientId: p('auth/cognito/bff-app-client-id'),
-    cognitoIssuerUrl: p('auth/cognito/issuer-url'),
-    cognitoDomainUrl: p('auth/cognito/domain-url'),
-    bffSessionsTableName: p('auth/bff-sessions-table-name'),
-    bffSessionsTableArn: p('auth/bff-sessions-table-arn'),
-    bffCookieSigningKeyArn: p('auth/bff-cookie-signing-key-arn'),
-    bffCookieDataKeySecretArn: p('auth/bff-cookie-data-key-secret-arn'),
-    cognitoBFFAppClientId: p('auth/cognito/bff-app-client-id'),
-    cognitoBFFAppClientSecretArn: p('auth/cognito/bff-app-client-secret-arn'),
-    voiceTicketReplayTableName: p('voice/ticket-replay-table-name'),
-    voiceTicketReplayTableArn: p('voice/ticket-replay-table-arn'),
-    voiceTicketSigningSecretArn: p('voice/ticket-signing-secret-arn'),
+    // Network
+    vpcId: refs.vpc.vpcId,
+    vpcCidr: refs.vpc.vpcCidrBlock,
+    privateSubnetIds: refs.vpc.privateSubnets.map((s) => s.subnetId).join(','),
+    availabilityZones: refs.vpc.availabilityZones.join(','),
+    albSecurityGroupId: refs.albSecurityGroup.securityGroupId,
+    albArn: refs.alb.loadBalancerArn,
+    albListenerArn: refs.albListener.listenerArn,
+    ecsClusterName: refs.ecsCluster.clusterName,
+    ecsClusterArn: refs.ecsCluster.clusterArn,
+    // Tables
+    oidcStateTableName: refs.oidcStateTable.tableName,
+    oidcStateTableArn: refs.oidcStateTable.tableArn,
+    usersTableName: refs.usersTable.tableName,
+    usersTableArn: refs.usersTable.tableArn,
+    appRolesTableName: refs.appRolesTable.tableName,
+    appRolesTableArn: refs.appRolesTable.tableArn,
+    apiKeysTableName: refs.apiKeysTable.tableName,
+    apiKeysTableArn: refs.apiKeysTable.tableArn,
+    oauthProvidersTableName: refs.oauthProvidersTable.tableName,
+    oauthProvidersTableArn: refs.oauthProvidersTable.tableArn,
+    oauthUserTokensTableName: refs.oauthUserTokensTable.tableName,
+    oauthUserTokensTableArn: refs.oauthUserTokensTable.tableArn,
+    oauthTokenEncryptionKeyArn: refs.oauthTokenEncryptionKey.keyArn,
+    oauthClientSecretsArn: refs.oauthClientSecretsSecret.secretArn,
+    userQuotasTableName: refs.userQuotasTable.tableName,
+    userQuotasTableArn: refs.userQuotasTable.tableArn,
+    quotaEventsTableName: refs.quotaEventsTable.tableName,
+    quotaEventsTableArn: refs.quotaEventsTable.tableArn,
+    sessionsMetadataTableName: refs.sessionsMetadataTable.tableName,
+    sessionsMetadataTableArn: refs.sessionsMetadataTable.tableArn,
+    userCostSummaryTableName: refs.userCostSummaryTable.tableName,
+    userCostSummaryTableArn: refs.userCostSummaryTable.tableArn,
+    systemCostRollupTableName: refs.systemCostRollupTable.tableName,
+    systemCostRollupTableArn: refs.systemCostRollupTable.tableArn,
+    managedModelsTableName: refs.managedModelsTable.tableName,
+    managedModelsTableArn: refs.managedModelsTable.tableArn,
+    userSettingsTableName: refs.userSettingsTable.tableName,
+    userSettingsTableArn: refs.userSettingsTable.tableArn,
+    userMenuLinksTableName: refs.userMenuLinksTable.tableName,
+    userMenuLinksTableArn: refs.userMenuLinksTable.tableArn,
+    authProvidersTableName: refs.authProvidersTable.tableName,
+    authProvidersTableArn: refs.authProvidersTable.tableArn,
+    authProviderSecretsArn: refs.authProviderSecretsSecret.secretArn,
+    // Cognito
+    cognitoUserPoolArn: refs.userPool.userPoolArn,
+    cognitoUserPoolId: refs.userPool.userPoolId,
+    cognitoAppClientId: refs.bffAppClient.userPoolClientId,
+    cognitoIssuerUrl: refs.cognitoIssuerUrl,
+    cognitoDomainUrl: refs.cognitoDomainUrl,
+    // BFF
+    bffSessionsTableName: refs.bffSessionsTable.tableName,
+    bffSessionsTableArn: refs.bffSessionsTable.tableArn,
+    bffCookieSigningKeyArn: refs.bffCookieSigningKey.keyArn,
+    bffCookieDataKeySecretArn: refs.bffCookieDataKeySecret.secretArn,
+    cognitoBFFAppClientId: refs.bffAppClient.userPoolClientId,
+    cognitoBFFAppClientSecretArn: refs.bffAppClientSecret.secretArn,
+    // Voice
+    voiceTicketReplayTableName: refs.voiceTicketReplayTable.tableName,
+    voiceTicketReplayTableArn: refs.voiceTicketReplayTable.tableArn,
+    voiceTicketSigningSecretArn: refs.voiceTicketSigningSecret.secretArn,
+    // Inference
     inferenceApiRuntimeEndpointUrl: overrides.inferenceApiRuntimeEndpointUrl,
-    userFilesBucketName: p('user-file-uploads/bucket-name'),
-    userFilesBucketArn: p('user-file-uploads/bucket-arn'),
-    userFilesTableName: p('user-file-uploads/table-name'),
-    userFilesTableArn: p('user-file-uploads/table-arn'),
-    ragDocumentsBucketName: p('rag/documents-bucket-name'),
-    ragAssistantsTableName: p('rag/assistants-table-name'),
-    ragVectorBucketName: p('rag/vector-bucket-name'),
-    ragVectorIndexName: p('rag/vector-index-name'),
-    ragAssistantsTableArn: p('rag/assistants-table-arn'),
-    ragDocumentsBucketArn: p('rag/documents-bucket-arn'),
+    // File uploads
+    userFilesBucketName: refs.fileUploadBucket.bucketName,
+    userFilesBucketArn: refs.fileUploadBucket.bucketArn,
+    userFilesTableName: refs.fileUploadTable.tableName,
+    userFilesTableArn: refs.fileUploadTable.tableArn,
+    // RAG
+    ragDocumentsBucketName: refs.ragDocumentsBucket.bucketName,
+    ragAssistantsTableName: refs.ragAssistantsTable.tableName,
+    ragVectorBucketName: refs.ragVectorBucketName,
+    ragVectorIndexName: refs.ragVectorIndexName,
+    ragAssistantsTableArn: refs.ragAssistantsTable.tableArn,
+    ragDocumentsBucketArn: refs.ragDocumentsBucket.bucketArn,
     memoryId: overrides.memoryId,
-    workloadIdentityName: p('oauth/platform-workload-identity-name'),
+    // Workload identity
+    workloadIdentityName: refs.platformWorkloadIdentity.name,
   };
 }
 

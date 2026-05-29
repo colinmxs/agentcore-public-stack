@@ -150,46 +150,10 @@ export class RagDataConstruct extends Construct {
     });
 
     // SSM publications
-    new ssm.StringParameter(this, 'DocumentsBucketNameParameter', {
-      parameterName: `/${config.projectPrefix}/rag/documents-bucket-name`,
-      stringValue: this.documentsBucket.bucketName,
-      description: 'RAG documents bucket name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'DocumentsBucketArnParameter', {
-      parameterName: `/${config.projectPrefix}/rag/documents-bucket-arn`,
-      stringValue: this.documentsBucket.bucketArn,
-      description: 'RAG documents bucket ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AssistantsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/rag/assistants-table-name`,
-      stringValue: this.assistantsTable.tableName,
-      description: 'RAG assistants table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AssistantsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/rag/assistants-table-arn`,
-      stringValue: this.assistantsTable.tableArn,
-      description: 'RAG assistants table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'VectorBucketNameParameter', {
-      parameterName: `/${config.projectPrefix}/rag/vector-bucket-name`,
-      stringValue: this.vectorBucketName,
-      description: 'RAG vector store bucket name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'VectorIndexNameParameter', {
-      parameterName: `/${config.projectPrefix}/rag/vector-index-name`,
-      stringValue: this.vectorIndexName,
-      description: 'RAG vector store index name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

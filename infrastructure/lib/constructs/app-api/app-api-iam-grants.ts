@@ -23,54 +23,31 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import * as cdk from 'aws-cdk-lib';
 import { Construct } from 'constructs';
 import { AppConfig } from '../../config';
+import { PlatformComputeRefs } from '../platform-compute-refs';
 
 export interface AppApiIamGrantsProps {
   scope: Construct;
   config: AppConfig;
   taskRole: iam.IRole;
-  // All the SSM-resolved ARNs/names are passed as strings since
-  // the parent construct already resolved them from SSM.
-  oidcStateTableArn: string;
-  usersTableArn: string;
-  appRolesTableArn: string;
-  apiKeysTableArn: string;
-  oauthProvidersTableArn: string;
-  oauthUserTokensTableArn: string;
-  oauthTokenEncryptionKeyArn: string;
-  oauthClientSecretsArn: string;
-  userQuotasTableArn: string;
-  quotaEventsTableArn: string;
-  sessionsMetadataTableArn: string;
-  userCostSummaryTableArn: string;
-  systemCostRollupTableArn: string;
-  managedModelsTableArn: string;
-  userSettingsTableArn: string;
-  userMenuLinksTableArn: string;
-  authProvidersTableArn: string;
-  authProviderSecretsArn: string;
-  cognitoUserPoolArn: string;
-  bffSessionsTableArn: string;
-  bffCookieSigningKeyArn: string;
-  bffCookieDataKeySecretArn: string;
-  cognitoBFFAppClientSecretArn: string;
-  voiceTicketReplayTableArn: string;
-  voiceTicketSigningSecretArn: string;
-  userFilesBucketArn: string;
-  userFilesTableArn: string;
-  ragAssistantsTableArn: string;
-  ragDocumentsBucketArn: string;
   /**
-   * AgentCore Memory ARN. Passed in directly (not read from SSM)
-   * because the AgentCore Memory is created by a sibling construct
-   * inside the same BackendStack — `valueForStringParameter` here
-   * would resolve before the Memory exists, deadlocking on first
-   * deploy.
+   * Typed bundle of every PlatformStack resource this grants
+   * function reads from. Replaces the previous in-function
+   * `valueForStringParameter` calls — those would deadlock CFN
+   * on first deploy because parameter resolution runs before
+   * resource creation. See platform-compute-refs.ts.
+   */
+  refs: PlatformComputeRefs;
+  /**
+   * AgentCore Memory ARN. Passed in directly because the Memory
+   * resource is on PlatformStack but this grant function is
+   * called from compute, and the existing wireCompute() flow
+   * already threads memoryArn separately. Could be folded into
+   * `refs` later if convenient.
    */
   agentCoreMemoryArn: string;
   /**
-   * SageMaker fine-tuning execution role ARN. Same-stack ref via
-   * SageMakerExecutionRoleConstruct in BackendStack — passed in to
-   * avoid a same-stack SSM round-trip.
+   * SageMaker fine-tuning execution role ARN. Created by a sibling
+   * construct in wireCompute() — passed in here.
    */
   sagemakerExecutionRoleArn: string;
 }
@@ -102,7 +79,7 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan',
         'dynamodb:BatchGetItem', 'dynamodb:BatchWriteItem',
       ],
-      resources: [props.userSettingsTableArn, `${props.userSettingsTableArn}/index/*`],
+      resources: [props.refs.userSettingsTable.tableArn, `${props.refs.userSettingsTable.tableArn}/index/*`],
     }),
   );
 
@@ -115,7 +92,7 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         'dynamodb:GetItem', 'dynamodb:PutItem', 'dynamodb:UpdateItem',
         'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan',
       ],
-      resources: [props.userMenuLinksTableArn, `${props.userMenuLinksTableArn}/index/*`],
+      resources: [props.refs.userMenuLinksTable.tableArn, `${props.refs.userMenuLinksTable.tableArn}/index/*`],
     }),
   );
 
@@ -129,7 +106,7 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         'dynamodb:DeleteItem', 'dynamodb:Query', 'dynamodb:Scan',
         'dynamodb:BatchGetItem', 'dynamodb:BatchWriteItem',
       ],
-      resources: [props.ragAssistantsTableArn, `${props.ragAssistantsTableArn}/index/*`],
+      resources: [props.refs.ragAssistantsTable.tableArn, `${props.refs.ragAssistantsTable.tableArn}/index/*`],
     }),
   );
 
@@ -142,28 +119,28 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         's3:GetObject', 's3:PutObject', 's3:DeleteObject',
         's3:ListBucket', 's3:GetBucketLocation',
       ],
-      resources: [props.ragDocumentsBucketArn, `${props.ragDocumentsBucketArn}/*`],
+      resources: [props.refs.ragDocumentsBucket.bucketArn, `${props.refs.ragDocumentsBucket.bucketArn}/*`],
     }),
   );
 
   // ── Core tables (OIDC, Users, Roles, API Keys, OAuth) ──
   const coreTables = [
-    { sid: 'OidcStateAccess', arn: props.oidcStateTableArn },
-    { sid: 'UsersTableAccess', arn: props.usersTableArn },
-    { sid: 'AppRolesTableAccess', arn: props.appRolesTableArn },
-    { sid: 'ApiKeysTableAccess', arn: props.apiKeysTableArn },
-    { sid: 'OAuthProvidersAccess', arn: props.oauthProvidersTableArn },
-    { sid: 'OAuthUserTokensAccess', arn: props.oauthUserTokensTableArn },
-    { sid: 'UserQuotasAccess', arn: props.userQuotasTableArn },
-    { sid: 'QuotaEventsAccess', arn: props.quotaEventsTableArn },
-    { sid: 'SessionsMetadataAccess', arn: props.sessionsMetadataTableArn },
-    { sid: 'UserCostSummaryAccess', arn: props.userCostSummaryTableArn },
-    { sid: 'SystemCostRollupAccess', arn: props.systemCostRollupTableArn },
-    { sid: 'ManagedModelsAccess', arn: props.managedModelsTableArn },
-    { sid: 'AuthProvidersAccess', arn: props.authProvidersTableArn },
-    { sid: 'BffSessionsAccess', arn: props.bffSessionsTableArn },
-    { sid: 'VoiceTicketReplayAccess', arn: props.voiceTicketReplayTableArn },
-    { sid: 'UserFilesTableAccess', arn: props.userFilesTableArn },
+    { sid: 'OidcStateAccess', arn: props.refs.oidcStateTable.tableArn },
+    { sid: 'UsersTableAccess', arn: props.refs.usersTable.tableArn },
+    { sid: 'AppRolesTableAccess', arn: props.refs.appRolesTable.tableArn },
+    { sid: 'ApiKeysTableAccess', arn: props.refs.apiKeysTable.tableArn },
+    { sid: 'OAuthProvidersAccess', arn: props.refs.oauthProvidersTable.tableArn },
+    { sid: 'OAuthUserTokensAccess', arn: props.refs.oauthUserTokensTable.tableArn },
+    { sid: 'UserQuotasAccess', arn: props.refs.userQuotasTable.tableArn },
+    { sid: 'QuotaEventsAccess', arn: props.refs.quotaEventsTable.tableArn },
+    { sid: 'SessionsMetadataAccess', arn: props.refs.sessionsMetadataTable.tableArn },
+    { sid: 'UserCostSummaryAccess', arn: props.refs.userCostSummaryTable.tableArn },
+    { sid: 'SystemCostRollupAccess', arn: props.refs.systemCostRollupTable.tableArn },
+    { sid: 'ManagedModelsAccess', arn: props.refs.managedModelsTable.tableArn },
+    { sid: 'AuthProvidersAccess', arn: props.refs.authProvidersTable.tableArn },
+    { sid: 'BffSessionsAccess', arn: props.refs.bffSessionsTable.tableArn },
+    { sid: 'VoiceTicketReplayAccess', arn: props.refs.voiceTicketReplayTable.tableArn },
+    { sid: 'UserFilesTableAccess', arn: props.refs.fileUploadTable.tableArn },
   ];
 
   for (const { sid, arn } of coreTables) {
@@ -190,17 +167,17 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         's3:GetObject', 's3:PutObject', 's3:DeleteObject',
         's3:ListBucket', 's3:GetBucketLocation',
       ],
-      resources: [props.userFilesBucketArn, `${props.userFilesBucketArn}/*`],
+      resources: [props.refs.fileUploadBucket.bucketArn, `${props.refs.fileUploadBucket.bucketArn}/*`],
     }),
   );
 
   // ── Secrets Manager ──
   const secrets = [
-    props.oauthClientSecretsArn,
-    props.authProviderSecretsArn,
-    props.voiceTicketSigningSecretArn,
-    props.bffCookieDataKeySecretArn,
-    props.cognitoBFFAppClientSecretArn,
+    props.refs.oauthClientSecretsSecret.secretArn,
+    props.refs.authProviderSecretsSecret.secretArn,
+    props.refs.voiceTicketSigningSecret.secretArn,
+    props.refs.bffCookieDataKeySecret.secretArn,
+    props.refs.bffAppClientSecret.secretArn,
   ];
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
@@ -217,7 +194,7 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
       sid: 'KmsDecryptAccess',
       effect: iam.Effect.ALLOW,
       actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey'],
-      resources: [props.oauthTokenEncryptionKeyArn, props.bffCookieSigningKeyArn],
+      resources: [props.refs.oauthTokenEncryptionKey.keyArn, props.refs.bffCookieSigningKey.keyArn],
     }),
   );
 
@@ -236,17 +213,15 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
         'cognito-idp:DeleteIdentityProvider', 'cognito-idp:DescribeIdentityProvider',
         'cognito-idp:DescribeUserPoolClient', 'cognito-idp:UpdateUserPoolClient',
       ],
-      resources: [props.cognitoUserPoolArn],
+      resources: [props.refs.userPool.userPoolArn],
     }),
   );
 
   // ── Artifacts (S3 + DDB + render token) ──
-  const artifactsBucketArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/artifacts/bucket-arn`);
-  const artifactsTableArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/artifacts/table-arn`);
-  const artifactRenderTokenSecretArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/artifacts/render-token-key-arn`);
+  // Sourced from typed PlatformStack refs — see PlatformComputeRefs.
+  const artifactsBucketArn = props.refs.artifactsContentBucket.bucketArn;
+  const artifactsTableArn = props.refs.artifactsTable.tableArn;
+  const artifactRenderTokenSecretArn = props.refs.artifactRenderTokenSecret.secretArn;
 
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
@@ -275,14 +250,13 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   );
 
   // ── Fine-tuning ──
-  const ftJobsTableArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/fine-tuning/jobs-table-arn`);
-  const ftAccessTableArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/fine-tuning/access-table-arn`);
-  const ftDataBucketArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/fine-tuning/data-bucket-arn`);
+  // Sourced from typed PlatformStack refs.
+  const ftJobsTableArn = props.refs.fineTuningJobsTable.tableArn;
+  const ftAccessTableArn = props.refs.fineTuningAccessTable.tableArn;
+  const ftDataBucketArn = props.refs.fineTuningDataBucket.bucketArn;
   // sagemaker-execution-role-arn is written by a sibling construct in
-  // BackendStack, so it comes in via props rather than SSM.
+  // PlatformStack, so it still comes in via props (it's already a
+  // string ref off the SageMakerExecutionRoleConstruct).
   const ftExecRoleArn = props.sagemakerExecutionRoleArn;
 
   taskRole.addToPrincipalPolicy(
@@ -393,10 +367,8 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   );
 
   // ── S3 Vectors (RAG query) ──
-  const vectorBucketName = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/rag/vector-bucket-name`);
-  const vectorIndexName = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/rag/vector-index-name`);
+  const vectorBucketName = props.refs.ragVectorBucketName;
+  const vectorIndexName = props.refs.ragVectorIndexName;
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
       sid: 'S3VectorsQueryAccess',

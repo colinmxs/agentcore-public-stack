@@ -124,46 +124,10 @@ export class FineTuningDataConstruct extends Construct {
       ],
     });
 
-    new ssm.StringParameter(this, 'JobsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/jobs-table-name`,
-      stringValue: this.jobsTable.tableName,
-      description: 'Fine-tuning jobs DynamoDB table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'JobsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/jobs-table-arn`,
-      stringValue: this.jobsTable.tableArn,
-      description: 'Fine-tuning jobs DynamoDB table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AccessTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/access-table-name`,
-      stringValue: this.accessTable.tableName,
-      description: 'Fine-tuning access DynamoDB table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AccessTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/access-table-arn`,
-      stringValue: this.accessTable.tableArn,
-      description: 'Fine-tuning access DynamoDB table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'DataBucketNameParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/data-bucket-name`,
-      stringValue: this.dataBucket.bucketName,
-      description: 'Fine-tuning data S3 Bucket name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'DataBucketArnParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/data-bucket-arn`,
-      stringValue: this.dataBucket.bucketArn,
-      description: 'Fine-tuning data S3 bucket ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -40,19 +40,7 @@ export class AdminTablesConstruct extends Construct {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
-    new ssm.StringParameter(this, 'UserSettingsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/settings/user-settings-table-name`,
-      stringValue: this.userSettingsTable.tableName,
-      description: 'User settings DynamoDB table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserSettingsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/settings/user-settings-table-arn`,
-      stringValue: this.userSettingsTable.tableArn,
-      description: 'User settings DynamoDB table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     this.userMenuLinksTable = new dynamodb.Table(this, 'UserMenuLinksTable', {
       tableName: getResourceName(config, 'user-menu-links'),
@@ -64,18 +52,6 @@ export class AdminTablesConstruct extends Construct {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
-    new ssm.StringParameter(this, 'UserMenuLinksTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/admin/user-menu-links-table-name`,
-      stringValue: this.userMenuLinksTable.tableName,
-      description: 'User-menu links DynamoDB table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserMenuLinksTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/admin/user-menu-links-table-arn`,
-      stringValue: this.userMenuLinksTable.tableArn,
-      description: 'User-menu links DynamoDB table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

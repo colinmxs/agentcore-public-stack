@@ -129,32 +129,8 @@ export class FileUploadConstruct extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    new ssm.StringParameter(this, 'UserFilesBucketNameParameter', {
-      parameterName: `/${config.projectPrefix}/user-file-uploads/bucket-name`,
-      stringValue: this.bucket.bucketName,
-      description: 'User files S3 bucket name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserFilesBucketArnParameter', {
-      parameterName: `/${config.projectPrefix}/user-file-uploads/bucket-arn`,
-      stringValue: this.bucket.bucketArn,
-      description: 'User files S3 bucket ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserFilesTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/user-file-uploads/table-name`,
-      stringValue: this.table.tableName,
-      description: 'User files metadata table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserFilesTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/user-file-uploads/table-arn`,
-      stringValue: this.table.tableArn,
-      description: 'User files metadata table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -45,19 +45,7 @@ export class AlbDnsConstruct extends Construct {
         domainName: config.infrastructureHostedZoneDomain,
       });
 
-      new ssm.StringParameter(this, 'HostedZoneIdParameter', {
-        parameterName: `/${config.projectPrefix}/network/hosted-zone-id`,
-        stringValue: hostedZone.hostedZoneId,
-        description: 'Route53 Hosted Zone ID',
-        tier: ssm.ParameterTier.STANDARD,
-      });
 
-      new ssm.StringParameter(this, 'HostedZoneNameParameter', {
-        parameterName: `/${config.projectPrefix}/network/hosted-zone-name`,
-        stringValue: hostedZone.zoneName,
-        description: 'Route53 Hosted Zone Name',
-        tier: ssm.ParameterTier.STANDARD,
-      });
 
       if (config.albSubdomain) {
         const albRecordName = `${config.albSubdomain}.${config.infrastructureHostedZoneDomain}`;

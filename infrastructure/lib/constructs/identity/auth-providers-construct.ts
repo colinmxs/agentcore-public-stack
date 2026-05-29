@@ -52,26 +52,8 @@ export class AuthProvidersConstruct extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    new ssm.StringParameter(this, 'AuthProvidersTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-name`,
-      stringValue: this.providersTable.tableName,
-      description: 'Auth providers table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AuthProvidersTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-table-arn`,
-      stringValue: this.providersTable.tableArn,
-      description: 'Auth providers table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AuthProvidersStreamArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/auth-providers-stream-arn`,
-      stringValue: this.providersTable.tableStreamArn!,
-      description: 'DynamoDB Stream ARN for auth providers table',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     this.secretsSecret = new secretsmanager.Secret(
       this,
@@ -85,11 +67,5 @@ export class AuthProvidersConstruct extends Construct {
       },
     );
 
-    new ssm.StringParameter(this, 'AuthProviderSecretsArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/auth-provider-secrets-arn`,
-      stringValue: this.secretsSecret.secretArn,
-      description: 'Secrets Manager ARN for auth provider client secrets',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -189,12 +189,6 @@ export class RagIngestionLambdaConstruct extends Construct {
     // new s3n.LambdaDestination(ragIngestion.lambda), { prefix:
     // 'assistants/' })` itself.
 
-    new ssm.StringParameter(this, 'IngestionLambdaArnParameter', {
-      parameterName: `/${config.projectPrefix}/rag/ingestion-lambda-arn`,
-      stringValue: this.lambda.functionArn,
-      description: 'RAG ingestion Lambda ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     new ssm.StringParameter(this, 'IngestionFunctionNameParameter', {
       parameterName: `/${config.projectPrefix}/rag/ingestion-function-name`,

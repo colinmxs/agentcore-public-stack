@@ -145,17 +145,5 @@ export class AgentCoreMemoryConstruct extends Construct {
     memoryTracesDelivery.node.addDependency(memoryTracesDestination);
 
     // ── SSM publications ──
-    new ssm.StringParameter(this, 'MemoryArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/memory-arn`,
-      stringValue: this.memoryArn,
-      description: 'AgentCore Memory ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-    new ssm.StringParameter(this, 'MemoryIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/memory-id`,
-      stringValue: this.memoryId,
-      description: 'AgentCore Memory ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

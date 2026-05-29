@@ -65,20 +65,7 @@ export class CostTrackingTablesConstruct extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    new ssm.StringParameter(this, 'SessionsMetadataTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-name`,
-      stringValue: this.sessionsMetadataTable.tableName,
-      description:
-        'SessionsMetadata table name for message-level cost tracking',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'SessionsMetadataTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`,
-      stringValue: this.sessionsMetadataTable.tableArn,
-      description: 'SessionsMetadata table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // UserCostSummary Table
     this.userCostSummaryTable = new dynamodb.Table(
@@ -108,20 +95,7 @@ export class CostTrackingTablesConstruct extends Construct {
       ],
     });
 
-    new ssm.StringParameter(this, 'UserCostSummaryTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-name`,
-      stringValue: this.userCostSummaryTable.tableName,
-      description:
-        'UserCostSummary table name for aggregated cost summaries',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UserCostSummaryTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`,
-      stringValue: this.userCostSummaryTable.tableArn,
-      description: 'UserCostSummary table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // SystemCostRollup Table
     this.systemCostRollupTable = new dynamodb.Table(
@@ -138,20 +112,7 @@ export class CostTrackingTablesConstruct extends Construct {
       },
     );
 
-    new ssm.StringParameter(this, 'SystemCostRollupTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-name`,
-      stringValue: this.systemCostRollupTable.tableName,
-      description:
-        'SystemCostRollup table name for admin dashboard aggregates',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'SystemCostRollupTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`,
-      stringValue: this.systemCostRollupTable.tableArn,
-      description: 'SystemCostRollup table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // ManagedModels Table
     this.managedModelsTable = new dynamodb.Table(this, 'ManagedModelsTable', {
@@ -178,11 +139,5 @@ export class CostTrackingTablesConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'ManagedModelsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/admin/managed-models-table-arn`,
-      stringValue: this.managedModelsTable.tableArn,
-      description: 'ManagedModels table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

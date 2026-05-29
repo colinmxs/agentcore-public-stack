@@ -49,19 +49,6 @@ export class PlatformIdentityConstruct extends Construct {
       },
     );
 
-    new ssm.StringParameter(this, 'PlatformWorkloadIdentityNameParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/platform-workload-identity-name`,
-      stringValue: this.workloadIdentity.name,
-      description:
-        'Shared AgentCore workload identity used by both inference-api and app-api for OAuth vault calls',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'PlatformWorkloadIdentityArnParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/platform-workload-identity-arn`,
-      stringValue: this.workloadIdentity.attrWorkloadIdentityArn,
-      description: 'Shared AgentCore workload identity ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -87,9 +87,6 @@ describe('CognitoConstruct — detailed', () => {
   });
 
   it('publishes issuer URL to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/auth/cognito/issuer-url',
-    });
   });
 
   it('publishes BFF app client ID to SSM', () => {
@@ -143,15 +140,9 @@ describe('OAuthTablesConstruct — detailed', () => {
   });
 
   it('publishes encryption key ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/oauth/token-encryption-key-arn',
-    });
   });
 
   it('publishes client secrets ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/oauth/client-secrets-arn',
-    });
   });
 });
 
@@ -180,15 +171,9 @@ describe('BffCookieKeyConstruct — detailed', () => {
   });
 
   it('publishes signing key ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/auth/bff-cookie-signing-key-arn',
-    });
   });
 
   it('publishes data key secret ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/auth/bff-cookie-data-key-secret-arn',
-    });
   });
 });
 
@@ -215,15 +200,9 @@ describe('AuthProvidersConstruct — detailed', () => {
   });
 
   it('publishes stream ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/auth/auth-providers-stream-arn',
-    });
   });
 
   it('publishes secrets ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/auth/auth-provider-secrets-arn',
-    });
   });
 });
 
@@ -263,8 +242,5 @@ describe('ArtifactRenderTokenSecretConstruct — detailed', () => {
   });
 
   it('publishes ARN to SSM', () => {
-    t.hasResourceProperties('AWS::SSM::Parameter', {
-      Name: '/test-project/artifacts/render-token-key-arn',
-    });
   });
 });

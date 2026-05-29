@@ -132,10 +132,16 @@ describe('PlatformStack', () => {
   });
 
   describe('SSM parameters', () => {
-    it('publishes SSM parameters for runtime consumption', () => {
-      // Large number — every construct publishes at least 2
+    it('publishes only the SSM parameters deploy scripts and e2e tests need', () => {
+      // After the SSM cleanup, only ~12 publishes remain — these are the
+      // ones consumed by deploy scripts (build, deploy-ecs-service,
+      // deploy-runtime-image, deploy-image-lambda, frontend deploy) and
+      // e2e tests. Every other SSM publish was dead weight: the value
+      // was either consumed only by sibling CDK constructs (now sourced
+      // via typed PlatformComputeRefs) or never read by anyone.
       const params = template.findResources('AWS::SSM::Parameter');
-      expect(Object.keys(params).length).toBeGreaterThanOrEqual(40);
+      expect(Object.keys(params).length).toBeGreaterThanOrEqual(8);
+      expect(Object.keys(params).length).toBeLessThanOrEqual(20);
     });
   });
 

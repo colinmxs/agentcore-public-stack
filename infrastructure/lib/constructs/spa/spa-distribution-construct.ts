@@ -319,13 +319,6 @@ function handler(event) {
     ).join(',');
 
     if (corsOrigins) {
-      new ssm.StringParameter(this, 'CorsOriginsParameter', {
-        parameterName: `/${config.projectPrefix}/frontend/cors-origins`,
-        stringValue: corsOrigins,
-        description:
-          'Comma-separated list of allowed CORS origins for OAuth flows',
-        tier: ssm.ParameterTier.STANDARD,
-      });
     }
   }
 }

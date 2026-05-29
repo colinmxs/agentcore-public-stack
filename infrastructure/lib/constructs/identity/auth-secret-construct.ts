@@ -44,18 +44,6 @@ export class AuthSecretConstruct extends Construct {
       removalPolicy: getRemovalPolicy(config),
     });
 
-    new ssm.StringParameter(this, 'AuthSecretArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/secret-arn`,
-      stringValue: this.authSecret.secretArn,
-      description: 'Authentication Secret ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AuthSecretNameParameter', {
-      parameterName: `/${config.projectPrefix}/auth/secret-name`,
-      stringValue: this.authSecret.secretName,
-      description: 'Authentication Secret Name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

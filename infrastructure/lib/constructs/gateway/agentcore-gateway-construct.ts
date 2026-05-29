@@ -96,20 +96,7 @@ export class AgentCoreGatewayConstruct extends Construct {
     const gatewayUrl = this.gateway.attrGatewayUrl;
     const gatewayId = this.gateway.attrGatewayIdentifier;
 
-    new ssm.StringParameter(this, 'GatewayUrlParameter', {
-      parameterName: `/${config.projectPrefix}/gateway/url`,
-      stringValue: gatewayUrl,
-      description:
-        'AgentCore Gateway URL for remote invocation (SigV4 authenticated)',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'GatewayIdParameter', {
-      parameterName: `/${config.projectPrefix}/gateway/id`,
-      stringValue: gatewayId,
-      description: 'AgentCore Gateway Identifier',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     new cdk.CfnOutput(this, 'GatewayArn', {
       value: gatewayArn,

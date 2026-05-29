@@ -99,32 +99,8 @@ export class ArtifactsDataConstruct extends Construct {
       autoDeleteObjects: getAutoDeleteObjects(config),
     });
 
-    new ssm.StringParameter(this, 'ArtifactsBucketNameParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/bucket-name`,
-      stringValue: this.bucket.bucketName,
-      description: 'S3 bucket holding artifact content blobs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'ArtifactsBucketArnParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/bucket-arn`,
-      stringValue: this.bucket.bucketArn,
-      description: 'ARN of the artifact content bucket (for IAM grants)',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'ArtifactsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/table-name`,
-      stringValue: this.table.tableName,
-      description: 'DynamoDB table holding artifact heads + version log',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'ArtifactsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/table-arn`,
-      stringValue: this.table.tableArn,
-      description: 'ARN of the artifacts table (for IAM grants)',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

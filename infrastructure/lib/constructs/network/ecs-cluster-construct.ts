@@ -43,11 +43,5 @@ export class EcsClusterConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'EcsClusterArnParameter', {
-      parameterName: `/${config.projectPrefix}/network/ecs-cluster-arn`,
-      stringValue: this.ecsCluster.clusterArn,
-      description: 'ECS Cluster ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

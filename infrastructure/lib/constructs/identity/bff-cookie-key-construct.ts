@@ -50,12 +50,6 @@ export class BffCookieKeyConstruct extends Construct {
       removalPolicy: getRemovalPolicy(config),
     });
 
-    new ssm.StringParameter(this, 'BFFCookieSigningKeyArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/bff-cookie-signing-key-arn`,
-      stringValue: this.signingKey.keyArn,
-      description: 'KMS key ARN for BFF session cookie sealing',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     this.dataKeySecret = new secretsmanager.Secret(
       this,
@@ -79,11 +73,5 @@ export class BffCookieKeyConstruct extends Construct {
       },
     );
 
-    new ssm.StringParameter(this, 'BFFCookieDataKeySecretArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/bff-cookie-data-key-secret-arn`,
-      stringValue: this.dataKeySecret.secretArn,
-      description: 'Secrets Manager ARN for the BFF cookie data-key secret',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

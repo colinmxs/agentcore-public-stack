@@ -121,25 +121,7 @@ export class SageMakerExecutionRoleConstruct extends Construct {
       'Allow outbound HTTPS for AWS service access and model downloads',
     );
 
-    new ssm.StringParameter(this, 'SageMakerExecutionRoleArnParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/sagemaker-execution-role-arn`,
-      stringValue: this.executionRole.roleArn,
-      description: 'SageMaker execution role ARN for training jobs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'SageMakerSecurityGroupIdParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/sagemaker-security-group-id`,
-      stringValue: this.securityGroup.securityGroupId,
-      description: 'SageMaker training jobs security group ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'PrivateSubnetIdsParameter', {
-      parameterName: `/${config.projectPrefix}/fine-tuning/private-subnet-ids`,
-      stringValue: privateSubnetIdsString,
-      description: 'Private subnet IDs for SageMaker training jobs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

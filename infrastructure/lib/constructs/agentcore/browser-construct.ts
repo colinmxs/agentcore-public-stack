@@ -61,17 +61,5 @@ export class AgentCoreBrowserConstruct extends Construct {
     this.browserId = this.browser.attrBrowserId;
 
     // ── SSM publications ──
-    new ssm.StringParameter(this, 'BrowserArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/browser-arn`,
-      stringValue: this.browserArn,
-      description: 'AgentCore Browser ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-    new ssm.StringParameter(this, 'BrowserIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/browser-id`,
-      stringValue: this.browserId,
-      description: 'AgentCore Browser ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

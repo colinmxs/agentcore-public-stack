@@ -133,26 +133,8 @@ export class CognitoConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'CognitoUserPoolArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/cognito/user-pool-arn`,
-      stringValue: this.userPool.userPoolArn,
-      description: 'Cognito User Pool ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'CognitoDomainUrlParameter', {
-      parameterName: `/${config.projectPrefix}/auth/cognito/domain-url`,
-      stringValue: this.cognitoDomain.baseUrl(),
-      description: 'Cognito hosted UI domain URL',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'CognitoIssuerUrlParameter', {
-      parameterName: `/${config.projectPrefix}/auth/cognito/issuer-url`,
-      stringValue: `https://cognito-idp.${config.awsRegion}.amazonaws.com/${this.userPool.userPoolId}`,
-      description: 'Cognito OIDC issuer URL',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     new ssm.StringParameter(this, 'CognitoBFFAppClientIdParameter', {
       parameterName: `/${config.projectPrefix}/auth/cognito/bff-app-client-id`,
@@ -161,12 +143,5 @@ export class CognitoConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'CognitoBFFAppClientSecretArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/cognito/bff-app-client-secret-arn`,
-      stringValue: this.bffAppClientSecret.secretArn,
-      description:
-        'Secrets Manager ARN for the Cognito BFF app client secret',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

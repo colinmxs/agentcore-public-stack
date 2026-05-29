@@ -151,12 +151,5 @@ export class ArtifactsDistributionConstruct extends Construct {
 
     this.originUrl = `https://${artifactsSubdomain}`;
 
-    new ssm.StringParameter(this, 'ArtifactsOriginParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/origin`,
-      stringValue: this.originUrl,
-      description:
-        'Origin where artifact iframes are served (https://artifacts.{domain})',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

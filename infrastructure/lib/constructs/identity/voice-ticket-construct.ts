@@ -40,19 +40,7 @@ export class VoiceTicketConstruct extends Construct {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
-    new ssm.StringParameter(this, 'VoiceTicketReplayTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/voice/ticket-replay-table-name`,
-      stringValue: this.replayTable.tableName,
-      description: 'Voice ticket replay table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'VoiceTicketReplayTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/voice/ticket-replay-table-arn`,
-      stringValue: this.replayTable.tableArn,
-      description: 'Voice ticket replay table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     this.signingSecret = new secretsmanager.Secret(
       this,
@@ -73,11 +61,5 @@ export class VoiceTicketConstruct extends Construct {
       },
     );
 
-    new ssm.StringParameter(this, 'VoiceTicketSigningSecretArnParameter', {
-      parameterName: `/${config.projectPrefix}/voice/ticket-signing-secret-arn`,
-      stringValue: this.signingSecret.secretArn,
-      description: 'Voice ticket signing secret ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

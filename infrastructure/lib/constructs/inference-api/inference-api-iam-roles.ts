@@ -12,6 +12,7 @@ import * as ssm from 'aws-cdk-lib/aws-ssm';
 import { Construct } from 'constructs';
 
 import { AppConfig, getResourceName } from '../../config';
+import { PlatformComputeRefs } from '../platform-compute-refs';
 
 /**
  * Create the AgentCore Runtime execution role with all required
@@ -20,6 +21,7 @@ import { AppConfig, getResourceName } from '../../config';
 export function createRuntimeExecutionRole(
   scope: Construct,
   config: AppConfig,
+  refs: PlatformComputeRefs,
 ): iam.Role {
   const role = new iam.Role(scope, 'AgentCoreRuntimeExecutionRole', {
     roleName: getResourceName(config, 'agentcore-runtime-role'),
@@ -107,10 +109,8 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── Secrets Manager (OAuth client secrets + auth provider secrets) ──
-  const oauthClientSecretsArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/oauth/client-secrets-arn`);
-  const authProviderSecretsArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/auth/auth-provider-secrets-arn`);
+  const oauthClientSecretsArn = refs.oauthClientSecretsSecret.secretArn;
+  const authProviderSecretsArn = refs.authProviderSecretsSecret.secretArn;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'SecretsManagerRead',
     effect: iam.Effect.ALLOW,
@@ -128,20 +128,20 @@ export function createRuntimeExecutionRole(
 
   // ── DynamoDB tables (Users, Roles, OAuth, Quotas, Costs, etc.) ──
   const tableArns = [
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/users/users-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/rbac/app-roles-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/oauth/providers-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/oauth/user-tokens-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/auth/api-keys-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/rag/assistants-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/quota/user-quotas-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/quota/quota-events-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/cost-tracking/sessions-metadata-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/cost-tracking/user-cost-summary-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/cost-tracking/system-cost-rollup-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/admin/managed-models-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/auth/auth-providers-table-arn`),
-    ssm.StringParameter.valueForStringParameter(scope, `/${config.projectPrefix}/user-file-uploads/table-arn`),
+    refs.usersTable.tableArn,
+    refs.appRolesTable.tableArn,
+    refs.oauthProvidersTable.tableArn,
+    refs.oauthUserTokensTable.tableArn,
+    refs.apiKeysTable.tableArn,
+    refs.ragAssistantsTable.tableArn,
+    refs.userQuotasTable.tableArn,
+    refs.quotaEventsTable.tableArn,
+    refs.sessionsMetadataTable.tableArn,
+    refs.userCostSummaryTable.tableArn,
+    refs.systemCostRollupTable.tableArn,
+    refs.managedModelsTable.tableArn,
+    refs.authProvidersTable.tableArn,
+    refs.fileUploadTable.tableArn,
   ];
   const tableResources = tableArns.flatMap(arn => [arn, `${arn}/index/*`]);
   role.addToPolicy(new iam.PolicyStatement({
@@ -156,8 +156,7 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── KMS (OAuth token encryption) ──
-  const oauthTokenEncryptionKeyArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/oauth/token-encryption-key-arn`);
+  const oauthTokenEncryptionKeyArn = refs.oauthTokenEncryptionKey.keyArn;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'KmsOAuthTokenAccess',
     effect: iam.Effect.ALLOW,
@@ -166,8 +165,7 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── Cognito (user pool read for token validation) ──
-  const cognitoUserPoolId = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/auth/cognito/user-pool-id`);
+  const cognitoUserPoolId = refs.userPool.userPoolId;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'CognitoUserPoolRead',
     effect: iam.Effect.ALLOW,
@@ -176,8 +174,7 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── File uploads S3 ──
-  const userFilesBucketArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/user-file-uploads/bucket-arn`);
+  const userFilesBucketArn = refs.fileUploadBucket.bucketArn;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'UserFilesBucketAccess',
     effect: iam.Effect.ALLOW,
@@ -186,10 +183,8 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── Artifacts (S3 write + DDB write) ──
-  const artifactsBucketArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/artifacts/bucket-arn`);
-  const artifactsTableArn = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/artifacts/table-arn`);
+  const artifactsBucketArn = refs.artifactsContentBucket.bucketArn;
+  const artifactsTableArn = refs.artifactsTable.tableArn;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'ArtifactsBucketWrite',
     effect: iam.Effect.ALLOW,
@@ -204,10 +199,8 @@ export function createRuntimeExecutionRole(
   }));
 
   // ── S3 Vectors (RAG query) ──
-  const vectorBucketName = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/rag/vector-bucket-name`);
-  const vectorIndexName = ssm.StringParameter.valueForStringParameter(
-    scope, `/${config.projectPrefix}/rag/vector-index-name`);
+  const vectorBucketName = refs.ragVectorBucketName;
+  const vectorIndexName = refs.ragVectorIndexName;
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'S3VectorsQueryAccess',
     effect: iam.Effect.ALLOW,

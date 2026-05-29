@@ -254,12 +254,5 @@ export class McpSandboxDistributionConstruct extends Construct {
       ? `https://${proxySubdomain}`
       : `https://${this.distribution.distributionDomainName}`;
 
-    new ssm.StringParameter(this, 'McpSandboxOriginParameter', {
-      parameterName: `/${config.projectPrefix}/mcp-sandbox/origin`,
-      stringValue: this.proxyOrigin,
-      description:
-        'Origin serving the MCP Apps sandbox proxy shell (https://mcp-sandbox.{domain})',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -52,12 +52,5 @@ export class ArtifactRenderTokenSecretConstruct extends Construct {
       removalPolicy: getRemovalPolicy(config),
     });
 
-    new ssm.StringParameter(this, 'ArtifactRenderTokenSecretArnParameter', {
-      parameterName: `/${config.projectPrefix}/artifacts/render-token-key-arn`,
-      stringValue: this.secret.secretArn,
-      description:
-        'Secrets Manager ARN for the artifact render token signing key',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

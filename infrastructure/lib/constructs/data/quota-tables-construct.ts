@@ -81,12 +81,6 @@ export class QuotaTablesConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'UserQuotasTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/quota/user-quotas-table-arn`,
-      stringValue: this.userQuotasTable.tableArn,
-      description: 'UserQuotas table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     this.quotaEventsTable = new dynamodb.Table(this, 'QuotaEventsTable', {
       tableName: getResourceName(config, 'quota-events'),
@@ -105,18 +99,6 @@ export class QuotaTablesConstruct extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    new ssm.StringParameter(this, 'QuotaEventsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/quota/quota-events-table-name`,
-      stringValue: this.quotaEventsTable.tableName,
-      description: 'QuotaEvents table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'QuotaEventsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/quota/quota-events-table-arn`,
-      stringValue: this.quotaEventsTable.tableArn,
-      description: 'QuotaEvents table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

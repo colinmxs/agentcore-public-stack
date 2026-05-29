@@ -61,12 +61,6 @@ export class AlbConstruct extends Construct {
     );
 
     // Export ALB Security Group ID to SSM
-    new ssm.StringParameter(this, 'AlbSecurityGroupIdParameter', {
-      parameterName: `/${config.projectPrefix}/network/alb-security-group-id`,
-      stringValue: this.albSecurityGroup.securityGroupId,
-      description: 'ALB Security Group ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Application Load Balancer
     this.alb = new elbv2.ApplicationLoadBalancer(this, 'Alb', {
@@ -79,19 +73,7 @@ export class AlbConstruct extends Construct {
       },
     });
 
-    new ssm.StringParameter(this, 'AlbArnParameter', {
-      parameterName: `/${config.projectPrefix}/network/alb-arn`,
-      stringValue: this.alb.loadBalancerArn,
-      description: 'Application Load Balancer ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'AlbDnsNameParameter', {
-      parameterName: `/${config.projectPrefix}/network/alb-dns-name`,
-      stringValue: this.alb.loadBalancerDnsName,
-      description: 'Application Load Balancer DNS name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // ALB Listeners (HTTP and optional HTTPS)
     if (config.certificateArn) {
@@ -112,12 +94,6 @@ export class AlbConstruct extends Construct {
         }),
       });
 
-      new ssm.StringParameter(this, 'AlbHttpsListenerArnParameter', {
-        parameterName: `/${config.projectPrefix}/network/alb-https-listener-arn`,
-        stringValue: this.albListener.listenerArn,
-        description: 'Application Load Balancer HTTPS Listener ARN',
-        tier: ssm.ParameterTier.STANDARD,
-      });
 
       // HTTP listener only redirects to HTTPS (no target groups here)
       this.alb.addListener('HttpListener', {
@@ -143,13 +119,5 @@ export class AlbConstruct extends Construct {
 
     // Export the primary listener ARN — backend services use this to
     // attach their target group rules.
-    new ssm.StringParameter(this, 'AlbListenerArnParameter', {
-      parameterName: `/${config.projectPrefix}/network/alb-listener-arn`,
-      stringValue: this.albListener.listenerArn,
-      description:
-        'Application Load Balancer Primary Listener ARN ' +
-        '(HTTPS if cert provided, HTTP otherwise)',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

@@ -61,17 +61,5 @@ export class AgentCoreCodeInterpreterConstruct extends Construct {
     this.codeInterpreterId = this.codeInterpreter.attrCodeInterpreterId;
 
     // ── SSM publications ──
-    new ssm.StringParameter(this, 'CodeInterpreterArnParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-arn`,
-      stringValue: this.codeInterpreterArn,
-      description: 'AgentCore Code Interpreter ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
-    new ssm.StringParameter(this, 'CodeInterpreterIdParameter', {
-      parameterName: `/${config.projectPrefix}/inference-api/code-interpreter-id`,
-      stringValue: this.codeInterpreterId,
-      description: 'AgentCore Code Interpreter ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

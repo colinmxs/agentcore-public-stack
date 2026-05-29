@@ -62,50 +62,20 @@ export class NetworkConstruct extends Construct {
     });
 
     // Export VPC ID to SSM for cross-stack references
-    new ssm.StringParameter(this, 'VpcIdParameter', {
-      parameterName: `/${config.projectPrefix}/network/vpc-id`,
-      stringValue: this.vpc.vpcId,
-      description: 'Shared VPC ID',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Export VPC CIDR to SSM
-    new ssm.StringParameter(this, 'VpcCidrParameter', {
-      parameterName: `/${config.projectPrefix}/network/vpc-cidr`,
-      stringValue: this.vpc.vpcCidrBlock,
-      description: 'Shared VPC CIDR block',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Export Private Subnet IDs to SSM
     const privateSubnetIds = this.vpc.privateSubnets
       .map((subnet) => subnet.subnetId)
       .join(',');
-    new ssm.StringParameter(this, 'PrivateSubnetIdsParameter', {
-      parameterName: `/${config.projectPrefix}/network/private-subnet-ids`,
-      stringValue: privateSubnetIds,
-      description: 'Comma-separated list of private subnet IDs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Export Public Subnet IDs to SSM
     const publicSubnetIds = this.vpc.publicSubnets
       .map((subnet) => subnet.subnetId)
       .join(',');
-    new ssm.StringParameter(this, 'PublicSubnetIdsParameter', {
-      parameterName: `/${config.projectPrefix}/network/public-subnet-ids`,
-      stringValue: publicSubnetIds,
-      description: 'Comma-separated list of public subnet IDs',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Export Availability Zones to SSM
     const availabilityZones = this.vpc.availabilityZones.join(',');
-    new ssm.StringParameter(this, 'AvailabilityZonesParameter', {
-      parameterName: `/${config.projectPrefix}/network/availability-zones`,
-      stringValue: availabilityZones,
-      description: 'Comma-separated list of availability zones',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

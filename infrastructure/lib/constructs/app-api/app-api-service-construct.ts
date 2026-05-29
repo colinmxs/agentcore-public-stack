@@ -10,11 +10,19 @@ import * as path from 'path';
 import { Construct } from 'constructs';
 
 import { AppConfig, getResourceName, buildCorsOrigins } from '../../config';
-import { resolveAppApiSsmParams, buildAppApiEnvironment } from './app-api-environment';
+import { resolveAppApiParams, buildAppApiEnvironment } from './app-api-environment';
+import { PlatformComputeRefs } from '../platform-compute-refs';
 import { grantAppApiPermissions } from './app-api-iam-grants';
 
 export interface AppApiServiceConstructProps {
   config: AppConfig;
+  /**
+   * Typed bundle of every PlatformStack resource ref the App API
+   * needs at synth time. Replaces the previous in-construct
+   * `valueForStringParameter` calls — same-stack SSM reads cause
+   * a CFN parameter-resolution deadlock on first deploy.
+   */
+  refs: PlatformComputeRefs;
   /**
    * AgentCore Memory ARN. Sourced directly from the sibling
    * InferenceAgentCoreConstruct in BackendStack, not from SSM,
@@ -80,37 +88,17 @@ export class AppApiServiceConstruct extends Construct {
 
     const { config } = props;
 
-    // ── Resolve all SSM parameters ──
-    const params = resolveAppApiSsmParams(this, config.projectPrefix, {
+    // ── Resolve all values from typed refs (replaces SSM reads) ──
+    const params = resolveAppApiParams(props.refs, {
       memoryId: props.agentCoreMemoryId,
       inferenceApiRuntimeEndpointUrl: props.inferenceApiRuntimeEndpointUrl,
     });
 
-    // ── Import network resources ──
-    const vpc = ec2.Vpc.fromVpcAttributes(this, 'ImportedVpc', {
-      vpcId: params.vpcId,
-      vpcCidrBlock: params.vpcCidr,
-      availabilityZones: cdk.Fn.split(',', params.availabilityZones),
-      privateSubnetIds: cdk.Fn.split(',', params.privateSubnetIds),
-    });
-
-    const albSecurityGroup = ec2.SecurityGroup.fromSecurityGroupId(
-      this, 'ImportedAlbSg', params.albSecurityGroupId,
-    );
-
-    const albListener = elbv2.ApplicationListener.fromApplicationListenerAttributes(
-      this, 'ImportedAlbListener', {
-        listenerArn: params.albListenerArn,
-        securityGroup: albSecurityGroup,
-      },
-    );
-
-    const ecsCluster = ecs.Cluster.fromClusterAttributes(this, 'ImportedEcsCluster', {
-      clusterName: params.ecsClusterName,
-      clusterArn: params.ecsClusterArn,
-      vpc,
-      securityGroups: [],
-    });
+    // ── Network resources (typed refs from PlatformStack) ──
+    const vpc = props.refs.vpc;
+    const albSecurityGroup = props.refs.albSecurityGroup;
+    const albListener = props.refs.albListener;
+    const ecsCluster = props.refs.ecsCluster;
 
     // ── Security group ──
     const ecsSecurityGroup = new ec2.SecurityGroup(this, 'AppEcsSecurityGroup', {
@@ -170,40 +158,17 @@ export class AppApiServiceConstruct extends Construct {
     // ── Container environment ──
     const environment = buildAppApiEnvironment(config, params);
 
-    // Artifacts env vars (always-on).
-    // bucket-name, table-name, render-token-key-arn are written by
-    // PlatformStack — legitimate cross-stack SSM reads. `origin` is
-    // written by sibling ArtifactsDistributionConstruct in BackendStack,
-    // so we receive it via props (same-stack reads via SSM deadlock on
-    // first deploy).
-    const artifactsBucketName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/artifacts/bucket-name`);
-    const artifactsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/artifacts/table-name`);
-    const artifactRenderTokenSecretArn = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/artifacts/render-token-key-arn`);
-
-    environment['S3_ARTIFACTS_BUCKET_NAME'] = artifactsBucketName;
-    environment['DYNAMODB_ARTIFACTS_TABLE_NAME'] = artifactsTableName;
+    // Artifacts env vars (always-on). All values now sourced from
+    // typed PlatformStack refs — same-stack SSM reads removed.
+    environment['S3_ARTIFACTS_BUCKET_NAME'] = props.refs.artifactsContentBucket.bucketName;
+    environment['DYNAMODB_ARTIFACTS_TABLE_NAME'] = props.refs.artifactsTable.tableName;
     environment['ARTIFACTS_ORIGIN'] = props.artifactsOrigin;
-    environment['ARTIFACTS_RENDER_TOKEN_SECRET_ARN'] = artifactRenderTokenSecretArn;
+    environment['ARTIFACTS_RENDER_TOKEN_SECRET_ARN'] = props.refs.artifactRenderTokenSecret.secretArn;
 
-    // Fine-tuning env vars (always-on).
-    // jobs-table-name, access-table-name, data-bucket-name are written
-    // by PlatformStack (FineTuningDataConstruct). Same-stack values
-    // (sagemaker-execution-role-arn, sagemaker-security-group-id,
-    // private-subnet-ids) come via props from the sibling
-    // SageMakerExecutionRoleConstruct in BackendStack.
-    const ftJobsTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/jobs-table-name`);
-    const ftAccessTableName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/access-table-name`);
-    const ftDataBucketName = ssm.StringParameter.valueForStringParameter(
-      this, `/${config.projectPrefix}/fine-tuning/data-bucket-name`);
-
-    environment['FINE_TUNING_JOBS_TABLE_NAME'] = ftJobsTableName;
-    environment['FINE_TUNING_ACCESS_TABLE_NAME'] = ftAccessTableName;
-    environment['FINE_TUNING_DATA_BUCKET_NAME'] = ftDataBucketName;
+    // Fine-tuning env vars (always-on). Same — sourced from refs.
+    environment['FINE_TUNING_JOBS_TABLE_NAME'] = props.refs.fineTuningJobsTable.tableName;
+    environment['FINE_TUNING_ACCESS_TABLE_NAME'] = props.refs.fineTuningAccessTable.tableName;
+    environment['FINE_TUNING_DATA_BUCKET_NAME'] = props.refs.fineTuningDataBucket.bucketName;
     environment['SAGEMAKER_EXECUTION_ROLE_ARN'] = props.sagemakerExecutionRoleArn;
     environment['SAGEMAKER_SECURITY_GROUP_ID'] = props.sagemakerSecurityGroupId;
     environment['FINE_TUNING_PRIVATE_SUBNET_IDS'] = props.sagemakerPrivateSubnetIds;
@@ -224,40 +189,12 @@ export class AppApiServiceConstruct extends Construct {
       },
     });
 
-    // ── IAM grants ──
+    // ── IAM grants — refs pass-through replaces 30+ string props ──
     grantAppApiPermissions({
       scope: this,
       config,
       taskRole: taskDefinition.taskRole,
-      oidcStateTableArn: params.oidcStateTableArn,
-      usersTableArn: params.usersTableArn,
-      appRolesTableArn: params.appRolesTableArn,
-      apiKeysTableArn: params.apiKeysTableArn,
-      oauthProvidersTableArn: params.oauthProvidersTableArn,
-      oauthUserTokensTableArn: params.oauthUserTokensTableArn,
-      oauthTokenEncryptionKeyArn: params.oauthTokenEncryptionKeyArn,
-      oauthClientSecretsArn: params.oauthClientSecretsArn,
-      userQuotasTableArn: params.userQuotasTableArn,
-      quotaEventsTableArn: params.quotaEventsTableArn,
-      sessionsMetadataTableArn: params.sessionsMetadataTableArn,
-      userCostSummaryTableArn: params.userCostSummaryTableArn,
-      systemCostRollupTableArn: params.systemCostRollupTableArn,
-      managedModelsTableArn: params.managedModelsTableArn,
-      userSettingsTableArn: params.userSettingsTableArn,
-      userMenuLinksTableArn: params.userMenuLinksTableArn,
-      authProvidersTableArn: params.authProvidersTableArn,
-      authProviderSecretsArn: params.authProviderSecretsArn,
-      cognitoUserPoolArn: params.cognitoUserPoolArn,
-      bffSessionsTableArn: params.bffSessionsTableArn,
-      bffCookieSigningKeyArn: params.bffCookieSigningKeyArn,
-      bffCookieDataKeySecretArn: params.bffCookieDataKeySecretArn,
-      cognitoBFFAppClientSecretArn: params.cognitoBFFAppClientSecretArn,
-      voiceTicketReplayTableArn: params.voiceTicketReplayTableArn,
-      voiceTicketSigningSecretArn: params.voiceTicketSigningSecretArn,
-      userFilesBucketArn: params.userFilesBucketArn,
-      userFilesTableArn: params.userFilesTableArn,
-      ragAssistantsTableArn: params.ragAssistantsTableArn,
-      ragDocumentsBucketArn: params.ragDocumentsBucketArn,
+      refs: props.refs,
       agentCoreMemoryArn: props.agentCoreMemoryArn,
       sagemakerExecutionRoleArn: props.sagemakerExecutionRoleArn,
     });

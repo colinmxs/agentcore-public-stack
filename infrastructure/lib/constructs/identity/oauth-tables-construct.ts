@@ -91,46 +91,10 @@ export class OAuthTablesConstruct extends Construct {
     );
 
     // SSM publications
-    new ssm.StringParameter(this, 'OAuthProvidersTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/providers-table-name`,
-      stringValue: this.providersTable.tableName,
-      description: 'OAuth providers table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OAuthProvidersTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/providers-table-arn`,
-      stringValue: this.providersTable.tableArn,
-      description: 'OAuth providers table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OAuthUserTokensTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-name`,
-      stringValue: this.userTokensTable.tableName,
-      description: 'OAuth user tokens table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OAuthUserTokensTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/user-tokens-table-arn`,
-      stringValue: this.userTokensTable.tableArn,
-      description: 'OAuth user tokens table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OAuthTokenEncryptionKeyArnParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/token-encryption-key-arn`,
-      stringValue: this.tokenEncryptionKey.keyArn,
-      description: 'KMS key ARN for OAuth token encryption',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OAuthClientSecretsArnParameter', {
-      parameterName: `/${config.projectPrefix}/oauth/client-secrets-arn`,
-      stringValue: this.clientSecretsSecret.secretArn,
-      description: 'Secrets Manager ARN for OAuth client secrets',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }

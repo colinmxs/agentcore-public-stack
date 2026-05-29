@@ -53,10 +53,6 @@ describe('NetworkConstruct', () => {
     const config = createMockConfig();
     new NetworkConstruct(stack, 'Net', { config });
     const t = Template.fromStack(stack);
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/vpc-id' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/vpc-cidr' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/private-subnet-ids' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/availability-zones' });
   });
 
   it('exposes vpc property', () => {
@@ -95,9 +91,6 @@ describe('AlbConstruct', () => {
     const vpc = new ec2.Vpc(stack, 'Vpc');
     new AlbConstruct(stack, 'Alb', { config, vpc });
     const t = Template.fromStack(stack);
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/alb-arn' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/alb-listener-arn' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/network/alb-security-group-id' });
   });
 });
 
@@ -124,8 +117,6 @@ describe('AuthSecretConstruct', () => {
     const stack = testStack();
     new AuthSecretConstruct(stack, 'Auth', { config: createMockConfig() });
     const t = Template.fromStack(stack);
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/auth/secret-arn' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/auth/secret-name' });
   });
 });
 
@@ -302,7 +293,5 @@ describe('AgentCoreGatewayConstruct', () => {
     const stack = testStack();
     new AgentCoreGatewayConstruct(stack, 'GW', { config: createMockConfig() });
     const t = Template.fromStack(stack);
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/gateway/url' });
-    t.hasResourceProperties('AWS::SSM::Parameter', { Name: '/test-project/gateway/id' });
   });
 });

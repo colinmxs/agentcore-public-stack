@@ -40,19 +40,7 @@ export class AuthTablesConstruct extends Construct {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
-    new ssm.StringParameter(this, 'OidcStateTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-name`,
-      stringValue: this.oidcStateTable.tableName,
-      description: 'OIDC state table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'OidcStateTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/oidc-state-table-arn`,
-      stringValue: this.oidcStateTable.tableArn,
-      description: 'OIDC state table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // BFF Sessions Table - per-session Cognito tokens (httpOnly cookie -> tokens)
     this.bffSessionsTable = new dynamodb.Table(this, 'BFFSessionsTable', {
@@ -66,19 +54,7 @@ export class AuthTablesConstruct extends Construct {
       encryption: dynamodb.TableEncryption.AWS_MANAGED,
     });
 
-    new ssm.StringParameter(this, 'BFFSessionsTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/auth/bff-sessions-table-name`,
-      stringValue: this.bffSessionsTable.tableName,
-      description: 'BFF sessions table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'BFFSessionsTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/bff-sessions-table-arn`,
-      stringValue: this.bffSessionsTable.tableArn,
-      description: 'BFF sessions table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // Users Table - User profiles synced from JWT
     this.usersTable = new dynamodb.Table(this, 'UsersTable', {
@@ -119,19 +95,7 @@ export class AuthTablesConstruct extends Construct {
       nonKeyAttributes: ['userId', 'email', 'name', 'emailDomain'],
     });
 
-    new ssm.StringParameter(this, 'UsersTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/users/users-table-name`,
-      stringValue: this.usersTable.tableName,
-      description: 'Users table name for admin user lookup',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'UsersTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/users/users-table-arn`,
-      stringValue: this.usersTable.tableArn,
-      description: 'Users table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // AppRoles Table - Role definitions and permission mappings
     this.appRolesTable = new dynamodb.Table(this, 'AppRolesTable', {
@@ -174,12 +138,6 @@ export class AuthTablesConstruct extends Construct {
       tier: ssm.ParameterTier.STANDARD,
     });
 
-    new ssm.StringParameter(this, 'AppRolesTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/rbac/app-roles-table-arn`,
-      stringValue: this.appRolesTable.tableArn,
-      description: 'AppRoles table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
     // ApiKeys Table - API keys for programmatic access
     this.apiKeysTable = new dynamodb.Table(this, 'ApiKeysTable', {
@@ -199,18 +157,6 @@ export class AuthTablesConstruct extends Construct {
       projectionType: dynamodb.ProjectionType.ALL,
     });
 
-    new ssm.StringParameter(this, 'ApiKeysTableNameParameter', {
-      parameterName: `/${config.projectPrefix}/auth/api-keys-table-name`,
-      stringValue: this.apiKeysTable.tableName,
-      description: 'API Keys table name',
-      tier: ssm.ParameterTier.STANDARD,
-    });
 
-    new ssm.StringParameter(this, 'ApiKeysTableArnParameter', {
-      parameterName: `/${config.projectPrefix}/auth/api-keys-table-arn`,
-      stringValue: this.apiKeysTable.tableArn,
-      description: 'API Keys table ARN',
-      tier: ssm.ParameterTier.STANDARD,
-    });
   }
 }
