@@ -231,11 +231,24 @@ export function createRuntimeExecutionRole(
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'AgentCoreMemoryAccess',
     effect: iam.Effect.ALLOW,
+    // See app-api-iam-grants.ts for the rationale — these action names
+    // mirror the AgentCore Data Plane API. The previous list used
+    // speculative names (CreateMemoryEvent, ListMemoryEvents,
+    // RetrieveMemory) that don't exist as IAM actions.
     actions: [
-      'bedrock-agentcore:CreateMemoryEvent', 'bedrock-agentcore:GetMemoryEvent',
-      'bedrock-agentcore:ListMemoryEvents', 'bedrock-agentcore:DeleteMemoryEvent',
-      'bedrock-agentcore:RetrieveMemory', 'bedrock-agentcore:ListSessions',
-      'bedrock-agentcore:DeleteSession',
+      'bedrock-agentcore:CreateEvent',
+      'bedrock-agentcore:GetEvent',
+      'bedrock-agentcore:ListEvents',
+      'bedrock-agentcore:DeleteEvent',
+      'bedrock-agentcore:ListActors',
+      'bedrock-agentcore:ListSessions',
+      'bedrock-agentcore:RetrieveMemoryRecords',
+      'bedrock-agentcore:GetMemoryRecord',
+      'bedrock-agentcore:ListMemoryRecords',
+      'bedrock-agentcore:BatchCreateMemoryRecords',
+      'bedrock-agentcore:BatchUpdateMemoryRecords',
+      'bedrock-agentcore:BatchDeleteMemoryRecords',
+      'bedrock-agentcore:DeleteMemoryRecord',
     ],
     resources: [`arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:memory/*`],
   }));

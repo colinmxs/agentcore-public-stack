@@ -137,24 +137,25 @@ export class InferenceAgentCoreConstruct extends Construct {
     // AgentCore Runtime
     // ============================================================
 
-    // Grant Runtime permission to access Memory
+    // Grant Runtime permission to access Memory.
+    // Action list mirrors the AgentCore Data Plane API surface — see
+    // https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_Operations.html
+    // GetMemory and GetMemoryStrategies are control-plane shapes that do
+    // not exist as separate IAM actions; the same data-plane policy
+    // covers them. RetrieveMemory / ListMemorySessions / GetMemorySession
+    // were also speculative and removed.
     runtimeExecutionRole.addToPolicy(new iam.PolicyStatement({
       sid: 'MemoryAccess',
       effect: iam.Effect.ALLOW,
       actions: [
-        // Memory configuration
-        'bedrock-agentcore:GetMemory',
-        'bedrock-agentcore:GetMemoryStrategies',
-        // Event operations (create only - runtime doesn't delete)
         'bedrock-agentcore:CreateEvent',
+        'bedrock-agentcore:GetEvent',
         'bedrock-agentcore:ListEvents',
-        // Memory retrieval
-        'bedrock-agentcore:RetrieveMemory',
+        'bedrock-agentcore:ListActors',
+        'bedrock-agentcore:ListSessions',
         'bedrock-agentcore:RetrieveMemoryRecords',
+        'bedrock-agentcore:GetMemoryRecord',
         'bedrock-agentcore:ListMemoryRecords',
-        // Session operations (read only - runtime doesn't delete sessions)
-        'bedrock-agentcore:ListMemorySessions',
-        'bedrock-agentcore:GetMemorySession',
       ],
       resources: [props.memoryArn],
     }));

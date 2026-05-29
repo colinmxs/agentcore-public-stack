@@ -345,11 +345,26 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
     new iam.PolicyStatement({
       sid: 'AgentCoreMemoryAccess',
       effect: iam.Effect.ALLOW,
+      // Action names mirror the AgentCore Data Plane API surface:
+      //   https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_Operations.html
+      // Earlier versions of this grant used speculative names like
+      // 'CreateMemoryEvent' / 'ListMemoryEvents' / 'RetrieveMemory' that
+      // do not exist as IAM actions, so the entire policy was a silent
+      // no-op — the App API hit AccessDeniedException on ListEvents.
       actions: [
-        'bedrock-agentcore:RetrieveMemory', 'bedrock-agentcore:CreateMemoryEvent',
-        'bedrock-agentcore:GetMemoryEvent', 'bedrock-agentcore:ListMemoryEvents',
-        'bedrock-agentcore:DeleteMemoryEvent', 'bedrock-agentcore:ListSessions',
-        'bedrock-agentcore:DeleteSession',
+        'bedrock-agentcore:CreateEvent',
+        'bedrock-agentcore:GetEvent',
+        'bedrock-agentcore:ListEvents',
+        'bedrock-agentcore:DeleteEvent',
+        'bedrock-agentcore:ListActors',
+        'bedrock-agentcore:ListSessions',
+        'bedrock-agentcore:RetrieveMemoryRecords',
+        'bedrock-agentcore:GetMemoryRecord',
+        'bedrock-agentcore:ListMemoryRecords',
+        'bedrock-agentcore:BatchCreateMemoryRecords',
+        'bedrock-agentcore:BatchUpdateMemoryRecords',
+        'bedrock-agentcore:BatchDeleteMemoryRecords',
+        'bedrock-agentcore:DeleteMemoryRecord',
       ],
       resources: [memoryArn],
     }),
