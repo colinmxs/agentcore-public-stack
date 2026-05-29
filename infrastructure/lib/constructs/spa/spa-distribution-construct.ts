@@ -45,9 +45,8 @@ export interface SpaDistributionConstructProps {
  *   - X-Content-Type-Options, X-Frame-Options=DENY (default-deny iframe
  *     embedding), Referrer-Policy=strict-origin-when-cross-origin, HSTS
  *     1y w/ subdomains, X-XSS-Protection.
- *   - When `config.artifacts.enabled` is set, a `frame-src` CSP
- *     directive opens `https://artifacts.{domainName}` so the SPA can
- *     embed artifact iframes. Other resource types remain unrestricted
+ *   - The `frame-src` CSP directive opens `https://artifacts.{domainName}`
+ *     so the SPA can embed artifact iframes. Other resource types remain unrestricted
  *     by CSP (defended by the other security headers).
  *
  * Custom domain: if `config.domainName` and

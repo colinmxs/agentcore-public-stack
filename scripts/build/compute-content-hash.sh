@@ -91,7 +91,10 @@ EXCLUDES=(
     # the canonical relative path so reordering the args still produces
     # the same final hash (we sort the lines before final hashing).
     sha256sum -- "$DOCKERFILE"
-    for m in "${MANIFESTS[@]}"; do
+    # Bash 3.2 (macOS default) expands "${ARR[@]}" on an empty array
+    # under `set -u` as an unbound-variable error. The `${ARR[@]+...}`
+    # form is bash-3.2-safe and a no-op when the array has elements.
+    for m in ${MANIFESTS[@]+"${MANIFESTS[@]}"}; do
         [[ -f "$m" ]] || { echo "manifest not found: $m" >&2; exit 2; }
         sha256sum -- "$m"
     done

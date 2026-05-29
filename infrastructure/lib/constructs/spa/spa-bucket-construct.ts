@@ -45,6 +45,7 @@ export class SpaBucketConstruct extends Construct {
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
       encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
       lifecycleRules: [
         {
           id: 'DeleteOldVersions',

@@ -461,42 +461,6 @@ describe('RAG Ingestion Configuration', () => {
   });
 
   // ============================================================
-  // Boolean Parsing Tests
-  // ============================================================
-
-  describe('Boolean Parsing', () => {
-    test('parses "true" string as boolean true', () => {
-
-      const config = loadConfig(app);
-
-    });
-
-    test('parses "false" string as boolean false', () => {
-
-      const config = loadConfig(app);
-
-    });
-
-    test('parses "TRUE" (uppercase) as boolean true', () => {
-
-      const config = loadConfig(app);
-
-    });
-
-    test('parses "FALSE" (uppercase) as boolean false', () => {
-
-      const config = loadConfig(app);
-
-    });
-
-    test('empty string falls back to context or default', () => {
-
-      const config = loadConfig(app);
-
-    });
-  });
-
-  // ============================================================
   // Integer Parsing Tests
   // ============================================================
 

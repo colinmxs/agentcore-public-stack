@@ -21,8 +21,6 @@ export interface ArtifactRenderTokenSecretConstructProps {
  * render Lambda both read it symmetrically from a foundation neither
  * owns. If this lived in artifacts-specific construct, app-api would
  * gain a deploy-order dependency on it.
- *
- * Provisioned only when `config.artifacts.enabled` is true.
  */
 export class ArtifactRenderTokenSecretConstruct extends Construct {
   public readonly secret: secretsmanager.Secret;

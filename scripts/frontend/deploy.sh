@@ -5,8 +5,13 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/../common/load-env.sh"
 
+# load-env.sh exports CDK_AWS_REGION; mirror it into AWS_REGION for
+# the AWS CLI calls below. CI sets AWS_REGION at the job level, so
+# this is mainly for local runs.
+export AWS_REGION="${AWS_REGION:-${CDK_AWS_REGION}}"
+
 : "${CDK_PROJECT_PREFIX:?CDK_PROJECT_PREFIX is required}"
-: "${AWS_REGION:?AWS_REGION is required}"
+: "${AWS_REGION:?AWS_REGION is required (export CDK_AWS_REGION)}"
 
 BUCKET_NAME=$(aws ssm get-parameter \
   --name "/${CDK_PROJECT_PREFIX}/frontend/bucket-name" \

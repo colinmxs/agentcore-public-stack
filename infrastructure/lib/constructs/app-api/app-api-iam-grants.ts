@@ -189,12 +189,34 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   );
 
   // ── KMS (OAuth token encryption + BFF cookie signing) ──
+  // Two separate statements because the access patterns differ:
+  //
+  //   - OAuth token encryption key: the app encrypts external-MCP
+  //     OAuth tokens before persisting them to DDB and decrypts on
+  //     read. Needs the full Encrypt + Decrypt + GenerateDataKey
+  //     trio.
+  //   - BFF cookie signing key: the app NEVER calls KMS directly
+  //     on this key. The plaintext data key lives in Secrets
+  //     Manager (BFF_COOKIE_DATA_KEY_SECRET_ARN); the cookie codec
+  //     fetches the secret via GetSecretValue, which transparently
+  //     decrypts the AWS-managed-encrypted secret using this key.
+  //     The IAM grant here only exists so SecretsManager can
+  //     transparently decrypt the secret value on GetSecretValue —
+  //     hence Decrypt-only.
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
-      sid: 'KmsDecryptAccess',
+      sid: 'OAuthTokenEncryptionKeyAccess',
       effect: iam.Effect.ALLOW,
       actions: ['kms:Decrypt', 'kms:Encrypt', 'kms:GenerateDataKey'],
-      resources: [props.refs.oauthTokenEncryptionKey.keyArn, props.refs.bffCookieSigningKey.keyArn],
+      resources: [props.refs.oauthTokenEncryptionKey.keyArn],
+    }),
+  );
+  taskRole.addToPrincipalPolicy(
+    new iam.PolicyStatement({
+      sid: 'BffCookieSigningKeyDecrypt',
+      effect: iam.Effect.ALLOW,
+      actions: ['kms:Decrypt'],
+      resources: [props.refs.bffCookieSigningKey.keyArn],
     }),
   );
 

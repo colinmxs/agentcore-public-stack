@@ -60,6 +60,7 @@ export class RagDataConstruct extends Construct {
     this.documentsBucket = new s3.Bucket(this, 'RagDocumentsBucket', {
       bucketName: getResourceName(config, 'rag-documents', config.awsAccount),
       encryption: s3.BucketEncryption.S3_MANAGED,
+      enforceSSL: true,
       blockPublicAccess: s3.BlockPublicAccess.BLOCK_ALL,
       versioned: true,
       removalPolicy: getRemovalPolicy(config),
