@@ -25,7 +25,7 @@ export interface AppApiServiceConstructProps {
   refs: PlatformComputeRefs;
   /**
    * AgentCore Memory ARN. Sourced directly from the sibling
-   * InferenceAgentCoreConstruct in BackendStack, not from SSM,
+   * InferenceAgentCoreConstruct in PlatformStack, not from SSM,
    * because publisher and consumer share a stack.
    */
   agentCoreMemoryArn: string;
@@ -131,7 +131,6 @@ export class AppApiServiceConstruct extends Construct {
     );
 
     // ── Bootstrap container image ──
-    // Phase 6 of the platform-as-bootstrap refactor: the App API
     // task definition is built with a stable bootstrap image at
     // synth time; the real image is shipped out-of-band by the
     // backend workflow's `scripts/build/deploy-ecs-service-one.sh`

@@ -313,7 +313,7 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   // Memory ARN is passed in directly from the InferenceApi sibling
   // construct (same stack) rather than read from SSM. Reading SSM
   // here would chicken-and-egg on first deploy because both publisher
-  // and consumer live in BackendStack.
+  // and consumer live in PlatformStack.
   const memoryArn = props.agentCoreMemoryArn;
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({

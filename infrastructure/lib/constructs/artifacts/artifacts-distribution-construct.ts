@@ -43,7 +43,7 @@ export class ArtifactsDistributionConstruct extends Construct {
   public readonly distribution: cloudfront.Distribution;
   /**
    * Full URL of the artifacts iframe origin (https://artifacts.{domain}).
-   * Exposed so other BackendStack constructs (notably the App API)
+   * Exposed so other compute constructs (notably the App API)
    * can wire it via direct construct refs instead of round-tripping
    * through SSM, which would chicken-and-egg on a same-stack first
    * deploy.

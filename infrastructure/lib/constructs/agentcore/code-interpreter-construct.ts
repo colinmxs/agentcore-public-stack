@@ -13,8 +13,7 @@ export interface AgentCoreCodeInterpreterConstructProps {
  * AgentCoreCodeInterpreterConstruct — Bedrock AgentCore Code
  * Interpreter Custom + execution role + SSM publications.
  *
- * Hoisted from BackendStack's InferenceAgentCoreConstruct as part of
- * the platform-as-bootstrap refactor: pure infrastructure, no code,
+ * Hoisted from a sibling construct's InferenceAgentCoreConstruct as part of
  * no out-of-band updates needed. Belongs in the rarely-deployed
  * Platform layer.
  *

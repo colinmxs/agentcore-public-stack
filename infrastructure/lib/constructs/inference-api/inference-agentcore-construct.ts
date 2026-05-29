@@ -26,7 +26,7 @@ export interface InferenceAgentCoreConstructProps {
   refs: PlatformComputeRefs;
   /**
    * AgentCore Memory ARN. Sourced from PlatformStack as a typed
-   * cross-stack ref. Memory itself was hoisted to PlatformStack —
+   * typed construct ref. Memory itself was hoisted to PlatformStack —
    * see `AgentCoreMemoryConstruct` — because it has no code, takes
    * 5-15 minutes to create, and shouldn't be touched on every
    * Backend deploy.
@@ -36,14 +36,14 @@ export interface InferenceAgentCoreConstructProps {
   memoryId: string;
   /**
    * AgentCore Code Interpreter ARN. Sourced from PlatformStack as
-   * a typed cross-stack ref (CodeInterpreter hoisted to Platform).
+   * a typed typed construct ref (CodeInterpreter hoisted to Platform).
    */
   codeInterpreterArn: string;
   /** AgentCore Code Interpreter ID — same provenance as codeInterpreterArn. */
   codeInterpreterId: string;
   /**
    * AgentCore Browser ARN. Sourced from PlatformStack as a typed
-   * cross-stack ref (Browser hoisted to Platform).
+   * typed construct ref (Browser hoisted to Platform).
    */
   browserArn: string;
   /** AgentCore Browser ID — same provenance as browserArn. */
@@ -53,16 +53,10 @@ export interface InferenceAgentCoreConstructProps {
 /**
  * InferenceAgentCoreConstruct — AgentCore Runtime.
  *
- * After Phase 1 of the platform-as-bootstrap refactor, this construct
  * owns just the Runtime + its execution role + Runtime observability.
  * Memory, Code Interpreter, and Browser were hoisted to PlatformStack
  * (each with its own construct under `agentcore/`); this construct
  * receives them as typed props.
- *
- * Phase 5 of the same refactor will move the Runtime to PlatformStack
- * with a bootstrap container image; at that point this construct
- * will be deleted entirely and BackendStack will lose its last
- * AgentCore-related responsibility.
  *
  * IAM roles are created via inference-api-iam-roles.ts (extracted).
  */
@@ -70,7 +64,7 @@ export class InferenceAgentCoreConstruct extends Construct {
   public readonly runtime: bedrock.CfnRuntime;
   /**
    * Full Bedrock AgentCore Runtime endpoint URL. Exposed so other
-   * BackendStack constructs (notably the App API) can wire it via
+   * compute constructs (notably the App API) can wire it via
    * direct construct refs instead of round-tripping through SSM,
    * which would chicken-and-egg on a same-stack first deploy.
    */
@@ -84,7 +78,6 @@ export class InferenceAgentCoreConstruct extends Construct {
     applyStandardTags(cdk.Stack.of(this), config);
 
     // ── Bootstrap container image ──
-    // Phase 5 of the platform-as-bootstrap refactor: the Runtime is
     // configured with a stable bootstrap image at synth time; the
     // real image is shipped out-of-band by the backend workflow's
     // `scripts/build/deploy-runtime-image-one.sh` step, which calls
@@ -116,7 +109,6 @@ export class InferenceAgentCoreConstruct extends Construct {
     const runtimeExecutionRole = createRuntimeExecutionRole(this, config, props.refs);
     // Memory / Code Interpreter / Browser execution roles were hoisted
     // to PlatformStack alongside their resources (Phase 1 of the
-    // platform-as-bootstrap refactor). They live in:
     //   - constructs/agentcore/memory-construct.ts
     //   - constructs/agentcore/code-interpreter-construct.ts
     //   - constructs/agentcore/browser-construct.ts
@@ -134,7 +126,6 @@ export class InferenceAgentCoreConstruct extends Construct {
     const oauthClientSecretsArn = props.refs.oauthClientSecretsSecret.secretArn;
 
     // Memory + Code Interpreter + Browser are owned by PlatformStack
-    // (Phase 1 of the platform-as-bootstrap refactor). Their ARNs and
     // IDs flow in via typed props (`props.memoryArn`, etc.). We grant
     // the Runtime role permission against those ARNs below.
 

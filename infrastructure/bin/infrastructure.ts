@@ -23,18 +23,11 @@ const env = getStackEnv(config);
 // not via CFN deploys. CFN updates only when *infrastructure*
 // changes — new tables, new IAM grants, etc. — which is a
 // significantly less frequent event.
-//
-// Construction is split across the constructor (the data + edge +
-// AgentCore Memory/CI/Browser/Gateway layer) and two `wire*`
-// methods (`wireSpaDistribution`, `wireCompute`) which are called
-// in deterministic order from this file. The split exists because:
-//   - wireSpaDistribution depends on AlbDnsConstruct, which is
-//     created by the constructor but ALSO consumes a domain name
-//     resolved late.
-//   - wireCompute uses every other typed ref the stack exposes,
-//     so it has to be last.
-// Both methods are pure CDK additions to the same stack — calling
-// them does not produce a separate CFN stack.
+// Construction is split across the constructor (everything except
+// compute) and `wireCompute()`, which is called below. Compute is
+// separated so wireCompute can reference data/edge/Cognito refs
+// the constructor already populated, without using forward
+// declarations or two-phase init for the typed surface.
 // ============================================================
 const platform = new PlatformStack(app, `${config.projectPrefix}-PlatformStack`, {
   config,
@@ -42,7 +35,6 @@ const platform = new PlatformStack(app, `${config.projectPrefix}-PlatformStack`,
   description: `${config.projectPrefix} Platform Stack — VPC, ALB, DynamoDB, S3, Cognito, CloudFront, AgentCore, Fargate, Lambdas (single-stack architecture; backend code is shipped out-of-band via AWS APIs)`,
 });
 
-platform.wireSpaDistribution();
 platform.wireCompute();
 
 app.synth();

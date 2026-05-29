@@ -27,8 +27,7 @@ export interface RagIngestionLambdaConstructProps {
  * documents from S3, extracts text, chunks, generates embeddings via
  * Bedrock, and stores them in the S3 Vectors index.
  *
- * Phase 4 of the platform-as-bootstrap refactor moved this construct
- * from BackendStack to PlatformStack. The Lambda's *configuration*
+ * from a sibling construct to PlatformStack. The Lambda's *configuration*
  * (runtime, IAM, env vars, timeout, memory, log group) is owned by
  * CDK; its *container image* is shipped independently by the backend
  * workflow's `scripts/build/deploy-image-lambda-one.sh` step, which

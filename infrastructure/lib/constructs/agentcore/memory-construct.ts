@@ -16,14 +16,13 @@ export interface AgentCoreMemoryConstructProps {
  * role + observability (vended log delivery for both APPLICATION_LOGS
  * and TRACES).
  *
- * Hoisted from BackendStack's InferenceAgentCoreConstruct as part of
- * the platform-as-bootstrap refactor: Memory has no code (just config
+ * Hoisted from a sibling construct's InferenceAgentCoreConstruct as part of
  * + strategies), takes 5-15 minutes to create, and is a once-ever
  * resource. Belongs in the rarely-deployed Platform layer alongside
  * the other data-tier resources.
  *
  * SSM publications (consumed by InferenceAgentCoreConstruct in
- * BackendStack via cross-stack refs):
+ * PlatformStack as typed refs):
  *   /{prefix}/inference-api/memory-arn
  *   /{prefix}/inference-api/memory-id
  *

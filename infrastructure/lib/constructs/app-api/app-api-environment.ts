@@ -98,7 +98,7 @@ export interface AppApiSsmParams {
 }
 
 /**
- * Same-stack values that App API needs from sibling BackendStack
+ * Same-stack values that App API needs from sibling PlatformStack
  * constructs. Passed in directly rather than read from SSM because
  * `valueForStringParameter` would deadlock on first deploy: CFN
  * resolves SSM template parameters before any of the stack's

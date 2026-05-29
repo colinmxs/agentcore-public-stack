@@ -1,7 +1,6 @@
 /**
  * Integration test — single-stack architecture (post Phase 7 of the
  * platform-as-bootstrap refactor). Verifies that PlatformStack
- * synthesizes end-to-end with `wireSpaDistribution()` + `wireCompute()`
  * called and that every resource the application needs is present
  * in exactly one stack.
  */
@@ -31,7 +30,6 @@ describe('Single-stack integration', () => {
       config,
       env: { account: MOCK_ACCOUNT, region: MOCK_REGION },
     });
-    platform.wireSpaDistribution();
     platform.wireCompute();
 
     template = Template.fromStack(platform);

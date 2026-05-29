@@ -3,7 +3,6 @@
  *
  * Originally housed Memory / Code Interpreter / Browser roles too,
  * but those were hoisted to `constructs/agentcore/*-construct.ts`
- * alongside their resources in Phase 1 of the platform-as-bootstrap
  * refactor. Only the Runtime execution role remains here.
  */
 
@@ -295,7 +294,6 @@ export function createRuntimeExecutionRole(
  * Create the AgentCore Memory execution role.
  *
  * MOVED to `constructs/agentcore/memory-construct.ts` in Phase 1 of
- * the platform-as-bootstrap refactor. The role is created inline in
  * the construct alongside the Memory resource.
  */
 
@@ -303,12 +301,10 @@ export function createRuntimeExecutionRole(
  * Create the Code Interpreter execution role.
  *
  * MOVED to `constructs/agentcore/code-interpreter-construct.ts` in
- * Phase 1 of the platform-as-bootstrap refactor.
  */
 
 /**
  * Create the Browser execution role.
  *
  * MOVED to `constructs/agentcore/browser-construct.ts` in Phase 1
- * of the platform-as-bootstrap refactor.
  */

@@ -43,7 +43,6 @@ import { RagDataConstruct } from './constructs/rag/rag-data-construct';
 import { RagIngestionLambdaConstruct } from './constructs/rag-ingestion/rag-ingestion-lambda-construct';
 
 // Artifacts (data + render Lambda + CloudFront distribution).
-// Phase 3 of the platform-as-bootstrap refactor moved the render
 // Lambda + distribution + Route53 alias here. The Lambda's
 // configuration is CDK-owned, but its handler code is shipped
 // out-of-band by the backend workflow (`update-function-code`),
@@ -54,7 +53,7 @@ import { ArtifactsDistributionConstruct } from './constructs/artifacts/artifacts
 
 // AgentCore (Memory, Code Interpreter, Browser, Gateway).
 // Pure infrastructure — no code, no out-of-band updates needed.
-// The Runtime itself stays in BackendStack for now; it will move
+// The Runtime itself stays in PlatformStack; it will move
 // here in a follow-up phase when the bootstrap-container pattern
 // is in place.
 import { AgentCoreMemoryConstruct } from './constructs/agentcore/memory-construct';
@@ -78,9 +77,8 @@ import { RagCorsUpdaterConstruct } from './constructs/spa/rag-cors-updater-const
 import { AlbDnsConstruct } from './constructs/zones/alb-dns-construct';
 
 // Compute constructs (absorbed from the old BackendStack in Phase 7
-// of the platform-as-bootstrap refactor). After the collapse, all
-// resources — data, edge, AgentCore, compute — live in this one
-// stack.
+// exists). After the collapse, all resources — data, edge,
+// AgentCore, compute — live in this one stack.
 import { AppApiServiceConstruct } from './constructs/app-api/app-api-service-construct';
 import { InferenceAgentCoreConstruct } from './constructs/inference-api/inference-agentcore-construct';
 import { PlatformComputeRefs } from './constructs/platform-compute-refs';
@@ -102,16 +100,20 @@ export interface PlatformStackProps extends cdk.StackProps {
  * secrets, auth provider secrets, Cognito BFF client secret),
  * shared `WorkloadIdentity`, KMS keys.
  *
- * Exposes typed `public readonly` properties so BackendStack can take
- * them as explicit construct props at instantiation time. CDK
- * auto-generates the underlying CFN exports / Fn::ImportValue from
- * the typed cross-stack reference.
+ * Exposes typed `public readonly` properties so the wireCompute()
+ * flow can pass them as explicit construct props at instantiation
+ * time. This avoids the same-stack `valueForStringParameter`
+ * deadlock — CFN resolves SSM template parameters before any of
+ * this stack's resources are created, so a sibling construct
+ * reading a param this stack publishes is unsatisfiable on first
+ * deploy.
  *
- * The render Lambda lives in BackendStack (compute) and consumes
- * `artifactsContentBucket` + `artifactsTable` + `artifactRenderTokenSecret`
- * via typed prop passing. The artifacts CloudFront distribution also
- * lives in BackendStack (its origin is the render Lambda Function URL,
- * so it must be in the same stack to avoid a circular dependency).
+ * The render Lambda is part of the compute layer in PlatformStack
+ * and consumes `artifactsContentBucket` + `artifactsTable` +
+ * `artifactRenderTokenSecret` via typed prop passing. The
+ * artifacts CloudFront distribution is also in PlatformStack (its
+ * origin is the render Lambda Function URL, so they must share
+ * a stack to avoid a circular dependency).
  */
 export class PlatformStack extends cdk.Stack {
   // ── Network
@@ -181,17 +183,16 @@ export class PlatformStack extends cdk.Stack {
   public readonly artifactRenderTokenSecret: secretsmanager.ISecret;
   /**
    * The CSP `frame-ancestors` source list resolved for the artifacts
-   * iframe origin (space-separated). Forwarded to BackendStack so the
-   * render Lambda's `FRAME_ANCESTOR_ORIGIN` env var stays byte-
+   * iframe origin (space-separated). Forwarded to the render Lambda
+   * via its `FRAME_ANCESTOR_ORIGIN` env var so it stays byte-
    * identical with the CloudFront response-headers-policy.
    */
   public readonly artifactsFrameAncestors: string;
   /**
    * Origin URL where the artifacts iframe is served
-   * (`https://artifacts.{domain}`). Exposed for BackendStack's App
+   * (`https://artifacts.{domain}`). Exposed for PlatformStack's App
    * API to forward to the Fargate container as `ARTIFACTS_ORIGIN`
-   * env var. Until Phase 6 of the platform-as-bootstrap refactor,
-   * BackendStack still owns the Fargate task def — once it moves to
+   * PlatformStack now owns the Fargate task def — once it moves to
    * Platform, this typed ref isn't needed for cross-stack.
    */
   public readonly artifactsOriginUrl: string;
@@ -203,7 +204,7 @@ export class PlatformStack extends cdk.Stack {
 
   // ── AgentCore (Memory, Code Interpreter, Browser)
   // Pure infra — no code attached to these. The Runtime that
-  // *uses* them lives in BackendStack for now; it consumes these
+  // *uses* them lives in PlatformStack; it consumes these
   // typed refs to avoid a same-stack SSM round-trip there.
   public readonly agentCoreMemory: bedrock.CfnMemory;
   public readonly agentCoreMemoryArn: string;
@@ -221,7 +222,6 @@ export class PlatformStack extends cdk.Stack {
   private readonly _mcpSandboxBucketConstruct: McpSandboxBucketConstruct;
   private readonly _artifactsDataConstruct: ArtifactsDataConstruct;
   private readonly _albDns!: AlbDnsConstruct;
-  private _spaDistributionConstruct?: SpaDistributionConstruct;
 
   constructor(scope: Construct, id: string, props: PlatformStackProps) {
     super(scope, id, props);
@@ -352,11 +352,11 @@ export class PlatformStack extends cdk.Stack {
     // ============================================================
     // RAG ingestion Lambda
     //
-    // Phase 4 of the platform-as-bootstrap refactor moved this from
-    // BackendStack to Platform. Same model as artifact-render in
-    // Phase 3: CDK ships the Lambda's *configuration* with a stable
-    // bootstrap container image; the workflow ships the *real* image
-    // out-of-band via `aws lambda update-function-code --image-uri`.
+    // the old BackendStack to PlatformStack. Same model as
+    // artifact-render in Phase 3: CDK ships the Lambda's
+    // *configuration* with a stable bootstrap container image; the
+    // workflow ships the *real* image out-of-band via
+    // `aws lambda update-function-code --image-uri`.
     //
     // The S3 ObjectCreated subscription on the documents bucket is
     // wired here too, since both bucket and Lambda live in this
@@ -458,7 +458,7 @@ export class PlatformStack extends cdk.Stack {
     //   1. Backend can deploy without recreating them on every push.
     //   2. Memory's transitional-state errors only affect the once-
     //      ever first Platform deploy, not subsequent code deploys.
-    //   3. The Runtime in BackendStack consumes them via typed cross-
+    //   3. The Runtime in PlatformStack consumes them via typed cross-
     //      stack refs (no same-stack SSM round-trip).
     // ============================================================
     const agentCoreMemoryConstruct = new AgentCoreMemoryConstruct(
@@ -496,9 +496,9 @@ export class PlatformStack extends cdk.Stack {
     new AgentCoreGatewayConstruct(this, 'AgentCoreGateway', { config });
 
     // ============================================================
-    // MCP sandbox edge (always-on; bucket+dist; deployment is wired
+    // MCP sandbox edge (always-on; bucket+dist; everything is wired
     // up here because nothing else needs to be threaded back from
-    // BackendStack — the shell is static)
+    // another stack — the shell is static)
     // ============================================================
     this._mcpSandboxBucketConstruct = new McpSandboxBucketConstruct(
       this,
@@ -518,12 +518,7 @@ export class PlatformStack extends cdk.Stack {
     this._mcpSandboxBucketConstruct.deployShell(mcpSandboxDist.distribution);
 
     // ============================================================
-    // SPA bucket (distribution wired in later via
-    // `wireSpaDistribution(appApiUrl)` once Backend has resolved its
-    // ALB target — Platform owns the ALB so the URL token is in scope
-    // here, but we delay the construction until Backend has confirmed
-    // the target group is registered. In practice both stacks
-    // synthesize together so the call lands in `bin/infrastructure.ts`)
+    // SPA bucket + CloudFront distribution.
     // ============================================================
     this._spaBucketConstruct = new SpaBucketConstruct(this, 'SpaBucket', {
       config,
@@ -532,65 +527,29 @@ export class PlatformStack extends cdk.Stack {
 
     // ============================================================
     // ALB DNS / hosted zone (Route53 lookup + ALB URL export).
-    // We hold onto the construct so wireSpaDistribution() can read
-    // `albUrl` directly (a same-stack reference resolves cleanly via
-    // CFN dependencies) instead of round-tripping through SSM, which
-    // would chicken-and-egg on first deploy.
     // ============================================================
     this._albDns = new AlbDnsConstruct(this, 'AlbDns', {
       config,
       alb: this.alb,
     });
 
-    // Stub-fill the spa-distribution accessors until wireSpaDistribution()
-    // is invoked. The downstream prop typing keeps these on the Stack
-    // surface even if a caller forgets to wire — accessing them returns
-    // `undefined` at synth time and CDK errors out cleanly.
-    this.spaDistribution = undefined as unknown as cloudfront.IDistribution;
-    this.spaDistributionDomainName =
-      undefined as unknown as string;
-  }
+    // ============================================================
+    // SPA CloudFront distribution. The `/api/*` behavior origins to
+    // the ALB; AlbDns provides the resolved URL via a same-stack
+    // ref, so no SSM round-trip needed.
+    // ============================================================
+    const spaDist = new SpaDistributionConstruct(this, 'SpaDistribution', {
+      config,
+      bucket: this.spaBucket,
+      appApiUrl: this._albDns.albUrl,
+    });
+    this.spaDistribution = spaDist.distribution;
+    this.spaDistributionDomainName = spaDist.distributionDomainName;
 
-  /**
-   * Wire the SPA CloudFront distribution. Called from
-   * `bin/infrastructure.ts` after Platform has been constructed, so
-   * the SPA distribution sees the resolved ALB URL token from the
-   * sibling AlbDnsConstruct in the same stack.
-   *
-   * Both the ALB-URL publisher (AlbDnsConstruct) and the SPA-distribution
-   * consumer live inside this stack, so we wire them via a direct
-   * construct reference rather than round-tripping through SSM. The
-   * SSM round-trip created a chicken-and-egg on first deploy: CFN
-   * resolves `AWS::SSM::Parameter::Value<String>` parameters before
-   * any of the stack's resources are created, so reading an SSM
-   * parameter that this same stack would create is unsatisfiable.
-   *
-   * Also wires the RAG-CORS updater Lambda when RAG is enabled (it
-   * needs the resolved frontend URL to patch the bucket CORS) and
-   * receives the RAG documents bucket directly for the same reason.
-   */
-  public wireSpaDistribution(): void {
-    if (this._spaDistributionConstruct) return;
-
-    this._spaDistributionConstruct = new SpaDistributionConstruct(
-      this,
-      'SpaDistribution',
-      {
-        config: this._config,
-        bucket: this.spaBucket,
-        appApiUrl: this._albDns.albUrl,
-      },
-    );
-
-    (this as { spaDistribution: cloudfront.IDistribution }).spaDistribution =
-      this._spaDistributionConstruct.distribution;
-    (this as { spaDistributionDomainName: string }).spaDistributionDomainName =
-      this._spaDistributionConstruct.distributionDomainName;
-
+    // ============================================================
     // RAG CORS updater — patches the RAG documents bucket CORS to
-    // accept the resolved frontend URL. Receives the documents
-    // bucket directly (same-stack ref) instead of looking it up via
-    // SSM, which would chicken-and-egg on first deploy.
+    // accept the resolved frontend URL.
+    // ============================================================
     const frontendUrl = this._config.domainName
       ? `https://${this._config.domainName}`
       : `https://${this.spaDistributionDomainName}`;
@@ -605,27 +564,15 @@ export class PlatformStack extends cdk.Stack {
    * Wire the application compute layer (Inference AgentCore Runtime,
    * SageMaker fine-tuning IAM, App API Fargate service).
    *
-   * Phase 7 of the platform-as-bootstrap refactor absorbed the old
-   * BackendStack here. These constructs were previously instantiated
-   * by BackendStack with `props.platform.*` typed refs; after the
-   * collapse, the same refs are `this.*` (same-stack), so the
-   * construction is identical except for that prefix swap.
-   *
-   * Why this is a separate method (rather than inline in the
-   * constructor): bin/infrastructure.ts calls
-   * `wireSpaDistribution()` first to break a circular dependency
-   * between the SPA distribution and the ALB DNS. The compute layer
-   * has no such concern, but lives in a method for symmetry —
-   * lets bin/ control the wire-up order explicitly and gives a
-   * single hook for future tear-out (Phase 5/6 will refactor each
-   * compute construct to use a bootstrap container; that's easier
-   * to reason about with a discrete entry point here).
-   *
-   * Construction order matters:
+   * Construction order below is for readability only — CDK token
+   * resolution and the CFN dependency graph handle the actual
+   * dependency ordering at synth/deploy time. Don't try to
+   * "parallelize" by reordering blindly; the listed order matches
+   * how a reader naturally follows data flow:
    *   1. InferenceApi — exposes runtimeEndpointUrl
-   *   2. SageMaker — exposes executionRole + securityGroup +
-   *      privateSubnetIdsString
-   *   3. AppApi — consumes both of the above as typed props.
+   *   2. SageMaker    — exposes executionRole + security group +
+   *                     private subnet IDs
+   *   3. AppApi       — consumes refs from both of the above.
    */
   public wireCompute(): void {
     // Build the typed refs bundle once. Used by both compute

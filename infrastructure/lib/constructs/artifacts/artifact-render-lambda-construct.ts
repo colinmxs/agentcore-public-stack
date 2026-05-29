@@ -30,8 +30,7 @@ export interface ArtifactRenderLambdaConstructProps {
  * ArtifactRenderLambdaConstruct — JWT-validating, S3-fetching Lambda
  * that returns rendered artifact HTML with a strict CSP.
  *
- * Phase 3 of the platform-as-bootstrap refactor moved this construct
- * (and its paired CloudFront distribution) from BackendStack to
+ * (and its paired CloudFront distribution) from a sibling construct to
  * PlatformStack. The Lambda's *configuration* (runtime, arch, IAM
  * role, env vars, function URL, CloudFront origin wiring) is owned
  * by CDK; its *handler code* is shipped independently by the backend
