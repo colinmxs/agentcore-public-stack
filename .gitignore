@@ -141,3 +141,5 @@ backend/start_app_api.ps1
 backend/start_inference_api.ps1
 scripts/stack-bootstrap/install.sh
 test-accounts
+manifest.json
+manifest.json:Zone.Identifier
