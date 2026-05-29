@@ -165,13 +165,15 @@ export class AppApiServiceConstruct extends Construct {
     environment['ARTIFACTS_ORIGIN'] = props.artifactsOrigin;
     environment['ARTIFACTS_RENDER_TOKEN_SECRET_ARN'] = props.refs.artifactRenderTokenSecret.secretArn;
 
-    // Fine-tuning env vars (always-on). Same — sourced from refs.
-    environment['FINE_TUNING_JOBS_TABLE_NAME'] = props.refs.fineTuningJobsTable.tableName;
-    environment['FINE_TUNING_ACCESS_TABLE_NAME'] = props.refs.fineTuningAccessTable.tableName;
-    environment['FINE_TUNING_DATA_BUCKET_NAME'] = props.refs.fineTuningDataBucket.bucketName;
+    // Fine-tuning env vars (always-on). Names verified against
+    // backend/src/apis/app_api/fine_tuning/* to match the exact env
+    // var names Python reads via os.environ.get(...).
+    environment['DYNAMODB_FINE_TUNING_JOBS_TABLE_NAME'] = props.refs.fineTuningJobsTable.tableName;
+    environment['DYNAMODB_FINE_TUNING_ACCESS_TABLE_NAME'] = props.refs.fineTuningAccessTable.tableName;
+    environment['S3_FINE_TUNING_BUCKET_NAME'] = props.refs.fineTuningDataBucket.bucketName;
     environment['SAGEMAKER_EXECUTION_ROLE_ARN'] = props.sagemakerExecutionRoleArn;
     environment['SAGEMAKER_SECURITY_GROUP_ID'] = props.sagemakerSecurityGroupId;
-    environment['FINE_TUNING_PRIVATE_SUBNET_IDS'] = props.sagemakerPrivateSubnetIds;
+    environment['SAGEMAKER_SUBNET_IDS'] = props.sagemakerPrivateSubnetIds;
 
     // ── Container definition ──
     const container = taskDefinition.addContainer('AppApiContainer', {

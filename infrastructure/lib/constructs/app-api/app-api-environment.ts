@@ -90,6 +90,8 @@ export interface AppApiSsmParams {
   ragVectorIndexName: string;
   ragAssistantsTableArn: string;
   ragDocumentsBucketArn: string;
+  sharedConversationsTableName: string;
+  sharedConversationsTableArn: string;
   memoryId: string;
   // Workload identity
   workloadIdentityName: string;
@@ -198,6 +200,8 @@ export function resolveAppApiParams(
     ragVectorIndexName: refs.ragVectorIndexName,
     ragAssistantsTableArn: refs.ragAssistantsTable.tableArn,
     ragDocumentsBucketArn: refs.ragDocumentsBucket.bucketArn,
+    sharedConversationsTableName: refs.sharedConversationsTable.tableName,
+    sharedConversationsTableArn: refs.sharedConversationsTable.tableArn,
     memoryId: overrides.memoryId,
     // Workload identity
     workloadIdentityName: refs.platformWorkloadIdentity.name,
@@ -218,7 +222,7 @@ export function buildAppApiEnvironment(
       ? `https://${config.domainName}/oauth-complete`
       : 'http://localhost:4200/oauth-complete',
     DYNAMODB_QUOTA_TABLE: params.userQuotasTableName,
-    DYNAMODB_EVENTS_TABLE: params.quotaEventsTableName,
+    DYNAMODB_QUOTA_EVENTS_TABLE: params.quotaEventsTableName,
     DYNAMODB_OIDC_STATE_TABLE_NAME: params.oidcStateTableName,
     DYNAMODB_MANAGED_MODELS_TABLE_NAME: params.managedModelsTableName,
     DYNAMODB_SESSIONS_METADATA_TABLE_NAME: params.sessionsMetadataTableName,
@@ -252,7 +256,7 @@ export function buildAppApiEnvironment(
     COGNITO_ISSUER_URL: params.cognitoIssuerUrl,
     COGNITO_DOMAIN_URL: params.cognitoDomainUrl,
     COGNITO_REGION: config.awsRegion,
-    SHARED_CONVERSATIONS_TABLE_NAME: params.ragAssistantsTableName, // TODO: should be shared-conversations SSM
+    SHARED_CONVERSATIONS_TABLE_NAME: params.sharedConversationsTableName,
     BFF_SESSIONS_TABLE_NAME: params.bffSessionsTableName,
     BFF_COOKIE_SIGNING_KEY_ARN: params.bffCookieSigningKeyArn,
     BFF_COOKIE_DATA_KEY_SECRET_ARN: params.bffCookieDataKeySecretArn,
