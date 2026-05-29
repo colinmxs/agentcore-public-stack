@@ -896,3 +896,185 @@ def test_cognito_set_password_failure_is_warned_not_fatal():
     assert user_result["status"] == "ok"
     # Mapping was still recorded — DDB/S3 remap should still work
     assert ctx.sub_map == {"OLD": "NEW"}
+
+
+# ===================================================================== #
+# AgentCore Memory event replay — verifies that backed-up events can be #
+# replayed via CreateEvent with actorId remapping (sub_map), branch     #
+# rootEventId rewriting, idempotent client tokens, and proper           #
+# eventTimestamp parsing.                                                #
+# ===================================================================== #
+def test_memory_replay_skipped_when_flag_set():
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.skip_memory_replay = True
+    results = restore.restore_agentcore_memory(ctx)
+    assert results == [{
+        "component": "agentcore-memory",
+        "status": "skipped",
+        "reason": "--skip-memory-replay",
+    }]
+
+
+def test_memory_replay_skipped_when_no_target_memory():
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    with patch.object(restore, "get_ssm_param", return_value=None):
+        results = restore.restore_agentcore_memory(ctx)
+    assert results[0]["status"] == "skipped"
+    assert "memory id" in results[0]["reason"].lower()
+
+
+def test_memory_replay_remaps_actor_id_via_sub_map():
+    """An event with actorId == an old sub gets replayed with the new sub."""
+    event_record = {
+        "actorId": "OLD-SUB",
+        "sessionId": "session-1",
+        "event": {
+            "actorId": "OLD-SUB",
+            "sessionId": "session-1",
+            "eventId": "orig-event-1",
+            "eventTimestamp": "2026-05-21T18:00:00+00:00",
+            "payload": [{"conversational": {"role": "USER", "content": {"text": "hi"}}}],
+            "metadata": {"source": "chat"},
+        },
+    }
+    events_jsonl = json.dumps(event_record) + "\n"
+    events_gz = gzip.compress(events_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("events.jsonl.gz"):
+            return {"Body": io.BytesIO(events_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    bedrock = MagicMock()
+    bedrock.create_event.return_value = {"event": {"eventId": "new-event-1"}}
+
+    def client_factory(name, *_a, **_kw):
+        if name == "s3":
+            return s3
+        if name == "bedrock-agentcore":
+            return bedrock
+        return MagicMock()
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+    ctx.sub_map = {"OLD-SUB": "NEW-SUB"}
+    ctx.sub_map_pattern = restore.compile_sub_pattern(ctx.sub_map)
+
+    with patch.object(restore, "get_ssm_param", return_value="target-memory-id"):
+        results = restore.restore_agentcore_memory(ctx)
+
+    bedrock.create_event.assert_called_once()
+    kwargs = bedrock.create_event.call_args.kwargs
+    assert kwargs["memoryId"] == "target-memory-id"
+    assert kwargs["actorId"] == "NEW-SUB"
+    assert kwargs["sessionId"] == "session-1"
+    assert kwargs["payload"] == event_record["event"]["payload"]
+    assert kwargs["metadata"] == {"source": "chat"}
+    assert kwargs["clientToken"]  # deterministic, present
+    # Result counts include the actor-remap
+    res = results[0]
+    assert res["status"] == "ok"
+    assert res["events_replayed"] == 1
+    assert res["events_actor_remapped"] == 1
+
+
+def test_memory_replay_rewrites_branch_root_event_id():
+    """A branch-child event's rootEventId is rewritten using the
+    old→new map populated by replaying the parent first."""
+    parent = {
+        "actorId": "user-A",
+        "sessionId": "s1",
+        "event": {
+            "eventId": "parent-old",
+            "actorId": "user-A",
+            "sessionId": "s1",
+            "eventTimestamp": "2026-05-21T18:00:00+00:00",
+            "payload": [{"conversational": {"role": "USER", "content": {"text": "hi"}}}],
+        },
+    }
+    child = {
+        "actorId": "user-A",
+        "sessionId": "s1",
+        "event": {
+            "eventId": "child-old",
+            "actorId": "user-A",
+            "sessionId": "s1",
+            "eventTimestamp": "2026-05-21T18:01:00+00:00",
+            "payload": [{"conversational": {"role": "USER", "content": {"text": "alt"}}}],
+            "branch": {"name": "alternate", "rootEventId": "parent-old"},
+        },
+    }
+    events_jsonl = json.dumps(parent) + "\n" + json.dumps(child) + "\n"
+    events_gz = gzip.compress(events_jsonl.encode("utf-8"))
+
+    s3 = MagicMock()
+    def get_object_side_effect(*, Bucket, Key):
+        if Key.endswith("events.jsonl.gz"):
+            return {"Body": io.BytesIO(events_gz)}
+        from botocore.exceptions import ClientError as _CE
+        raise _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+    s3.get_object.side_effect = get_object_side_effect
+
+    bedrock = MagicMock()
+    # First call (parent) returns the new id; second (child) just succeeds.
+    bedrock.create_event.side_effect = [
+        {"event": {"eventId": "parent-new"}},
+        {"event": {"eventId": "child-new"}},
+    ]
+
+    def client_factory(name, *_a, **_kw):
+        if name == "s3":
+            return s3
+        if name == "bedrock-agentcore":
+            return bedrock
+        return MagicMock()
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="target-memory-id"):
+        results = restore.restore_agentcore_memory(ctx)
+
+    assert bedrock.create_event.call_count == 2
+    parent_kwargs = bedrock.create_event.call_args_list[0].kwargs
+    child_kwargs = bedrock.create_event.call_args_list[1].kwargs
+
+    assert "branch" not in parent_kwargs
+    assert child_kwargs["branch"] == {"name": "alternate", "rootEventId": "parent-new"}
+
+    res = results[0]
+    assert res["events_replayed"] == 2
+    assert res["events_branch_rewritten"] == 1
+
+
+def test_memory_replay_client_token_is_deterministic():
+    """Same (memory_id, original_event_id) → same client token, so re-runs
+    hit AWS's idempotency window and don't double-write."""
+    a = restore._client_token("mem-1", "ev-1")
+    b = restore._client_token("mem-1", "ev-1")
+    c = restore._client_token("mem-1", "ev-2")
+    d = restore._client_token("mem-2", "ev-1")
+    assert a == b
+    assert a != c
+    assert a != d
+    assert len(a) == 64  # sha256 hex truncated/sized to 64
+
+
+def test_memory_replay_missing_events_file_skips_cleanly():
+    s3 = MagicMock()
+    from botocore.exceptions import ClientError as _CE
+    s3.get_object.side_effect = _CE({"Error": {"Code": "NoSuchKey"}}, "GetObject")
+
+    def client_factory(name, *_a, **_kw):
+        return s3 if name == "s3" else MagicMock()
+
+    ctx = _make_ctx({"root_prefix": "root"}, dry_run=False)
+    ctx.session.client.side_effect = client_factory
+
+    with patch.object(restore, "get_ssm_param", return_value="target-memory-id"):
+        results = restore.restore_agentcore_memory(ctx)
+    assert results[0]["status"] == "skipped"
+    assert "no events backup file" in results[0]["reason"]

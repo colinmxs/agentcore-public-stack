@@ -193,10 +193,9 @@ class TestBackupCoversAllTables:
         # are intentionally in backup but may not be in the "required" CDK set.
         # Some backup logical names differ from CDK resource names:
         #   backup "artifacts" → CDK "user-artifacts"
-        #   backup "assistants" → CDK "assistants" (convention-named, in app-api construct)
         ephemeral = {"bff-sessions", "oidc-state", "voice-ticket-replay"}
         # Logical names in backup that map to different CDK names
-        known_aliases = {"artifacts", "assistants", "fine-tuning-data", "rag-documents"}
+        known_aliases = {"artifacts", "fine-tuning-data", "rag-documents"}
         phantom = self.backup_tables - self.cdk_tables - ephemeral - known_aliases
         assert phantom == set(), (
             f"Tables in backup script but NOT in CDK constructs:\n"

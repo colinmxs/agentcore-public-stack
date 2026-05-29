@@ -9,7 +9,11 @@ Restore steps (in order):
   2. S3 buckets — aws s3 sync from backup bucket to target bucket
   3. Cognito — re-create identity providers + app clients using preserved
      secrets, then import users/groups
-  4. AgentCore Memory — best-effort event replay (if events were captured)
+  4. AgentCore Memory — replay raw events via CreateEvent. Preserves
+     actorId (with sub remap), sessionId, eventTimestamp, payload,
+     metadata, and branch references. Strategy extraction reruns
+     synchronously on the target, so semantic memories rebuild
+     automatically.
 
 Usage:
   uv run python restore.py \
@@ -32,6 +36,7 @@ from __future__ import annotations
 
 import argparse
 import gzip
+import hashlib
 import io
 import json
 import logging
@@ -44,6 +49,7 @@ import sys
 import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass, field
+from datetime import datetime
 from typing import Any
 
 import boto3
@@ -91,9 +97,7 @@ TABLE_SSM_MAP: dict[str, str] = {
 # metadata via DYNAMODB_ASSISTANTS_TABLE_NAME). Restoring an
 # `assistants` component from an old backup will skip cleanly with
 # "target table not found via SSM".
-TABLE_CONVENTION_MAP: dict[str, str] = {
-    "assistants": "assistants",  # {prefix}-assistants (not in SSM)
-}
+TABLE_CONVENTION_MAP: dict[str, str] = {}
 
 BUCKET_SSM_MAP: dict[str, str] = {
     "user-file-uploads": "/user-file-uploads/bucket-name",
@@ -103,6 +107,7 @@ BUCKET_SSM_MAP: dict[str, str] = {
 }
 
 SSM_USER_POOL_ID = "/auth/cognito/user-pool-id"
+SSM_MEMORY_ID = "/inference-api/memory-id"
 
 
 @dataclass
@@ -115,6 +120,7 @@ class RestoreContext:
     manifest: dict[str, Any] = field(default_factory=dict)
     dry_run: bool = False
     skip_cognito_users: bool = False
+    skip_memory_replay: bool = False
     results: list[dict[str, Any]] = field(default_factory=list)
     # ----- Cognito sub remapping -----
     # AWS Cognito does NOT permit setting `sub` on user creation —
@@ -783,6 +789,306 @@ def restore_cognito(ctx: RestoreContext) -> list[dict]:
 
 
 # --------------------------------------------------------------------------- #
+# AgentCore Memory replay                                                      #
+#                                                                              #
+# The data plane CreateEvent API accepts an explicit `eventTimestamp`, an     #
+# `actorId`, a `sessionId`, a `payload`, optional `metadata`, an optional     #
+# `branch` (with a `rootEventId` reference to a previously-created event),    #
+# and a `clientToken` for idempotent retries — see                            #
+# https://docs.aws.amazon.com/bedrock-agentcore/latest/APIReference/API_CreateEvent.html
+#                                                                              #
+# That gives us everything needed for a faithful replay:                      #
+#                                                                              #
+#   • actorId — typically the user's Cognito sub. Remap via ctx.sub_map so    #
+#     events land on the right (new) user identity.                           #
+#   • sessionId — preserved verbatim; the app's chat-session GSI in DDB       #
+#     references these IDs, so cross-table consistency is maintained.         #
+#   • eventTimestamp — preserved (parsed from the ISO string the backup       #
+#     wrote via _scrub_datetimes).                                            #
+#   • payload + metadata — preserved verbatim.                                #
+#   • branch.rootEventId — references a NEW event_id that AWS assigns on      #
+#     CreateEvent. We maintain a session-local old_event_id → new_event_id    #
+#     map so branch refs are rewritten as we go.                              #
+#   • clientToken — deterministic hash of (target_memory_id, original_event_id)
+#     so re-runs hit AWS's idempotency window and don't double-write.          #
+#                                                                              #
+# Strategy: replay events sequentially within a single session (so branch     #
+# ordering is preserved) and parallel across sessions (CreateEvent is          #
+# rate-limited but not strictly per-resource). The default 16-thread pool     #
+# is the same as restore_s3_bucket.                                           #
+#                                                                              #
+# CreateEvent on a memory with extraction strategies configured triggers      #
+# semantic-fact extraction synchronously, which means MemoryRecords          #
+# (long-term semantic memories, summaries, preferences) rebuild themselves    #
+# automatically as events are replayed. We do NOT separately replay           #
+# MemoryRecords — that would double-write and contradict the strategy.        #
+# --------------------------------------------------------------------------- #
+def _parse_event_timestamp(ts: Any) -> datetime:
+    """Parse the eventTimestamp shape the backup wrote.
+
+    backup.py runs `_scrub_datetimes` on the boto3 response which converts
+    `datetime` → ISO 8601 UTC string. We reverse that here. If the backup
+    ever switches to a numeric epoch (or the AWS SDK changes), this
+    function is the single place to update.
+    """
+    if isinstance(ts, datetime):
+        return ts
+    if isinstance(ts, (int, float)):
+        return datetime.fromtimestamp(float(ts))
+    if isinstance(ts, str):
+        # datetime.fromisoformat accepts the +00:00 form _scrub_datetimes emits.
+        return datetime.fromisoformat(ts)
+    raise ValueError(f"Unparseable eventTimestamp: {ts!r}")
+
+
+def _client_token(target_memory_id: str, original_event_id: str) -> str:
+    """Deterministic 64-char idempotency key per (target_memory, source_event).
+
+    AWS's CreateEvent treats matching client tokens within a 24h window as
+    the same request and returns the prior result. Re-runs of the restore
+    therefore no-op cleanly without double-writing.
+    """
+    digest = hashlib.sha256(
+        f"{target_memory_id}|{original_event_id}".encode("utf-8")
+    ).hexdigest()
+    return digest[:64]
+
+
+def restore_agentcore_memory(ctx: RestoreContext) -> list[dict]:
+    """Replay AgentCore Memory events from the backup."""
+    results: list[dict[str, Any]] = []
+
+    if ctx.skip_memory_replay:
+        results.append({
+            "component": "agentcore-memory",
+            "status": "skipped",
+            "reason": "--skip-memory-replay",
+        })
+        return results
+
+    target_memory_id = get_ssm_param(ctx.session, ctx.target_prefix, SSM_MEMORY_ID)
+    if not target_memory_id:
+        results.append({
+            "component": "agentcore-memory",
+            "status": "skipped",
+            "reason": "target memory id not found via SSM",
+        })
+        return results
+
+    root = ctx.manifest.get("root_prefix", "")
+    if root and not root.endswith("/"):
+        root = root + "/"
+
+    s3 = ctx.session.client("s3", config=BOTO_CONFIG)
+
+    # Read events.jsonl.gz. Absence is fine — a backup against a memory
+    # with no traffic emits an empty file, or the file may be missing
+    # entirely if the backup was taken before memory was provisioned.
+    try:
+        events_obj = s3.get_object(
+            Bucket=ctx.backup_bucket,
+            Key=f"{root}agentcore-memory/events.jsonl.gz",
+        )
+    except ClientError as e:
+        if e.response["Error"]["Code"] == "NoSuchKey":
+            results.append({
+                "component": "agentcore-memory",
+                "status": "skipped",
+                "reason": "no events backup file",
+            })
+            return results
+        results.append({
+            "component": "agentcore-memory",
+            "status": "failed",
+            "error": str(e),
+        })
+        return results
+
+    body = gzip.decompress(events_obj["Body"].read()).decode("utf-8")
+
+    # Group by sessionId so each session can be replayed sequentially while
+    # different sessions run in parallel. Within a session we sort by
+    # eventTimestamp so branch references are always created after their
+    # parent.
+    sessions: dict[str, list[dict]] = {}
+    total_events = 0
+    for line in body.split("\n"):
+        line = line.strip()
+        if not line:
+            continue
+        try:
+            rec = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        ev = rec.get("event") or {}
+        if not ev.get("sessionId"):
+            # Sessionless events can't be reliably replayed.
+            continue
+        sessions.setdefault(ev["sessionId"], []).append(ev)
+        total_events += 1
+
+    if not sessions:
+        results.append({
+            "component": "agentcore-memory",
+            "status": "ok",
+            "events_replayed": 0,
+            "note": "events file present but contained zero sessionful events",
+        })
+        return results
+
+    LOG.info(
+        f"[Memory] Replaying {total_events} events across {len(sessions)} sessions "
+        f"into target memory {target_memory_id}"
+    )
+
+    if ctx.dry_run:
+        results.append({
+            "component": "agentcore-memory",
+            "status": "dry-run",
+            "events_to_replay": total_events,
+            "sessions_to_replay": len(sessions),
+            "target_memory_id": target_memory_id,
+        })
+        return results
+
+    dp = ctx.session.client("bedrock-agentcore", config=BOTO_CONFIG)
+
+    # Aggregated counters protected by a per-call lock — Python's GIL
+    # technically makes the int += atomic, but explicit accumulation per
+    # session avoids the contention path entirely.
+    def _replay_one_session(session_id: str, events: list[dict]) -> dict[str, int]:
+        local_counts = {
+            "replayed": 0,
+            "actor_remapped": 0,
+            "branch_rewritten": 0,
+            "failed": 0,
+        }
+        # Sort events by timestamp so a branch-child never tries to
+        # reference a parent we haven't replayed yet.
+        events_sorted = sorted(
+            events,
+            key=lambda e: e.get("eventTimestamp") or "",
+        )
+        old_to_new_event_id: dict[str, str] = {}
+
+        for ev in events_sorted:
+            original_event_id = ev.get("eventId")
+            actor_id = ev.get("actorId")
+            payload = ev.get("payload") or []
+            metadata = ev.get("metadata") or {}
+            ev_branch = ev.get("branch") or {}
+
+            # actorId remap — fall back to original if not in sub_map
+            # (e.g., system-actor IDs that aren't user subs).
+            if ctx.sub_map_pattern is not None and actor_id in ctx.sub_map:
+                new_actor_id = ctx.sub_map[actor_id]
+                local_counts["actor_remapped"] += 1
+            else:
+                new_actor_id = actor_id
+
+            # branch.rootEventId rewrite — only if the parent was
+            # replayed earlier in this session.
+            new_branch: dict[str, Any] | None = None
+            if ev_branch:
+                br_name = ev_branch.get("name")
+                br_root = ev_branch.get("rootEventId")
+                if br_root and br_root in old_to_new_event_id:
+                    new_branch = {
+                        "name": br_name,
+                        "rootEventId": old_to_new_event_id[br_root],
+                    }
+                    local_counts["branch_rewritten"] += 1
+                elif br_root:
+                    # Parent unknown — drop the branch field rather
+                    # than fail the event. The event becomes a root
+                    # in the new memory.
+                    LOG.warning(
+                        f"[Memory] {session_id}: branch parent {br_root} not "
+                        f"found in replay session; dropping branch on event "
+                        f"{original_event_id}"
+                    )
+                    new_branch = None
+                else:
+                    new_branch = {"name": br_name} if br_name else None
+
+            try:
+                event_timestamp = _parse_event_timestamp(ev.get("eventTimestamp"))
+            except ValueError as ve:
+                LOG.warning(
+                    f"[Memory] {session_id}: skipping event {original_event_id}: {ve}"
+                )
+                local_counts["failed"] += 1
+                continue
+
+            kwargs: dict[str, Any] = {
+                "memoryId": target_memory_id,
+                "actorId": new_actor_id,
+                "sessionId": session_id,
+                "eventTimestamp": event_timestamp,
+                "payload": payload,
+                "clientToken": _client_token(target_memory_id, original_event_id or ""),
+            }
+            if metadata:
+                kwargs["metadata"] = metadata
+            if new_branch is not None:
+                kwargs["branch"] = new_branch
+
+            try:
+                resp = dp.create_event(**kwargs)
+                local_counts["replayed"] += 1
+                new_id = (resp.get("event") or {}).get("eventId")
+                if original_event_id and new_id:
+                    old_to_new_event_id[original_event_id] = new_id
+            except ClientError as ce:
+                LOG.warning(
+                    f"[Memory] {session_id}: create_event failed for "
+                    f"{original_event_id}: {ce}"
+                )
+                local_counts["failed"] += 1
+
+        return local_counts
+
+    totals = {
+        "replayed": 0,
+        "actor_remapped": 0,
+        "branch_rewritten": 0,
+        "failed": 0,
+    }
+    with ThreadPoolExecutor(max_workers=16) as pool:
+        futures = [
+            pool.submit(_replay_one_session, sid, evs)
+            for sid, evs in sessions.items()
+        ]
+        for f in as_completed(futures):
+            try:
+                counts = f.result()
+            except Exception as exc:
+                LOG.warning(f"[Memory] session worker raised: {exc}")
+                continue
+            for k, v in counts.items():
+                totals[k] += v
+
+    LOG.info(
+        f"[Memory] Replay complete: {totals['replayed']}/{total_events} events written, "
+        f"{totals['actor_remapped']} actor-remapped, "
+        f"{totals['branch_rewritten']} branch refs rewritten, "
+        f"{totals['failed']} failed"
+    )
+
+    results.append({
+        "component": "agentcore-memory",
+        "status": "ok",
+        "target_memory_id": target_memory_id,
+        "sessions_replayed": len(sessions),
+        "events_replayed": totals["replayed"],
+        "events_actor_remapped": totals["actor_remapped"],
+        "events_branch_rewritten": totals["branch_rewritten"],
+        "events_failed": totals["failed"],
+    })
+    return results
+
+
+# --------------------------------------------------------------------------- #
 # Main orchestration                                                           #
 # --------------------------------------------------------------------------- #
 def run_restore(ctx: RestoreContext) -> dict:
@@ -838,6 +1144,18 @@ def run_restore(ctx: RestoreContext) -> dict:
         result = restore_s3_bucket(ctx, comp["logical_name"], comp)
         ctx.results.append(result)
 
+    # --- AgentCore Memory ---
+    # Runs after Cognito (so sub_map is populated for actorId remap) AND
+    # after DDB (so chat-session metadata exists in DDB; if memory events
+    # reference a session that was restored to DDB, both ends now agree).
+    memory_components = components.get("agentcore-memory", [])
+    if memory_components and any(c.get("status") == "ok" for c in memory_components):
+        LOG.info("Replaying AgentCore Memory events (uses sub_map from Cognito)...")
+        memory_results = restore_agentcore_memory(ctx)
+        ctx.results.extend(memory_results)
+    else:
+        LOG.info("No AgentCore Memory backup found, skipping replay")
+
     # --- Summary ---
     ok = sum(1 for r in ctx.results if r.get("status") == "ok")
     skipped = sum(1 for r in ctx.results if r.get("status") in ("skipped", "dry-run"))
@@ -872,6 +1190,11 @@ def main():
     parser.add_argument("--dry-run", action="store_true", help="Print what would be restored without writing")
     parser.add_argument("--skip-cognito-users", action="store_true",
                        help="Skip Cognito user import (useful if users will self-register)")
+    parser.add_argument("--skip-memory-replay", action="store_true",
+                       help="Skip AgentCore Memory event replay. Replay is sequential per-session "
+                            "and triggers strategy extraction (Bedrock model invocations) on the "
+                            "target memory, which can be slow + costly for large histories. "
+                            "Set this if you want to defer replay or rely on fresh memory.")
     parser.add_argument("--profile", help="AWS profile name")
 
     args = parser.parse_args()
@@ -889,6 +1212,7 @@ def main():
         session=session,
         dry_run=args.dry_run,
         skip_cognito_users=args.skip_cognito_users,
+        skip_memory_replay=args.skip_memory_replay,
     )
 
     summary = run_restore(ctx)
