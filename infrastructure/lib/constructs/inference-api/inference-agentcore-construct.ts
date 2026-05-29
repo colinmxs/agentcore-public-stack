@@ -77,27 +77,46 @@ export class InferenceAgentCoreConstruct extends Construct {
 
     applyStandardTags(cdk.Stack.of(this), config);
 
-    // ── Bootstrap container image ──
-    // configured with a stable bootstrap image at synth time; the
-    // real image is shipped out-of-band by the backend workflow's
-    // `scripts/build/deploy-runtime-image-one.sh` step, which calls
-    // `aws bedrock-agentcore-control update-agent-runtime` with
-    // the project's freshly-built ECR image URI.
+    // ── Bootstrap container image + SSM-resolved live image ──
+    // The Runtime's containerUri is read from an SSM parameter at
+    // CFN deploy time, NOT baked into the synthesized template.
+    // When CFN updates the Runtime (any property change — env var,
+    // authorizer config, network config, etc.), it resolves the
+    // SSM parameter and uses whatever URI is currently there, which
+    // is the latest image the build pipeline pushed. The bootstrap
+    // stub is never reverted onto a live Runtime.
     //
-    // The bootstrap container is a tiny stdlib HTTP server (port
-    // 8080 + /ping for AgentCore's health check + /invocations
-    // returning 503) so the Runtime can provision successfully
-    // before the workflow ships the real image. Byte-stable
-    // contents → stable asset content-hash → CFN sees no change to
-    // `agentRuntimeArtifact.containerConfiguration.containerUri`
-    // on subsequent Platform deploys, leaving the out-of-band-deployed
-    // real image untouched.
+    // Bootstrap responsibility:
+    //   - First-deploy seed lives in scripts/stack-bootstrap/
+    //     seed-image-tags.sh, which runs before `cdk deploy` in
+    //     scripts/platform/deploy.sh. It pushes the bootstrap image
+    //     below to the cdk-assets ECR repo (via cdk-assets publish)
+    //     and writes its URI to SSM if the parameter doesn't exist.
+    //   - Subsequent runs: the build pipeline (backend.yml's
+    //     deploy-inference-api-code → deploy-runtime-image-one.sh)
+    //     overwrites the SSM tag with the per-service ECR URI on
+    //     every push.
+    //
+    // The DockerImageAsset is kept (not directly referenced by the
+    // Runtime resource anymore) so cdk-assets continues to publish
+    // it for the seed step. The CfnOutput exposes its assetHash so
+    // the seed script can construct the cdk-assets URI without
+    // needing to parse Fn::Sub from the template.
     const bootstrapImage = new ecr_assets.DockerImageAsset(this, 'AgentCoreRuntimeBootstrap', {
       directory: path.resolve(
         __dirname, '..', '..', '..', 'bootstrap-assets', 'inference-api',
       ),
       platform: ecr_assets.Platform.LINUX_ARM64,
     });
+    new cdk.CfnOutput(this, 'InferenceApiBootstrapImageHash', {
+      description: 'cdk-assets image tag for the inference-api bootstrap container. Consumed by scripts/stack-bootstrap/seed-image-tags.sh on first deploy.',
+      value: bootstrapImage.assetHash,
+    });
+
+    const inferenceApiImageTagSsmPath = `/${config.projectPrefix}/inference-api/image-tag`;
+    const inferenceApiImageUri = ssm.StringParameter.valueForStringParameter(
+      this, inferenceApiImageTagSsmPath,
+    );
 
     // The project's ECR repo (where the workflow ships real images
     // to). Imported for IAM grants only — CDK doesn't reference any
@@ -248,7 +267,7 @@ export class InferenceAgentCoreConstruct extends Construct {
       agentRuntimeName: getResourceName(config, 'agentcore_runtime').replace(/-/g, '_'),
       agentRuntimeArtifact: {
         containerConfiguration: {
-          containerUri: bootstrapImage.imageUri,
+          containerUri: inferenceApiImageUri,
         },
       },
       authorizerConfiguration: {

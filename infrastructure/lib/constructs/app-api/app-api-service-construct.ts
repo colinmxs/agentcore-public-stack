@@ -130,29 +130,45 @@ export class AppApiServiceConstruct extends Construct {
       this, 'AppApiRepository', getResourceName(config, 'app-api'),
     );
 
-    // ── Bootstrap container image ──
-    // task definition is built with a stable bootstrap image at
-    // synth time; the real image is shipped out-of-band by the
-    // backend workflow's `scripts/build/deploy-ecs-service-one.sh`
-    // step, which calls `aws ecs register-task-definition` with the
-    // project's freshly-built ECR image URI and then
-    // `aws ecs update-service` to roll the service over.
+    // ── Bootstrap container image + SSM-resolved live image ──
+    // The task definition's container image is read from an SSM
+    // parameter at CFN deploy time, NOT baked into the synthesized
+    // template. This means: when CFN re-registers the task def
+    // (any property change — env var, CPU, memory, role, etc.),
+    // the new revision picks up whatever URI is currently in SSM,
+    // which is the latest image the build pipeline pushed. The
+    // bootstrap stub is never reverted onto a live service.
     //
-    // The bootstrap container is a tiny stdlib HTTP server (port
-    // 8000 + /health for ALB target group health checks) so the
-    // task can start successfully and pass health checks before the
-    // workflow ships the real image. Byte-stable contents → stable
-    // asset content-hash → CFN sees no change to the task def's
-    // ContainerDefinitions[].Image on subsequent Platform deploys,
-    // leaving any out-of-band-deployed real image untouched (i.e.,
-    // the live ECS Service runs the latest task def revision the
-    // workflow registered, not the CDK-managed bootstrap revision).
+    // Bootstrap responsibility:
+    //   - First-deploy seed lives in scripts/stack-bootstrap/
+    //     seed-image-tags.sh, which runs before `cdk deploy` in
+    //     scripts/platform/deploy.sh. It pushes the bootstrap image
+    //     below to the cdk-assets ECR repo (via cdk-assets publish)
+    //     and writes its URI to SSM if the parameter doesn't exist.
+    //   - Subsequent runs: the build pipeline (backend.yml's
+    //     deploy-app-api-code → deploy-ecs-service-one.sh) overwrites
+    //     the SSM tag with the per-service ECR URI on every push.
+    //
+    // The DockerImageAsset is kept (not directly referenced by the
+    // ContainerDefinition anymore) so cdk-assets continues to
+    // publish it for the seed step. The CfnOutput exposes its
+    // assetHash so the seed script can construct the cdk-assets URI
+    // without needing to parse Fn::Sub from the template.
     const bootstrapImage = new ecr_assets.DockerImageAsset(this, 'AppApiBootstrap', {
       directory: path.resolve(
         __dirname, '..', '..', '..', 'bootstrap-assets', 'app-api',
       ),
       platform: ecr_assets.Platform.LINUX_AMD64,
     });
+    new cdk.CfnOutput(this, 'AppApiBootstrapImageHash', {
+      description: 'cdk-assets image tag for the app-api bootstrap container. Consumed by scripts/stack-bootstrap/seed-image-tags.sh on first deploy.',
+      value: bootstrapImage.assetHash,
+    });
+
+    const appApiImageTagSsmPath = `/${config.projectPrefix}/app-api/image-tag`;
+    const appApiImageUri = ssm.StringParameter.valueForStringParameter(
+      this, appApiImageTagSsmPath,
+    );
 
     // ── Container environment ──
     const environment = buildAppApiEnvironment(config, params);
@@ -177,7 +193,7 @@ export class AppApiServiceConstruct extends Construct {
     // ── Container definition ──
     const container = taskDefinition.addContainer('AppApiContainer', {
       containerName: 'app-api',
-      image: ecs.ContainerImage.fromDockerImageAsset(bootstrapImage),
+      image: ecs.ContainerImage.fromRegistry(appApiImageUri),
       logging: ecs.LogDrivers.awsLogs({ streamPrefix: 'app-api', logGroup }),
       environment,
       portMappings: [{ containerPort: 8000, protocol: ecs.Protocol.TCP }],
@@ -189,6 +205,16 @@ export class AppApiServiceConstruct extends Construct {
         startPeriod: cdk.Duration.seconds(60),
       },
     });
+
+    // ── ECR pull grants ──
+    // ContainerImage.fromRegistry doesn't auto-grant pull (unlike
+    // fromDockerImageAsset). Grant the task's execution role pull on
+    // both: (1) the cdk-assets repo where the bootstrap image lives
+    // (used on first deploy via the SSM-seeded URI), and (2) the
+    // per-service ECR repo where the build pipeline pushes real
+    // images.
+    bootstrapImage.repository.grantPull(taskDefinition.obtainExecutionRole());
+    ecrRepository.grantPull(taskDefinition.obtainExecutionRole());
 
     // ── IAM grants — refs pass-through replaces 30+ string props ──
     grantAppApiPermissions({
