@@ -384,6 +384,22 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
   );
 
   // ── AgentCore WorkloadIdentity (OAuth vault token minting) ──
+  // Grants the App API the data-plane actions used by /connectors/*
+  // routes and shared/oauth/agentcore_identity.py:
+  //   - GetWorkloadAccessTokenForUserId / GetWorkloadIdentity:
+  //     mint a workload token for a specific user.
+  //   - GetResourceOauth2Token / CompleteResourceTokenAuth:
+  //     start + complete the 3LO consent flow against an external
+  //     OAuth provider, then redeem the auth code for a vaulted
+  //     token. Without these, /connectors/{id}/{status,initiate,
+  //     disconnect,complete} return 503 at runtime.
+  //   - Create/Update/Delete/Get/ListOauth2CredentialProvider:
+  //     called by shared/oauth/agentcore_registrar.py when an
+  //     admin adds, edits, or removes an OAuth provider via the
+  //     admin UI. Stored under the default token vault.
+  // Resources: scoped to this account's AgentCore Identity surface.
+  // Action names verified against
+  //   https://docs.aws.amazon.com/service-authorization/latest/reference/list_amazonbedrockagentcore.html
   taskRole.addToPrincipalPolicy(
     new iam.PolicyStatement({
       sid: 'AgentCoreWorkloadIdentityAccess',
@@ -391,8 +407,45 @@ export function grantAppApiPermissions(props: AppApiIamGrantsProps): void {
       actions: [
         'bedrock-agentcore:GetWorkloadAccessTokenForUserId',
         'bedrock-agentcore:GetWorkloadIdentity',
+        'bedrock-agentcore:GetResourceOauth2Token',
+        'bedrock-agentcore:CompleteResourceTokenAuth',
+        'bedrock-agentcore:CreateOauth2CredentialProvider',
+        'bedrock-agentcore:UpdateOauth2CredentialProvider',
+        'bedrock-agentcore:DeleteOauth2CredentialProvider',
+        'bedrock-agentcore:GetOauth2CredentialProvider',
+        'bedrock-agentcore:ListOauth2CredentialProviders',
       ],
-      resources: ['*'],
+      resources: [
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/*`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/*/oauth2credentialprovider/*`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/*`,
+        `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/*/workload-identity/*`,
+      ],
+    }),
+  );
+
+  // ── AgentCore Identity OAuth vault secrets ──
+  // CreateOauth2CredentialProvider auto-creates a Secrets Manager
+  // secret under bedrock-agentcore-identity!default/oauth2/<id> to
+  // hold each provider's clientSecret. The registrar
+  // (shared/oauth/agentcore_registrar.py) needs full lifecycle
+  // perms on these secrets to add / rotate / remove providers.
+  taskRole.addToPrincipalPolicy(
+    new iam.PolicyStatement({
+      sid: 'AgentCoreIdentityOAuthSecrets',
+      effect: iam.Effect.ALLOW,
+      actions: [
+        'secretsmanager:GetSecretValue',
+        'secretsmanager:DescribeSecret',
+        'secretsmanager:CreateSecret',
+        'secretsmanager:PutSecretValue',
+        'secretsmanager:UpdateSecret',
+        'secretsmanager:DeleteSecret',
+        'secretsmanager:TagResource',
+      ],
+      resources: [
+        `arn:aws:secretsmanager:${config.awsRegion}:${config.awsAccount}:secret:bedrock-agentcore-identity!default/oauth2/*`,
+      ],
     }),
   );
 }

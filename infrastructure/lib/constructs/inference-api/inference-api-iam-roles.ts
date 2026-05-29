@@ -211,12 +211,25 @@ export function createRuntimeExecutionRole(
     ],
   }));
 
-  // ── AgentCore WorkloadIdentity ──
+  // ── AgentCore WorkloadIdentity + OAuth token minting ──
+  // The agent loop's tool gating in shared/oauth/agentcore_identity.py
+  // calls GetResourceOauth2Token to short-circuit to a vaulted token
+  // before making an external MCP / connector call. Without it the
+  // agent would 503 on any tool that requires a federated token.
   role.addToPolicy(new iam.PolicyStatement({
     sid: 'AgentCoreWorkloadIdentityAccess',
     effect: iam.Effect.ALLOW,
-    actions: ['bedrock-agentcore:GetWorkloadAccessTokenForUserId', 'bedrock-agentcore:GetWorkloadIdentity'],
-    resources: ['*'],
+    actions: [
+      'bedrock-agentcore:GetWorkloadAccessTokenForUserId',
+      'bedrock-agentcore:GetWorkloadIdentity',
+      'bedrock-agentcore:GetResourceOauth2Token',
+    ],
+    resources: [
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/*`,
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:token-vault/*/oauth2credentialprovider/*`,
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/*`,
+      `arn:aws:bedrock-agentcore:${config.awsRegion}:${config.awsAccount}:workload-identity-directory/*/workload-identity/*`,
+    ],
   }));
 
   // ── AgentCore Memory ──
