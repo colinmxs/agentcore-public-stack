@@ -325,7 +325,6 @@ export class InferenceAgentCoreConstruct extends Construct {
         S3_ASSISTANTS_DOCUMENTS_BUCKET_NAME: props.refs.ragDocumentsBucket.bucketName,
 
         // Authentication
-        ENABLE_AUTHENTICATION: 'true',
         ENABLE_QUOTA_ENFORCEMENT: 'true',
 
         // Directories

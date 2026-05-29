@@ -119,7 +119,6 @@ export class RagIngestionLambdaConstruct extends Construct {
         DYNAMODB_ASSISTANTS_TABLE_NAME: assistantsTable.tableName,
         S3_ASSISTANTS_VECTOR_STORE_BUCKET_NAME: vectorBucketName,
         S3_ASSISTANTS_VECTOR_STORE_INDEX_NAME: vectorIndexName,
-        BEDROCK_REGION: config.awsRegion,
       },
       description:
         'RAG document ingestion pipeline - processes documents from S3, extracts text, chunks, generates embeddings, stores in S3 vector store',
